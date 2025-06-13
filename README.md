@@ -86,8 +86,8 @@ CSV/JSON   Multiple LLMs   Human/AI Judge   DR-CPO/MRDR   Policy Rankings
 ## 🔧 Development
 
 ```bash
-git clone https://github.com/fondutech/CJE.git
-cd CJE
+git clone https://github.com/fondutech/causal-judge-evaluation.git
+cd causal-judge-evaluation
 make dev-setup  # Install in development mode
 make docs       # Build documentation locally
 make test       # Run test suite

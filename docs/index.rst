@@ -14,8 +14,8 @@ CJE: Causal Judge Evaluation Toolkit
    :target: https://www.python.org/downloads/
    :alt: Python version
 
-.. image:: https://img.shields.io/github/license/fondutech/CJE.svg
-   :target: https://github.com/fondutech/CJE/blob/main/LICENSE
+.. image:: https://img.shields.io/github/license/fondutech/causal-judge-evaluation.svg
+:target: https://github.com/fondutech/causal-judge-evaluation/blob/main/LICENSE
    :alt: License
 
 CJE provides **robust off-policy evaluation** for Large Language Models using causal inference methods. Estimate policy improvements without deployment using logged interaction data.
@@ -262,7 +262,7 @@ This implementation is based on the **Causal Judge Evaluation** research paper:
      title={Causal Judge Evaluation (CJE): Unbiased, Calibrated \& Cost-Efficient Off-Policy Metrics for LLM Systems},
      author={Landesberg, Eddie},
      year={2025},
-     note={Implementation available at https://github.com/fondutech/CJE}
+     note={Implementation available at https://github.com/fondutech/causal-judge-evaluation}
    }
 
 **Paper Highlights**:

@@ -17,8 +17,8 @@ For development or to get the latest features:
 
 .. code-block:: bash
 
-   git clone https://github.com/fondutech/CJE.git
-   cd CJE
+   git clone https://github.com/fondutech/causal-judge-evaluation.git
+   cd causal-judge-evaluation
    poetry install
 
 System Requirements
