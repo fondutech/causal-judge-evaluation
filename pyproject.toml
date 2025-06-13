@@ -1,7 +1,3 @@
-[tool.setuptools.packages.find]
-include = ["cje*"]
-exclude = ["configs*", "docs*", "tests*", "scripts*", "examples*"]
-
 [tool.poetry]
 name = "cje"
 version = "0.1.0"
