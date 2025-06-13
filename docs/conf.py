@@ -8,7 +8,50 @@
 import os
 import sys
 
+# Add the project root to Python path
 sys.path.insert(0, os.path.abspath(".."))
+
+# Try to import the package to ensure it's available
+try:
+    import cje
+except ImportError as e:
+    print(f"Warning: Could not import cje package: {e}")
+    # Add additional paths that might help
+    sys.path.insert(0, os.path.abspath("../cje"))
+    sys.path.insert(0, os.path.abspath("."))
+
+# Set up mock imports for problematic dependencies during docs build
+from unittest.mock import MagicMock
+
+
+class Mock(MagicMock):
+    @classmethod
+    def __getattr__(cls, name: str) -> MagicMock:
+        return MagicMock()
+
+
+# Mock modules that might cause import issues during docs build
+MOCK_MODULES = [
+    "torch",
+    "transformers",
+    "datasets",
+    "accelerate",
+    "xgboost",
+    "sentence_transformers",
+    "openai",
+    "anthropic",
+    "google.generativeai",
+    "langchain_core",
+    "langchain_openai",
+    "langchain_anthropic",
+    "langchain_google_genai",
+    "langchain_together",
+    "boto3",
+    "tiktoken",
+]
+
+for mod_name in MOCK_MODULES:
+    sys.modules[mod_name] = Mock()
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
@@ -51,9 +94,15 @@ autodoc_default_options = {
     "exclude-members": "__weakref__",
 }
 
-# Auto-generate summaries
-autosummary_generate = True
-autosummary_imported_members = True
+# Auto-generate summaries - disable for now to test basic imports
+autosummary_generate = False
+autosummary_imported_members = False
+autodoc_mock_imports = MOCK_MODULES
+
+# Handle import failures gracefully
+autodoc_preserve_defaults = True
+autodoc_inherit_docstrings = True
+autodoc_class_signature = "mixed"
 
 # Napoleon settings for Google/NumPy style docstrings
 napoleon_google_docstring = True

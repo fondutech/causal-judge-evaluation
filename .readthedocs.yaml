@@ -18,9 +18,12 @@ build:
       # Install package and dependencies with poetry 
       - poetry config virtualenvs.create false
       - poetry install --with dev
+      # Ensure package is properly installed and importable
+      - python -c "import sys; sys.path.insert(0, '.'); import cje; print('CJE package imported successfully')"
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
+  builder: html
   configuration: docs/conf.py
   fail_on_warning: false
 
