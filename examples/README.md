@@ -4,9 +4,9 @@
 
 ## 📖 Documentation Integration
 
-**For complete documentation** → [CJE Documentation](https://cje.readthedocs.io/)
+**For complete documentation** → [CJE Documentation](https://causal-judge-evaluation.readthedocs.io/)
 
-**For configuration help** → [Configuration Reference](https://cje.readthedocs.io/en/latest/guides/configuration_reference.html)
+**For configuration help** → [Configuration Reference](https://causal-judge-evaluation.readthedocs.io/en/latest/guides/configuration_reference.html)
 
 ## 🚀 Quick Start Examples
 
@@ -255,11 +255,11 @@ class MyCustomAnalyzer(ArenaAnalyzer):
 
 ## 🔗 Related Documentation
 
-- **[Complete User Guide](https://cje.readthedocs.io/en/latest/guides/user_guide.html)** - Essential workflows and troubleshooting
-- **[Arena Analysis Guide](https://cje.readthedocs.io/en/latest/guides/arena_analysis.html)** - Detailed arena methodology
-- **[Configuration Reference](https://cje.readthedocs.io/en/latest/guides/configuration_reference.html)** - All configuration options
-- **[API Documentation](https://cje.readthedocs.io/en/latest/api/index.html)** - Complete technical reference
+- **[Complete User Guide](https://causal-judge-evaluation.readthedocs.io/en/latest/guides/user_guide.html)** - Essential workflows and troubleshooting
+- **[Arena Analysis Guide](https://causal-judge-evaluation.readthedocs.io/en/latest/guides/arena_analysis.html)** - Detailed arena methodology
+- **[Configuration Reference](https://causal-judge-evaluation.readthedocs.io/en/latest/guides/configuration_reference.html)** - All configuration options
+- **[API Documentation](https://causal-judge-evaluation.readthedocs.io/en/latest/api/index.html)** - Complete technical reference
 
 ---
 
-**Quick Links**: [📖 Full Documentation](https://cje.readthedocs.io/) | [🚀 5-Minute Quickstart](https://cje.readthedocs.io/en/latest/quickstart.html) | [⚙️ Configuration Help](https://cje.readthedocs.io/en/latest/guides/configuration_reference.html) 
+**Quick Links**: [📖 Full Documentation](https://causal-judge-evaluation.readthedocs.io/) | [🚀 5-Minute Quickstart](https://causal-judge-evaluation.readthedocs.io/en/latest/quickstart.html) | [⚙️ Configuration Help](https://causal-judge-evaluation.readthedocs.io/en/latest/guides/configuration_reference.html) 

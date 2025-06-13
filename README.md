@@ -7,7 +7,7 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Documentation](https://img.shields.io/badge/docs-ReadTheDocs-blue.svg)](https://cje.readthedocs.io/)
+[![Documentation](https://img.shields.io/badge/docs-ReadTheDocs-blue.svg)](https://causal-judge-evaluation.readthedocs.io/)
 ![Development Status](https://img.shields.io/badge/status-active%20development-orange.svg)
 ![Production Ready](https://img.shields.io/badge/production%20ready-no-red.svg)
 
@@ -33,25 +33,25 @@
 
 ## 📚 Documentation Hub
 
-**📖 [Complete Documentation](https://cje.readthedocs.io/)** - Professional docs with search and PDF export
+**📖 [Complete Documentation](https://causal-judge-evaluation.readthedocs.io/)** - Professional docs with search and PDF export
 
 ### Quick Navigation by User Type
 
 **🚀 New Users**
-- [5-Minute Quickstart](https://cje.readthedocs.io/en/latest/quickstart.html) - Get running immediately
-- [Installation Guide](https://cje.readthedocs.io/en/latest/installation.html) - Setup and requirements
+- [5-Minute Quickstart](https://causal-judge-evaluation.readthedocs.io/en/latest/quickstart.html) - Get running immediately
+- [Installation Guide](https://causal-judge-evaluation.readthedocs.io/en/latest/installation.html) - Setup and requirements
 
 **⚙️ Practitioners**  
-- [User Guide](https://cje.readthedocs.io/en/latest/guides/user_guide.html) - Real-world workflows and troubleshooting
-- [Arena Analysis](https://cje.readthedocs.io/en/latest/guides/arena_analysis.html) - ChatBot Arena-style evaluation
+- [User Guide](https://causal-judge-evaluation.readthedocs.io/en/latest/guides/user_guide.html) - Real-world workflows and troubleshooting
+- [Arena Analysis](https://causal-judge-evaluation.readthedocs.io/en/latest/guides/arena_analysis.html) - ChatBot Arena-style evaluation
 
 **🔬 Researchers**
-- [Theory & Foundations](https://cje.readthedocs.io/en/latest/theory/index.html) - Mathematical background
-- [API Reference](https://cje.readthedocs.io/en/latest/api/index.html) - Complete technical documentation
+- [Theory & Foundations](https://causal-judge-evaluation.readthedocs.io/en/latest/theory/index.html) - Mathematical background
+- [API Reference](https://causal-judge-evaluation.readthedocs.io/en/latest/api/index.html) - Complete technical documentation
 
 **🛠️ Developers**
-- [Custom Components](https://cje.readthedocs.io/en/latest/guides/custom_components.html) - Extend CJE
-- [Weight Processing](https://cje.readthedocs.io/en/latest/guides/weight_processing.html) - Technical pipeline details
+- [Custom Components](https://causal-judge-evaluation.readthedocs.io/en/latest/guides/custom_components.html) - Extend CJE
+- [Weight Processing](https://causal-judge-evaluation.readthedocs.io/en/latest/guides/weight_processing.html) - Technical pipeline details
 
 ## ⚡ 30-Second Demo
 
@@ -69,7 +69,7 @@ cje run --cfg-path configs --cfg-name arena_test
 cje results --run-dir outputs/arena_test
 ```
 
-[See complete examples →](https://cje.readthedocs.io/en/latest/quickstart.html)
+[See complete examples →](https://causal-judge-evaluation.readthedocs.io/en/latest/quickstart.html)
 
 ## 🏛️ Architecture
 
@@ -102,11 +102,11 @@ Recent benchmarks on ChatBot Arena data:
 
 ## 🤝 Contributing
 
-We welcome contributions! See our [contributing guide](https://cje.readthedocs.io/en/latest/contributing.html) and [development documentation](https://cje.readthedocs.io/en/latest/api/index.html).
+We welcome contributions! See our [contributing guide](https://causal-judge-evaluation.readthedocs.io/en/latest/contributing.html) and [development documentation](https://causal-judge-evaluation.readthedocs.io/en/latest/api/index.html).
 
 ## 📄 License & Citation
 
-MIT License. If you use CJE in research, please [cite our work](https://cje.readthedocs.io/en/latest/index.html#citation).
+MIT License. If you use CJE in research, please [cite our work](https://causal-judge-evaluation.readthedocs.io/en/latest/index.html#citation).
 
 ---
-**[📖 Read the Full Documentation](https://cje.readthedocs.io/)** | **[🚀 Get Started in 5 Minutes](https://cje.readthedocs.io/en/latest/quickstart.html)**
+**[📖 Read the Full Documentation](https://causal-judge-evaluation.readthedocs.io/)** | **[🚀 Get Started in 5 Minutes](https://causal-judge-evaluation.readthedocs.io/en/latest/quickstart.html)**
