@@ -1,0 +1,72 @@
+/* Custom CSS for CJE-Core documentation */
+
+/* Improve code block styling */
+.highlight {
+    border-radius: 4px;
+    margin: 1em 0;
+}
+
+/* Better table styling */
+.wy-table-responsive table td,
+.wy-table-responsive table th {
+    white-space: normal;
+}
+
+/* API documentation improvements */
+.py.class,
+.py.function,
+.py.method {
+    border-left: 3px solid #2980b9;
+    padding-left: 0.5em;
+    margin: 1em 0;
+}
+
+/* Source code links */
+.viewcode-link {
+    float: right;
+    font-size: 0.8em;
+}
+
+/* Version badges */
+.version-badge {
+    background: #2980b9;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.8em;
+}
+
+/* Example boxes */
+.example-box {
+    border: 1px solid #d4edda;
+    background-color: #f8f9fa;
+    padding: 1em;
+    border-radius: 4px;
+    margin: 1em 0;
+}
+
+.example-box .admonition-title {
+    background-color: #28a745;
+    color: white;
+    margin: -1em -1em 0.5em -1em;
+    padding: 0.5em 1em;
+    border-radius: 4px 4px 0 0;
+}
+
+/* Fix for long parameter lists */
+.field-list td {
+    vertical-align: top;
+    padding-bottom: 0.5em;
+}
+
+/* Improve navigation */
+.wy-nav-content {
+    max-width: 1200px;
+}
+
+/* Better mobile responsiveness */
+@media screen and (max-width: 768px) {
+    .wy-nav-content {
+        margin-left: 0;
+    }
+} 

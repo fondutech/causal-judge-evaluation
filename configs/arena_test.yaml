@@ -1,0 +1,66 @@
+# Small Arena Test Configuration
+# Uses oracle mode to bypass Fireworks log probability issues
+
+paths:
+  work_dir: "outputs/arena_test_cache"
+
+dataset:
+  name: "ChatbotArena"
+  split: "train"
+  sample_limit: 20
+
+# Logging policy (what generated original responses)
+logging_policy:
+  provider: "fireworks"
+  model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
+  temperature: 0.5
+  max_new_tokens: 4096
+
+# Target policies (what we want to evaluate)
+target_policies:
+  - name: "llama4_maverick"
+    provider: "fireworks"
+    model_name: "accounts/fireworks/models/llama4-maverick-instruct-basic"
+    temperature: 0.5
+    max_new_tokens: 128
+  - name: "llama4_scout"
+    provider: "fireworks"
+    model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
+    temperature: 0.5
+    max_new_tokens: 4096
+
+# Judge configuration (cheap judge to be calibrated)
+judge:
+  provider: "fireworks"
+  model_name: "accounts/fireworks/models/llama-v3p1-8b-instruct"
+  template: "quick_judge"
+  temperature: 0.0
+  max_tokens: 100
+
+# Oracle mode enabled (using Llama 3.1 70B as reliable ground truth)
+oracle:
+  enabled: true
+  provider: "fireworks"
+  model_name: "accounts/fireworks/models/llama4-maverick-instruct-basic"
+  template: "quick_judge"
+  temperature: 0.0
+  max_tokens: 100
+  logging_policy_oracle_fraction: 0.5  # 50% oracle labels (total generated)
+  seed: 42
+
+# Estimator settings
+estimator:
+  name: "MRDR"
+  k: 5  # More folds for better cross-validation with larger sample
+  # clip: null  # Test new default behavior (no legacy clipping)
+  seed: 42
+  n_jobs: 1  # Force sequential processing to avoid pickling issues 
+  samples_per_policy: 0
+
+# Weight diagnostics configuration
+diagnostics:
+  log_ratio_clip: 20.0          # Hard clipping threshold for log ratios (±20 → max weight ~485M)
+  ess_warning_threshold: 15.0   # ESS % warning threshold
+  ess_critical_threshold: 5.0   # ESS % critical threshold
+  identical_policy_tolerance: 0.1  # Tolerance for identical policy weight checking
+  save_diagnostic_plots: true   # Auto-save weight distribution plots

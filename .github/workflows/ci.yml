@@ -1,0 +1,38 @@
+name: ci
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: ${{ runner.os }}-hf-${{ hashFiles('pyproject.toml') }}
+      - name: Cache Hugging Face
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: ${{ runner.os }}-hf-${{ github.sha }}
+      - name: Cache run artefacts
+        uses: actions/cache@v4
+        with:
+          path: runs
+          key: ${{ runner.os }}-runs-${{ github.sha }}
+      - name: Install Poetry
+        run: pip install poetry
+      - name: Install deps
+        run: poetry install --no-interaction
+      - name: Lint / type-check
+        run: |
+          poetry run black --check .
+          poetry run mypy cje
+      - name: Tests
+        run: poetry run pytest --cov=cje --cov-report=xml 
