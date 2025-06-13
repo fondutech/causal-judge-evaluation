@@ -10,12 +10,19 @@ build:
     python: "3.9"
   jobs:
     post_create_environment:
-      # Install poetry
+      # Install poetry for main package
       - pip install poetry
     post_install:
-      # Install dependencies with poetry
+      # Install main package dependencies
       - poetry config virtualenvs.create false
-      - poetry install --with dev
+      - poetry install --only main
+
+# Python configuration for docs dependencies
+python:
+  install:
+    - requirements: docs/requirements.txt
+    - method: pip
+      path: .
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
