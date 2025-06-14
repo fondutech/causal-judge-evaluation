@@ -1,7 +1,7 @@
 Quickstart Guide  
 ===============
 
-Get started with CJE-Core in 5 minutes! This guide shows you the essential steps to run your first causal evaluation.
+Get started with CJE in 5 minutes! This guide shows you the essential steps to run your first causal evaluation.
 
 Basic Concepts
 --------------

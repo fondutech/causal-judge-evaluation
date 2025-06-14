@@ -1,8 +1,8 @@
-# CJE (Causal Judge Evaluation) Implementation Guide
+# CJE Developer Guide
 
 ## Overview
 
-CJE (Causal Judge Evaluation) is a Python library for performing off-policy evaluation of Large Language Models (LLMs) using causal inference techniques. It enables unbiased evaluation of new model configurations, prompts, or parameters using only historical interaction data, without requiring deployment.
+This guide covers the internal architecture and implementation details of CJE for developers who want to understand, extend, or contribute to the codebase. For user-facing documentation, see the [User Guide](https://causal-judge-evaluation.readthedocs.io/en/latest/guides/user_guide.html).
 
 ## Core Concepts
 
