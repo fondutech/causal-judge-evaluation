@@ -1,0 +1,18 @@
+# Ignore data and outputs, but track scripts and configs
+*/data/
+*/outputs/
+*/results/
+*/.cache/
+*.jsonl
+*.csv
+*.pkl
+*.png
+*.pdf
+
+# But explicitly track important files
+!*/scripts/*.py
+!*/scripts/*.sh
+!*/configs/*.yaml
+!*.md
+!README.md
+!.gitignore

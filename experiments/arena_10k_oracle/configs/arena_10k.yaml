@@ -1,0 +1,220 @@
+# Arena 10K Fresh Oracle Experiment Configuration
+
+experiment:
+  name: "arena_10k_fresh_oracle"
+  description: "CJE evaluation on 10k ChatBot Arena prompts with human oracle labels"
+  seed: 42
+  
+paths:
+  work_dir: "experiments/arena_10k_oracle/outputs"
+  cache_dir: "experiments/arena_10k_oracle/.cache"
+  
+dataset:
+  name: "ChatbotArena"
+  split: "train"
+  sample_limit: 10000
+  shuffle: true
+  seed: ${experiment.seed}
+  
+# Logging policy configuration
+logging_policy:
+  provider: "fireworks"
+  model_name: "llama-v3-34b-instruct"
+  temperature: 0.4
+  top_p: 0.95
+  max_tokens: 512
+  seed: ${experiment.seed}
+  compute_logprobs: true
+  
+# Target policies to evaluate
+target_policies:
+  - name: "pi_clone"
+    provider: "fireworks"
+    model_name: "llama-v3-34b-instruct"
+    temperature: 0.4
+    top_p: 0.95
+    max_tokens: 512
+    seed: ${experiment.seed}
+    description: "Identical to logging policy (sanity check)"
+    
+  - name: "pi_cot"
+    provider: "fireworks"
+    model_name: "llama-v3-34b-instruct"
+    temperature: 0.4
+    top_p: 0.95
+    max_tokens: 512
+    seed: ${experiment.seed}
+    system_prompt_suffix: "\n\nThink step-by-step before providing your answer."
+    description: "Chain-of-thought variant"
+    
+  - name: "pi_rag"
+    provider: "fireworks"
+    model_name: "llama-v3-34b-instruct"
+    temperature: 0.4
+    top_p: 0.95
+    max_tokens: 512
+    seed: ${experiment.seed}
+    enable_retrieval: true
+    retrieval_k: 2
+    description: "Retrieval-augmented generation"
+    
+  - name: "pi_big"
+    provider: "fireworks"
+    model_name: "llama-v3-70b-instruct"
+    temperature: 0.4
+    top_p: 0.95
+    max_tokens: 512
+    seed: ${experiment.seed}
+    description: "Larger model (70B)"
+
+# Judge configuration
+judge:
+  provider: "fireworks"
+  model_name: "llama-v3-34b-instruct"
+  temperature: 0.0
+  template: "helpfulness_0_10"
+  rubric: |
+    Rate the assistant's response on a scale of 0-10 for:
+    - Helpfulness: Does it address the user's needs?
+    - Correctness: Is the information accurate?
+    - Safety: Is the response appropriate and harmless?
+    
+    Provide a single integer score from 0 to 10.
+
+# Oracle labeling configuration
+oracle:
+  enabled: true
+  provider: "human"  # Will be replaced with crowdsourcing
+  
+  # Calibration oracle (25% of data)
+  calibration:
+    fraction: 0.25
+    votes_per_sample: 3
+    platform: "surge"
+    cost_per_vote: 0.08
+    instructions: |
+      Rate this AI assistant response on a scale of 0-10 considering:
+      - How helpful it is to the user
+      - Whether the information is correct
+      - Whether the response is safe and appropriate
+      
+  # Validation oracle (for ground truth comparison)
+  validation:
+    samples_per_target: 800
+    votes_per_sample: 3
+    platform: "surge"
+    cost_per_vote: 0.08
+    exclude_policies: ["pi_clone"]  # Don't validate the sanity check
+
+# Outcome model configuration
+outcome_model:
+  type: "XGBoost"
+  n_estimators: 200
+  max_depth: 6
+  features:
+    - "tfidf"
+    - "sentence_bert"
+  cross_validation_folds: 5
+
+# Calibration settings
+calibration:
+  judge:
+    method: "isotonic"
+    out_of_bounds: "clip"
+  weights:
+    method: "isotonic"
+    out_of_bounds: "clip"
+    per_fold: true
+
+# Estimator configuration
+estimator:
+  name: "CalibratedDR"
+  k: 5  # Cross-fitting folds
+  
+  # Weight stabilization
+  weight_stabilization:
+    method: "clip"
+    clip_value: 100.0
+    
+  # Optional MRDR if on-policy samples available
+  enable_mrdr: false
+  mrdr_samples_per_target: 100
+
+# Diagnostics configuration
+diagnostics:
+  compute: true
+  
+  # Weight diagnostics
+  weights:
+    ess_warning_threshold: 15.0  # Warn if ESS < 15% of n
+    ess_error_threshold: 5.0     # Error if ESS < 5% of n
+    max_weight_warning: 50.0
+    clipped_mass_warning: 0.05   # Warn if >5% mass clipped
+    
+  # Calibration diagnostics  
+  calibration:
+    plot_reliability_curves: true
+    compute_ece: true  # Expected Calibration Error
+    
+  # Cross-validation diagnostics
+  cross_validation:
+    check_fold_consistency: true
+    max_fold_deviation: 1.0  # Max deviation in pp between folds
+    
+  # Save diagnostic plots
+  save_plots: true
+  plot_dir: "${paths.work_dir}/diagnostics"
+
+# Computational resources
+compute:
+  provider: "local"  # or "modal", "runpod"
+  gpu_type: "H100"
+  num_gpus: 1
+  batch_size: 32
+  
+# Progress tracking
+progress:
+  use_progress_bars: true
+  log_level: "INFO"
+  checkpoint_frequency: 1000  # Save every 1k samples
+  
+# Results configuration
+results:
+  save_format: ["json", "csv", "pickle"]
+  include_eif: true  # Save influence functions
+  
+  # Figures for paper
+  figures:
+    - type: "cje_vs_gold_scatter"
+      save_path: "${paths.work_dir}/figures/cje_vs_gold.pdf"
+    - type: "ci_width_comparison"
+      save_path: "${paths.work_dir}/figures/ci_comparison.pdf"
+    - type: "weight_distribution"
+      save_path: "${paths.work_dir}/figures/weight_dist.pdf"
+    - type: "calibration_curves"
+      save_path: "${paths.work_dir}/figures/calibration.pdf"
+
+# Cost tracking
+cost_tracking:
+  enabled: true
+  gpu_cost_per_hour: 3.0  # USD
+  track_api_calls: true
+  summarize_on_completion: true
+
+# Experiment phases (for research framework)
+research:
+  phases:
+    - name: "data_preparation"
+      required: true
+    - name: "logging_policy_generation"
+      required: true
+    - name: "oracle_calibration"
+      required: true
+    - name: "target_generation"
+      required: true
+    - name: "cje_estimation"
+      required: true
+    - name: "gold_validation"
+      required: true
+    - name: "analysis"
+      required: true

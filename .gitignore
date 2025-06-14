@@ -219,6 +219,9 @@ cache/
 
 # Research/experimental files that shouldn't be public
 scratch/
-experiments/
+experiments/*/data/
+experiments/*/outputs/
+experiments/*/results/
+experiments/*/.cache/
 research_notes/
 *.draft.*

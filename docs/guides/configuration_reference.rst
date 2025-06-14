@@ -119,6 +119,48 @@ For large-scale ChatBot Arena-style analysis:
      k: 10
      clip: 20.0
 
+🔌 Available Providers
+----------------------
+
+CJE supports the following providers for models and judges:
+
+.. list-table:: Provider Reference
+   :header-rows: 1
+   :widths: 15 30 30 25
+
+   * - Provider ID
+     - Description
+     - Example Models
+     - Required Environment
+   * - ``openai``
+     - OpenAI API
+     - gpt-4-turbo, gpt-3.5-turbo
+     - ``OPENAI_API_KEY``
+   * - ``anthropic``
+     - Anthropic API
+     - claude-3-sonnet, claude-3-haiku
+     - ``ANTHROPIC_API_KEY``
+   * - ``google``
+     - Google AI/Gemini
+     - gemini-pro, gemini-1.5-pro
+     - ``GOOGLE_API_KEY``
+   * - ``fireworks``
+     - Fireworks AI
+     - llama-v3-8b-instruct
+     - ``FIREWORKS_API_KEY``
+   * - ``together``
+     - Together AI
+     - mixtral-8x7b-instruct
+     - ``TOGETHER_API_KEY``
+   * - ``hf``
+     - HuggingFace local
+     - Any HF model
+     - Local GPU/CPU
+   * - ``mock``
+     - Testing/development
+     - mock-model
+     - None (testing only)
+
 📋 Complete Parameter Reference
 ------------------------------
 
@@ -268,17 +310,16 @@ Judge Configuration
      provider: "openai"              # Still required but not used
      model_name: "gpt-3.5-turbo"     # Still required but not used
 
-**Custom Judge:**
+**Local Model Judge:**
 
 .. code-block:: yaml
 
    judge:
-     provider: "custom"
-     class_name: "MyCustomJudge"     # Your custom judge class
-     module_path: "my_judges"        # Python module containing the class
-     
-     # Custom parameters
-     custom_param: "value"
+     provider: "hf"                   # HuggingFace local models
+     model_name: "microsoft/deberta-v3-large-mnli"
+     device: "cuda"                   # or "cpu", "mps", etc.
+     torch_dtype: "auto"              # or "float16", "bfloat16"
+     batch_size: 16                   # Batch processing size
 
 Estimator Configuration
 ~~~~~~~~~~~~~~~~~~~~~~
