@@ -266,6 +266,44 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 - Check next: Test if all examples still work after simplification
 ```
 
+## Paper Analysis - June 14, 2024
+
+### Key Paper Claims vs Implementation Status
+
+**Paper Claims**:
+- 69% CI reduction vs IPS baseline
+- 6× GPU speedup vs decode+judge
+- <30-line reference implementation
+- Within 2pp accuracy of ground truth
+
+**Implementation Reality**:
+- Full implementation is ~10,000+ lines (not 30)
+- The 30-line stub in paper is just the core algorithm
+- Actual system includes caching, providers, cross-fitting, diagnostics
+- Paper focuses on single-turn; codebase supports trajectories
+
+### Paper-Code Alignment
+
+**Well-aligned**:
+- Isotonic calibration for judges and weights ✓
+- Cross-fitted DR-CPO estimator ✓
+- Multi-policy evaluation ✓
+- Teacher-forced propensity scoring ✓
+- Weight diagnostics (ESS, clipped mass) ✓
+
+**Implementation Extensions Beyond Paper**:
+- Multiple provider support (OpenAI, Anthropic, Fireworks, etc.)
+- Trajectory/multi-turn support
+- Comprehensive caching system
+- Rich diagnostics and visualization
+- Arena research framework
+
+**Paper Simplifications**:
+- Assumes deterministic judge (T=0)
+- Single reward per context
+- No discussion of provider-specific challenges
+- Limited to text modality
+
 ## Session Notes - June 14, 2024
 
 ### Completed
@@ -299,3 +337,9 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 - Always run `make lint` before considering work complete
 - Check for stale references when updating any documentation
 - Keep CLAUDE.md updated throughout the session, not just at the end
+
+### Design Decisions - June 14, 2025
+- **Variance-aware judge selection**: Started implementing but removed as too complex
+  - Paper mentions it but implementation would add significant complexity
+  - Current judge selection (via templates) is sufficient
+  - User preference: "Perhaps this is too complicated for what it's worth"
