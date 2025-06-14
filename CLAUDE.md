@@ -120,7 +120,7 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 
 **Core Paper Components**:
 - Calibrated DR-CPO estimator (Section 4.2) → `cje/estimators/drcpo.py`
-- Isotonic calibration (Section 2.2) → `cje/calibration/isotonic.py`
+- Isotonic calibration (Section 2.2) → `cje/calibratrunion/isotonic.py`
 - MRDR variant (Section 4.3) → `cje/estimators/mrdr.py`
 - Cross-fitted algorithm (Algorithm 1) → Implemented in all estimators
 - Single-rate efficiency (Theorem 5.2) → Preserved in implementation
