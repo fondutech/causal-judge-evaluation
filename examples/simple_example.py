@@ -12,7 +12,7 @@ import os
 # export OPENAI_API_KEY="sk-..."
 
 
-def main():
+def main() -> None:
     """Run a simple CJE evaluation comparing two prompts."""
 
     # 1. Define your experiment

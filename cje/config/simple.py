@@ -7,7 +7,7 @@ Replace complex Hydra configs with simple dataclasses and sensible defaults.
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any, Literal
 from pathlib import Path
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 
 @dataclass
