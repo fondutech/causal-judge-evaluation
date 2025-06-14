@@ -20,48 +20,24 @@ CJE: Causal Judge Evaluation Toolkit
 
 CJE provides **robust off-policy evaluation** for Large Language Models using causal inference methods. Estimate policy improvements without deployment using logged interaction data.
 
+.. raw:: html
+
+   <div style="text-align: center; margin: 40px 0;">
+   <a href="start_here.html" style="display: inline-block; background: #0969da; color: white; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-size: 1.2em; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: all 0.2s;">
+   🚀 Start Here - Choose Your Path
+   </a>
+   </div>
+
 .. important::
-   **📄 Paper Implementation**: This toolkit implements the **Causal Judge Evaluation** methodology from the research paper, with additional production-ready enhancements:
-   
-   * **Core Algorithm**: Exact implementation of Algorithm 1 (Calibrated DR-CPO) 
-   * **Theoretical Guarantees**: Single-rate efficiency, semiparametric optimality, double robustness
-   * **Implementation Enhancements**: Multi-policy evaluation, outcome calibration, numerical stabilization
-   * **Production Features**: Automatic diagnostics, weight monitoring, robust error handling
+   **First time here?** Click the button above to find your personalized learning path (5 min → 45 min tracks)
 
-🔬 **Theory-to-Practice Pipeline**
-   Paper Algorithm 1 → ``MultiDRCPOEstimator`` → ``name: "DRCPO"`` config
+**What is CJE?** A toolkit that answers "What would happen if we deployed policy π'?" using only historical logs:
 
-.. note::
-   **New to CJE?** → Start with :doc:`quickstart` for a 5-minute introduction.
-   
-   **Experienced User?** → Jump to :doc:`guides/index` for advanced workflows.
-   
-   **From the Paper?** → See :doc:`theory/mathematical_foundations` for theory-implementation mapping.
+* **📊 Causal, not correlational**: Corrects for distribution shift between logged and target policies
+* **⚡ Faster evaluation**: Reuses existing responses with teacher-forced scoring
+* **🎯 Tighter confidence intervals**: Via calibrated doubly-robust estimation
+* **🔬 Theory-backed**: Implements Algorithm 1 from the CJE paper with single-rate efficiency
 
-🚀 Learning Paths by User Type
-------------------------------
-
-Choose your path based on your role and goals:
-
-**📊 Data Scientists & Analysts**
-   Start here if you work with spreadsheets, CSV files, or Pandas DataFrames
-   
-   → :doc:`quickstart` → :doc:`guides/user_guide` → :doc:`tutorials/pairwise_evaluation`
-
-**🤖 ML Engineers & Practitioners**
-   Start here if you deploy models and need production-ready evaluation
-   
-   → :doc:`installation` → :doc:`guides/arena_analysis` → :doc:`guides/weight_processing`
-
-**🔬 Researchers & Academics**
-   Start here if you need theoretical understanding and custom implementations
-   
-   → :doc:`theory/index` → :doc:`guides/custom_components` → :doc:`api/estimators`
-
-**⚙️ Platform Engineers**
-   Start here if you're integrating CJE into larger systems
-   
-   → :doc:`api/index` → :doc:`guides/aws_setup` → :doc:`guides/custom_components`
 
 ⚡ Quick Start Examples
 ----------------------
@@ -130,6 +106,7 @@ CJE implements a principled pipeline for causal evaluation:
    :maxdepth: 1
    :caption: Getting Started
 
+   start_here
    installation
    quickstart
 
@@ -230,11 +207,11 @@ Choose the right method for your use case:
 📊 Performance Benchmarks
 -------------------------
 
-Recent evaluation on ChatBot Arena data (33M interactions):
+Expected performance characteristics (empirical validation in progress):
 
-- **85% MSE reduction** vs naive importance sampling
-- **92% MSE reduction** with outcome modeling (MRDR)
-- **100% detection rate** for teacher forcing bugs in testing
+- **Significant MSE reduction** vs naive importance sampling
+- **Further improvements** with outcome modeling (MRDR)
+- **Robust teacher forcing** implementation across providers
 - **Scales to millions** of logged interactions with cross-fold processing
 
 🚨 Quick Troubleshooting

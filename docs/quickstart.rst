@@ -3,6 +3,9 @@ Quickstart Guide
 
 Get started with CJE in 5 minutes! This guide shows you the essential steps to run your first causal evaluation.
 
+.. tip::
+   **Not sure this is the right starting point?** Visit :doc:`start_here` to find your personalized learning path.
+
 Basic Concepts
 --------------
 

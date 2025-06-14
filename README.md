@@ -14,8 +14,8 @@
 ## Key Features
 
 - **🎯 Causal, not correlational**: Answers "What would happen if we deployed policy π′?"
-- **⚡ 6× faster than decode+judge**: Reuses existing responses with teacher-forced scoring
-- **📊 69% tighter confidence intervals**: Via calibrated doubly-robust estimation
+- **⚡ Faster evaluation**: Reuses existing responses with teacher-forced scoring
+- **📊 Tighter confidence intervals**: Via calibrated doubly-robust estimation
 - **🔧 Production-ready**: Caching, checkpointing, multiple provider support
 - **📄 Based on research**: Implements the CJE paper (Landesberg 2025) with single-rate efficiency guarantees
 
@@ -64,7 +64,7 @@ The `experiments/` directory contains standalone research experiments:
 - **[Arena 10K Fresh Oracle](experiments/arena_10k_oracle/)** - Validate CJE on 10k ChatBot Arena prompts
   - Human calibration via crowdsourcing
   - Complete workflow with checkpointing
-  - Expected: ±2pp accuracy, 69% CI reduction
+  - Target: High accuracy with significant CI reduction
 
 ## Development
 
