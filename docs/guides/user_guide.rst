@@ -97,32 +97,33 @@ Basic Estimator Usage
 
 .. code-block:: yaml
 
+   # Estimator configuration
    estimator:
-     name: "DRCPO"
-     k: 5
-     clip: 20.0
-     n_jobs: -1  # Use all CPU cores for parallel cross-fitting
+     name: "DRCPO"           # Doubly-robust (recommended)
+     k: 5                    # Cross-validation folds
+     clip: 20.0              # Importance weight clipping
+     n_jobs: -1              # Use all CPU cores for parallel cross-fitting
 
 **Common Patterns:**
 
 .. code-block:: yaml
 
-   # Quick baseline
+   # Quick baseline (IPS)
    estimator:
      name: "IPS"
      clip: 20.0
 
-   # Robust estimation  
+   # Robust estimation (DRCPO - recommended)
    estimator:
      name: "DRCPO"
-     k: 5
-     clip: 20.0
+     k: 5                    # Cross-validation folds
+     clip: 20.0              # Importance weight clipping
 
-   # Maximum robustness
+   # Maximum robustness (MRDR)
    estimator:
      name: "MRDR"
-     k: 5
-     clip: 20.0
+     k: 5                    # Cross-validation folds  
+     clip: 20.0              # Importance weight clipping
 
 🚨 Common Issues & Solutions
 ----------------------------
@@ -207,34 +208,43 @@ Core Workflows
 .. code-block:: yaml
 
    # config/prompt_test.yaml
-   paths:
-     work_dir: "./outputs/prompt_test"
-
+   # Dataset configuration
    dataset:
      name: "./data/prompt_test.jsonl"
      split: "test"
 
-   # Logging policy π₀ (generated the original data)
+   # Logging policy (what generated the historical data)
    logging_policy:
-     model_name: "gpt-3.5-turbo"
      provider: "openai"
+     model_name: "gpt-3.5-turbo"
+     temperature: 0.7
      system_prompt: "You are a helpful customer support agent."
 
-   # Target policies π′ (what we want to evaluate)
+   # Target policies (what we want to evaluate)
    target_policies:
      - name: "enhanced"
-       model_name: "gpt-4o"
        provider: "openai"
+       model_name: "gpt-4o"
+       temperature: 0.7
+       mc_samples: 5          # Monte Carlo samples per context
        system_prompt: "You are an expert customer support agent with deep product knowledge and excellent communication skills."
-       mc_samples: 5
 
+   # Judge configuration
    judge:
      provider: "openai"
      model_name: "gpt-4o-mini"
      template: "quick_judge"
+     temperature: 0.0        # Deterministic for consistency
 
+   # Estimator configuration
    estimator:
-     name: "DRCPO"
+     name: "DRCPO"           # Doubly-robust (recommended)
+     k: 5                    # Cross-validation folds
+     clip: 20.0              # Importance weight clipping
+
+   # Paths configuration
+   paths:
+     work_dir: "./outputs/prompt_test"
 
 2. Model Comparison
 ~~~~~~~~~~~~~~~~~~~
@@ -243,31 +253,41 @@ Compare different models or versions:
 
 .. code-block:: yaml
 
-   paths:
-     work_dir: "./outputs/model_comparison"
-
+   # Dataset configuration
    dataset:
      name: "./data/test_data.jsonl"
      split: "test"
 
-   # Logging policy π₀ (generated the original data)
+   # Logging policy (what generated the historical data)
    logging_policy:
      provider: "openai"
      model_name: "gpt-3.5-turbo"
+     temperature: 0.7
 
-   # Target policy π′ (what we want to evaluate)
+   # Target policies (what we want to evaluate)
    target_policies:
      - name: "model_upgrade"
        provider: "openai"
        model_name: "gpt-4o"
-       mc_samples: 5
+       temperature: 0.7
+       mc_samples: 5          # Monte Carlo samples per context
 
+   # Judge configuration
    judge:
      provider: "openai"
      model_name: "gpt-4o-mini"
+     template: "quick_judge"
+     temperature: 0.0        # Deterministic for consistency
 
+   # Estimator configuration
    estimator:
-     name: "DRCPO"
+     name: "DRCPO"           # Doubly-robust (recommended)
+     k: 5                    # Cross-validation folds
+     clip: 20.0              # Importance weight clipping
+
+   # Paths configuration
+   paths:
+     work_dir: "./outputs/model_comparison"
 
 3. Parameter Tuning
 ~~~~~~~~~~~~~~~~~~~
@@ -276,33 +296,41 @@ Test hyperparameters:
 
 .. code-block:: yaml
 
-   paths:
-     work_dir: "./outputs/parameter_tuning"
-
+   # Dataset configuration
    dataset:
      name: "./data/test_data.jsonl"
      split: "test"
 
-   # Logging policy π₀ (generated the original data)
+   # Logging policy (what generated the historical data)
    logging_policy:
      provider: "openai"
      model_name: "gpt-4o-mini"
      temperature: 0.7
 
-   # Target policy π′ (what we want to evaluate)
+   # Target policies (what we want to evaluate)
    target_policies:
      - name: "lower_temperature"
-       model_name: "gpt-4o-mini"
        provider: "openai"
-       temperature: 0.3
-       mc_samples: 5
+       model_name: "gpt-4o-mini"
+       temperature: 0.3        # Testing lower temperature
+       mc_samples: 5          # Monte Carlo samples per context
 
+   # Judge configuration
    judge:
      provider: "openai"
      model_name: "gpt-4o-mini"
+     template: "quick_judge"
+     temperature: 0.0        # Deterministic for consistency
 
+   # Estimator configuration
    estimator:
-     name: "DRCPO"
+     name: "DRCPO"           # Doubly-robust (recommended)
+     k: 5                    # Cross-validation folds
+     clip: 20.0              # Importance weight clipping
+
+   # Paths configuration
+   paths:
+     work_dir: "./outputs/parameter_tuning"
 
 4. Multi-Provider Comparison
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -311,33 +339,43 @@ Compare models from different providers:
 
 .. code-block:: yaml
 
-   paths:
-     work_dir: "./outputs/provider_comparison"
-
+   # Dataset configuration
    dataset:
      name: "./data/test_data.jsonl"
      split: "test"
 
-   # Logging policy π₀ (generated the original data)
+   # Logging policy (what generated the historical data)
    logging_policy:
-     model_name: "gpt-3.5-turbo"
      provider: "openai"
+     model_name: "gpt-3.5-turbo"
+     temperature: 0.7
      system_prompt: "You are a helpful assistant."
 
-   # Target policy π′ (what we want to evaluate)
+   # Target policies (what we want to evaluate)
    target_policies:
      - name: "claude_alternative"
        provider: "anthropic"
        model_name: "claude-3-sonnet-20240229"
+       temperature: 0.7       # Same temperature for fair comparison
+       mc_samples: 5          # Monte Carlo samples per context
        system_prompt: "You are a helpful assistant."  # Same prompt for fair comparison
-       mc_samples: 5
 
+   # Judge configuration
    judge:
      provider: "openai"
      model_name: "gpt-4o-mini"
+     template: "quick_judge"
+     temperature: 0.0        # Deterministic for consistency
 
+   # Estimator configuration
    estimator:
-     name: "DRCPO"
+     name: "DRCPO"           # Doubly-robust (recommended)
+     k: 5                    # Cross-validation folds
+     clip: 20.0              # Importance weight clipping
+
+   # Paths configuration
+   paths:
+     work_dir: "./outputs/provider_comparison"
 
 Data Requirements
 -----------------
@@ -389,6 +427,7 @@ Perfect for data science workflows and spreadsheet-based experiments:
 
 .. code-block:: yaml
 
+   # Dataset configuration
    dataset:
      name: "./data/my_data.csv"  # Supports .csv and .tsv files
      # split is ignored for file-based datasets
@@ -494,8 +533,9 @@ CJE can use pairwise comparison data (like LMSYS Chatbot Arena) where humans cho
 
 .. code-block:: yaml
 
+   # Built-in pairwise dataset
    dataset:
-     name: "ChatbotArena"  # Built-in pairwise dataset
+     name: "ChatbotArena"
      split: "train"
 
    # Or use generic pairwise adapter
@@ -555,11 +595,12 @@ Estimator Selection
 
 .. code-block:: yaml
 
+   # Estimator configuration with parallelization
    estimator:
-     name: "DRCPO"
-     k: 5
-     clip: 20.0
-     n_jobs: -1  # Default: use all CPU cores for parallel cross-fitting
+     name: "DRCPO"           # Doubly-robust (recommended)
+     k: 5                    # Cross-validation folds
+     clip: 20.0              # Importance weight clipping
+     n_jobs: -1              # Use all CPU cores for parallel cross-fitting
 
 **Performance Tips**:
 
@@ -580,19 +621,23 @@ Quick Judge Setup
 
 .. code-block:: yaml
 
+   # Judge configuration
    judge:
      provider: "openai"
      model_name: "gpt-4o-mini"
      template: "quick_judge"
+     temperature: 0.0        # Deterministic for consistency
 
 **High-quality evaluation:**
 
 .. code-block:: yaml
 
+   # Judge configuration for higher quality
    judge:
      provider: "openai"
      model_name: "gpt-4o"
      template: "detailed_judge"
+     temperature: 0.0        # Deterministic for consistency
 
 .. seealso::
    For comprehensive judge configuration including custom templates, see :doc:`custom_components`. 

@@ -57,18 +57,22 @@ Basic Trajectory Setup
 
 .. code-block:: yaml
 
+   # Dataset configuration
    dataset:
      name: "./data/conversations.jsonl"
-     format: "trajectory"  # Enable trajectory mode
+     format: "trajectory"          # Enable trajectory mode
      
    # Trajectory-specific settings
    trajectory:
-     max_turns: 10          # Limit conversation length
-     context_window: 3      # Include last 3 turns as context
-     step_aggregation: "mean"  # How to combine step rewards
+     max_turns: 10                 # Limit conversation length
+     context_window: 3             # Include last 3 turns as context
+     step_aggregation: "mean"      # How to combine step rewards
      
+   # Estimator configuration
    estimator:
-     name: "DRCPO"
+     name: "DRCPO"                 # Doubly-robust (recommended)
+     k: 5                          # Cross-validation folds
+     clip: 20.0                    # Importance weight clipping
      # Trajectory mode automatically enabled
 
 Data Formats
@@ -146,16 +150,29 @@ Compare different conversation management approaches:
 
 .. code-block:: yaml
 
+   # Target policies (what we want to evaluate)
    target_policies:
      - name: "short_responses"
+       provider: "openai"
+       model_name: "gpt-4o-mini"
+       temperature: 0.7
+       mc_samples: 5               # Monte Carlo samples per context
        system_prompt: "Give brief, concise responses"
        max_tokens: 50
        
      - name: "detailed_responses"  
+       provider: "openai"
+       model_name: "gpt-4o-mini"
+       temperature: 0.7
+       mc_samples: 5               # Monte Carlo samples per context
        system_prompt: "Provide detailed, helpful responses"
        max_tokens: 200
        
      - name: "question_focused"
+       provider: "openai"
+       model_name: "gpt-4o-mini"
+       temperature: 0.7
+       mc_samples: 5               # Monte Carlo samples per context
        system_prompt: "Always ask clarifying questions"
 
 **Evaluation Dimensions:**
@@ -193,10 +210,11 @@ Combine step-level and conversation-level rewards:
 
 .. code-block:: yaml
 
+   # Trajectory configuration
    trajectory:
      evaluation_mode: "hierarchical"
-     step_weight: 0.3      # Weight for step-level rewards
-     conversation_weight: 0.7  # Weight for overall outcome
+     step_weight: 0.3              # Weight for step-level rewards
+     conversation_weight: 0.7      # Weight for overall outcome
 
 Conversation State Tracking
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~

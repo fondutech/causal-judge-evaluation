@@ -20,26 +20,36 @@ The absolute minimum to get started:
 .. code-block:: yaml
 
    # config/minimal.yaml
+   # Dataset configuration
    dataset:
-     name: "./my_data.csv"
+     name: "./my_data.csv"          # Path to your data file
    
+   # Logging policy (what generated the historical data)
    logging_policy:
-     model_name: "gpt-3.5-turbo"
      provider: "openai"
+     model_name: "gpt-3.5-turbo"
+     temperature: 0.7
    
+   # Target policies (what we want to evaluate)
    target_policies:
      - name: "test"
-       model_name: "gpt-4o-mini"
        provider: "openai"
+       model_name: "gpt-4o-mini"
+       temperature: 0.7
+       mc_samples: 5               # Monte Carlo samples per context
    
+   # Judge configuration
    judge:
      provider: "openai"
      model_name: "gpt-4o-mini"
      template: "quick_judge"
+     temperature: 0.0              # Deterministic for consistency
    
+   # Estimator configuration
    estimator:
-     name: "DRCPO"
-     k: 5
+     name: "DRCPO"                 # Doubly-robust (recommended)
+     k: 5                          # Cross-validation folds
+     clip: 20.0                    # Importance weight clipping
 
 Production Configuration
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -49,35 +59,44 @@ Recommended settings for production use:
 .. code-block:: yaml
 
    # config/production.yaml
-   paths:
-     work_dir: "./outputs/production_run"
-   
+   # Dataset configuration
    dataset:
      name: "./data/production.jsonl"
      split: "test"
    
+   # Logging policy (what generated the historical data)
    logging_policy:
-     model_name: "gpt-3.5-turbo"
      provider: "openai"
+     model_name: "gpt-3.5-turbo"
+     temperature: 0.7
      system_prompt: "You are a helpful assistant."
    
+   # Target policies (what we want to evaluate)
    target_policies:
      - name: "enhanced"
+       provider: "openai"
        model_name: "gpt-4o"
-       provider: "openai"  
+       temperature: 0.7
+       mc_samples: 5               # Monte Carlo samples per context
        system_prompt: "You are an expert assistant with deep knowledge."
-       mc_samples: 5
    
+   # Judge configuration
    judge:
      provider: "openai"
      model_name: "gpt-4o-mini"
      template: "comprehensive_judge"
+     temperature: 0.0              # Deterministic for consistency
      
+   # Estimator configuration
    estimator:
-     name: "DRCPO"
-     k: 5
-     clip: 20.0
-     n_jobs: -1
+     name: "DRCPO"                 # Doubly-robust (recommended)
+     k: 5                          # Cross-validation folds
+     clip: 20.0                    # Importance weight clipping
+     n_jobs: -1                    # Use all CPU cores
+   
+   # Paths configuration
+   paths:
+     work_dir: "./outputs/production_run"
 
 Arena Configuration
 ~~~~~~~~~~~~~~~~~~
@@ -87,37 +106,46 @@ For large-scale ChatBot Arena-style analysis:
 .. code-block:: yaml
 
    # config/arena.yaml
-   paths:
-     work_dir: "./outputs/arena_analysis"
-   
+   # Dataset configuration
    dataset:
-     name: "ChatbotArena"  # Built-in dataset
+     name: "ChatbotArena"          # Built-in dataset
      split: "train"
    
+   # Logging policy (what generated the historical data)
    logging_policy:
-     model_name: "llama-3-8b-instruct"
      provider: "fireworks"
+     model_name: "llama-3-8b-instruct"
      temperature: 0.7
    
+   # Target policies (what we want to evaluate)
    target_policies:
      - name: "gpt4"
-       model_name: "gpt-4o"
        provider: "openai"
-       mc_samples: 3
+       model_name: "gpt-4o"
+       temperature: 0.7
+       mc_samples: 3               # Monte Carlo samples per context
      - name: "claude"  
-       model_name: "claude-3-sonnet-20240229"
        provider: "anthropic"
-       mc_samples: 3
+       model_name: "claude-3-sonnet-20240229"
+       temperature: 0.7
+       mc_samples: 3               # Monte Carlo samples per context
    
+   # Judge configuration
    judge:
      provider: "openai"
      model_name: "gpt-4o"
      template: "comprehensive_judge"
+     temperature: 0.0              # Deterministic for consistency
      
+   # Estimator configuration
    estimator:
-     name: "MRDR"
-     k: 10
-     clip: 20.0
+     name: "MRDR"                  # Model-regularized doubly-robust
+     k: 10                         # More folds for larger dataset
+     clip: 20.0                    # Importance weight clipping
+   
+   # Paths configuration
+   paths:
+     work_dir: "./outputs/arena_analysis"
 
 🔌 Available Providers
 ----------------------

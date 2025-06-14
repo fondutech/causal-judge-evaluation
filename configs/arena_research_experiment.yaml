@@ -1,17 +1,14 @@
 # Arena CJE Research Experiment Configuration
 # Final model lineup for single-dataset CJE demo
 
-paths:
-  work_dir: "outputs/arena_research"
-
 # Dataset configuration (Phase 1: Data Preparation)
 dataset:
   name: "ChatbotArena"
   split: "train"
-  sample_limit: 10000  # 10000 for full experiment
+  sample_limit: 10000           # 10000 for full experiment
   seed: 42
 
-# Logging policy π₀ (Phase 1: Data Preparation)
+# Logging policy (what generated the historical data)
 # Meta — Llama 3 8B Instruct - $0.20/M tokens
 logging_policy:
   provider: "fireworks"
@@ -19,44 +16,49 @@ logging_policy:
   temperature: 0.4
   max_new_tokens: 1024
 
-# Target policies (Phase 3: Target Policy Generation)
+# Target policies (what we want to evaluate)
 target_policies:
   # π_clone (sanity check) - Same Llama 3 8B prompt
   - name: "clone"
     provider: "fireworks"
     model_name: "accounts/fireworks/models/llama-v3-8b-instruct-hf"
     temperature: 0.4
-    mc_samples: 5
+    mc_samples: 5               # Monte Carlo samples per context
     
   # π_CoT (chain-of-thought) - Llama 3 8B + "Think step-by-step..." prefix
   - name: "cot"
     provider: "fireworks" 
     model_name: "accounts/fireworks/models/llama-v3-8b-instruct-hf"
     temperature: 0.4
+    mc_samples: 5               # Monte Carlo samples per context
     system_prompt: "Think step-by-step before responding."
-    mc_samples: 5
     
   # π_big (larger model) - Databricks DBRX Instruct - $1.20/M tokens
   - name: "llama4"
     provider: "fireworks"
     model_name: "accounts/fireworks/models/llama4-maverick-instruct-basic"
     temperature: 0.4
-    mc_samples: 5
+    mc_samples: 5               # Monte Carlo samples per context
 
-# Judge configuration (Phase 1: Data Preparation)
+# Judge configuration
 # Meta — Llama 3.1 70B Instruct - $0.90/M tokens
 judge:
   provider: "fireworks"
   model_name: "accounts/fireworks/models/llama4-maverick-instruct-basic"
-  temperature: 0.0
   template: "helpfulness_0_10"
+  temperature: 0.0              # Deterministic for consistency
   max_tokens: 50
 
-# Estimator settings (Phase 5: CJE Estimation)
+# Estimator configuration
 estimator:
-  name: "DRCPO"  # 5-fold calibrated DR-CPO
-  k: 5
+  name: "DRCPO"                 # Doubly-robust (recommended)
+  k: 5                          # Cross-validation folds
+  clip: 20.0                    # Importance weight clipping
   seed: 42
+
+# Paths configuration
+paths:
+  work_dir: "outputs/arena_research"
 
 # Research-specific configuration
 research:

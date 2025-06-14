@@ -88,9 +88,9 @@ Create a YAML configuration file (e.g., ``my_experiment.yaml``):
 
    # Dataset configuration
    dataset:
-     name: "YourDataset"  # Or use built-in: "ChatbotArena"
-     split: "train"
-     sample_limit: 1000   # Optional: limit number of samples
+     name: "ChatbotArena"     # Built-in dataset or path to your data
+     split: "train"           # Dataset split to use
+     sample_limit: 1000       # Optional: limit samples for testing
 
    # Logging policy (what generated the historical data)
    logging_policy:
@@ -101,28 +101,30 @@ Create a YAML configuration file (e.g., ``my_experiment.yaml``):
 
    # Target policies (what we want to evaluate)
    target_policies:
-     - name: "gpt-4"
+     - name: "gpt4_upgrade"
        provider: "openai"
-       model_name: "gpt-4-turbo"
+       model_name: "gpt-4o"
        temperature: 0.7
+       mc_samples: 5          # Monte Carlo samples per context
        
-     - name: "claude-3"
+     - name: "claude3"
        provider: "anthropic" 
        model_name: "claude-3-sonnet-20240229"
        temperature: 0.7
+       mc_samples: 5
 
    # Judge configuration (for evaluating response quality)
    judge:
      provider: "openai"
-     model_name: "gpt-4-turbo"
+     model_name: "gpt-4o-mini"
      template: "quick_judge"
-     temperature: 0.0
-     max_tokens: 100
+     temperature: 0.0        # Deterministic for consistency
 
    # Estimator configuration
    estimator:
-     name: "DRCPO"  # Recommended for most use cases
-     k: 5           # Number of cross-validation folds
+     name: "DRCPO"           # Doubly-robust (recommended)
+     k: 5                    # Cross-validation folds
+     clip: 20.0              # Importance weight clipping
 
 3. **Run the Evaluation**
 

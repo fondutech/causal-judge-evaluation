@@ -160,26 +160,36 @@ SQLite-based cache for:
 
 #### Minimal Configuration
 ```yaml
+# Dataset configuration
 dataset:
-  name: "./data.csv"
+  name: "./data.csv"          # Path to your data file
 
+# Logging policy (what generated the historical data)
 logging_policy:
   provider: "openai"
   model_name: "gpt-3.5-turbo"
+  temperature: 0.7
 
+# Target policies (what we want to evaluate)
 target_policies:
   - name: "improved"
     provider: "openai"
-    model_name: "gpt-4-turbo"
+    model_name: "gpt-4o"
+    temperature: 0.7
+    mc_samples: 5
 
+# Judge configuration
 judge:
   provider: "openai"
-  model_name: "gpt-4-turbo"
+  model_name: "gpt-4o-mini"
   template: "quick_judge"
+  temperature: 0.0
 
+# Estimator configuration  
 estimator:
   name: "DRCPO"
   k: 5
+  clip: 20.0
 ```
 
 #### Advanced Features

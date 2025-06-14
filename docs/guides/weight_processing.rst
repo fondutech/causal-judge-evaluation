@@ -414,7 +414,10 @@ In YAML Config
 
 .. code-block:: yaml
 
+   # Estimator configuration with weight processing options
    estimator:
+     name: "DRCPO"                   # Doubly-robust (recommended)
+     k: 5                            # Cross-validation folds
      clip: null                      # Stage 4: Legacy clipping disabled (default)
      stabilize_weights: true         # Stage 3: Enable/disable stabilization
      calibrate_weights: true         # Stage 6: Enable/disable weight calibration  
@@ -435,7 +438,10 @@ For extreme datasets:
 
 .. code-block:: yaml
 
+   # Estimator configuration (conservative mode)
    estimator:
+     name: "DRCPO"                   # Doubly-robust (recommended)
+     k: 5                            # Cross-validation folds
      clip: 5000.0                    # Enable legacy clipping with high threshold
 
 Research Mode
@@ -445,7 +451,10 @@ Maximum theoretical purity:
 
 .. code-block:: yaml
 
+   # Estimator configuration (research mode)
    estimator:
+     name: "DRCPO"                   # Doubly-robust (recommended)
+     k: 5                            # Cross-validation folds
      clip: null                      # No weight clipping (default)
      stabilize_weights: false        # Disable stabilization
      calibrate_weights: false        # Disable calibration
@@ -514,7 +523,10 @@ Then in YAML:
 
 .. code-block:: yaml
 
+   # Estimator configuration (advanced parameters)
    estimator:
+     name: "DRCPO"                    # Doubly-robust (recommended)
+     k: 5                             # Cross-validation folds
      log_ratio_clip: 30               # More aggressive clipping
      stabilization_percentile: 80     # Use 80th percentile  
      ess_warning_threshold: 20        # Higher warning threshold
