@@ -74,6 +74,8 @@ MOCK_MODULES = [
     "rich.console",
     "rich.table",
     "rich.progress",
+    "rich.logging",
+    "rich.panel",
     "typer",
     "click",
     # Other utilities

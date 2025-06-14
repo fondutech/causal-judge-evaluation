@@ -65,7 +65,7 @@ class MultiDRCPOMDPEstimator(Estimator[Dict[str, Any]]):
         outcome_model_cls: Type[ModelType] = DEFAULT_OUTCOME_MODEL,
         outcome_model_kwargs: Optional[Dict[str, Any]] = None,
         featurizer: Optional[Featurizer] = None,
-        n_jobs: int | None = -1,
+        n_jobs: Optional[int] = -1,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)

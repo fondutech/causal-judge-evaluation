@@ -1,4 +1,4 @@
-from typing import Dict, Any, Type
+from typing import Dict, Any, Type, Optional
 import os
 from langchain_core.language_models import BaseChatModel
 from langchain_openai import ChatOpenAI  # default fallback
@@ -14,7 +14,7 @@ class StructuredOpenAICompatibleProvider(StructuredProviderStrategy):
     """
 
     ENV_VAR: str = "OPENAI_API_KEY"
-    DEFAULT_BASE_URL: str | None = None  # sdk default for real OpenAI
+    DEFAULT_BASE_URL: Optional[str] = None  # sdk default for real OpenAI
     CHAT_CLASS: Type[BaseChatModel] = (
         ChatOpenAI  # subclasses may override if SDK differs
     )

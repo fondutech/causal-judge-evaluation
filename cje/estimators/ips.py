@@ -44,8 +44,8 @@ class MultiIPSEstimator(Estimator[Dict[str, Any]]):
         self.stabilize_weights = stabilize_weights
         self.n: int = 0
         self.K: int = sampler.K
-        self._weights_matrix: np.ndarray | None = None  # Shape (n, K)
-        self._rewards: np.ndarray | None = None  # Shape (n,)
+        self._weights_matrix: Optional[np.ndarray] = None  # Shape (n, K)
+        self._rewards: Optional[np.ndarray] = None  # Shape (n,)
         self._weight_stats: Optional[Dict[str, Any]] = None  # Weight statistics
 
     def fit(self, logs: List[Dict[str, Any]], **kwargs: Any) -> None:
@@ -177,8 +177,8 @@ class MultiSNIPSEstimator(Estimator[Dict[str, Any]]):
         self.stabilize_weights = stabilize_weights
         self.n: int = 0
         self.K: int = sampler.K
-        self._weights_matrix: np.ndarray | None = None  # Shape (n, K)
-        self._rewards: np.ndarray | None = None  # Shape (n,)
+        self._weights_matrix: Optional[np.ndarray] = None  # Shape (n, K)
+        self._rewards: Optional[np.ndarray] = None  # Shape (n,)
         self._weight_stats: Optional[Dict[str, Any]] = None  # Weight statistics
 
     def fit(self, logs: List[Dict[str, Any]], **kwargs: Any) -> None:

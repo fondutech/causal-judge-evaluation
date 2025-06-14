@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 import os
 from .base import ProviderStrategy
 
@@ -11,7 +11,7 @@ class OpenAICompatibleProvider(ProviderStrategy):
 
     # Override these in subclasses -------------------------------------------
     ENV_VAR: str = "OPENAI_API_KEY"
-    DEFAULT_BASE_URL: str | None = None  # OpenAI uses the official url via SDK
+    DEFAULT_BASE_URL: Optional[str] = None  # OpenAI uses the official url via SDK
 
     # ------------------------------------------------------------------------
     def setup_client(self) -> Any:

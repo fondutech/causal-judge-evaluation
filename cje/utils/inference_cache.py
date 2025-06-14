@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, Union
 import threading
 import os
 
@@ -41,7 +41,7 @@ def _hash_key(parts: Tuple[Any, ...]) -> str:
 class LLMCache:
     """Very small wrapper around SQLite for JSON-serialisable blobs."""
 
-    def __init__(self, path: Path | str | None = None):
+    def __init__(self, path: Optional[Union[Path, str]] = None):
         self.path = Path(path or _DEFAULT_CACHE)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.path)

@@ -445,7 +445,7 @@ class OpenAICompatibleAdapter(OpenAIAdapter):
     """Generic adapter for OpenAI-style back-ends (base_url + API-key env var)."""
 
     ENV_VAR: str = "OPENAI_API_KEY"
-    DEFAULT_BASE_URL: str | None = None
+    DEFAULT_BASE_URL: Optional[str] = None
 
     def __init__(
         self,

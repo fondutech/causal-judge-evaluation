@@ -30,7 +30,7 @@ def add_oracle_labels(
     model_name: str = "gpt-4o",
     fraction: float = 0.25,
     seed: int = 42,
-    template: str | None = None,
+    template: Optional[str] = None,
     temperature: float = 0.0,
     max_tokens: int = 16,
     score_field: str = "y_true",
@@ -47,7 +47,7 @@ def add_oracle_labels(
         Fraction of rows to label (uniform sample).
     seed : int
         RNG seed for reproducibility.
-    template : str | None
+    template : Optional[str]
         Judge template name.  If *None*, we fall back to a built-in minimal
         one that prompts for a single 0–10 score.
     temperature, max_tokens : float / int
@@ -116,7 +116,7 @@ def add_full_oracle_labels_with_holdout(
     model_name: str = "gpt-4o",
     logging_policy_oracle_fraction: float = 0.25,
     seed: int = 42,
-    template: str | None = None,
+    template: Optional[str] = None,
     temperature: float = 0.0,
     max_tokens: int = 16,
 ) -> List[Dict[str, Any]]:
@@ -139,7 +139,7 @@ def add_full_oracle_labels_with_holdout(
         Remaining oracle labels are held out for final evaluation.
     seed : int
         RNG seed for reproducibility.
-    template : str | None
+    template : Optional[str]
         Judge template name for oracle scoring.
     temperature, max_tokens : float / int
         Generation parameters for the oracle judge.
