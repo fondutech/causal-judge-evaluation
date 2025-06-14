@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**IMPORTANT**: Also reference ~/.claude_memory.md for personal preferences and cross-project context.
+
 ## 🎯 PRIMARY DIRECTIVE
 Continuously update this file to reflect current understanding, user preferences, and project state. This is not optional - it's a core responsibility to ensure knowledge persistence across sessions.
 
