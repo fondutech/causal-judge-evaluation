@@ -34,10 +34,16 @@ MOCK_MODULES = [
     "scipy",
     "pandas",
     "sklearn",
+    "sklearn.linear_model",
+    "sklearn.isotonic",
+    "sklearn.metrics",
+    "sklearn.model_selection",
     "scikit-learn",
     "matplotlib",
+    "matplotlib.pyplot",
     "seaborn",
     "pyarrow",
+    "pyarrow.parquet",
     # ML/AI packages
     "torch",
     "transformers",
@@ -55,12 +61,28 @@ MOCK_MODULES = [
     "langchain_google_genai",
     "langchain_together",
     "boto3",
+    "botocore",
     "tiktoken",
-    # Other potentially problematic imports
+    # Progress and CLI
+    "tqdm",
+    "rich",
+    "rich.console",
+    "rich.table",
+    "rich.progress",
+    "typer",
+    "click",
+    # Other utilities
     "hydra",
     "omegaconf",
-    "rich",
-    "typer",
+    "tenacity",
+    "joblib",
+    "pydantic",
+    "pytest",
+    "hypothesis",
+    "nltk",
+    "rouge_score",
+    "bert_score",
+    "evaluate",
 ]
 
 for mod_name in MOCK_MODULES:
