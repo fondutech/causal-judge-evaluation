@@ -22,8 +22,7 @@ CJE (Causal Judge Evaluation) is a Python library for performing off-policy eval
 ```
 cje/
 ├── config/           # Configuration system
-│   ├── unified.py    # Main config classes (CJEConfig, PolicyConfig, etc.)
-│   └── simple.py     # Simplified config API
+│   └── unified.py    # Main config classes (CJEConfig, PolicyConfig, etc.)
 ├── estimators/       # Statistical estimators
 │   ├── ips.py        # IPS and SNIPS estimators
 │   ├── drcpo.py      # Doubly-robust CPO estimator
@@ -45,9 +44,8 @@ cje/
 │   ├── weight_diagnostics.py  # Importance weight analysis
 │   ├── inference_cache.py     # LLM response caching
 │   └── generation.py          # Response generation utilities
-├── cli/              # Command-line interface
-│   └── run_experiment.py      # Main experiment runner
-└── core.py           # Simplified API entry point
+└── cli/              # Command-line interface
+    └── run_experiment.py      # Main experiment runner
 ```
 
 ### Key Classes and Their Relationships
@@ -92,7 +90,7 @@ Each returns an `EstimationResult` with:
 - `covariance_matrix`: Full covariance matrix
 - `confidence_interval()`: Method to compute CIs
 
-#### 4. Provider System (`providers/` and `judge/providers/`)
+#### 4. Provider System (`judge/providers/`)
 
 Unified provider interface supporting:
 - **API Providers**: OpenAI, Anthropic, Google, Fireworks, Together
@@ -230,27 +228,18 @@ from cje.pipeline import run_pipeline
 results = run_pipeline(cfg_path="configs", cfg_name="experiment")
 ```
 
-#### 3. Simplified Core API
+#### 3. Programmatic Configuration
 ```python
-from cje.core import run_cje
-result = run_cje("config.yaml")
-print(result.summary())
-```
+from cje.config.unified import ConfigurationBuilder
 
-#### 4. Programmatic Configuration
-```python
-from cje.config import simple_config
-
-config = simple_config(
-    logging_model="gpt-3.5-turbo",
-    logging_provider="openai",
-    target_models=["gpt-4-turbo"],
-    target_providers=["openai"],
-    target_names=["gpt4"],
-    judge_model="gpt-4-turbo",
-    judge_provider="openai"
-)
-results = config.run()
+builder = ConfigurationBuilder()
+config = builder\
+    .set_dataset("./data.csv")\
+    .set_logging_policy("openai", "gpt-3.5-turbo")\
+    .add_target_policy("gpt4", "openai", "gpt-4-turbo")\
+    .set_judge("openai", "gpt-4-turbo")\
+    .set_estimator("DRCPO")\
+    .build()
 ```
 
 ### Key Algorithms

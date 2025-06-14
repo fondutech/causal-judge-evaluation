@@ -9,32 +9,27 @@ This file tracks documentation updates needed to align with recent implementatio
 - **Update**: Document that the implementation now accepts small bias (E[w] ≠ 1) to maintain variance control rather than violating cap constraints
 - **Reference**: `cje/estimators/calibration.py` changes
 
-### 2. Simplified API Documentation
-- **Location**: Create new `docs/guides/simplified_api.rst`
-- **Content**:
-  - Document `cje.core.run_cje()` function
-  - Document `cje.config.simple.CJEConfig` dataclass
-  - Document `cje.providers.unified.UnifiedProvider`
-  - Document `cje.cli.simple_cli` commands
-  - Example usage patterns
+### 2. Codebase Simplification Updates (COMPLETED)
+- **Status**: ✅ COMPLETED
+- **Changes Made**:
+  - Removed duplicate CLI (`simple_cli.py`)
+  - Removed alternative pipeline (`core.py`)
+  - Removed duplicate config system (`simple.py`)
+  - Removed unused data loader (`unified_loader.py`)
+  - Removed duplicate providers directory
+  - Updated all documentation to reflect simplified structure
 
-### 3. API Reference Updates
-- **Add new modules**:
-  - `cje.core`
-  - `cje.config.simple`
-  - `cje.providers.unified`
-  - `cje.data.unified_loader`
-  - `cje.estimators.base_crossfit`
-  - `cje.results.visualization`
-  - `cje.utils.weight_stabilization`
-  - `cje.cli.simple_cli`
+### 3. API Reference Cleanup (COMPLETED)
+- **Status**: ✅ COMPLETED  
+- **Removed**:
+  - `docs/api/generated/cje.providers.rst`
+  - References to all deleted modules
 
-### 4. Removed Components
-- **Remove references to**:
-  - `cje.utils.aws_secrets` (removed)
-  - `cje.utils.simple_errors` (removed)
-  - `JudgeConfigError` (replaced with ValueError)
-  - `ArenaWorkflowImports` class
+### 4. Removed Components (COMPLETED)
+- **Status**: ✅ COMPLETED
+- **Confirmed removed**:
+  - `cje.utils.aws_secrets` (already removed in previous cleanup)
+  - References to `ArenaWorkflowImports` class
 
 ## Medium Priority Updates
 
