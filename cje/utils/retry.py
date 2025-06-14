@@ -5,9 +5,6 @@ import logging
 from typing import Callable, TypeVar, Any, cast
 import openai  # For openai.RateLimitError, openai.APIStatusError
 
-# Import similar error types for Anthropic and Google/Gemini if they have specific ones
-# e.g., from anthropic import RateLimitError as AnthropicRateLimitError, ServiceUnavailableError as AnthropicServiceUnavailableError
-# e.g., from google.api_core.exceptions import DeadlineExceeded, ServiceUnavailable as GoogleServiceUnavailable
 
 from tenacity import (
     retry,
@@ -27,12 +24,7 @@ R = TypeVar("R")
 RETRYABLE_EXCEPTIONS = (
     openai.RateLimitError,
     openai.APIStatusError,  # Often used for 5xx errors like service unavailable
-    # Add other provider-specific retryable errors here, e.g.:
-    # AnthropicRateLimitError,
-    # AnthropicServiceUnavailableError,
-    # GoogleServiceUnavailable,
-    # DeadlineExceeded, # Often retryable for Google APIs
-    Exception,  # As a fallback for other transient issues, be cautious if this is too broad
+    Exception,  # As a fallback for other transient issues
 )
 
 

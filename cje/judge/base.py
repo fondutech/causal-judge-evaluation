@@ -19,12 +19,6 @@ class JudgeProtocol(Protocol):
         ...
 
 
-class JudgeConfigError(ValueError):
-    """Raised when judge configuration is invalid."""
-
-    pass
-
-
 @dataclass
 class JudgeConfig:
     """Base configuration for judges."""
@@ -170,11 +164,11 @@ class JudgeConfig:
         """Validate configuration parameters.
 
         Raises:
-            JudgeConfigError: If configuration is invalid
+            ValueError: If configuration is invalid
         """
         errors = self._get_validation_errors()
         if errors:
-            raise JudgeConfigError(f"Invalid judge configuration: {'; '.join(errors)}")
+            raise ValueError(f"Invalid judge configuration: {'; '.join(errors)}")
 
 
 @dataclass
@@ -263,9 +257,7 @@ class APIJudgeConfig(JudgeConfig):
         """Validate API judge configuration."""
         errors = self._get_validation_errors()
         if errors:
-            raise JudgeConfigError(
-                f"Invalid API judge configuration: {'; '.join(errors)}"
-            )
+            raise ValueError(f"Invalid API judge configuration: {'; '.join(errors)}")
 
 
 @dataclass
@@ -334,9 +326,7 @@ class LocalJudgeConfig(JudgeConfig):
         """Validate local judge configuration."""
         errors = self._get_validation_errors()
         if errors:
-            raise JudgeConfigError(
-                f"Invalid local judge configuration: {'; '.join(errors)}"
-            )
+            raise ValueError(f"Invalid local judge configuration: {'; '.join(errors)}")
 
 
 class BaseJudge(Judge):

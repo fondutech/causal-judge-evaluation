@@ -6,7 +6,6 @@ from .base import (
     APIJudgeConfig,
     LocalJudgeConfig,
     CachedJudge,
-    JudgeConfigError,
 )
 from .judges import Judge
 from .api_judge import APIJudge
@@ -31,7 +30,6 @@ __all__ = [
     "JudgeConfig",
     "APIJudgeConfig",
     "LocalJudgeConfig",
-    "JudgeConfigError",
     # Factory
     "JudgeFactory",
     # Schemas
