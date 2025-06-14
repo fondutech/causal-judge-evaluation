@@ -2,6 +2,21 @@
 
 __version__ = "0.1.0"
 
+# Automatically load .env file if present
+import os
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+
+    # Look for .env file in project root
+    env_path = Path(__file__).parent.parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+except ImportError:
+    # python-dotenv not installed, skip
+    pass
+
 # Export reference implementation for quick experimentation
 from .reference import FixedSampler, ReferenceDRCPO
 from .pipeline import run_pipeline

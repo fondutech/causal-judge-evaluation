@@ -41,6 +41,7 @@ google-generativeai = "*"
 boto3 = "^1.38.28"
 langchain-together = "^0.3.0"
 hypothesis = "^6.135.7"
+python-dotenv = "^1.1.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.3"
