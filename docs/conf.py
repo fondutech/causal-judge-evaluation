@@ -54,7 +54,12 @@ MOCK_MODULES = [
     # API clients
     "openai",
     "anthropic",
+    "google",
     "google.generativeai",
+    "google.ai",
+    "google.ai.generativelanguage",
+    "google.auth",
+    "google.api_core",
     "langchain_core",
     "langchain_openai",
     "langchain_anthropic",
@@ -73,6 +78,9 @@ MOCK_MODULES = [
     "click",
     # Other utilities
     "hydra",
+    "hydra.utils",
+    "hydra.core",
+    "hydra.core.config_store",
     "omegaconf",
     "tenacity",
     "joblib",
@@ -139,7 +147,7 @@ autodoc_default_options = {
 }
 
 # Auto-generate summaries
-autosummary_generate = True
+autosummary_generate = False  # Temporarily disabled due to import issues
 autosummary_imported_members = False
 autodoc_mock_imports = MOCK_MODULES
 
