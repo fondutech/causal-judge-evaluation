@@ -270,7 +270,7 @@ Troubleshooting
 **Low Effective Sample Size (ESS)**
    - Indicates most weight concentrated on few examples
    - Use DR methods which are less sensitive
-   - Check teacher forcing consistency
+   - Check teacher forcing consistency (see :doc:`guides/teacher_forcing`)
 
 **Model Convergence Issues**
    - Reduce model complexity

@@ -33,10 +33,10 @@ Advanced Guides
    :caption: Specialized Topics
 
    weight_processing
+   teacher_forcing
    oracle_analysis  
    trajectory_methods
    custom_components
-   aws_setup
 
 📚 Learning Paths by Experience
 -------------------------------
@@ -60,7 +60,6 @@ Advanced Guides
    
    1. :doc:`custom_components` - Build custom estimators and judges
    2. :doc:`trajectory_methods` - Multi-turn conversation analysis
-   3. :doc:`aws_setup` - Production deployment and scaling
 
 🎯 Use Case Quick Navigation
 ---------------------------
@@ -81,9 +80,6 @@ Advanced Guides
    Converting pairwise comparisons to utilities
    → :doc:`../tutorials/pairwise_evaluation` → Bradley-Terry modeling
 
-**Production Deployment**
-   Scaling evaluation pipelines
-   → :doc:`aws_setup` → Cloud deployment
 
 **Performance Optimization**
    Debugging slow or unreliable evaluations

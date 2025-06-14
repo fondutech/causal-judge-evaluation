@@ -390,15 +390,17 @@ When you let the pipeline generate (or back-fill) logs it automatically includes
 
 ``logp`` remains the **sum** of ``token_logps``; the estimators use that value for propensity weighting.
 
+.. note::
+   **Teacher Forcing Considerations**: Log probabilities must be computed consistently between logging and target policies. Due to API limitations, only certain providers (Fireworks, Together) support true teacher forcing. See :doc:`teacher_forcing` for critical implementation details.
+
 If missing ``logp``, backfill it:
 
 .. code-block:: bash
 
    cje backfill backfill-logp \
-     --data-path your_logs.jsonl \
-     --model gpt-4o-mini \
-     --provider openai \
-     --out logs_with_logp.jsonl
+     your_logs.jsonl \
+     logs_with_logp.jsonl \
+     --model-name gpt-4o-mini
 
 Option 2: Use CSV/Spreadsheet Data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

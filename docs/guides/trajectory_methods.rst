@@ -99,52 +99,28 @@ Data Formats
    conv_001,1,"Hello","Hi! How can I help?",0.7,0.8
    conv_001,2,"I have a question","What's your question?",0.9,0.8
 
-Analysis Types
---------------
+Working with Trajectories
+-------------------------
 
-1. Turn-Level Analysis
-~~~~~~~~~~~~~~~~~~~~~~
-
-Analyze performance at each conversation turn:
+CJE supports trajectory evaluation through the trajectory dataset and estimators:
 
 .. code-block:: python
 
-   from cje.analysis import TrajectoryAnalyzer
-
-   analyzer = TrajectoryAnalyzer(dataset)
+   from cje.data import TrajectoryJSONLDataset
+   from cje.estimators import get_estimator
    
-   # Performance by turn position
-   turn_performance = analyzer.analyze_by_turn()
-   print(f"Turn 1 avg reward: {turn_performance[1]:.3f}")
-   print(f"Turn 3 avg reward: {turn_performance[3]:.3f}")
-
-**Use Cases:**
-
-- Identify where conversations typically break down
-- Optimize early-turn greeting and engagement strategies
-- Understand conversation length effects
-
-2. Context Window Analysis
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Study how conversation history affects current responses:
-
-.. code-block:: python
-
-   # Compare different context window sizes
-   results = analyzer.compare_context_windows([1, 3, 5, 10])
+   # Load trajectory data
+   dataset = TrajectoryJSONLDataset("trajectories.jsonl")
    
-   # Context utilization analysis
-   context_effects = analyzer.analyze_context_utilization()
+   # Use trajectory-aware estimator
+   estimator = get_estimator("DRCPO", trajectory_mode=True)
+   estimator.fit(dataset)
+   results = estimator.estimate()
 
-**Insights:**
+**Note**: The trajectory support in CJE is primarily designed for reinforcement learning-style agent trajectories with states and actions, not conversational trajectories. For multi-turn conversation analysis, structure your data as individual examples with full conversation context.
 
-- Optimal context window length for your domain
-- Whether models effectively use conversation history
-- Memory vs. performance tradeoffs
-
-3. Dialogue Strategy Comparison
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Policy Comparison
+~~~~~~~~~~~~~~~~~
 
 Compare different conversation management approaches:
 
@@ -181,101 +157,23 @@ Compare different conversation management approaches:
 - Task completion rates  
 - Conversation efficiency metrics
 
-Advanced Features
------------------
+Advanced Configuration
+----------------------
 
-Step-Level Importance Sampling
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Trajectory-Specific Settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-CJE can compute importance weights at the step level for fine-grained analysis:
-
-.. code-block:: python
-
-   # Enable step-level weights
-   estimator = MultiDRCPOEstimator(
-       step_level_weights=True,
-       context_aggregation="hierarchical"
-   )
-
-**Benefits:**
-
-- Higher precision for multi-turn analysis
-- Better handling of context dependencies
-- Reduced variance in long conversations
-
-Hierarchical Evaluation
-~~~~~~~~~~~~~~~~~~~~~~~
-
-Combine step-level and conversation-level rewards:
+Configure trajectory evaluation in your YAML:
 
 .. code-block:: yaml
 
    # Trajectory configuration
    trajectory:
-     evaluation_mode: "hierarchical"
-     step_weight: 0.3              # Weight for step-level rewards
-     conversation_weight: 0.7      # Weight for overall outcome
+     max_turns: 10                 # Limit conversation length
+     context_window: 3             # Include last 3 turns as context
+     step_aggregation: "mean"      # How to combine step rewards
 
-Conversation State Tracking
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Model conversation state evolution:
-
-.. code-block:: python
-
-   # Track conversation state
-   analyzer.track_conversation_states([
-       "greeting", "information_gathering", "problem_solving", "resolution"
-   ])
-   
-   # Analyze state transition performance
-   transition_analysis = analyzer.analyze_state_transitions()
-
-Common Patterns
----------------
-
-Customer Support Analysis
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   # Analyze support conversation quality
-   support_analyzer = TrajectoryAnalyzer(
-       dataset="customer_support_logs.jsonl",
-       success_metric="issue_resolved",
-       efficiency_metric="turns_to_resolution"
-   )
-   
-   # Key metrics for support
-   results = support_analyzer.analyze_support_quality()
-
-Educational Tutoring
-~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   # Tutoring conversation analysis
-   tutor_analyzer = TrajectoryAnalyzer(
-       dataset="tutoring_sessions.jsonl", 
-       learning_objectives=["concept_understanding", "engagement", "retention"]
-   )
-   
-   # Learning progression analysis
-   learning_curves = tutor_analyzer.analyze_learning_progression()
-
-Sales Conversations
-~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   # Sales conversation optimization
-   sales_analyzer = TrajectoryAnalyzer(
-       dataset="sales_calls.jsonl",
-       outcome_metrics=["conversion", "customer_interest", "objection_handling"]
-   )
-   
-   # Conversion funnel analysis
-   funnel_performance = sales_analyzer.analyze_conversion_funnel()
+**Note**: These trajectory features are designed for RL-style agent trajectories. For conversational analysis, consider structuring your data as individual examples with conversation history included in the context.
 
 Best Practices
 --------------

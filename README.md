@@ -32,7 +32,7 @@ poetry install
 # Set API keys (at least one required)
 export OPENAI_API_KEY="sk-..."
 export ANTHROPIC_API_KEY="sk-ant-..."  # Optional
-export FIREWORKS_API_KEY="..."         # Optional
+export FIREWORKS_API_KEY="..."         # Recommended for teacher forcing
 ```
 
 📖 See [full installation guide](https://causal-judge-evaluation.readthedocs.io/en/latest/installation.html) for system requirements and troubleshooting.

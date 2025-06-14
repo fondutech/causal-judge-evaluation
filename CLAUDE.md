@@ -132,6 +132,11 @@ The `cje/research/` module contains experimental features:
 
 **Weight Calibration Bug Fix**: Fixed critical bug where re-scaling after capping could push weights above the cap again. The implementation now accepts small bias (E[w] ≠ 1) to maintain variance control, which is preferable to violating the cap constraint. See `cje/estimators/calibration.py` for the corrected implementation.
 
+**Teacher Forcing Implementation**: Due to API limitations, CJE uses a two-pass approach for consistent log probability computation:
+1. Generate responses using chat completions API (natural generation)
+2. Score responses using completions API with echo=True (teacher forcing)
+This ensures π₀ and π' are computed consistently. Currently only Fireworks (confirmed) and Together (unconfirmed) support the required completions API. See `docs/guides/teacher_forcing.rst` for details.
+
 ### Paper Implementation Notes
 
 This codebase implements the CJE paper (Landesberg 2025) with extensions:

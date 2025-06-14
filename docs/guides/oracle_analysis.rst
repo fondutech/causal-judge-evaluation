@@ -114,28 +114,37 @@ Most convenient - built into arena analysis:
 - Error analysis and reporting
 - Visual diagnostic plots
 
-Manual Oracle Analysis
-~~~~~~~~~~~~~~~~~~~~~~
+Manual Oracle Implementation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For custom datasets or advanced analysis:
+For custom datasets, you can implement oracle analysis manually:
 
 .. code-block:: python
 
-   from cje.validation import OracleValidator
    from cje.judge import JudgeFactory
+   from cje.calibration import IsotonicCalibrator
+   import numpy as np
 
    # Setup oracle and proxy judges
    oracle_judge = JudgeFactory.create("openai", model="gpt-4o")
    proxy_judge = JudgeFactory.create("openai", model="gpt-3.5-turbo")
 
-   # Run validation
-   validator = OracleValidator(
-       oracle_judge=oracle_judge,
-       proxy_judge=proxy_judge,
-       oracle_fraction=0.25
-   )
-
-   results = validator.validate_dataset(dataset, estimator)
+   # Score subset with oracle
+   oracle_indices = np.random.choice(len(dataset), size=int(0.25 * len(dataset)))
+   oracle_scores = []
+   proxy_scores = []
+   
+   for idx in oracle_indices:
+       oracle_scores.append(oracle_judge.score(dataset[idx]))
+       proxy_scores.append(proxy_judge.score(dataset[idx]))
+   
+   # Fit calibration
+   calibrator = IsotonicCalibrator()
+   calibrator.fit(proxy_scores, oracle_scores)
+   
+   # Apply to all data
+   all_proxy_scores = [proxy_judge.score(d) for d in dataset]
+   calibrated_scores = calibrator.transform(all_proxy_scores)
 
 Interpreting Oracle Results
 ---------------------------
@@ -214,8 +223,17 @@ Shows proxy vs oracle score relationship:
 
 .. code-block:: python
 
-   # Automatic generation
-   analyzer.plot_calibration_curve()
+   import matplotlib.pyplot as plt
+   
+   # Plot calibration curve
+   plt.figure(figsize=(8, 6))
+   plt.scatter(proxy_scores, oracle_scores, alpha=0.5)
+   plt.plot([0, 1], [0, 1], 'r--', label='Perfect calibration')
+   plt.xlabel('Proxy Judge Score')
+   plt.ylabel('Oracle Judge Score')
+   plt.title('Judge Calibration Analysis')
+   plt.legend()
+   plt.show()
 
 **Interpretation:**
 
@@ -223,30 +241,43 @@ Shows proxy vs oracle score relationship:
 - **S-curve**: Systematic bias in proxy judge
 - **Scattered points**: High noise, low correlation
 
-CI Coverage Plot
-~~~~~~~~~~~~~~~~
+CI Coverage Analysis
+~~~~~~~~~~~~~~~~~~~~
 
-Visualizes confidence interval performance:
+Analyze confidence interval performance:
 
 .. code-block:: python
 
-   analyzer.plot_coverage_analysis()
-
-**Features:**
-
-- Oracle truth vs CJE estimates
-- Confidence interval bars
-- Coverage rate statistics
-- Policy comparison
+   # Check CI coverage
+   n_covered = 0
+   for i, policy in enumerate(target_policies):
+       estimate = estimates[i]
+       ci_low, ci_high = confidence_intervals[i]
+       oracle_value = oracle_values[i]
+       
+       if ci_low <= oracle_value <= ci_high:
+           n_covered += 1
+   
+   coverage_rate = n_covered / len(target_policies)
+   print(f"CI Coverage: {coverage_rate:.2%}")
 
 Error Analysis
 ~~~~~~~~~~~~~~
 
-Breaks down estimation errors by source:
+Analyze estimation errors:
 
 .. code-block:: python
 
-   analyzer.analyze_error_sources()
+   # Calculate error components
+   errors = {
+       'absolute': abs(cje_estimate - oracle_mean),
+       'relative': abs(cje_estimate - oracle_mean) / oracle_mean,
+       'squared': (cje_estimate - oracle_mean) ** 2
+   }
+   
+   print(f"Absolute Error: {errors['absolute']:.3f}")
+   print(f"Relative Error: {errors['relative']:.2%}")
+   print(f"MSE: {errors['squared']:.6f}")
 
 **Components:**
 
@@ -309,16 +340,21 @@ Advanced Oracle Techniques
 Stratified Oracle Sampling
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Sample oracle labels to cover important regions:
+Implement stratified sampling for better coverage:
 
 .. code-block:: python
 
-   # Stratify by confidence score
-   validator = OracleValidator(
-       oracle_fraction=0.25,
-       sampling_strategy="stratified",
-       stratify_by="confidence"
-   )
+   # Stratify by score quantiles
+   proxy_scores = [proxy_judge.score(d) for d in dataset]
+   quantiles = np.percentile(proxy_scores, [0, 25, 50, 75, 100])
+   
+   # Sample from each stratum
+   oracle_indices = []
+   for i in range(len(quantiles) - 1):
+       stratum_mask = (proxy_scores >= quantiles[i]) & (proxy_scores < quantiles[i+1])
+       stratum_indices = np.where(stratum_mask)[0]
+       n_samples = int(0.25 * len(stratum_indices))
+       oracle_indices.extend(np.random.choice(stratum_indices, n_samples))
 
 Multi-Oracle Validation
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -333,19 +369,11 @@ Use multiple oracle models for robustness:
        JudgeFactory.create("openai", model="gpt-4")
    ]
 
-   validator = MultiOracleValidator(oracle_judges)
-
-Temporal Oracle Analysis
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-Track oracle validation over time:
-
-.. code-block:: python
-
-   # Monthly validation
-   for month in dataset.get_monthly_splits():
-       results = validator.validate_dataset(month)
-       track_performance_drift(results)
+   # Average oracle scores
+   oracle_scores = []
+   for idx in oracle_indices:
+       scores = [judge.score(dataset[idx]) for judge in oracle_judges]
+       oracle_scores.append(np.mean(scores))
 
 Best Practices
 --------------
@@ -407,12 +435,18 @@ Quality Gates
 .. code-block:: python
 
    # Deployment quality gates
-   oracle_results = run_oracle_validation()
+   # Compare CJE estimate with oracle ground truth
+   oracle_mean = np.mean(oracle_scores)
+   cje_estimate = estimator.estimate().v_hat[0]
    
-   if oracle_results.relative_error > 0.15:
-       raise DeploymentError("Oracle validation failed - high estimation error")
+   relative_error = abs(cje_estimate - oracle_mean) / oracle_mean
    
-   if oracle_results.ci_coverage < 0.85:
-       raise DeploymentError("Poor confidence interval calibration")
+   if relative_error > 0.15:
+       raise ValueError("Oracle validation failed - high estimation error")
+   
+   # Check if CI contains oracle truth
+   ci_low, ci_high = estimator.confidence_interval()
+   if not (ci_low <= oracle_mean <= ci_high):
+       raise ValueError("Poor confidence interval calibration")
 
 This comprehensive oracle analysis ensures your CJE estimates are accurate, well-calibrated, and suitable for production deployment. 
