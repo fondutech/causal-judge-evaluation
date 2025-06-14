@@ -34,7 +34,7 @@ class BaseCrossFittedEstimator(Estimator[Dict[str, Any]]):
         k: int = 5,
         clip: Optional[float] = None,
         seed: int = 0,
-        outcome_model_cls: Type[Any] = None,
+        outcome_model_cls: Optional[Type[Any]] = None,
         outcome_model_kwargs: Optional[Dict[str, Any]] = None,
         featurizer: Optional[Featurizer] = None,
         n_jobs: Optional[int] = -1,

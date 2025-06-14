@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## IMPORTANT: Code Quality Requirements
+
+**BEFORE COMPLETING ANY TASK**, you MUST run the following commands to ensure code quality:
+```bash
+make lint        # Runs both black formatting and mypy type checking
+```
+
+Both black and mypy MUST pass without errors before considering any task complete. If there are errors:
+1. Fix all black formatting issues (usually automatic)
+2. Fix all mypy type errors
+3. Run `make lint` again to verify all issues are resolved
+
 ## Essential Commands
 
 ### Development Setup
@@ -121,3 +133,25 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 - Pi0 data generation scripts in `scripts/generate_pi0_data.py`
 - Arena research experiments in `configs/arena_research_experiment.yaml`
 - Validation framework for gold standard comparisons
+
+### Documentation Notes
+
+**Package Status**: CJE is not yet published to PyPI. All installation must be done via development setup with Poetry.
+
+**Config References**: Use `arena_test` as the default config example, not `arena_experiment` (which doesn't exist).
+
+**Common Documentation Issues**:
+- The `cje results` command does not exist - results are accessed via Python API or saved JSON files
+- Installation should always use `poetry install` after cloning, never `pip install cje`
+- When updating docs, ensure ReadTheDocs rebuilds by pushing to GitHub
+
+**Pre-commit Hooks**: The repository uses strict pre-commit hooks including:
+- Black formatting (automatic fixes)
+- Mypy type checking (may block commits)
+- To bypass temporarily: `git commit --no-verify`
+
+**Type Annotations**: When adding new code:
+- Always add type hints to function signatures
+- Use `Optional[T]` instead of `T = None` for optional types
+- Import types from `typing` module
+- For numpy arrays in matplotlib, use `.tolist()` to avoid mypy issues

@@ -18,6 +18,7 @@ import json
 import os
 import sys
 import time
+from typing import List
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -68,7 +69,7 @@ def download_corpus(sample_limit: int) -> List[Dict[str, Any]]:
 
         ds = load_dataset("agie-ai/lmsys-chatbot_arena_conversations", split="train")
 
-        contexts = []
+        contexts: List[str] = []
         seen_contexts = set()
 
         for i, row in enumerate(ds):
@@ -225,7 +226,7 @@ def save_data(data: List[Dict[str, Any]], output_path: str) -> None:
     console.print(f"✅ [green]Saved to {output_path}[/green]")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate π₀ data with progress tracking and checkpointing",
         formatter_class=argparse.RawDescriptionHelpFormatter,

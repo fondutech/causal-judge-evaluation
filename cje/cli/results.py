@@ -11,7 +11,7 @@ from rich.panel import Panel
 from rich.text import Text
 import json
 
-from ..results import EstimationResult
+from ..estimators.results import EstimationResult
 from ..results.visualization import create_summary_report
 
 app = typer.Typer()
@@ -25,7 +25,7 @@ def show(
     output_dir: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Directory for plots"
     ),
-):
+) -> None:
     """Display CJE results in a formatted table with optional visualizations."""
 
     # Load results
@@ -110,7 +110,7 @@ def show(
 def compare(
     baseline: Path = typer.Argument(..., help="Baseline results JSON"),
     treatment: Path = typer.Argument(..., help="Treatment results JSON"),
-):
+) -> None:
     """Compare two CJE results to see relative improvement."""
 
     # Load both results

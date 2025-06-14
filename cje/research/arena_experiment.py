@@ -38,9 +38,9 @@ class ResearchResults:
     diagnostics: Optional[Dict[str, Any]] = None
 
     # Timing and metadata
-    total_runtime: timedelta = None
-    phase_times: Dict[str, timedelta] = None
-    completed_at: str = None
+    total_runtime: Optional[timedelta] = None
+    phase_times: Optional[Dict[str, timedelta]] = None
+    completed_at: Optional[str] = None
 
 
 class ArenaResearchExperiment:
@@ -172,6 +172,8 @@ class ArenaResearchExperiment:
         """Run gold validation phase."""
         if not self.phase_manager:
             raise ValueError("Phase manager not initialized")
+        if not self.work_dir:
+            raise ValueError("Work directory not initialized")
 
         # Use existing oracle results from base pipeline
         oracle_data = self._load_oracle_data()
@@ -186,6 +188,8 @@ class ArenaResearchExperiment:
         """Run comprehensive diagnostics."""
         if not self.phase_manager:
             raise ValueError("Phase manager not initialized")
+        if not self.work_dir:
+            raise ValueError("Work directory not initialized")
 
         diagnostics_runner = DiagnosticsRunner(
             work_dir=self.work_dir,
@@ -197,6 +201,8 @@ class ArenaResearchExperiment:
 
     def _load_oracle_data(self) -> Dict[str, Any]:
         """Load oracle data from base CJE pipeline."""
+        if not self.work_dir:
+            raise ValueError("Work directory not initialized")
         # CJE already generated oracle data, load from cache
         oracle_files = list(self.work_dir.glob("*oracle*"))
         if not oracle_files:

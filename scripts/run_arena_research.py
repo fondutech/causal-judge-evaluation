@@ -28,7 +28,7 @@ from rich.console import Console
 console = Console()
 
 
-def main():
+def main() -> None:
     """Main entry point for arena research experiment."""
     import argparse
 
@@ -83,9 +83,11 @@ def main():
         console.print("\n🎯 Research Experiment Summary")
         console.print("─" * 50)
         console.print(f"Total runtime: {results.total_runtime}")
-        console.print(f"Health score: {results.diagnostics.get('health_score', 'N/A')}")
         console.print(
-            f"All checks passed: {results.diagnostics.get('all_checks_passed', False)}"
+            f"Health score: {results.diagnostics.get('health_score', 'N/A') if results.diagnostics else 'N/A'}"
+        )
+        console.print(
+            f"All checks passed: {results.diagnostics.get('all_checks_passed', False) if results.diagnostics else False}"
         )
         console.print(f"Work directory: {results.base_results.get('work_dir', 'N/A')}")
 

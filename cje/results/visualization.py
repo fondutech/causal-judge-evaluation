@@ -250,20 +250,20 @@ def create_summary_report(
 
         # Bootstrap sampling
         n_bootstrap = 1000
-        bootstrap_means = []
+        bootstrap_means_list = []
         eif = results.eif_components
         n = len(eif)
 
         for _ in range(n_bootstrap):
             idx = np.random.choice(n, n, replace=True)
-            bootstrap_means.append(np.mean(eif[idx], axis=0))
+            bootstrap_means_list.append(np.mean(eif[idx], axis=0))
 
-        bootstrap_means = np.array(bootstrap_means)
+        bootstrap_means = np.array(bootstrap_means_list)
 
         # Plot distributions
         for i in range(results.n_policies):
             ax.hist(
-                bootstrap_means[:, i],
+                bootstrap_means[:, i].tolist(),  # Convert to list for mypy
                 bins=50,
                 alpha=0.5,
                 label=f"Policy {i+1}" if not policy_names else policy_names[i],
