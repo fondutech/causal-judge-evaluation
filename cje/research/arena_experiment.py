@@ -156,7 +156,7 @@ class ArenaResearchExperiment:
 
     def _load_research_config(self) -> Dict[str, Any]:
         """Load research configuration from YAML file."""
-        import yaml
+        import yaml  # type: ignore[import-untyped]
 
         config_file = Path(self.config_path) / f"{self.config_name}.yaml"
         if not config_file.exists():

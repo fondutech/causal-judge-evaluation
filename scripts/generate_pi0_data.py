@@ -48,7 +48,7 @@ def get_fireworks_api_key() -> str:
         console.print(
             "✅ [green]Successfully retrieved Fireworks API key from AWS Secrets Manager[/green]"
         )
-        return api_key
+        return str(api_key)
 
     except Exception as e:
         console.print(f"⚠️ [yellow]AWS Secrets Manager failed: {e}[/yellow]")
@@ -69,7 +69,7 @@ def download_corpus(sample_limit: int) -> List[Dict[str, Any]]:
 
         ds = load_dataset("agie-ai/lmsys-chatbot_arena_conversations", split="train")
 
-        contexts: List[str] = []
+        contexts: List[Dict[str, Any]] = []
         seen_contexts = set()
 
         for i, row in enumerate(ds):
