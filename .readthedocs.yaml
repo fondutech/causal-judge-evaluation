@@ -15,9 +15,11 @@ build:
     post_install:
       # Install docs dependencies first
       - pip install -r docs/requirements.txt
+      # Install numpy explicitly first to avoid import issues
+      - pip install numpy
       # Install package and dependencies with poetry 
       - poetry config virtualenvs.create false
-      - poetry install --with dev
+      - poetry install --with dev --no-interaction
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:

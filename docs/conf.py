@@ -11,16 +11,8 @@ import sys
 # Add the project root to Python path
 sys.path.insert(0, os.path.abspath(".."))
 
-# Try to import the package to ensure it's available
-try:
-    import cje
-except ImportError as e:
-    print(f"Warning: Could not import cje package: {e}")
-    # Add additional paths that might help
-    sys.path.insert(0, os.path.abspath("../cje"))
-    sys.path.insert(0, os.path.abspath("."))
-
 # Set up mock imports for problematic dependencies during docs build
+from typing import Any
 from unittest.mock import MagicMock
 
 
@@ -29,15 +21,31 @@ class Mock(MagicMock):
     def __getattr__(cls, name: str) -> MagicMock:
         return MagicMock()
 
+    def __getitem__(self, key: Any) -> MagicMock:
+        return MagicMock()
+
+    __all__: list[str] = []
+
 
 # Mock modules that might cause import issues during docs build
 MOCK_MODULES = [
+    # Core scientific packages that might have C extensions
+    "numpy",
+    "scipy",
+    "pandas",
+    "sklearn",
+    "scikit-learn",
+    "matplotlib",
+    "seaborn",
+    "pyarrow",
+    # ML/AI packages
     "torch",
     "transformers",
     "datasets",
     "accelerate",
     "xgboost",
     "sentence_transformers",
+    # API clients
     "openai",
     "anthropic",
     "google.generativeai",
@@ -48,10 +56,24 @@ MOCK_MODULES = [
     "langchain_together",
     "boto3",
     "tiktoken",
+    # Other potentially problematic imports
+    "hydra",
+    "omegaconf",
+    "rich",
+    "typer",
 ]
 
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = Mock()
+
+# Now try to import the package after mocking dependencies
+try:
+    import cje
+except ImportError as e:
+    print(f"Warning: Could not import cje package even after mocking: {e}")
+    # Add additional paths that might help
+    sys.path.insert(0, os.path.abspath("../cje"))
+    sys.path.insert(0, os.path.abspath("."))
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
