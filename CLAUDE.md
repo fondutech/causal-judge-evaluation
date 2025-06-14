@@ -2,6 +2,22 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Meta-Objectives and User Preferences
+
+### Core Philosophy
+The user values:
+- **Simplicity over complexity**: Remove duplicate implementations, maintain single sources of truth
+- **Clear organization**: Each component should have an obvious home, no confusing duplicates
+- **Documentation accuracy**: Documentation should reflect actual implementation, not aspirational features
+- **Proactive maintenance**: Continuously identify and remove stale code/docs without being asked
+
+### Recent Simplification (June 2024)
+Major codebase cleanup removed ~1,600 lines of duplicate code:
+- Removed alternative CLI (`simple_cli.py`), config (`simple.py`), pipeline (`core.py`)
+- Consolidated to single approaches for everything
+- Updated all documentation to reflect simplified structure
+- Key principle: "One way to do things"
+
 ## IMPORTANT: Code Quality Requirements
 
 **BEFORE COMPLETING ANY TASK**, you MUST run the following commands to ensure code quality:
@@ -140,6 +156,22 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 - Added comprehensive visualization utilities in `cje/results/visualization.py`
 - Added missing weight stabilization methods (SWITCH, log-exp)
 
+### Current Focus Areas
+
+**Arena 10K Oracle Experiment** (June 2024):
+- Located in `experiments/arena_10k_oracle/`
+- Designed for paper validation with human labels via crowdsourcing
+- Key insight: Experiment has natural breakpoints for offline human labeling
+- Scripts 01-04 implemented, 05-07 marked as TBD
+- Uses Fireworks API for Llama models, ~$1k total budget
+
+**Structural Preferences**:
+- `experiments/` for self-contained experiments with own scripts/configs/docs
+- `examples/` for usage examples of the main CJE pipeline
+- No duplicate documentation - keep docs with implementation
+- Empty directories should be removed
+- Output files belong in `outputs/` or experiment-specific directories
+
 ### Documentation Notes
 
 **Package Status**: CJE is not yet published to PyPI. All installation must be done via development setup with Poetry.
@@ -150,6 +182,7 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 - The `cje results` command does not exist - results are accessed via Python API or saved JSON files
 - Installation should always use `poetry install` after cloning, never `pip install cje`
 - When updating docs, ensure ReadTheDocs rebuilds by pushing to GitHub
+- Removed `README_simple.md` which referenced non-existent pip install
 
 **Pre-commit Hooks**: The repository uses strict pre-commit hooks including:
 - Black formatting (automatic fixes)
@@ -161,3 +194,17 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 - Use `Optional[T]` instead of `T = None` for optional types
 - Import types from `typing` module
 - For numpy arrays in matplotlib, use `.tolist()` to avoid mypy issues
+
+### Proactive Knowledge Management
+
+**After completing tasks, consider**:
+- Is CLAUDE.md still accurate? Update it if not
+- Are there new patterns or preferences to document?
+- Did we discover any gotchas or important context?
+- Are there stale references to removed code?
+
+**Regular maintenance checks**:
+- Look for duplicate/redundant files and directories
+- Verify documentation matches implementation
+- Check for output files in wrong locations
+- Ensure examples and configs still work
