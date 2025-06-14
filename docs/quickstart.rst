@@ -37,6 +37,24 @@ Here's the simplest possible example:
    print(f"Results: {results}")
    # Results contain estimator outputs, diagnostics, and final estimates
 
+**NEW: Simplified API (beta)**
+
+For an even simpler interface, use the new core API:
+
+.. code-block:: python
+
+   from cje.core import run_cje
+   
+   # Run evaluation from a single config file
+   result = run_cje("config.yaml")
+   
+   # Get a formatted summary
+   print(result.summary())
+   
+   # Access raw results
+   print(f"Estimates: {result.estimates}")
+   print(f"Standard errors: {result.std_errors}")
+
 That's it! But let's understand what's happening...
 
 Step-by-Step Tutorial
@@ -86,6 +104,20 @@ Create a YAML configuration file (e.g., ``my_experiment.yaml``):
 
 .. code-block:: yaml
 
+   # Dataset configuration
+   dataset:
+     name: "YourDataset"  # Or use built-in: "ChatbotArena"
+     split: "train"
+     sample_limit: 1000   # Optional: limit number of samples
+
+   # Logging policy (what generated the historical data)
+   logging_policy:
+     provider: "openai"
+     model_name: "gpt-3.5-turbo"
+     temperature: 0.7
+     max_new_tokens: 512
+
+   # Target policies (what we want to evaluate)
    target_policies:
      - name: "gpt-4"
        provider: "openai"
@@ -97,6 +129,15 @@ Create a YAML configuration file (e.g., ``my_experiment.yaml``):
        model_name: "claude-3-sonnet-20240229"
        temperature: 0.7
 
+   # Judge configuration (for evaluating response quality)
+   judge:
+     provider: "openai"
+     model_name: "gpt-4-turbo"
+     template: "quick_judge"
+     temperature: 0.0
+     max_tokens: 100
+
+   # Estimator configuration
    estimator:
      name: "DRCPO"  # Recommended for most use cases
      k: 5           # Number of cross-validation folds

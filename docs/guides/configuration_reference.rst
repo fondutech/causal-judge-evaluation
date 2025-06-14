@@ -23,10 +23,23 @@ The absolute minimum to get started:
    dataset:
      name: "./my_data.csv"
    
+   logging_policy:
+     model_name: "gpt-3.5-turbo"
+     provider: "openai"
+   
    target_policies:
      - name: "test"
        model_name: "gpt-4o-mini"
        provider: "openai"
+   
+   judge:
+     provider: "openai"
+     model_name: "gpt-4o-mini"
+     template: "quick_judge"
+   
+   estimator:
+     name: "DRCPO"
+     k: 5
 
 Production Configuration
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -81,6 +94,11 @@ For large-scale ChatBot Arena-style analysis:
      name: "ChatbotArena"  # Built-in dataset
      split: "train"
    
+   logging_policy:
+     model_name: "llama-3-8b-instruct"
+     provider: "fireworks"
+     temperature: 0.7
+   
    target_policies:
      - name: "gpt4"
        model_name: "gpt-4o"
@@ -92,7 +110,9 @@ For large-scale ChatBot Arena-style analysis:
        mc_samples: 3
    
    judge:
-     provider: "human"  # Use human preferences from arena data
+     provider: "openai"
+     model_name: "gpt-4o"
+     template: "comprehensive_judge"
      
    estimator:
      name: "MRDR"
@@ -239,13 +259,14 @@ Judge Configuration
      template: "quick_judge"
      temperature: 0.0
 
-**Human Judge:**
+**Skip Judge (Use Ground Truth):**
 
 .. code-block:: yaml
 
    judge:
-     provider: "human"               # Use human ratings from data
-     # No other parameters needed
+     skip: true                      # Use ground truth labels from data
+     provider: "openai"              # Still required but not used
+     model_name: "gpt-3.5-turbo"     # Still required but not used
 
 **Custom Judge:**
 
@@ -912,5 +933,112 @@ Research vs Production Settings
      stabilize_weights: true        # Enable numerical stabilization
      calibrate_outcome: true        # Additional robustness layer
      clip: 20.0                     # Conservative clipping for stability
+
+📋 Complete Configuration Example
+--------------------------------
+
+Here's a comprehensive configuration file showing all available options:
+
+.. code-block:: yaml
+
+   # config/complete_example.yaml
+   # This shows ALL configuration options with their default values
+   
+   # Path configuration
+   paths:
+     work_dir: "./outputs/experiment"  # Where to save results
+   
+   # Dataset configuration
+   dataset:
+     name: "ChatbotArena"              # Dataset name or path
+     split: "train"                    # train/test/validation
+     sample_limit: 1000                # Optional: limit samples
+     seed: 42                          # Random seed for sampling
+   
+   # Logging policy (required) - what generated the historical data
+   logging_policy:
+     provider: "openai"                # Required: provider name
+     model_name: "gpt-3.5-turbo"      # Required: model identifier
+     temperature: 0.7                  # Sampling temperature
+     top_p: 1.0                       # Nucleus sampling (1.0 = disabled)
+     max_new_tokens: 512              # Max tokens to generate
+     system_prompt: null              # Optional system prompt
+     api_key: null                    # Optional: override env var
+     base_url: null                   # Optional: custom endpoint
+   
+   # Target policies (required) - what we want to evaluate
+   target_policies:
+     - name: "improved_model"         # Policy identifier
+       provider: "openai"             # Required: provider name
+       model_name: "gpt-4-turbo"      # Required: model identifier
+       temperature: 0.7               # Sampling temperature
+       top_p: 1.0                     # Nucleus sampling
+       max_new_tokens: 512            # Max tokens to generate
+       system_prompt: null            # Optional system prompt
+       mc_samples: 5                  # Monte Carlo samples per context
+       api_key: null                  # Optional: override env var
+       base_url: null                 # Optional: custom endpoint
+   
+   # Judge configuration (required)
+   judge:
+     provider: "openai"               # Required: provider name
+     model_name: "gpt-4-turbo"        # Required: model identifier
+     template: "quick_judge"          # Template name
+     temperature: 0.0                 # Low temp for consistency
+     max_tokens: 100                  # Max tokens for judgment
+     max_retries: 3                   # Retry attempts
+     timeout: 30                      # Timeout in seconds
+     api_key: null                    # Optional: override env var
+     base_url: null                   # Optional: custom endpoint
+     skip: false                      # Skip judging (use ground truth)
+   
+   # Estimator configuration (required)
+   estimator:
+     name: "DRCPO"                    # IPS/SNIPS/DRCPO/MRDR
+     k: 5                             # Cross-validation folds
+     clip: 20.0                       # Log-ratio clipping threshold
+     seed: 42                         # Random seed
+     n_jobs: -1                       # Parallel jobs (-1 = all cores)
+     # Advanced options
+     outcome_model_cls: null          # Custom outcome model class
+     outcome_model_kwargs: {}         # Outcome model parameters
+     featurizer: null                 # Custom featurizer
+     calibrate_weights: true          # Isotonic weight calibration
+     calibrate_outcome: false         # Outcome model calibration
+     stabilize_weights: true          # Numerical stabilization
+   
+   # Oracle configuration (optional)
+   oracle:
+     enabled: false                   # Enable oracle labeling
+     provider: "openai"               # Oracle provider
+     model_name: "gpt-4-turbo"        # Oracle model
+     template: "quick_judge"          # Oracle template
+     temperature: 0.0                 # Oracle temperature
+     max_tokens: 100                  # Max tokens
+     logging_policy_oracle_fraction: 0.25  # Fraction for calibration
+     seed: 42                         # Random seed
+   
+   # Research configuration (optional)
+   research:
+     enabled: false                   # Enable research mode
+     gold_validation:
+       enabled: false                 # Create validation set
+       samples_per_target: 100        # Samples per target policy
+       create_ab_pairs: true          # Create A/B comparisons
+       shuffle_pairs: true            # Randomize pair order
+     diagnostics:
+       enabled: true                  # Enable diagnostics
+       mean_bias_threshold: 0.2       # Bias threshold
+       spearman_threshold: 0.6        # Correlation threshold
+       clipped_mass_threshold: 0.01   # Weight clipping threshold
+       ess_threshold: 0.25            # ESS threshold
+   
+   # Weight diagnostics (optional)
+   diagnostics:
+     log_ratio_clip: 20.0            # Hard clipping for log ratios
+     ess_warning_threshold: 15.0     # ESS warning (% of n)
+     ess_critical_threshold: 5.0     # ESS critical (% of n)
+     identical_policy_tolerance: 0.1 # Tolerance for policy comparison
+     save_diagnostic_plots: true     # Save weight distribution plots
 
 This configuration framework ensures both theoretical fidelity and production robustness, with clear guidance on when to deviate from paper defaults. 

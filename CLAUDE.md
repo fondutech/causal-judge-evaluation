@@ -148,7 +148,7 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 
 **Package Status**: CJE is not yet published to PyPI. All installation must be done via development setup with Poetry.
 
-**Config References**: Use `arena_test` as the default config example, not `arena_experiment` (which doesn't exist).
+**Config References**: Use `arena_test` as the default config example for quick testing (20 samples), or `arena_research_experiment` for full runs (10k samples).
 
 **Common Documentation Issues**:
 - The `cje results` command does not exist - results are accessed via Python API or saved JSON files

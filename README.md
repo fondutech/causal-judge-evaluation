@@ -50,6 +50,15 @@ print(result.summary())
 - [User Guide](https://causal-judge-evaluation.readthedocs.io/en/latest/guides/user_guide.html)
 - [API Reference](https://causal-judge-evaluation.readthedocs.io/en/latest/api/index.html)
 
+## Experiments
+
+The `experiments/` directory contains standalone research experiments:
+
+- **[Arena 10K Fresh Oracle](experiments/arena_10k_oracle/)** - Planned experiment with 10k ChatBot Arena prompts and human calibration
+  - Designed to validate CJE accuracy and efficiency claims
+  - Complete workflow with crowdsourcing integration
+  - See [detailed documentation](docs/experiments/arena_10k_oracle.md)
+
 ## Development
 
 ```bash
