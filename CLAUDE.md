@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🎯 PRIMARY DIRECTIVE
+Continuously update this file to reflect current understanding, user preferences, and project state. This is not optional - it's a core responsibility to ensure knowledge persistence across sessions.
+
 ## Meta-Objectives and User Preferences
 
 ### Core Philosophy
@@ -197,14 +200,102 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 
 ### Proactive Knowledge Management
 
-**After completing tasks, consider**:
-- Is CLAUDE.md still accurate? Update it if not
-- Are there new patterns or preferences to document?
-- Did we discover any gotchas or important context?
-- Are there stale references to removed code?
+**IMPORTANT**: This is a core expectation, not optional. Claude should proactively:
 
-**Regular maintenance checks**:
-- Look for duplicate/redundant files and directories
-- Verify documentation matches implementation
-- Check for output files in wrong locations
-- Ensure examples and configs still work
+**1. After EVERY significant task**:
+- Update CLAUDE.md if any new patterns, preferences, or context emerged
+- Document any decisions made (e.g., "User preferred X over Y because...")
+- Add any discovered constraints or gotchas
+- Remove references to deleted/modified code
+
+**2. Start of each session**:
+- Review recent commits for context
+- Check if CLAUDE.md reflects current state
+- Look for incomplete work from previous sessions
+- Scan for new TODOs or FIXMEs in code
+
+**3. Unprompted maintenance** (do without being asked):
+- When you notice inconsistencies, fix them
+- When you see stale docs, update them
+- When you find redundancy, consolidate it
+- When you see unclear naming, suggest improvements
+
+**4. Knowledge capture triggers**:
+- User expresses a preference → Document it
+- User corrects an approach → Note the preferred way
+- Task reveals hidden complexity → Explain it for future
+- Error occurs repeatedly → Document the solution
+
+**5. What to document**:
+- Design decisions and their rationale
+- Preferred tools/libraries/approaches
+- Common pitfalls and their solutions
+- Performance considerations discovered
+- API quirks or limitations encountered
+- Workflow preferences (e.g., "always run make lint")
+
+**Example proactive behaviors**:
+- "I noticed config files in multiple places, shall I consolidate them?"
+- "This documentation references a deleted module, updating it now..."
+- "Based on your previous preference for simplicity, I suggest..."
+- "I found duplicate test utilities, removing redundancy..."
+
+**Red flags to watch for**:
+- Documentation mentioning non-existent files
+- Multiple ways to do the same thing
+- Unused dependencies or imports
+- Output files in repository root
+- Empty or nearly-empty directories
+- Commented-out code without explanation
+
+### Session Handoff Protocol
+
+**At the end of each session**, create a brief "handoff" section here with:
+- Date and summary of work completed
+- Any unfinished tasks or open questions
+- Decisions that need user confirmation
+- Areas that need attention next time
+
+**Example**:
+```
+## Session Notes - June 14, 2024
+- Completed: Removed duplicate implementations (simple_cli.py, core.py, etc.)
+- Completed: Cleaned up documentation, removed stale READMEs
+- Pending: Arena 10K experiment scripts 05-07 still TBD
+- Note: User prefers simplicity - rejected complex multi-path implementations
+- Check next: Test if all examples still work after simplification
+```
+
+## Session Notes - June 14, 2024
+
+### Completed
+- Major simplification: Removed ~1,600 lines of duplicate code
+  - Deleted: simple_cli.py, core.py, simple.py config, unified_loader.py, duplicate providers/
+  - Updated all imports and documentation to reflect changes
+- Documentation cleanup:
+  - Removed README_simple.md (referenced non-existent pip install)
+  - Updated CJE_IMPLEMENTATION_GUIDE.md 
+  - Removed redundant docs/experiments/ directory
+  - Updated all guides to remove references to simplified API
+- Structural cleanup:
+  - Removed empty utils/ directory at root
+  - Removed test output files (pi0_data*.jsonl)
+  - Verified all test files are properly organized
+
+### Key Insights
+- User strongly prefers "one way to do things" - no duplicate approaches
+- Documentation should reflect reality, not aspirations
+- User wants proactive maintenance without being asked
+- Clear directory structure is important (experiments/ vs examples/)
+
+### Pending/Future Work
+- Arena 10K Oracle experiment scripts 05-07 remain TBD
+- Test all examples to ensure they still work post-simplification
+- Consider consolidating provider variants (structured vs non-structured)
+- May need to update ReadTheDocs configuration
+
+### Notes for Next Session
+- User values proactive identification of issues
+- Always run `make lint` before considering work complete
+- Check for stale references when updating any documentation
+- Keep CLAUDE.md updated throughout the session, not just at the end
