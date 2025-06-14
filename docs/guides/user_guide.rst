@@ -92,13 +92,6 @@ Estimator Quick Guide
 .. tip::
    **💡 Recommendation**: Start with DRCPO for most applications.
 
-**Key Changes in Simplified API:**
-
-- All estimators require a ``MultiTargetSampler`` (no optional complexity)
-- Simplified names without ``MULTI_`` prefix
-- Consistent return format: ``EstimationResult``
-- Single-policy is just the K=1 case
-
 Basic Estimator Usage
 ~~~~~~~~~~~~~~~~~~~~~
 

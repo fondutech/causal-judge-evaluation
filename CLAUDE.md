@@ -136,12 +136,8 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 - Arena research experiments in `configs/arena_research_experiment.yaml`
 - Validation framework for gold standard comparisons
 - Fixed critical weight calibration bug (no re-scaling after capping)
-- Added simplified configuration system in `cje/config/simple.py`
-- Created unified provider interface in `cje/providers/unified.py`
 - Implemented base cross-fitted estimator in `cje/estimators/base_crossfit.py`
 - Added comprehensive visualization utilities in `cje/results/visualization.py`
-- Created simplified CLI in `cje/cli/simple_cli.py`
-- Implemented unified data loader in `cje/data/unified_loader.py`
 - Added missing weight stabilization methods (SWITCH, log-exp)
 
 ### Documentation Notes

@@ -7,7 +7,7 @@ from .reference import FixedSampler, ReferenceDRCPO
 from .pipeline import run_pipeline
 
 # Export configuration API for Python-first usage
-from .config import simple_config, multi_policy_config, ConfigurationBuilder, CJEConfig
+from .config import ConfigurationBuilder, CJEConfig
 
 # Export data loading for convenience
 from .data import load_dataset
@@ -27,8 +27,6 @@ __all__ = [
     # Pipeline
     "run_pipeline",
     # Configuration
-    "simple_config",
-    "multi_policy_config",
     "ConfigurationBuilder",
     "CJEConfig",
     # Data

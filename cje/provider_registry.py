@@ -300,3 +300,8 @@ def print_supported_providers() -> None:
     """Convenience function to print provider capabilities."""
     registry = get_registry()
     registry.print_provider_capabilities()
+
+
+def list_providers() -> List[str]:
+    """List available provider names."""
+    return list(_registry._provider_info.keys())

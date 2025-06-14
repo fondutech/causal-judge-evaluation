@@ -37,24 +37,6 @@ Here's the simplest possible example:
    print(f"Results: {results}")
    # Results contain estimator outputs, diagnostics, and final estimates
 
-**NEW: Simplified API (beta)**
-
-For an even simpler interface, use the new core API:
-
-.. code-block:: python
-
-   from cje.core import run_cje
-   
-   # Run evaluation from a single config file
-   result = run_cje("config.yaml")
-   
-   # Get a formatted summary
-   print(result.summary())
-   
-   # Access raw results
-   print(f"Estimates: {result.estimates}")
-   print(f"Standard errors: {result.std_errors}")
-
 That's it! But let's understand what's happening...
 
 Step-by-Step Tutorial

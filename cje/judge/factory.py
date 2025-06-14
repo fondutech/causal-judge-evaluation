@@ -159,7 +159,7 @@ class JudgeFactory:
     @classmethod
     def list_providers(cls) -> List[str]:
         """List available providers."""
-        from cje.providers import list_providers
+        from cje.provider_registry import list_providers
 
         return list_providers()
 
