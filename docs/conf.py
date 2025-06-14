@@ -94,8 +94,8 @@ autodoc_default_options = {
     "exclude-members": "__weakref__",
 }
 
-# Auto-generate summaries - disable for now to test basic imports
-autosummary_generate = False
+# Auto-generate summaries
+autosummary_generate = True
 autosummary_imported_members = False
 autodoc_mock_imports = MOCK_MODULES
 

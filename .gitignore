@@ -181,4 +181,44 @@ pip.conf
 scripts/load_my_secrets.py
 scripts/personal_notes.md
 
+# AWS API key retrieval scripts (security - don't expose in public repo)
+get_api_keys.sh
+get_api_keys_simple.sh
+API_KEYS_README.md
+
 # IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Claude Code specific
+CLAUDE.md
+_last_work_dir.txt
+
+# CJE experiment outputs
+outputs/
+target_samples.jsonl
+*_checkpoint.jsonl
+pi0_data*.jsonl
+
+# API keys and credentials
+*.key
+*.pem
+secrets.yaml
+credentials.json
+
+# Temporary files
+tmp/
+temp/
+cache/
+*.tmp
+*.bak
+
+# Research/experimental files that shouldn't be public
+scratch/
+experiments/
+research_notes/
+*.draft.*

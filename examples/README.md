@@ -168,11 +168,12 @@ results = run_pipeline(config)
 ### Prerequisites
 
 ```bash
-# Install CJE
-pip install cje
+# Clone and install CJE for development
+git clone https://github.com/fondutech/causal-judge-evaluation.git
+cd causal-judge-evaluation
+poetry install
 
-# Install optional dependencies for examples
-pip install pandas matplotlib seaborn scipy boto3
+# The optional dependencies are already included in pyproject.toml
 ```
 
 ### Quick Tests

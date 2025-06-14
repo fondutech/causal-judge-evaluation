@@ -1,0 +1,123 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Essential Commands
+
+### Development Setup
+```bash
+make dev-setup    # Install dependencies with Poetry and set up pre-commit hooks
+```
+
+### Running Tests
+```bash
+# Basic test run
+poetry run pytest
+
+# Include slow tests
+poetry run pytest --run-slow
+
+# Run specific test categories
+poetry run pytest --theoretical-only    # Theoretical guarantees only
+poetry run pytest --empirical-only      # Empirical validation only
+poetry run pytest --paper-validation    # Paper claim validation
+
+# Run a single test
+poetry run pytest tests/test_file.py::test_function_name
+```
+
+### Linting and Formatting
+```bash
+make lint        # Run both black formatting and mypy type checking
+make format      # Format code with black only
+make mypy        # Type check only
+
+# Or directly:
+black cje/ examples/ tests/
+mypy cje/ examples/ --exclude ".*test.*" --ignore-missing-imports --no-strict-optional
+```
+
+### Documentation
+```bash
+make docs        # Build documentation
+make docs-serve  # Serve documentation locally at http://localhost:8000
+make docs-clean  # Clean rebuild documentation
+```
+
+### Running CJE Experiments
+```bash
+# Full experiment pipeline
+cje run --cfg-path configs --cfg-name arena_test
+
+# Individual pipeline stages
+cje log           # Compute log probabilities
+cje judge         # Generate judge scores
+cje calibrate     # Calibrate judge
+cje estimate      # Run causal estimation
+
+# Arena experiment
+python examples/run_arena_experiment.py --config arena_experiment
+```
+
+## High-Level Architecture
+
+### Core Pipeline Flow
+The CJE pipeline follows this sequence:
+1. **Data Loading** (`cje/data/`) - Loads datasets (ChatbotArena, CSV, JSONL)
+2. **Log Probability Computation** (`cje/loggers/`) - Computes policy log probabilities
+3. **Judge Scoring** (`cje/judge/`) - Scores responses using LLM judges
+4. **Calibration** (`cje/calibration/`) - Isotonic calibration with cross-fitting
+5. **Causal Estimation** (`cje/estimators/`) - DRCPO/MRDR/IPS estimation
+6. **Results** (`cje/results/`) - Policy rankings and diagnostics
+
+### Key Design Patterns
+
+**Provider Abstraction**: All LLM interactions go through provider interfaces in `cje/judge/providers/`. When adding new LLM providers, implement both regular and structured variants.
+
+**Configuration System**: Uses Hydra with unified config schema in `cje/config/unified.py`. All experiments are driven by YAML configs in `configs/`.
+
+**Caching Strategy**: Extensive caching for expensive operations:
+- LLM API calls cached in `cje/utils/inference_cache.py`
+- Pipeline results cached based on work_dir in config
+- Checkpointing support for long-running experiments
+
+**Weight Diagnostics**: Built-in importance weight quality checks in `cje/utils/weight_diagnostics.py`. Always monitor ESS (Effective Sample Size) warnings.
+
+### Research Components
+
+The `cje/research/` module contains experimental features:
+- `arena_experiment.py` - Full arena-style evaluation orchestrator
+- `phase_manager.py` - Manages multi-phase research experiments
+- `validation.py` - Gold standard validation runners
+
+### Critical Implementation Details
+
+**Cross-Fitting**: The k-fold cross-validation in calibration prevents overfitting. Default k=5, but can be adjusted based on data size.
+
+**Log Ratio Clipping**: Default clip value of 20.0 prevents extreme importance weights. This is configurable in diagnostics section.
+
+**Oracle Mode**: When enabled, uses a stronger model for ground truth labels. Useful for validation but increases API costs.
+
+**Trajectory Support**: The codebase supports both single-turn and multi-turn trajectory evaluation via `cje/data/trajectory_dataset.py` and `cje/estimators/trajectory_drcpo.py`.
+
+### Paper Implementation Notes
+
+This codebase implements the CJE paper (Landesberg 2025) with extensions:
+
+**Core Paper Components**:
+- Calibrated DR-CPO estimator (Section 4.2) → `cje/estimators/drcpo.py`
+- Isotonic calibration (Section 2.2) → `cje/calibration/isotonic.py`
+- MRDR variant (Section 4.3) → `cje/estimators/mrdr.py`
+- Cross-fitted algorithm (Algorithm 1) → Implemented in all estimators
+- Single-rate efficiency (Theorem 5.2) → Preserved in implementation
+
+**Key Extensions**:
+- Multi-policy vectorized evaluation (paper focuses on single π')
+- Comprehensive provider support beyond paper examples
+- Arena research framework in `cje/research/`
+- Production features: caching, checkpointing, progress tracking
+
+**Recent Development**:
+- Pi0 data generation scripts in `scripts/generate_pi0_data.py`
+- Arena research experiments in `configs/arena_research_experiment.yaml`
+- Validation framework for gold standard comparisons

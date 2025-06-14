@@ -1,0 +1,84 @@
+# Arena CJE Research Experiment Configuration
+# Final model lineup for single-dataset CJE demo
+
+paths:
+  work_dir: "outputs/arena_research"
+
+# Dataset configuration (Phase 1: Data Preparation)
+dataset:
+  name: "ChatbotArena"
+  split: "train"
+  sample_limit: 10000  # 10000 for full experiment
+  seed: 42
+
+# Logging policy π₀ (Phase 1: Data Preparation)
+# Meta — Llama 3 8B Instruct - $0.20/M tokens
+logging_policy:
+  provider: "fireworks"
+  model_name: "accounts/fireworks/models/llama-v3-8b-instruct-hf"
+  temperature: 0.4
+  max_new_tokens: 1024
+
+# Target policies (Phase 3: Target Policy Generation)
+target_policies:
+  # π_clone (sanity check) - Same Llama 3 8B prompt
+  - name: "clone"
+    provider: "fireworks"
+    model_name: "accounts/fireworks/models/llama-v3-8b-instruct-hf"
+    temperature: 0.4
+    mc_samples: 5
+    
+  # π_CoT (chain-of-thought) - Llama 3 8B + "Think step-by-step..." prefix
+  - name: "cot"
+    provider: "fireworks" 
+    model_name: "accounts/fireworks/models/llama-v3-8b-instruct-hf"
+    temperature: 0.4
+    system_prompt: "Think step-by-step before responding."
+    mc_samples: 5
+    
+  # π_big (larger model) - Databricks DBRX Instruct - $1.20/M tokens
+  - name: "llama4"
+    provider: "fireworks"
+    model_name: "accounts/fireworks/models/llama4-maverick-instruct-basic"
+    temperature: 0.4
+    mc_samples: 5
+
+# Judge configuration (Phase 1: Data Preparation)
+# Meta — Llama 3.1 70B Instruct - $0.90/M tokens
+judge:
+  provider: "fireworks"
+  model_name: "accounts/fireworks/models/llama4-maverick-instruct-basic"
+  temperature: 0.0
+  template: "helpfulness_0_10"
+  max_tokens: 50
+
+# Estimator settings (Phase 5: CJE Estimation)
+estimator:
+  name: "DRCPO"  # 5-fold calibrated DR-CPO
+  k: 5
+  seed: 42
+
+# Research-specific configuration
+research:
+  enabled: true
+  
+  # Phase 4: Gold validation batch  
+  gold_validation:
+    enabled: true
+    samples_per_target: 800
+    create_ab_pairs: true
+    shuffle_pairs: true
+    
+  # Phase 6: Diagnostics & drift checks
+  diagnostics:
+    enabled: true
+    mean_bias_threshold: 0.2
+    spearman_threshold: 0.6
+    clipped_mass_threshold: 0.01
+    ess_threshold: 0.25
+    
+  # Expected results validation
+  expected_results:
+    clone_uplift: [0.0, 0.0]  # Should be ~0 (sanity check)
+    cot_uplift: [3.0, 1.5]    # CoT improvement ~+3pp ± 1.5
+    big_uplift: [8.0, 2.0]    # DBRX uplift ~+8pp ± 2.0 

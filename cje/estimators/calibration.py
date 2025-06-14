@@ -22,6 +22,10 @@ def calibrate_weights_isotonic(
     """
     Calibrate importance weights using isotonic regression to achieve target mean.
 
+    This function applies isotonic calibration followed by hard capping. When capping
+    reduces E[w] significantly, it accepts the bias to maintain variance control
+    (following the bias-variance trade-off discussed in the paper Section 5).
+
     Args:
         weights: Raw importance weights (n,) or (n, K) for K policies
         fold_indices: Optional fold assignment for cross-fitting (n,)
@@ -31,6 +35,10 @@ def calibrate_weights_isotonic(
 
     Returns:
         Tuple of (calibrated_weights, diagnostics_dict)
+
+    Note:
+        The function prioritizes variance control over exact E[w]=1. Warnings are
+        issued when capping causes >10% deviation from target mean.
     """
     weights = np.asarray(weights)
     original_shape = weights.shape
@@ -124,12 +132,15 @@ def calibrate_weights_isotonic(
                 # Apply hard cap
                 calibrated_fold = np.minimum(calibrated_fold, max_calibrated_weight)
 
-                # 🔧 CRITICAL FIX: Re-scale after capping to maintain E[w]=target_mean
-                # Capping high weights lowers the mean, introducing finite-sample bias
+                # Smart default: Accept small bias to maintain variance control
+                # If capping changed mean significantly, warn but don't re-scale
                 capped_mean = np.mean(calibrated_fold)
-                if capped_mean > 1e-12:
-                    calibrated_fold = calibrated_fold * (target_mean / capped_mean)
-                    # Note: This may push some weights slightly above the cap, but preserves unbiasedness
+                mean_change = abs(capped_mean - target_mean) / target_mean
+
+                if mean_change > 0.1:  # More than 10% deviation
+                    diagnostics["warnings"].append(
+                        f"Fold {fold}, policy {k}: Capping reduced E[w] from {target_mean:.3f} to {capped_mean:.3f} ({mean_change:.1%} change)"
+                    )
 
                 # Check monotonicity
                 test_points = np.linspace(
@@ -147,20 +158,23 @@ def calibrate_weights_isotonic(
                 mse = np.mean((fold_weights - calibrated_fold) ** 2)
                 policy_mse.append(mse)
 
+                # Compute Effective Sample Size (ESS) for this fold
+                ess = np.sum(calibrated_fold) ** 2 / np.sum(calibrated_fold**2)
+                ess_percentage = 100 * ess / len(calibrated_fold)
+                if ess_percentage < 10:
+                    diagnostics["warnings"].append(
+                        f"Fold {fold}, policy {k}: Low ESS = {ess_percentage:.1f}% (high variance warning)"
+                    )
+
             except Exception as e:
                 # Fallback to normalization if isotonic regression fails
                 current_mean = np.mean(fold_weights)
                 if current_mean > 1e-12:
                     fallback_weights = fold_weights * (target_mean / current_mean)
-                    # Apply cap and re-scale if needed (same as main path)
+                    # Apply cap (consistent with main path - no re-scaling)
                     fallback_weights = np.minimum(
                         fallback_weights, max_calibrated_weight
                     )
-                    fallback_mean = np.mean(fallback_weights)
-                    if fallback_mean > 1e-12:
-                        fallback_weights = fallback_weights * (
-                            target_mean / fallback_mean
-                        )
                     policy_calibrated[fold_mask] = fallback_weights
                 else:
                     policy_calibrated[fold_mask] = fold_weights
@@ -175,13 +189,12 @@ def calibrate_weights_isotonic(
         final_mean = np.mean(policy_calibrated)
         diagnostics["mean_achieved"].append(final_mean)
 
-        # Check if re-scaling after capping was significant
-        if abs(final_mean - target_mean) < 1e-6:  # Successfully maintained target mean
-            n_above_cap = np.sum(policy_calibrated > max_calibrated_weight)
-            if n_above_cap > 0:
-                diagnostics["warnings"].append(
-                    f"Policy {k}: {n_above_cap} weights exceed cap after re-scaling to maintain E[w]={target_mean}"
-                )
+        # Check final weight distribution quality
+        final_mean = np.mean(policy_calibrated)
+        if abs(final_mean - target_mean) > 0.05:  # More than 5% deviation
+            diagnostics["warnings"].append(
+                f"Policy {k}: E[w] = {final_mean:.3f} deviates from target {target_mean} (bias-variance trade-off)"
+            )
 
     # Final diagnostics
     avg_mse = np.mean(diagnostics["calibration_mse"])

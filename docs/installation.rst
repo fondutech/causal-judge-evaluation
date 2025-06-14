@@ -1,14 +1,13 @@
 Installation
 ============
 
-CJE-Core requires Python 3.9 or later and can be installed via pip or from source.
+CJE requires Python 3.9 or later and can be installed from source.
 
-Quick Installation
------------------
+Package Status
+--------------
 
-.. code-block:: bash
-
-   pip install cje-core
+.. note::
+   CJE is not yet published to PyPI. Please use the development installation method below.
 
 Development Installation
 -----------------------

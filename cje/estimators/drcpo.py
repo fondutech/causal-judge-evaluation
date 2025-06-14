@@ -33,6 +33,7 @@ from .results import EstimationResult
 from ..loggers.multi_target_sampler import MultiTargetSampler
 from .featurizer import Featurizer, BasicFeaturizer
 from .auto_outcome import auto_select
+import warnings
 
 # Define a type alias for scikit-learn compatible models
 ModelType = Any  # Could be more specific if we have a protocol for fit/predict
@@ -404,6 +405,12 @@ class MultiDRCPOEstimator(Estimator[Dict[str, Any]]):
         # Determine train indices (all folds except current)
         assert self._folds is not None  # Type assertion for mypy
         if len(self._folds) == 1:
+            # For k=1, use leave-one-out or at least warn
+            warnings.warn(
+                "k=1 cross-validation uses same data for train/test. "
+                "Consider k>=5 for proper cross-fitting to avoid overfitting bias.",
+                RuntimeWarning,
+            )
             train_indices = fold_indices  # Use all data for both train and test
         else:
             train_indices = np.concatenate(

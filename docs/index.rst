@@ -70,9 +70,13 @@ Choose your path based on your role and goals:
 
 .. code-block:: bash
 
-   pip install cje
+   # Clone and install
+   git clone https://github.com/fondutech/causal-judge-evaluation.git
+   cd causal-judge-evaluation
+   poetry install
+   
+   # Run test
    cje run --cfg-path configs --cfg-name arena_test
-   cje results --run-dir outputs/arena_test
 
 **Compare Two System Prompts**
 
