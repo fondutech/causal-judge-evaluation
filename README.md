@@ -34,6 +34,11 @@ cje run --cfg-path configs --cfg-name arena_test
 # Or use Python API
 from cje.pipeline import run_pipeline
 results = run_pipeline(cfg_path="configs", cfg_name="arena_test")
+
+# NEW: Simplified API (beta)
+from cje.core import run_cje
+result = run_cje("config.yaml")
+print(result.summary())
 ```
 
 ## Documentation

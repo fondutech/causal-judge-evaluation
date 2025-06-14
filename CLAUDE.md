@@ -112,6 +112,8 @@ The `cje/research/` module contains experimental features:
 
 **Trajectory Support**: The codebase supports both single-turn and multi-turn trajectory evaluation via `cje/data/trajectory_dataset.py` and `cje/estimators/trajectory_drcpo.py`.
 
+**Weight Calibration Bug Fix**: Fixed critical bug where re-scaling after capping could push weights above the cap again. The implementation now accepts small bias (E[w] ≠ 1) to maintain variance control, which is preferable to violating the cap constraint. See `cje/estimators/calibration.py` for the corrected implementation.
+
 ### Paper Implementation Notes
 
 This codebase implements the CJE paper (Landesberg 2025) with extensions:
@@ -133,6 +135,14 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 - Pi0 data generation scripts in `scripts/generate_pi0_data.py`
 - Arena research experiments in `configs/arena_research_experiment.yaml`
 - Validation framework for gold standard comparisons
+- Fixed critical weight calibration bug (no re-scaling after capping)
+- Added simplified configuration system in `cje/config/simple.py`
+- Created unified provider interface in `cje/providers/unified.py`
+- Implemented base cross-fitted estimator in `cje/estimators/base_crossfit.py`
+- Added comprehensive visualization utilities in `cje/results/visualization.py`
+- Created simplified CLI in `cje/cli/simple_cli.py`
+- Implemented unified data loader in `cje/data/unified_loader.py`
+- Added missing weight stabilization methods (SWITCH, log-exp)
 
 ### Documentation Notes
 
