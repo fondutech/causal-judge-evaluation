@@ -13,13 +13,12 @@ The user values:
 - **Clear organization**: Each component should have an obvious home, no confusing duplicates
 - **Documentation accuracy**: Documentation should reflect actual implementation, not aspirational features
 - **Proactive maintenance**: Continuously identify and remove stale code/docs without being asked
+- **Information hygiene**: Actively remove outdated content rather than just adding new - this file should get shorter over time as old context becomes irrelevant
 
-### Recent Simplification (June 2024)
-Major codebase cleanup removed ~1,600 lines of duplicate code:
-- Removed alternative CLI (`simple_cli.py`), config (`simple.py`), pipeline (`core.py`)
-- Consolidated to single approaches for everything
-- Updated all documentation to reflect simplified structure
-- Key principle: "One way to do things"
+### Key Principles
+- **One way to do things**: No duplicate implementations or alternative approaches
+- **Simplicity wins**: When in doubt, choose the simpler solution
+- **Documentation reflects reality**: No aspirational features or future plans
 
 ## IMPORTANT: Code Quality Requirements
 
@@ -150,14 +149,11 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 - Arena research framework in `cje/research/`
 - Production features: caching, checkpointing, progress tracking
 
-**Recent Development**:
+**Key Implementation Features**:
 - Pi0 data generation scripts in `scripts/generate_pi0_data.py`
-- Arena research experiments in `configs/arena_research_experiment.yaml`
-- Validation framework for gold standard comparisons
-- Fixed critical weight calibration bug (no re-scaling after capping)
-- Implemented base cross-fitted estimator in `cje/estimators/base_crossfit.py`
-- Added comprehensive visualization utilities in `cje/results/visualization.py`
-- Added missing weight stabilization methods (SWITCH, log-exp)
+- Arena research experiments with gold standard validation
+- Fixed weight calibration accepts small bias (E[w] ≠ 1) to maintain variance control
+- Comprehensive visualization and weight diagnostics
 
 ### Current Focus Areas
 
@@ -207,6 +203,7 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 - Document any decisions made (e.g., "User preferred X over Y because...")
 - Add any discovered constraints or gotchas
 - Remove references to deleted/modified code
+- **IMPORTANT**: Also remove outdated information - if something is no longer true or relevant, delete it rather than just adding corrections
 
 **2. Start of each session**:
 - Review recent commits for context
@@ -247,6 +244,19 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 - Output files in repository root
 - Empty or nearly-empty directories
 - Commented-out code without explanation
+- Old session notes that are no longer relevant
+- Accumulating "historical" sections that don't inform current work
+
+### Information Consolidation Rules
+
+**This file should get SHORTER over time, not longer**:
+- When adding new information, check if it makes something else obsolete
+- Consolidate similar sections rather than adding new ones
+- Remove session notes older than 2-3 sessions unless they contain critical context
+- Replace verbose explanations with concise rules once patterns are established
+- Delete "historical" information that no longer affects current work
+
+**Example**: Instead of keeping "June 2024: Removed simple_cli.py because...", just note in philosophy: "Single implementation principle - no duplicate approaches"
 
 ### Session Handoff Protocol
 
@@ -255,6 +265,7 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 - Any unfinished tasks or open questions
 - Decisions that need user confirmation
 - Areas that need attention next time
+- **What old information can be removed next session**
 
 **Example**:
 ```
@@ -266,80 +277,25 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 - Check next: Test if all examples still work after simplification
 ```
 
-## Paper Analysis - June 14, 2024
+## Session Summary - June 14, 2025
 
-### Key Paper Claims vs Implementation Status
+### Major Work Completed
+- **Codebase simplification**: Removed ~1,600 lines of duplicate code (simple_cli.py, core.py, etc.)
+- **Documentation cleanup**: Removed stale files, updated all references
+- **Paper analysis**: Reviewed CJE paper, noted 30-line claim vs 10k+ line reality
+- **Design decision**: Rejected variance-aware judge selection as too complex
 
-**Paper Claims**:
-- 69% CI reduction vs IPS baseline
-- 6× GPU speedup vs decode+judge
-- <30-line reference implementation
-- Within 2pp accuracy of ground truth
+### Key Learnings Consolidated into Principles Above
+- Single implementation principle 
+- Proactive maintenance expected
+- Information hygiene (remove old content)
 
-**Implementation Reality**:
-- Full implementation is ~10,000+ lines (not 30)
-- The 30-line stub in paper is just the core algorithm
-- Actual system includes caching, providers, cross-fitting, diagnostics
-- Paper focuses on single-turn; codebase supports trajectories
+### Still Pending
+- Arena 10K Oracle experiment scripts 05-07
+- Test examples post-simplification
+- Consider consolidating provider variants
 
-### Paper-Code Alignment
-
-**Well-aligned**:
-- Isotonic calibration for judges and weights ✓
-- Cross-fitted DR-CPO estimator ✓
-- Multi-policy evaluation ✓
-- Teacher-forced propensity scoring ✓
-- Weight diagnostics (ESS, clipped mass) ✓
-
-**Implementation Extensions Beyond Paper**:
-- Multiple provider support (OpenAI, Anthropic, Fireworks, etc.)
-- Trajectory/multi-turn support
-- Comprehensive caching system
-- Rich diagnostics and visualization
-- Arena research framework
-
-**Paper Simplifications**:
-- Assumes deterministic judge (T=0)
-- Single reward per context
-- No discussion of provider-specific challenges
-- Limited to text modality
-
-## Session Notes - June 14, 2024
-
-### Completed
-- Major simplification: Removed ~1,600 lines of duplicate code
-  - Deleted: simple_cli.py, core.py, simple.py config, unified_loader.py, duplicate providers/
-  - Updated all imports and documentation to reflect changes
-- Documentation cleanup:
-  - Removed README_simple.md (referenced non-existent pip install)
-  - Updated CJE_IMPLEMENTATION_GUIDE.md 
-  - Removed redundant docs/experiments/ directory
-  - Updated all guides to remove references to simplified API
-- Structural cleanup:
-  - Removed empty utils/ directory at root
-  - Removed test output files (pi0_data*.jsonl)
-  - Verified all test files are properly organized
-
-### Key Insights
-- User strongly prefers "one way to do things" - no duplicate approaches
-- Documentation should reflect reality, not aspirations
-- User wants proactive maintenance without being asked
-- Clear directory structure is important (experiments/ vs examples/)
-
-### Pending/Future Work
-- Arena 10K Oracle experiment scripts 05-07 remain TBD
-- Test all examples to ensure they still work post-simplification
-- Consider consolidating provider variants (structured vs non-structured)
-- May need to update ReadTheDocs configuration
-
-### Notes for Next Session
-- User values proactive identification of issues
-- Always run `make lint` before considering work complete
-- Check for stale references when updating any documentation
-- Keep CLAUDE.md updated throughout the session, not just at the end
-
-### Design Decisions - June 14, 2025
-- **Variance-aware judge selection**: Started implementing but removed as too complex
-  - Paper mentions it but implementation would add significant complexity
-  - Current judge selection (via templates) is sufficient
-  - User preference: "Perhaps this is too complicated for what it's worth"
+### To Remove Next Session
+- This session summary (after 2-3 more sessions)
+- Old references to June 2024 throughout the file
+- Detailed file lists from cleanup (already captured in principles)
