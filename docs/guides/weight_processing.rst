@@ -51,6 +51,9 @@ Key Diagnostic Metrics
        zero_weight_count: int           # Exactly zero weights
        consistency_flag: str            # "GOOD", "WARNING", "CRITICAL"
        weight_coefficient_variation: float
+       # New overlap diagnostics (v1.3.0+)
+       overlap_score: Optional[float]   # 0-1, higher is better
+       common_support_fraction: Optional[float]  # Fraction with good support
 
 Automatic Status Flags
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -135,6 +138,92 @@ The weight diagnostics caught a critical teacher forcing implementation bug:
 - Status: GOOD
 
 **Key Insight**: Weight inconsistency served as the perfect "canary in the coal mine" 🐤, revealing fundamental teacher forcing computation problems that would have been hard to detect otherwise.
+
+📊 Overlap Diagnostics (New in v1.3.0)
+--------------------------------------
+
+Policy Overlap Analysis
+~~~~~~~~~~~~~~~~~~~~~~~
+
+CJE now includes comprehensive overlap diagnostics to quantify how well the behavior and target policies align. Poor overlap is a primary cause of high-variance, unreliable off-policy estimates.
+
+**Key Metrics**:
+
+.. code-block:: python
+
+   @dataclass
+   class OverlapDiagnostics:
+       overlap_score: float              # 0-1 score based on weight entropy
+       common_support_fraction: float    # % of samples with reasonable log ratios
+       log_ratio_percentiles: Dict[int, float]  # 5th, 25th, 50th, 75th, 95th
+       extreme_log_ratio_fraction: float # % with |log_ratio| > 5
+       positivity_violations: int        # Count of near-zero probabilities
+
+**Overlap Score Interpretation**:
+
+- **0.8-1.0**: Excellent overlap - reliable estimates expected
+- **0.5-0.8**: Good overlap - estimates should be stable
+- **0.2-0.5**: Moderate overlap - increased variance expected  
+- **0.0-0.2**: Poor overlap - estimates may be unreliable
+
+Using Overlap Diagnostics
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from cje.utils.weight_diagnostics import (
+       compute_overlap_diagnostics,
+       diagnose_weights_with_overlap,
+       format_overlap_diagnostics
+   )
+
+   # Compute overlap between behavior and target policy
+   overlap_diag = compute_overlap_diagnostics(
+       behavior_logprobs,  # List of log P(response|context) under π₀
+       target_logprobs     # List of log P(response|context) under π₁
+   )
+
+   # Get detailed overlap report
+   print(format_overlap_diagnostics(overlap_diag, "GPT-4 Policy"))
+
+   # Or use integrated weight+overlap diagnostics
+   full_diagnostics = diagnose_weights_with_overlap(
+       weights, behavior_logprobs, target_logprobs, "GPT-4 Policy"
+   )
+
+**Example Output**:
+
+.. code-block:: text
+
+   📈 **GPT-4 Policy** Overlap Analysis:
+      Overlap Score: 0.234 (0=poor, 1=perfect)
+      Common Support: 87.3%
+      Positivity Violations: 42
+      Log Ratio Percentiles:
+         P5: -8.21
+         P25: -3.47
+         P50: -1.23
+         P75: +2.15
+         P95: +7.89
+      ⚠️  72.1% of samples have extreme log ratios
+      ⚠️  Limited overlap: only 87.3% common support
+
+Integration with Weight Summary
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The weight summary table now includes overlap scores:
+
+.. code-block:: text
+
+   📊 **Importance Weight Summary**
+
+   | Policy | ESS | Mean Weight | Overlap | Status | Issues |
+   |--------|-----|-------------|---------|--------|--------|
+   | GPT-4  | 23.4% | 1.234 | 0.45 | ⚠️ WARNING | Low ESS (23.4%) |
+   | Claude | 87.2% | 0.998 | 0.82 | ✅ GOOD | None |
+   | Gemini | 5.1% | 3.421 | 0.12 | ❌ CRITICAL | Low ESS (5.1%), Poor overlap (12.0%) |
+
+**Automatic Consistency Updates**: If overlap diagnostics detect <50% common support, the consistency flag is automatically upgraded to WARNING or CRITICAL.
 
 ⚙️ Stage 1: Raw Log Probability Computation
 -------------------------------------------

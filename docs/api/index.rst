@@ -44,6 +44,7 @@ Diagnostics & Utilities
    :recursive:
 
    cje.utils
+   cje.utils.weight_diagnostics
    cje.validation
    cje.cache
 
