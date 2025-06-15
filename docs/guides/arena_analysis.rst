@@ -289,6 +289,38 @@ The script provides real-time progress updates:
 Quality Control
 ---------------
 
+Automatic Weight Diagnostics
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Arena analysis automatically includes comprehensive weight diagnostics to catch issues early:
+
+.. code-block:: text
+
+   📊 Importance Weight Summary
+   
+   | Policy | ESS | Mean Weight | Status | Issues |
+   |--------|-----|-------------|--------|--------|
+   | gpt-4 | 85.2% | 1.245 | ✅ GOOD | None |
+   | claude-3-opus | 72.1% | 0.987 | ✅ GOOD | None |
+   | gpt-4o | 45.3% | 2.341 | 🟡 WARNING | Moderate ESS |
+
+The diagnostics check for:
+
+- **Effective Sample Size (ESS)**: Percentage of samples contributing meaningfully
+- **Extreme weights**: Weights > 1000 or < 0.001 indicating distribution mismatch
+- **Identical policy consistency**: Weights should be ≈1.0 for policies identical to logging policy
+- **Zero weights**: Complete probability mass mismatches
+
+Interactive weight analysis is available via:
+
+.. code-block:: python
+
+   from examples.arena_interactive import ArenaAnalyzer
+   
+   analyzer = ArenaAnalyzer()
+   analyzer.plot_weight_diagnostics()  # Visual diagnostic dashboard
+   analyzer.diagnose_weights()         # Detailed diagnostic objects
+
 Guard Rail Checks
 ~~~~~~~~~~~~~~~~~~
 

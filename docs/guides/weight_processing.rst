@@ -30,10 +30,10 @@ Pipeline Overview
 Automatic Weight Health Monitoring
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Starting with CJE v2024+, all arena analysis automatically includes importance weight diagnostics to catch consistency issues, low ESS, and teacher forcing problems early.
+CJE includes comprehensive importance weight diagnostics to catch consistency issues, low ESS, and numerical problems early.
 
 **Location**: ``cje/utils/weight_diagnostics.py``  
-**Integration**: Automatic in ``arena_analysis_python.py`` and ``ArenaAnalyzer``
+**Integration**: Automatically included in all estimators and analysis tools
 
 Key Diagnostic Metrics
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -62,61 +62,41 @@ Automatic Status Flags
 Identical Policy Consistency Checking
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**Critical Feature**: Automatically detects when "identical" policies (e.g., scout = logging) don't have weights ≈ 1.0:
+**Critical Feature**: Automatically detects when a target policy should be identical to the logging policy but has weights far from 1.0:
 
 .. code-block:: python
 
-   expected_weight = 1.0 if "scout" in policy_name.lower() else None
-   weight_error = abs(mean_weight - expected_weight)
-   if weight_error > 0.1:
-       return "CRITICAL"  # Indicates teacher forcing or policy configuration issues
+   # Check if policies should be identical based on configuration
+   if (target_config.model == logging_config.model and 
+       target_config.prompt == logging_config.prompt and
+       target_config.temperature == logging_config.temperature):
+       expected_weight = 1.0
+       weight_error = abs(mean_weight - expected_weight)
+       if weight_error > 0.1:
+           return "CRITICAL"  # Indicates teacher forcing or configuration issues
 
-**Real-World Example**: Caught teacher forcing bugs where scout policy had weights of 10^-30 instead of 1.0, revealing computation inconsistencies.
+**Common Issues Detected**: Teacher forcing bugs where identical policies have weights of 10^-30 instead of 1.0, revealing log probability computation inconsistencies.
 
-Arena Analysis Integration
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Automatic Display**: All arena analysis now shows weight diagnostics:
-
-.. code-block:: text
-
-   📊 Importance Weight Summary
-
-   | Policy | ESS | Mean Weight | Status | Issues |
-   |--------|-----|-------------|--------|--------|
-   | llama4_scout | 100.0% | 1.0000 | ✅ GOOD | None |
-   | llama4_maverick | 1.0% | 0.0101 | ❌ CRITICAL | Low ESS (1.0%), 97 extreme |
-
-   ✅ All importance weights look healthy
-
-Interactive Diagnostic Methods
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Using Weight Diagnostics
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-   from examples.arena_interactive import ArenaAnalyzer
-
-   analyzer = ArenaAnalyzer()
-   analyzer.run_analysis('arena_analysis')    # Includes automatic diagnostics
-
-   # Additional weight-specific methods:
-   analyzer.plot_weight_diagnostics()         # Visual diagnostic dashboard  
-   analyzer.quick_weight_check('scout')       # Quick visual check for one policy
-   analyzer.diagnose_weights()                # Get detailed diagnostic objects
-
-Standalone Diagnostic Utilities
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   from cje.utils.weight_diagnostics import analyze_arena_weights
+   from cje.utils.weight_diagnostics import compute_weight_diagnostics
    from cje.utils.weight_plots import create_weight_diagnostic_dashboard
 
-   # Analyze any arena data
-   diagnostics = analyze_arena_weights(arena_data)
+   # Get diagnostic metrics for any importance weights
+   diagnostics = compute_weight_diagnostics(
+       weights_matrix,  # Shape: (n_samples, n_policies)
+       policy_names=["policy1", "policy2", "policy3"]
+   )
 
-   # Create visual dashboard (saves PNG files)
-   create_weight_diagnostic_dashboard(arena_data, "diagnostics_output/")
+   # Create visual diagnostic plots
+   create_weight_diagnostic_dashboard(
+       weights_matrix,
+       policy_names,
+       output_dir="diagnostics/"
+   )
 
 Visual Diagnostics
 ~~~~~~~~~~~~~~~~~~
@@ -142,14 +122,14 @@ The weight diagnostics caught a critical teacher forcing implementation bug:
 
 **🔴 Before Fix**:
 
-- Scout policy weights: 10^-30 to 10^20 (should be ≈1.0)  
+- Identical policy weights: 10^-30 to 10^20 (should be ≈1.0)  
 - ESS: 5.3% (critical)
 - 91% extreme weights
 - Status: CRITICAL with clear guidance
 
 **🟢 After Fix**:
 
-- Scout policy weights: Exactly 1.0 (perfect)
+- Identical policy weights: Exactly 1.0 (perfect)
 - ESS: 100% (perfect)  
 - 0% extreme weights
 - Status: GOOD
@@ -423,7 +403,7 @@ In YAML Config
      calibrate_weights: true         # Stage 6: Enable/disable weight calibration  
      calibrate_outcome: true         # Stage 7: Enable/disable outcome calibration
 
-   # Weight diagnostic configuration (automatic in arena analysis)
+   # Weight diagnostic configuration
    diagnostics:
      ess_warning_threshold: 10.0     # ESS % warning threshold  
      ess_critical_threshold: 1.0     # ESS % critical threshold
@@ -491,7 +471,7 @@ All interventions triggered:
       📊 ESS per policy: ['28.6', '5.3'] / 100
       📊 ESS percentages: ['28.6%', '5.3%'] (avg: 16.9%)
    ⚠️  LOW ESS warnings:
-      • llama4_scout: 5.3% - estimates may be noisy
+      • identical_policy: 5.3% - estimates may be noisy
       💡 Consider: More samples or different target policies
       ✅ Preserved weight differences across policies
    ✓ Isotonic weight calibration enabled for DRCPO
@@ -539,11 +519,11 @@ This pipeline ensures robust, reliable policy evaluation while maintaining theor
 Importance Weight as Diagnostic Tool
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**Key Insight**: For identical policies (e.g., scout = logging), importance weights should be exactly 1.0. Deviations indicate fundamental computation issues.
+**Key Insight**: For identical policies (same model, prompt, and parameters), importance weights should be exactly 1.0. Deviations indicate fundamental computation issues.
 
 **Diagnostic Philosophy**: 
 
-- ❌ **Wrong**: "Weights look inconsistent, let me manually set scout weights = behavior weights"
+- ❌ **Wrong**: "Weights look inconsistent, let me manually set identical policy weights = 1.0"
 - ✅ **Right**: "Weights look inconsistent, this reveals a bug in teacher forcing computation"
 
 **Example Detection**:
