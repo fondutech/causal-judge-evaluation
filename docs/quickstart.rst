@@ -92,55 +92,38 @@ First, ensure your data follows the expected format:
    
    **Backfill Commands**: ``cje backfill backfill-logp`` for missing log probabilities
 
-2. **Configure Target Policies**
+2. **Configure Your Experiment**
 
-Create a YAML configuration file (e.g., ``my_experiment.yaml``):
+Create a configuration file that specifies your logging policy (what generated your data) and target policies (what you want to test).
+
+.. tip::
+   For a complete configuration reference with all options and examples, see :doc:`guides/configuration_reference`.
+
+Here's a minimal example:
 
 .. code-block:: yaml
 
-   # Dataset configuration
+   # my_experiment.yaml
    dataset:
-     name: "ChatbotArena"     # Built-in dataset or path to your data
-     split: "train"           # Dataset split to use
-     sample_limit: 1000       # Optional: limit samples for testing
-
-   # Logging policy: The LLM configuration that generated your existing data
-   # This is your current production setup or historical configuration
+     name: "./my_data.csv"
+   
    logging_policy:
      provider: "openai"
      model_name: "gpt-3.5-turbo"
-     temperature: 0.7
-     max_new_tokens: 512
-
-   # Target policies: The new LLM configurations you want to test
-   # These could be: different models, different prompts, or different parameters
+   
    target_policies:
-     # Example 1: Testing a model upgrade
-     - name: "gpt4_upgrade"
+     - name: "upgraded_model"
        provider: "openai"
        model_name: "gpt-4o"
-       temperature: 0.7
-       mc_samples: 5          # Monte Carlo samples per context
-       
-     # Example 2: Testing a competitor model
-     - name: "claude3"
-       provider: "anthropic" 
-       model_name: "claude-3-sonnet-20240229"
-       temperature: 0.7
-       mc_samples: 5
-
-   # Judge configuration (for evaluating response quality)
+   
    judge:
      provider: "openai"
      model_name: "gpt-4o-mini"
      template: "quick_judge"
-     temperature: 0.0        # Deterministic for consistency
-
-   # Estimator configuration
+   
    estimator:
-     name: "DRCPO"           # Doubly-robust (recommended)
-     k: 5                    # Cross-validation folds
-     clip: 20.0              # Importance weight clipping
+     name: "DRCPO"
+     k: 5
 
 3. **Run the Evaluation**
 
@@ -286,7 +269,7 @@ Troubleshooting
 **Low Effective Sample Size (ESS)**
    - Indicates most weight concentrated on few examples
    - Use DR methods which are less sensitive
-   - Check teacher forcing consistency (see :doc:`guides/teacher_forcing`)
+   - Check teacher forcing consistency (see :doc:`developer/teacher_forcing`)
 
 **Model Convergence Issues**
    - Reduce model complexity

@@ -203,179 +203,34 @@ Core Workflows
 1. System Prompt Engineering
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**Most common use case** - testing different communication styles:
+**Most common use case** - testing different communication styles by varying the system prompt while keeping other parameters constant.
 
-.. code-block:: yaml
-
-   # config/prompt_test.yaml
-   # Dataset configuration
-   dataset:
-     name: "./data/prompt_test.jsonl"
-     split: "test"
-
-   # Logging policy (what generated the historical data)
-   logging_policy:
-     provider: "openai"
-     model_name: "gpt-3.5-turbo"
-     temperature: 0.7
-     system_prompt: "You are a helpful customer support agent."
-
-   # Target policies (what we want to evaluate)
-   target_policies:
-     - name: "enhanced"
-       provider: "openai"
-       model_name: "gpt-4o"
-       temperature: 0.7
-       mc_samples: 5          # Monte Carlo samples per context
-       system_prompt: "You are an expert customer support agent with deep product knowledge and excellent communication skills."
-
-   # Judge configuration
-   judge:
-     provider: "openai"
-     model_name: "gpt-4o-mini"
-     template: "quick_judge"
-     temperature: 0.0        # Deterministic for consistency
-
-   # Estimator configuration
-   estimator:
-     name: "DRCPO"           # Doubly-robust (recommended)
-     k: 5                    # Cross-validation folds
-     clip: 20.0              # Importance weight clipping
-
-   # Paths configuration
-   paths:
-     work_dir: "./outputs/prompt_test"
+.. seealso::
+   For a complete example of system prompt comparison, see the "Common Use Case: System Prompt Comparison" section in :doc:`configuration_reference`.
 
 2. Model Comparison
 ~~~~~~~~~~~~~~~~~~~
 
-Compare different models or versions:
+Compare different models or versions to evaluate upgrades or alternatives.
 
-.. code-block:: yaml
-
-   # Dataset configuration
-   dataset:
-     name: "./data/test_data.jsonl"
-     split: "test"
-
-   # Logging policy (what generated the historical data)
-   logging_policy:
-     provider: "openai"
-     model_name: "gpt-3.5-turbo"
-     temperature: 0.7
-
-   # Target policies (what we want to evaluate)
-   target_policies:
-     - name: "model_upgrade"
-       provider: "openai"
-       model_name: "gpt-4o"
-       temperature: 0.7
-       mc_samples: 5          # Monte Carlo samples per context
-
-   # Judge configuration
-   judge:
-     provider: "openai"
-     model_name: "gpt-4o-mini"
-     template: "quick_judge"
-     temperature: 0.0        # Deterministic for consistency
-
-   # Estimator configuration
-   estimator:
-     name: "DRCPO"           # Doubly-robust (recommended)
-     k: 5                    # Cross-validation folds
-     clip: 20.0              # Importance weight clipping
-
-   # Paths configuration
-   paths:
-     work_dir: "./outputs/model_comparison"
+.. seealso::
+   See the "Model Comparison" section in :doc:`configuration_reference` for configuration examples.
 
 3. Parameter Tuning
 ~~~~~~~~~~~~~~~~~~~
 
-Test hyperparameters:
+Test different hyperparameters like temperature, top_p, or max_tokens to optimize generation quality.
 
-.. code-block:: yaml
-
-   # Dataset configuration
-   dataset:
-     name: "./data/test_data.jsonl"
-     split: "test"
-
-   # Logging policy (what generated the historical data)
-   logging_policy:
-     provider: "openai"
-     model_name: "gpt-4o-mini"
-     temperature: 0.7
-
-   # Target policies (what we want to evaluate)
-   target_policies:
-     - name: "lower_temperature"
-       provider: "openai"
-       model_name: "gpt-4o-mini"
-       temperature: 0.3        # Testing lower temperature
-       mc_samples: 5          # Monte Carlo samples per context
-
-   # Judge configuration
-   judge:
-     provider: "openai"
-     model_name: "gpt-4o-mini"
-     template: "quick_judge"
-     temperature: 0.0        # Deterministic for consistency
-
-   # Estimator configuration
-   estimator:
-     name: "DRCPO"           # Doubly-robust (recommended)
-     k: 5                    # Cross-validation folds
-     clip: 20.0              # Importance weight clipping
-
-   # Paths configuration
-   paths:
-     work_dir: "./outputs/parameter_tuning"
+.. seealso::
+   See the "Parameter Tuning" section in :doc:`configuration_reference` for examples of testing different parameter values.
 
 4. Multi-Provider Comparison
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Compare models from different providers:
+Compare models from different providers (OpenAI vs Anthropic vs Google, etc.) for the same use case.
 
-.. code-block:: yaml
-
-   # Dataset configuration
-   dataset:
-     name: "./data/test_data.jsonl"
-     split: "test"
-
-   # Logging policy (what generated the historical data)
-   logging_policy:
-     provider: "openai"
-     model_name: "gpt-3.5-turbo"
-     temperature: 0.7
-     system_prompt: "You are a helpful assistant."
-
-   # Target policies (what we want to evaluate)
-   target_policies:
-     - name: "claude_alternative"
-       provider: "anthropic"
-       model_name: "claude-3-sonnet-20240229"
-       temperature: 0.7       # Same temperature for fair comparison
-       mc_samples: 5          # Monte Carlo samples per context
-       system_prompt: "You are a helpful assistant."  # Same prompt for fair comparison
-
-   # Judge configuration
-   judge:
-     provider: "openai"
-     model_name: "gpt-4o-mini"
-     template: "quick_judge"
-     temperature: 0.0        # Deterministic for consistency
-
-   # Estimator configuration
-   estimator:
-     name: "DRCPO"           # Doubly-robust (recommended)
-     k: 5                    # Cross-validation folds
-     clip: 20.0              # Importance weight clipping
-
-   # Paths configuration
-   paths:
-     work_dir: "./outputs/provider_comparison"
+.. seealso::
+   See the "Multi-Provider Comparison" section in :doc:`configuration_reference` for examples comparing different providers.
 
 Data Requirements
 -----------------
@@ -391,7 +246,7 @@ When you let the pipeline generate (or back-fill) logs it automatically includes
 ``logp`` remains the **sum** of ``token_logps``; the estimators use that value for propensity weighting.
 
 .. note::
-   **Teacher Forcing Considerations**: Log probabilities must be computed consistently between logging and target policies. Due to API limitations, only certain providers (Fireworks, Together) support true teacher forcing. See :doc:`teacher_forcing` for critical implementation details.
+   **Teacher Forcing Considerations**: Log probabilities must be computed consistently between logging and target policies. Due to API limitations, only certain providers (Fireworks, Together) support true teacher forcing. See :doc:`../developer/teacher_forcing` for critical implementation details.
 
 If missing ``logp``, backfill it:
 

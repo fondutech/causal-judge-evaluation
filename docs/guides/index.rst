@@ -33,8 +33,7 @@ Advanced Guides
    :caption: Specialized Topics
 
    weight_processing
-   teacher_forcing
-   oracle_analysis  
+   validation/oracle_analysis  
    trajectory_methods
    custom_components
 
@@ -53,7 +52,7 @@ Advanced Guides
    
    1. :doc:`arena_analysis` - Large-scale evaluation workflows
    2. :doc:`weight_processing` - Performance optimization and debugging
-   3. :doc:`oracle_analysis` - High-precision validation techniques
+   3. :doc:`validation/oracle_analysis` - High-precision validation techniques
 
 **🔬 Advanced User (1+ months)**
    Need custom solutions or deep technical understanding

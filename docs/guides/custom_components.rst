@@ -493,47 +493,27 @@ Use custom components in configuration:
 
 .. code-block:: yaml
 
-   # Dataset configuration (custom loader)
+   # Custom component configuration examples
    dataset:
-     name: "Database"
+     name: "Database"              # Your custom dataset class
      connection_string: "postgresql://user:pass@localhost/db"
      table_name: "evaluations"
-     split: "test"
-   
-   # Logging policy (what generated the historical data)
-   logging_policy:
-     provider: "openai"
-     model_name: "gpt-3.5-turbo"
-     temperature: 0.7
-   
-   # Target policies (what we want to evaluate)
-   target_policies:
-     - name: "test_policy"
-       provider: "openai"
-       model_name: "gpt-4o-mini"
-       temperature: 0.7
-       mc_samples: 5               # Monte Carlo samples per context
      
-   # Judge configuration (custom judge)
    judge:
-     name: "DomainSpecific" 
+     name: "DomainSpecific"        # Your custom judge class
      domain: "medical"
      criteria_weights:
        accuracy: 0.5
        safety: 0.3
        clarity: 0.2
        
-   # Estimator configuration (custom estimator)
    estimator:
-     name: "RegressionIPS"
+     name: "RegressionIPS"         # Your custom estimator class
      model_type: "ridge"
      regularization: 0.05
      
-   # Sampler configuration (custom sampler)
-   sampler:
-     name: "TemperatureSweep"
-     temperature_range: [0.2, 1.5]
-     steps: 8
+   # For complete configuration structure, see:
+   # docs/guides/configuration_reference.rst
 
 Testing Custom Components
 -------------------------

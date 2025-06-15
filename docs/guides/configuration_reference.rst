@@ -190,7 +190,7 @@ CJE supports the following providers for models and judges:
      - None (testing only)
 
 .. important::
-   **Teacher Forcing Support**: Only ``fireworks`` (confirmed) and ``together`` (unconfirmed) currently support the completions API required for teacher forcing. Other providers can only use generation-time log probabilities. See :doc:`teacher_forcing` for critical details about log probability consistency.
+   **Teacher Forcing Support**: Only ``fireworks`` (confirmed) and ``together`` (unconfirmed) currently support the completions API required for teacher forcing. Other providers can only use generation-time log probabilities. See :doc:`../developer/teacher_forcing` for critical details about log probability consistency.
 
 📋 Complete Parameter Reference
 ------------------------------
