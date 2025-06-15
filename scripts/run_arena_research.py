@@ -64,12 +64,19 @@ def main() -> None:
         console.print(f"Sample override: {args.samples}")
     console.print("─" * 50)
 
-    # TODO: Handle sample override by modifying config
-    if args.samples:
-        console.print(f"[yellow]Note: Sample override not yet implemented[/yellow]")
-        console.print(
-            f"[yellow]Edit {args.config}.yaml to change sample_limit[/yellow]"
-        )
+    # Load and potentially modify config
+    from hydra import compose, initialize_config_dir
+    from omegaconf import OmegaConf
+    import os
+
+    config_dir = os.path.abspath(args.config_path)
+    with initialize_config_dir(config_dir=config_dir, version_base="1.1"):
+        cfg = compose(config_name=args.config)
+
+        # Apply sample override if provided
+        if args.samples:
+            cfg.dataset.sample_limit = args.samples
+            console.print(f"[green]Applied sample override: {args.samples}[/green]")
 
     try:
         # Create and run research experiment

@@ -23,6 +23,8 @@ try:
 except Exception:  # pragma: no cover
     # Fallback dummy that just raises if used
     class XGBRegressor:  # type: ignore
+        """Placeholder class when XGBoost is not available."""
+
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             raise ImportError("xgboost could not be imported")
 
