@@ -9,6 +9,15 @@ Get started with CJE in 5 minutes! This guide shows you the essential steps to r
 Basic Concepts
 --------------
 
+**What is a "Policy"?**
+   In CJE, a policy is simply a specific LLM configuration. It includes:
+   
+   - The model (e.g., GPT-4, Claude-3)
+   - The system prompt (e.g., "You are a helpful assistant")
+   - Generation parameters (temperature, max tokens, etc.)
+   
+   The **logging policy** is what generated your existing data. The **target policies** are the new configurations you want to test.
+
 **Off-Policy Evaluation (OPE)**
    Estimate how well a new policy would perform using historical data, without deploying it.
 
@@ -95,21 +104,25 @@ Create a YAML configuration file (e.g., ``my_experiment.yaml``):
      split: "train"           # Dataset split to use
      sample_limit: 1000       # Optional: limit samples for testing
 
-   # Logging policy (what generated the historical data)
+   # Logging policy: The LLM configuration that generated your existing data
+   # This is your current production setup or historical configuration
    logging_policy:
      provider: "openai"
      model_name: "gpt-3.5-turbo"
      temperature: 0.7
      max_new_tokens: 512
 
-   # Target policies (what we want to evaluate)
+   # Target policies: The new LLM configurations you want to test
+   # These could be: different models, different prompts, or different parameters
    target_policies:
+     # Example 1: Testing a model upgrade
      - name: "gpt4_upgrade"
        provider: "openai"
        model_name: "gpt-4o"
        temperature: 0.7
        mc_samples: 5          # Monte Carlo samples per context
        
+     # Example 2: Testing a competitor model
      - name: "claude3"
        provider: "anthropic" 
        model_name: "claude-3-sonnet-20240229"

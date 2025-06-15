@@ -11,6 +11,15 @@
 
 **CJE (Causal Judge Evaluation)** provides unbiased, cost-efficient off-policy evaluation for LLM systems. Compare prompts, models, and parameters using only historical logs—no deployment needed.
 
+### What is a "Policy"?
+
+In CJE, a **policy** is simply a specific LLM configuration—the combination of model, prompt, and parameters that generates responses. For example:
+- **Policy A**: GPT-3.5 with a casual prompt and temperature 0.7
+- **Policy B**: GPT-4 with a professional prompt and temperature 0.3
+- **Policy C**: Claude-3 with a step-by-step reasoning prompt
+
+The **logging policy** is what generated your historical data (past conversations), while **target policies** are the new configurations you want to evaluate. CJE estimates how well target policies would perform without actually deploying them.
+
 ## Key Features
 
 - **🎯 Causal, not correlational**: Answers "What would happen if we deployed policy π′?"
