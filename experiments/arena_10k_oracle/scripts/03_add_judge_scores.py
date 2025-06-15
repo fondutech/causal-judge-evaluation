@@ -129,9 +129,9 @@ def score_responses_with_judge(
                 if isinstance(score_result, dict):
                     score = score_result.get("score", None)
                 else:
-                    # Try to parse as integer if string
+                    # Keep as float or try to parse
                     try:
-                        score = int(score_result)
+                        score = float(score_result)
                     except:
                         console.print(
                             f"⚠️  [yellow]Failed to parse score: {score_result}[/yellow]"

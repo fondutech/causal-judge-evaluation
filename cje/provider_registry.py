@@ -8,116 +8,28 @@ class ProviderInfo:
 
     provider_cls: Type[Any]
     structured_cls: Type[Any]
-    supports_logprobs: bool  # For backward compatibility - output logprobs
+    supports_logprobs: bool  # Output logprobs for generated text
     supports_full_sequence_logprobs: (
         bool  # Input + output logprobs (needed for policy evaluation)
     )
     default_template: str
     supported_methods: List[str]
     recommended_method: str
+    base_url: Optional[str] = None
+    env_var: Optional[str] = None
+    name: Optional[str] = None
+    capabilities: Optional[Dict[str, Any]] = None
 
 
 class ProviderRegistry:
     """Registry for managing AI providers and their capabilities."""
 
     def __init__(self) -> None:
-        self.providers: List[Tuple[Type[Any], Type[Any], bool]] = []
         self._provider_info: Dict[str, ProviderInfo] = {}
-
-    def add_provider(
-        self,
-        provider_cls: Type[Any],
-        structured_cls: Type[Any],
-        supports_logprobs: bool,
-    ) -> None:
-        """Add a provider to the registry."""
-        self.providers.append((provider_cls, structured_cls, supports_logprobs))
 
     def add_provider_info(self, name: str, info: ProviderInfo) -> None:
         """Add detailed provider information."""
         self._provider_info[name] = info
-
-    def get_providers(self) -> List[Tuple[Type[Any], Type[Any], bool]]:
-        """Get all registered providers."""
-        return self.providers
-
-    def get_provider_by_name(
-        self, name: str
-    ) -> Optional[Tuple[Type[Any], Type[Any], bool]]:
-        """Get a provider by name."""
-        for provider_cls, structured_cls, supports_logprobs in self.providers:
-            if provider_cls.__name__ == name or structured_cls.__name__ == name:
-                return provider_cls, structured_cls, supports_logprobs
-        return None
-
-    def get_recommended_provider(self) -> Optional[Tuple[Type[Any], Type[Any]]]:
-        """Get the recommended provider (first one that supports logprobs)."""
-        for provider_cls, structured_cls, supports_logprobs in self.providers:
-            if supports_logprobs:
-                return provider_cls, structured_cls
-        return None
-
-    def get_supported_methods(self) -> List[str]:
-        """Get all supported method names."""
-        return [provider_cls.__name__ for provider_cls, _, _ in self.providers]
-
-    def get_recommended_method(self) -> Optional[str]:
-        """Get the recommended method name."""
-        provider_result = self.get_recommended_provider()
-        if provider_result:
-            provider_cls, _ = provider_result
-            return provider_cls.__name__
-        return None
-
-    def get_supports_logprobs(self) -> List[bool]:
-        """Get logprobs support status for all providers."""
-        return [supports_logprobs for _, _, supports_logprobs in self.providers]
-
-    def get_structured_cls_by_name(self, name: str) -> Optional[Type[Any]]:
-        """Get structured class by provider name."""
-        for provider_cls, structured_cls, _ in self.providers:
-            if provider_cls.__name__ == name or structured_cls.__name__ == name:
-                return structured_cls
-        return None
-
-    def get_provider_cls_by_name(self, name: str) -> Optional[Type[Any]]:
-        """Get provider class by name."""
-        for provider_cls, _, _ in self.providers:
-            if provider_cls.__name__ == name:
-                return provider_cls
-        return None
-
-    def get_structured_cls_by_provider(
-        self, provider_cls: Type[Any]
-    ) -> Optional[Type[Any]]:
-        """Get structured class by provider class."""
-        for p_cls, structured_cls, _ in self.providers:
-            if p_cls == provider_cls:
-                return structured_cls
-        return None
-
-    def get_supports_logprobs_by_provider(
-        self, provider_cls: Type[Any]
-    ) -> Optional[bool]:
-        """Get logprobs support by provider class."""
-        for p_cls, _, supports_logprobs in self.providers:
-            if p_cls == provider_cls:
-                return supports_logprobs
-        return None
-
-    def get_provider_cls_by_method(self, method: str) -> Optional[Type[Any]]:
-        """Get provider class by method name."""
-        for provider_cls, _, _ in self.providers:
-            if provider_cls.__name__ == method:
-                return provider_cls
-        return None
-
-    def get_supports_logprobs_by_method(self, method: str) -> Optional[bool]:
-        """Get logprobs support by method name."""
-        for provider_cls, _, supports_logprobs in self.providers:
-            if provider_cls.__name__ == method:
-                return supports_logprobs
-        return None
 
     def get_providers_supporting_full_sequence_logprobs(self) -> List[str]:
         """Get list of provider names that support full sequence logprobs (needed for policy evaluation)."""
@@ -216,6 +128,10 @@ def _initialize_registry() -> None:
             default_template="comprehensive_judge",
             supported_methods=["function_calling", "json_schema"],
             recommended_method="json_schema",
+            base_url=None,
+            env_var="OPENAI_API_KEY",
+            name="openai",
+            capabilities={"supports_logprobs": True, "supports_structured": True},
         )
     except ImportError:
         pass
@@ -232,6 +148,10 @@ def _initialize_registry() -> None:
             default_template="comprehensive_judge",
             supported_methods=["function_calling"],
             recommended_method="function_calling",
+            base_url=None,
+            env_var="ANTHROPIC_API_KEY",
+            name="anthropic",
+            capabilities={"supports_logprobs": False, "supports_structured": True},
         )
     except ImportError:
         pass
@@ -248,6 +168,10 @@ def _initialize_registry() -> None:
             default_template="comprehensive_judge",
             supported_methods=["function_calling"],
             recommended_method="function_calling",
+            base_url=None,
+            env_var="GOOGLE_API_KEY",
+            name="google",
+            capabilities={"supports_logprobs": False, "supports_structured": True},
         )
     except ImportError:
         pass
@@ -264,6 +188,10 @@ def _initialize_registry() -> None:
             default_template="comprehensive_judge",
             supported_methods=["function_calling", "json_schema"],
             recommended_method="json_schema",
+            base_url="https://api.together.xyz/v1",
+            env_var="TOGETHER_API_KEY",
+            name="together",
+            capabilities={"supports_logprobs": True, "supports_structured": True},
         )
     except ImportError:
         pass
@@ -280,6 +208,10 @@ def _initialize_registry() -> None:
             default_template="comprehensive_judge",
             supported_methods=["function_calling", "json_schema"],
             recommended_method="json_schema",
+            base_url="https://api.fireworks.ai/inference/v1",
+            env_var="FIREWORKS_API_KEY",
+            name="fireworks",
+            capabilities={"supports_logprobs": True, "supports_structured": True},
         )
     except ImportError:
         pass
@@ -287,9 +219,6 @@ def _initialize_registry() -> None:
     # Add successfully imported providers to registry
     for name, info in providers_to_register.items():
         _registry.add_provider_info(name, info)
-        _registry.add_provider(
-            info.provider_cls, info.structured_cls, info.supports_logprobs
-        )
 
 
 # Initialize on import
@@ -305,3 +234,13 @@ def print_supported_providers() -> None:
 def list_providers() -> List[str]:
     """List available provider names."""
     return list(_registry._provider_info.keys())
+
+
+def get_provider(name: str) -> Optional[ProviderInfo]:
+    """Get provider info by name."""
+    return _registry._provider_info.get(name)
+
+
+def print_provider_capabilities() -> None:
+    """Print provider capabilities table."""
+    _registry.print_provider_capabilities()

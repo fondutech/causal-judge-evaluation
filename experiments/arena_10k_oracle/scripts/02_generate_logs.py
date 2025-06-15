@@ -72,7 +72,6 @@ def generate_logging_policy_responses(
     prompts: List[Dict[str, Any]],
     model_name: str = "accounts/fireworks/models/llama4-scout-instruct-basic",
     temperature: float = 0.5,
-    top_p: float = 0.95,
     max_new_tokens: int = 1024,
     batch_size: int = 16,
     checkpoint_path: Optional[str] = None,
@@ -105,7 +104,7 @@ def generate_logging_policy_responses(
     # Display configuration
     console.print(f"🔬 [bold blue]Generating π₀ (logging policy) responses[/bold blue]")
     console.print(f"📊 Model: {model_name}")
-    console.print(f"🌡️  Temperature: {temperature}, Top-p: {top_p}")
+    console.print(f"🌡️  Temperature: {temperature}")
     console.print(f"📝 Max tokens: {max_new_tokens}")
     console.print(f"📦 Batch size: {batch_size}")
 
@@ -118,7 +117,6 @@ def generate_logging_policy_responses(
         responses_with_logp = runner.generate_with_consistent_logp(
             prompt_texts,
             temperature=temperature,
-            top_p=top_p,
             max_new_tokens=max_new_tokens,
         )
 
@@ -132,7 +130,6 @@ def generate_logging_policy_responses(
                 "logging_policy": {
                     "model_name": model_name,
                     "temperature": temperature,
-                    "top_p": top_p,
                     "max_new_tokens": max_new_tokens,
                     "provider": "fireworks",
                 },
@@ -254,10 +251,6 @@ Examples:
     )
 
     parser.add_argument(
-        "--top-p", type=float, default=0.95, help="Top-p sampling (default: 0.95)"
-    )
-
-    parser.add_argument(
         "--max-tokens",
         type=int,
         default=1024,
@@ -295,7 +288,6 @@ Examples:
             prompts,
             model_name=args.model,
             temperature=args.temperature,
-            top_p=args.top_p,
             max_new_tokens=args.max_tokens,
             batch_size=args.batch_size,
             checkpoint_path=args.checkpoint,

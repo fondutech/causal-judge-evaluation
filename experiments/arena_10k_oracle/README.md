@@ -23,7 +23,7 @@ Based on the paper's methodology, this experiment is designed to demonstrate:
 ### Dataset
 - **Source**: 10,000 single-turn prompts from ChatBot Arena Conversations (agie-ai/lmsys-chatbot_arena_conversations)
 - **License**: CC-BY-4.0
-- **Split**: 25% oracle calibration (2,500), 75% evaluation (7,500)
+- **Split**: 25% human label calibration (2,500), 75% evaluation (7,500)
 
 ### Policies
 
