@@ -63,41 +63,4 @@ If you see errors related to AWS CodeArtifact or custom PyPI indexes:
 2. Or run the setup script again: `./scripts/setup-dev.sh`
 3. As a fallback, use the direct tools: `./scripts/lint.sh` and `./scripts/format.sh`
 
-# Arena Analysis Scripts
-
-This directory contains command-line scripts for running CJE experiments on Chatbot Arena data.
-
-## Quick Start
-
-```bash
-# Set your API key
-export OPENAI_API_KEY="sk-your-key-here"
-
-# Run with default settings (1000 samples, 5 models)
-python scripts/run_arena_analysis.py
-
-# Quick test run (100 samples, 2 models)
-python scripts/run_arena_analysis.py --max-samples 100 --target-models gpt-3.5-turbo gpt-4
-```
-
-## 📖 Full Documentation
-
-For comprehensive usage instructions, configuration options, troubleshooting, and examples, see:
-
-**[Arena Runner Guide](../docs/arena_runner_guide.md)**
-
-## Scripts
-
-- **`run_arena_analysis.py`** - Main one-command runner for token-level CJE analysis
-- `arena_workflow.py` - Legacy workflow script  
-- `arena_diagnostics.py` - Diagnostic and validation utilities
-- `make_figs.py` - Figure generation utilities
-- `ci_summary.py` - Confidence interval summary tools
-
-## Output
-
-Results are saved to timestamped directories in `outputs/arena_runs/` with:
-- JSON results with confidence intervals
-- Calibration and comparison plots  
-- Raw interaction logs (JSONL format)
-- ZIP bundle for easy sharing 
+ 
