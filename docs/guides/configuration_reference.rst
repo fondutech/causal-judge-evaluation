@@ -467,6 +467,55 @@ Provider Configuration
 🔄 Common Use Case Configurations
 --------------------------------
 
+Common Use Case: System Prompt Comparison
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Most common CJE use case** - comparing different system prompts with the same model:
+
+.. code-block:: yaml
+
+   # config/prompt_comparison.yaml
+   # Example: Testing which customer service style works better
+   
+   dataset:
+     name: "./data/customer_queries.csv"
+   
+   # Current production setup
+   logging_policy:
+     provider: "openai"
+     model_name: "gpt-4o-mini"
+     temperature: 0.7
+     system_prompt: "You are a helpful assistant."
+   
+   # Test different communication styles
+   target_policies:
+     - name: "professional"
+       provider: "openai"
+       model_name: "gpt-4o-mini"    # Same model
+       temperature: 0.7              # Same temperature
+       system_prompt: "You are a professional support specialist. Be formal and thorough."
+       
+     - name: "friendly"
+       provider: "openai"
+       model_name: "gpt-4o-mini"    # Same model
+       temperature: 0.7              # Same temperature
+       system_prompt: "You are a friendly support agent. Be warm and conversational."
+       
+     - name: "concise"
+       provider: "openai"
+       model_name: "gpt-4o-mini"    # Same model
+       temperature: 0.7              # Same temperature
+       system_prompt: "You are an efficient assistant. Be brief and direct."
+   
+   judge:
+     provider: "openai"
+     model_name: "gpt-4o-mini"
+     template: "customer_service_judge"
+   
+   estimator:
+     name: "DRCPO"
+     k: 5
+
 System Prompt Engineering
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
