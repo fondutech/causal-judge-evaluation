@@ -1,8 +1,11 @@
-# Arena 10K Fresh Oracle Experiment
+# Arena 10K Human Oracle Experiment
 
 ## Overview
 
-This experiment is designed to validate Causal Judge Evaluation (CJE) on 10,000 real ChatBot Arena prompts with fresh human oracle labels. The experiment aims to demonstrate CJE's accuracy, efficiency, and cost-effectiveness compared to traditional evaluation methods.
+This experiment is designed to validate Causal Judge Evaluation (CJE) on 10,000 real ChatBot Arena prompts with fresh **human oracle labels** (not automated model-based oracle). The experiment collects crowdsourced human judgments to serve as ground truth, demonstrating CJE's accuracy, efficiency, and cost-effectiveness compared to traditional evaluation methods.
+
+.. note::
+   **Human Oracle vs Automated Oracle**: This experiment uses crowdsourced human labels as ground truth ("human oracle"), not automated oracle mode which uses stronger AI models. The directory name refers to human oracle validation.
 
 ## Expected Results
 
@@ -18,22 +21,23 @@ Based on the paper's methodology, this experiment is designed to demonstrate:
 ## Experiment Design
 
 ### Dataset
-- **Source**: 10,000 single-turn prompts from ChatBot Arena Conversations
+- **Source**: 10,000 single-turn prompts from ChatBot Arena Conversations (agie-ai/lmsys-chatbot_arena_conversations)
 - **License**: CC-BY-4.0
 - **Split**: 25% oracle calibration (2,500), 75% evaluation (7,500)
 
 ### Policies
 
-| Policy | Description | Expected Uplift |
-|--------|-------------|-----------------|
-| π₀ (logging) | Llama-3-34B-Instruct, T=0.4, top_p=0.95 | baseline |
-| π_clone | Identical to π₀ (sanity check) | ~0pp |
-| π_CoT | Chain-of-thought prompt variant | +6pp |
-| π_RAG | Retrieval-augmented generation | +3pp |
-| π_big | Llama-3-70B with same prompt | +8pp |
+**Note**: Model specifications are defined in `configs/arena_10k.yaml`. The scripts use these defaults:
+
+| Policy | Model (from config) | Temperature | Description |
+|--------|---------------------|-------------|-------------|
+| π₀ (logging) | llama4-scout-instruct-basic | T=0.5 | baseline |
+| π_clone | llama4-scout-instruct-basic | T=0.5 | Identical to π₀ (sanity check) |
+| π_CoT | llama4-scout-instruct-basic | T=0.5 | Chain-of-thought prompt variant |
+| π_bigger_model | llama4-maverick-instruct-basic | T=0.5 | Bigger model variant |
 
 ### Judge Configuration
-- **Model**: Llama-3-34B-Instruct at T=0
+- **Model**: llama4-scout-instruct-basic at T=0 (from config)
 - **Rubric**: 0-10 helpfulness/correctness/safety scale
 - **Calibration**: Isotonic regression to human labels
 

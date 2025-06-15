@@ -33,7 +33,8 @@ Advanced Guides
    :caption: Specialized Topics
 
    weight_processing
-   validation/oracle_analysis  
+   validation/oracle_analysis
+   oracle_types
    trajectory_methods
    custom_components
 

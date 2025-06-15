@@ -49,7 +49,7 @@ estimator:
 paths:
   work_dir: "outputs/arena_test_cache"
 
-# Oracle configuration (for ground truth validation)
+# Automated oracle configuration (uses stronger model for ground truth, not human labels)
 oracle:
   enabled: true
   provider: "fireworks"

@@ -179,7 +179,10 @@ class JudgeConfig:
 
 @dataclass
 class OracleConfig:
-    """Configuration for oracle labeling in arena analysis."""
+    """Configuration for automated oracle labeling (using stronger models) in arena analysis.
+
+    Note: This is for automated oracle using AI models, not human oracle labels from crowdsourcing.
+    """
 
     enabled: bool = False
     provider: str = "fireworks"

@@ -73,7 +73,7 @@ def get_api_key() -> str:
 
 def score_responses_with_judge(
     responses: List[Dict[str, Any]],
-    judge_model: str = "accounts/fireworks/models/llama-v3-34b-instruct",
+    judge_model: str = "accounts/fireworks/models/llama4-scout-instruct-basic",
     temperature: float = 0.0,
     rubric: str = DEFAULT_RUBRIC,
     batch_size: int = 32,
@@ -82,7 +82,7 @@ def score_responses_with_judge(
     """
     Score responses using LLM judge.
 
-    Uses same model as logging policy but at T=0 for deterministic scoring.
+    Uses model from config at T=0 for deterministic scoring.
     """
     # Setup checkpointing
     checkpoint_manager = create_jsonl_checkpoint_manager(checkpoint_path)
@@ -269,8 +269,8 @@ Examples:
     parser.add_argument(
         "--model",
         type=str,
-        default="accounts/fireworks/models/llama-v3-34b-instruct",
-        help="Judge model (default: same as logging policy)",
+        default="accounts/fireworks/models/llama4-scout-instruct-basic",
+        help="Judge model (default: from config)",
     )
 
     parser.add_argument(

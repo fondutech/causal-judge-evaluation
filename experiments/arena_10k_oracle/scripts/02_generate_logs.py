@@ -70,21 +70,18 @@ def get_api_key() -> str:
 
 def generate_logging_policy_responses(
     prompts: List[Dict[str, Any]],
-    model_name: str = "accounts/fireworks/models/llama-v3-34b-instruct",
-    temperature: float = 0.4,
+    model_name: str = "accounts/fireworks/models/llama4-scout-instruct-basic",
+    temperature: float = 0.5,
     top_p: float = 0.95,
-    max_new_tokens: int = 512,
+    max_new_tokens: int = 1024,
     batch_size: int = 16,
     checkpoint_path: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Generate π₀ responses with log probabilities.
 
-    This matches the paper specification:
-    - Model: Llama-3-34B-Instruct
-    - Temperature: 0.4
-    - Top-p: 0.95
-    - Compute exact token-level log probabilities
+    Uses model and parameters from experiment config.
+    Computes exact token-level log probabilities via teacher forcing.
     """
     # Setup checkpointing
     checkpoint_manager = create_jsonl_checkpoint_manager(checkpoint_path)
@@ -245,15 +242,15 @@ Examples:
     parser.add_argument(
         "--model",
         type=str,
-        default="accounts/fireworks/models/llama-v3-34b-instruct",
-        help="Model name (default: Llama-3-34B-Instruct)",
+        default="accounts/fireworks/models/llama4-scout-instruct-basic",
+        help="Model name (default: from config)",
     )
 
     parser.add_argument(
         "--temperature",
         type=float,
-        default=0.4,
-        help="Sampling temperature (default: 0.4)",
+        default=0.5,
+        help="Sampling temperature (default: 0.5 from config)",
     )
 
     parser.add_argument(
@@ -263,8 +260,8 @@ Examples:
     parser.add_argument(
         "--max-tokens",
         type=int,
-        default=512,
-        help="Maximum tokens to generate (default: 512)",
+        default=1024,
+        help="Maximum tokens to generate (default: 1024 from config)",
     )
 
     parser.add_argument(

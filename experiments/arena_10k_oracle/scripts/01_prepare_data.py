@@ -39,7 +39,7 @@ def download_and_prepare_corpus(
         from datasets import load_dataset
 
         # Download the dataset
-        ds = load_dataset("lmsys/chatbot_arena_conversations", split="train")
+        ds = load_dataset("agie-ai/lmsys-chatbot_arena_conversations", split="train")
         console.print(f"✅ [green]Downloaded {len(ds):,} conversations[/green]")
 
         # Extract first-turn user prompts
@@ -47,12 +47,15 @@ def download_and_prepare_corpus(
         seen_prompts = set()
 
         for idx, row in enumerate(ds):
-            if not row.get("conversation"):
+            # ChatBot Arena has conversation_a and conversation_b, not just conversation
+            # Both start with the same user prompt, so we can use either
+            conversation = row.get("conversation_a") or row.get("conversation_b")
+            if not conversation:
                 continue
 
             # Get first user message
             first_turn = None
-            for msg in row["conversation"]:
+            for msg in conversation:
                 if msg.get("role") == "user":
                     first_turn = msg
                     break
@@ -73,10 +76,13 @@ def download_and_prepare_corpus(
                     "prompt": prompt_text,
                     "metadata": {
                         "source": "chatbot_arena",
-                        "conversation_id": row.get("conversation_id", idx),
+                        "question_id": row.get("question_id", f"q_{idx}"),
                         "timestamp": row.get("tstamp", None),
                         "model_a": row.get("model_a", "unknown"),
                         "model_b": row.get("model_b", "unknown"),
+                        "winner": row.get("winner", "unknown"),
+                        "language": row.get("language", "unknown"),
+                        "turn": row.get("turn", 1),
                     },
                 }
             )

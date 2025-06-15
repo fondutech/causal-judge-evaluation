@@ -1,12 +1,18 @@
 Oracle Analysis Guide
 ====================
 
-Oracle analysis provides high-precision evaluation by comparing CJE estimates against ground truth utility labels from powerful models. This guide covers oracle validation techniques and interpretation of oracle analysis results.
+Oracle analysis provides high-precision evaluation by comparing CJE estimates against ground truth utility labels. This guide covers **automated oracle validation** using powerful models (e.g., GPT-4o) - not to be confused with human oracle labels from crowdsourcing.
+
+.. important::
+   **Two Types of Oracle in CJE:**
+   
+   1. **Automated Oracle** (this guide): Uses stronger AI models as ground truth
+   2. **Human Oracle**: Crowdsourced human labels as ground truth (see Arena 10K experiment)
 
 Overview
 --------
 
-Oracle analysis answers the critical question: "How accurate are my CJE estimates?" by comparing them against expensive but highly accurate "oracle" utility labels from models like GPT-4o.
+Automated oracle analysis answers the critical question: "How accurate are my CJE estimates?" by comparing them against expensive but highly accurate utility labels from stronger models like GPT-4o.
 
 **Key Benefits:**
 

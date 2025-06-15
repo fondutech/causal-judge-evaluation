@@ -128,7 +128,7 @@ The `cje/research/` module contains experimental features:
 
 **Log Ratio Clipping**: Default clip value of 20.0 prevents extreme importance weights. This is configurable in diagnostics section.
 
-**Oracle Mode**: When enabled, uses a stronger model for ground truth labels. Useful for validation but increases API costs.
+**Automated Oracle Mode**: When enabled, uses a stronger model (e.g., GPT-4o) instead of human labels for ground truth validation. Useful for validation but increases API costs. Note: This is different from human oracle labels collected via crowdsourcing.
 
 **Trajectory Support**: The codebase supports both single-turn and multi-turn trajectory evaluation via `cje/data/trajectory_dataset.py` and `cje/estimators/trajectory_drcpo.py`.
 
