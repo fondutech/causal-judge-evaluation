@@ -6,6 +6,11 @@
 CJE: Causal Judge Evaluation Toolkit
 =====================================
 
+.. image:: img/CJE logo.svg
+   :align: center
+   :alt: CJE Logo
+   :width: 400
+
 .. image:: https://img.shields.io/pypi/v/cje.svg
    :target: https://pypi.org/project/cje/
    :alt: PyPI version
