@@ -129,14 +129,14 @@ class IPS(Estimator[Dict[str, Any]]):
 
         # Add weight statistics to metadata
         if self._weight_stats:
-            structured_metadata = metadata.to_dict()
-            structured_metadata["n_samples"] = self._weight_stats["n_samples"]
-            structured_metadata["n_policies"] = self._weight_stats["n_policies"]
-            structured_metadata["weight_range"] = self._weight_stats["weight_range"]
-            structured_metadata["ess_values"] = self._weight_stats["ess_values"]
-            structured_metadata["ess_percentage"] = self._weight_stats["ess_percentage"]
-            structured_metadata["weight_stats"] = self._weight_stats
-            metadata = EstimatorMetadata(**structured_metadata)
+            metadata.weight_range = self._weight_stats.get("weight_range")
+            metadata.ess_values = self._weight_stats.get("ess_values")
+            metadata.ess_percentage = self._weight_stats.get("ess_percentage")
+            metadata.n_clipped = self._weight_stats.get("n_clipped", 0)
+            metadata.clip_fraction = self._weight_stats.get("clip_fraction", 0.0)
+            metadata.stabilization_applied = self._weight_stats.get(
+                "stabilization_applied", False
+            )
 
         return EstimationResult(
             v_hat=v_hat,
