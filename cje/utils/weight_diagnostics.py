@@ -9,6 +9,7 @@ import math
 import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
+from scipy import stats
 
 
 @dataclass
@@ -26,6 +27,20 @@ class WeightDiagnostics:
     consistency_flag: str  # "GOOD", "WARNING", "CRITICAL"
     log_weight_range: float  # Max - Min log weights
     weight_coefficient_variation: float  # Std/Mean of weights
+    # Overlap diagnostics
+    overlap_score: Optional[float] = None  # 0-1, higher is better
+    common_support_fraction: Optional[float] = None  # Fraction with good support
+
+
+@dataclass
+class OverlapDiagnostics:
+    """Container for overlap analysis results."""
+
+    overlap_score: float  # 0-1 overlap measure
+    common_support_fraction: float  # Fraction with good propensity support
+    log_ratio_percentiles: Dict[int, float]  # 5th, 25th, 50th, 75th, 95th
+    extreme_log_ratio_fraction: float  # Fraction with |log_ratio| > threshold
+    positivity_violations: int  # Count of near-zero propensities
 
 
 def compute_importance_weights(
@@ -204,6 +219,11 @@ def format_weight_diagnostics(diagnostics: WeightDiagnostics) -> str:
                 f"      - {diagnostics.extreme_weight_count} extreme weights detected"
             )
 
+    # Add overlap diagnostics if available
+    if diagnostics.overlap_score is not None:
+        lines.append(f"   Overlap score: {diagnostics.overlap_score:.2f} (0-1 scale)")
+        lines.append(f"   Common support: {diagnostics.common_support_fraction:.1%}")
+
     return "\n".join(lines)
 
 
@@ -237,11 +257,122 @@ def analyze_arena_weights(data: List[Dict[str, Any]]) -> Dict[str, WeightDiagnos
         # Determine expected weight (1.0 for scout/identical policies)
         expected_weight = 1.0 if "scout" in policy_name.lower() else None
 
-        # Diagnose
-        policy_diagnostics = diagnose_weights(weights, policy_name, expected_weight)
+        # Diagnose with overlap
+        policy_diagnostics = diagnose_weights_with_overlap(
+            weights, behavior_logprobs, target_logprobs, policy_name, expected_weight
+        )
         diagnostics[policy_name] = policy_diagnostics
 
     return diagnostics
+
+
+def compute_overlap_diagnostics(
+    behavior_logprobs: List[float],
+    target_logprobs: List[float],
+    min_logprob_threshold: float = -50.0,
+) -> OverlapDiagnostics:
+    """
+    Compute overlap diagnostics between behavior and target policies.
+
+    Args:
+        behavior_logprobs: Log probabilities under behavior policy
+        target_logprobs: Log probabilities under target policy
+        min_logprob_threshold: Threshold for near-zero probabilities
+
+    Returns:
+        OverlapDiagnostics object with overlap metrics
+    """
+    if len(behavior_logprobs) != len(target_logprobs):
+        raise ValueError("Behavior and target log-probs must have same length")
+
+    n = len(behavior_logprobs)
+    log_ratios = []
+    positivity_violations = 0
+
+    for logp_b, logp_t in zip(behavior_logprobs, target_logprobs):
+        # Check for positivity violations
+        if logp_b < min_logprob_threshold or logp_t < min_logprob_threshold:
+            positivity_violations += 1
+            continue
+
+        log_ratio = logp_t - logp_b
+        log_ratios.append(log_ratio)
+
+    if not log_ratios:
+        # No valid samples for overlap computation
+        return OverlapDiagnostics(
+            overlap_score=0.0,
+            common_support_fraction=0.0,
+            log_ratio_percentiles={5: 0.0, 25: 0.0, 50: 0.0, 75: 0.0, 95: 0.0},
+            extreme_log_ratio_fraction=1.0,
+            positivity_violations=positivity_violations,
+        )
+
+    # Compute percentiles
+    percentiles = np.percentile(log_ratios, [5, 25, 50, 75, 95])
+    log_ratio_percentiles = {
+        5: float(percentiles[0]),
+        25: float(percentiles[1]),
+        50: float(percentiles[2]),
+        75: float(percentiles[3]),
+        95: float(percentiles[4]),
+    }
+
+    # Compute overlap score (based on normalized entropy of weights)
+    weights = [math.exp(lr) for lr in log_ratios]
+    weights_normalized = np.array(weights) / np.sum(weights)
+    # Overlap score: 1 - normalized entropy (higher means better overlap)
+    entropy = -np.sum(weights_normalized * np.log(weights_normalized + 1e-10))
+    max_entropy = math.log(len(weights))
+    overlap_score = 1.0 - (entropy / max_entropy) if max_entropy > 0 else 0.0
+
+    # Common support fraction
+    common_support_fraction = len(log_ratios) / n
+
+    # Extreme log ratio fraction (|log_ratio| > 5)
+    extreme_threshold = 5.0
+    extreme_count = sum(1 for lr in log_ratios if abs(lr) > extreme_threshold)
+    extreme_log_ratio_fraction = extreme_count / len(log_ratios) if log_ratios else 0.0
+
+    return OverlapDiagnostics(
+        overlap_score=overlap_score,
+        common_support_fraction=common_support_fraction,
+        log_ratio_percentiles=log_ratio_percentiles,
+        extreme_log_ratio_fraction=extreme_log_ratio_fraction,
+        positivity_violations=positivity_violations,
+    )
+
+
+def diagnose_weights_with_overlap(
+    weights: List[float],
+    behavior_logprobs: List[float],
+    target_logprobs: List[float],
+    policy_name: str = "Unknown",
+    expected_weight: Optional[float] = None,
+) -> WeightDiagnostics:
+    """
+    Compute comprehensive weight diagnostics including overlap analysis.
+
+    This extends the basic diagnose_weights function with overlap metrics.
+    """
+    # Get basic weight diagnostics
+    basic_diagnostics = diagnose_weights(weights, policy_name, expected_weight)
+
+    # Compute overlap diagnostics
+    overlap_diag = compute_overlap_diagnostics(behavior_logprobs, target_logprobs)
+
+    # Add overlap metrics to weight diagnostics
+    basic_diagnostics.overlap_score = overlap_diag.overlap_score
+    basic_diagnostics.common_support_fraction = overlap_diag.common_support_fraction
+
+    # Update consistency flag based on overlap
+    if overlap_diag.common_support_fraction < 0.5:  # Less than 50% common support
+        if basic_diagnostics.consistency_flag == "GOOD":
+            basic_diagnostics.consistency_flag = "WARNING"
+        elif basic_diagnostics.consistency_flag == "WARNING":
+            basic_diagnostics.consistency_flag = "CRITICAL"
+
+    return basic_diagnostics
 
 
 def create_weight_summary_table(diagnostics: Dict[str, WeightDiagnostics]) -> str:
@@ -253,8 +384,8 @@ def create_weight_summary_table(diagnostics: Dict[str, WeightDiagnostics]) -> st
     lines = [
         "📊 **Importance Weight Summary**",
         "",
-        "| Policy | ESS | Mean Weight | Status | Issues |",
-        "|--------|-----|-------------|--------|--------|",
+        "| Policy | ESS | Mean Weight | Overlap | Status | Issues |",
+        "|--------|-----|-------------|---------|--------|--------|",
     ]
 
     for policy_name, diag in diagnostics.items():
@@ -269,12 +400,54 @@ def create_weight_summary_table(diagnostics: Dict[str, WeightDiagnostics]) -> st
             issues.append(f"{diag.extreme_weight_count} extreme")
         if diag.zero_weight_count > 0:
             issues.append(f"{diag.zero_weight_count} zero")
+        if (
+            diag.common_support_fraction is not None
+            and diag.common_support_fraction < 0.5
+        ):
+            issues.append(f"Poor overlap ({diag.common_support_fraction:.1%})")
 
         issues_str = ", ".join(issues) if issues else "None"
 
+        # Format overlap score
+        overlap_str = (
+            f"{diag.overlap_score:.2f}" if diag.overlap_score is not None else "N/A"
+        )
+
         lines.append(
             f"| {policy_name} | {diag.ess_fraction:.1%} | {diag.mean_weight:.4f} | "
-            f"{status_emoji} {diag.consistency_flag} | {issues_str} |"
+            f"{overlap_str} | {status_emoji} {diag.consistency_flag} | {issues_str} |"
+        )
+
+    return "\n".join(lines)
+
+
+def format_overlap_diagnostics(
+    overlap_diag: OverlapDiagnostics,
+    policy_name: str = "Unknown",
+) -> str:
+    """Format detailed overlap diagnostics for display."""
+
+    lines = [
+        f"📈 **{policy_name}** Overlap Analysis:",
+        f"   Overlap Score: {overlap_diag.overlap_score:.3f} (0=poor, 1=perfect)",
+        f"   Common Support: {overlap_diag.common_support_fraction:.1%}",
+        f"   Positivity Violations: {overlap_diag.positivity_violations}",
+    ]
+
+    # Add log ratio percentiles
+    lines.append("   Log Ratio Percentiles:")
+    for p, value in overlap_diag.log_ratio_percentiles.items():
+        lines.append(f"      P{p}: {value:+.2f}")
+
+    # Add warnings
+    if overlap_diag.extreme_log_ratio_fraction > 0.1:
+        lines.append(
+            f"   ⚠️  {overlap_diag.extreme_log_ratio_fraction:.1%} of samples have extreme log ratios"
+        )
+
+    if overlap_diag.common_support_fraction < 0.8:
+        lines.append(
+            f"   ⚠️  Limited overlap: only {overlap_diag.common_support_fraction:.1%} common support"
         )
 
     return "\n".join(lines)
