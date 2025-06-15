@@ -12,4 +12,3 @@ repos:
         additional_dependencies: [types-PyYAML]
         language_version: python3.10
         args: [--ignore-missing-imports, --no-strict-optional, --no-site-packages]
-        exclude: ^(cje/cli/simple_cli\.py|cje/core\.py|cje/results/visualization\.py)

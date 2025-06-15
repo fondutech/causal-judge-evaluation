@@ -2,13 +2,20 @@
 Visualization utilities for CJE results.
 """
 
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any, Union, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import seaborn as sns
 from pathlib import Path
+import math
 
 from .results import EstimationResult
+from ..utils.weight_diagnostics import (
+    WeightDiagnostics,
+    compute_importance_weights,
+    analyze_arena_weights,
+)
 
 
 def plot_policy_comparison(
@@ -282,3 +289,153 @@ def create_summary_report(
         figures["bootstrap_distribution"] = fig
 
     return figures
+
+
+def plot_weight_distributions(
+    diagnostics: Dict[str, WeightDiagnostics],
+    data: List[Dict[str, Any]],
+    save_path: Optional[Path] = None,
+) -> plt.Figure:
+    """Create weight distribution plots for all policies.
+
+    Args:
+        diagnostics: Weight diagnostics by policy name
+        data: Original data with log probabilities
+        save_path: Optional path to save figure
+
+    Returns:
+        matplotlib Figure
+    """
+    if not diagnostics:
+        raise ValueError("No weight diagnostics to plot")
+
+    # Set up the plot
+    n_policies = len(diagnostics)
+    fig, axes = plt.subplots(n_policies, 2, figsize=(12, 4 * n_policies))
+
+    # Handle single policy case
+    if n_policies == 1:
+        axes = axes.reshape(1, -1)
+
+    behavior_logprobs = [record["logp"] for record in data]
+
+    for i, (policy_name, diag) in enumerate(diagnostics.items()):
+        # Get weights for this policy
+        target_logprobs = []
+        for record in data:
+            logp_target = record.get("logp_target_all", {}).get(policy_name, 0.0)
+            target_logprobs.append(logp_target)
+
+        weights = compute_importance_weights(behavior_logprobs, target_logprobs)
+        finite_weights = [w for w in weights if math.isfinite(w)]
+
+        # Left plot: Weight distribution (histogram)
+        ax1 = axes[i, 0]
+        if finite_weights:
+            log_weights = [math.log10(max(w, 1e-10)) for w in finite_weights]
+            ax1.hist(log_weights, bins=30, alpha=0.7, edgecolor="black")
+            ax1.axvline(0, color="red", linestyle="--", label="Expected (log₁₀=0)")
+            ax1.set_xlabel("Log₁₀(Weight)")
+            ax1.set_ylabel("Count")
+            ax1.legend()
+        else:
+            ax1.text(0.5, 0.5, "No finite weights", ha="center", va="center")
+
+        # Color-code title by diagnostic status
+        title_color = {"GOOD": "green", "WARNING": "orange", "CRITICAL": "red"}[
+            diag.consistency_flag
+        ]
+        ax1.set_title(
+            f"{policy_name} - Weight Distribution", color=title_color, fontweight="bold"
+        )
+
+        # Right plot: Weight vs sample index
+        ax2 = axes[i, 1]
+        if finite_weights:
+            indices = list(range(len(weights)))
+            clipped_weights = [min(max(w, 1e-10), 1e10) for w in weights]
+            ax2.scatter(indices, clipped_weights, alpha=0.6, s=10)
+            ax2.axhline(1.0, color="red", linestyle="--", label="Expected=1.0")
+            ax2.set_xlabel("Sample Index")
+            ax2.set_ylabel("Weight")
+            ax2.set_yscale("log")
+            ax2.legend()
+
+        ax2.set_title(f"ESS: {diag.ess_fraction:.1%} | Mean: {diag.mean_weight:.4f}")
+
+    plt.suptitle("Importance Weight Diagnostics", fontsize=16)
+    plt.tight_layout()
+
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+
+    return fig
+
+
+def plot_ess_comparison(
+    diagnostics: Dict[str, WeightDiagnostics],
+    save_path: Optional[Path] = None,
+) -> plt.Figure:
+    """Create ESS comparison bar plot.
+
+    Args:
+        diagnostics: Weight diagnostics by policy name
+        save_path: Optional path to save figure
+
+    Returns:
+        matplotlib Figure
+    """
+    if not diagnostics:
+        raise ValueError("No weight diagnostics to plot")
+
+    # Extract data
+    policy_names = list(diagnostics.keys())
+    ess_fractions = [diag.ess_fraction for diag in diagnostics.values()]
+    flags = [diag.consistency_flag for diag in diagnostics.values()]
+
+    # Color-code bars by status
+    colors = {"GOOD": "green", "WARNING": "orange", "CRITICAL": "red"}
+    bar_colors = [colors[flag] for flag in flags]
+
+    # Create plot
+    fig, ax = plt.subplots(figsize=(max(8, len(policy_names) * 1.5), 6))
+    bars = ax.bar(
+        policy_names, ess_fractions, color=bar_colors, alpha=0.7, edgecolor="black"
+    )
+
+    # Add reference lines
+    ax.axhline(0.1, color="orange", linestyle="--", alpha=0.7, label="Warning (10%)")
+    ax.axhline(0.01, color="red", linestyle="--", alpha=0.7, label="Critical (1%)")
+
+    # Labels and formatting
+    ax.set_ylabel("Effective Sample Size (ESS) Fraction")
+    ax.set_title("ESS Comparison Across Policies", fontweight="bold")
+    ax.set_ylim(0, max(max(ess_fractions) * 1.1, 0.2))
+    plt.xticks(rotation=45, ha="right")
+
+    # Add percentage labels on bars
+    for bar, ess in zip(bars, ess_fractions):
+        height = bar.get_height()
+        ax.text(
+            bar.get_x() + bar.get_width() / 2.0,
+            height + 0.01,
+            f"{ess:.1%}",
+            ha="center",
+            va="bottom",
+            fontweight="bold",
+        )
+
+    # Legend
+    legend_elements = [
+        mpatches.Patch(color="green", alpha=0.7, label="Good (ESS ≥ 10%)"),
+        mpatches.Patch(color="orange", alpha=0.7, label="Warning (1% ≤ ESS < 10%)"),
+        mpatches.Patch(color="red", alpha=0.7, label="Critical (ESS < 1%)"),
+    ]
+    ax.legend(handles=legend_elements, loc="upper right")
+
+    plt.tight_layout()
+
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+
+    return fig

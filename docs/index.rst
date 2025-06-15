@@ -6,7 +6,7 @@
 CJE: Causal Judge Evaluation Toolkit
 =====================================
 
-.. image:: img/CJE logo.svg
+.. image:: img/CJE_logo.svg
    :align: center
    :alt: CJE Logo
    :width: 400
