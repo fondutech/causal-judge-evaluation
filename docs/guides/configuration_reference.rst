@@ -49,7 +49,6 @@ The absolute minimum to get started:
    estimator:
      name: "DRCPO"                 # Doubly-robust (recommended)
      k: 5                          # Cross-validation folds
-     clip: 20.0                    # Importance weight clipping
 
 Production Configuration
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -91,7 +90,6 @@ Recommended settings for production use:
    estimator:
      name: "DRCPO"                 # Doubly-robust (recommended)
      k: 5                          # Cross-validation folds
-     clip: 20.0                    # Importance weight clipping
      n_jobs: -1                    # Use all CPU cores
    
    # Paths configuration
@@ -141,7 +139,6 @@ For large-scale ChatBot Arena-style analysis:
    estimator:
      name: "MRDR"                  # Model-regularized doubly-robust
      k: 10                         # More folds for larger dataset
-     clip: 20.0                    # Importance weight clipping
    
    # Paths configuration
    paths:
@@ -361,8 +358,6 @@ Estimator Configuration
 
    estimator:
      name: "IPS"
-     clip: 20.0                     # Importance weight clipping (exp(20) ≈ 485M)
-                                    # Theory: Prevents variance explosion from extreme weights
      seed: 42                       # Random seed for reproducibility
 
 **SNIPS (Self-Normalized IPS):**
@@ -371,8 +366,6 @@ Estimator Configuration
 
    estimator:
      name: "SNIPS"
-     clip: 20.0                     # Weight clipping threshold 
-                                    # Theory: SNIPS normalizes weights, reducing bias vs IPS
      seed: 42
 
 **DR-CPO (Doubly Robust - Cross Policy Optimization):**
@@ -383,8 +376,6 @@ Estimator Configuration
      name: "DRCPO"                  # Implements Algorithm 1 from CJE paper
      k: 5                          # Cross-fitting folds for nuisance estimation
                                     # Theory: Prevents overfitting bias in outcome model
-     clip: 20.0                    # Log-ratio clipping before exponentiation
-                                    # Theory: exp(20) ≈ 485M max weight, prevents overflow
      calibrate_weights: true       # Isotonic calibration ensuring E[w] = 1
                                     # Theory: CRITICAL for single-rate efficiency (Theorem 5.2)
      calibrate_outcome: true       # Additional outcome model calibration
@@ -400,8 +391,7 @@ Estimator Configuration
      name: "MRDR"                   # Variance-optimized outcome model selection
      k: 10                         # More folds for better robustness
                                     # Theory: MRDR benefits from more cross-validation
-     clip: 20.0                    # Same clipping as DR-CPO
-     calibrate_weights: true       # Weight calibration (same as DR-CPO)
+     calibrate_weights: true       # Weight calibration
      calibrate_outcome: true       # Outcome calibration (implementation enhancement)
      n_jobs: -1
      seed: 42
@@ -915,8 +905,6 @@ Essential Settings
 
    # Weight processing
    estimator:
-     clip: 20.0                     # Paper default: clip(100) in tail smoother
-                                    # Implementation: exp(20) ≈ 485M for numerical stability
      calibrate_outcome: true        # Implementation enhancement (beyond paper)
 
 Production Deployment Checklist
@@ -969,11 +957,10 @@ Theoretical Parameter Guidance
                                     # Theory: k=5 balances bias-variance for n^{-1/4} rates
      k: 10                          # For datasets ≤ 5k samples (paper recommendation)
 
-   # Clipping (affects robustness)
-   estimator:
-     clip: 20.0                     # Conservative (exp(20) ≈ 485M)
-     clip: 100.0                    # Paper's "tail smoother default clip(100)"
-                                    # Theory: Higher clip preserves more signal but risks variance
+   # Hard clipping (in diagnostics config)
+   diagnostics:
+     log_ratio_clip: 20.0           # Conservative (exp(20) ≈ 485M)
+                                    # Theory: Applied in log space to prevent overflow
 
    # Outcome model complexity (affects single-rate property)
    outcome_model:
@@ -1044,7 +1031,6 @@ Research vs Production Settings
    estimator:
      stabilize_weights: false       # Disable numerical interventions
      calibrate_outcome: false       # Paper baseline (weight calibration only)
-     clip: null                     # No weight clipping
 
 **Production Mode** *(robust deployment)*:
 
@@ -1053,7 +1039,6 @@ Research vs Production Settings
    estimator:
      stabilize_weights: true        # Enable numerical stabilization
      calibrate_outcome: true        # Additional robustness layer
-     clip: 20.0                     # Conservative clipping for stability
 
 📋 Complete Configuration Example
 --------------------------------
@@ -1117,7 +1102,6 @@ Here's a comprehensive configuration file showing all available options:
    estimator:
      name: "DRCPO"                    # IPS/SNIPS/DRCPO/MRDR
      k: 5                             # Cross-validation folds
-     clip: 20.0                       # Log-ratio clipping threshold
      seed: 42                         # Random seed
      n_jobs: -1                       # Parallel jobs (-1 = all cores)
      # Advanced options

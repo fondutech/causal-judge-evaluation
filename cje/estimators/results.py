@@ -60,19 +60,6 @@ class EstimationResult:
         ci_upper = self.v_hat + z * self.se
         return ci_lower, ci_upper
 
-    def confidence_intervals(
-        self, level: float = 0.95
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """Alias for confidence_interval() for backward compatibility.
-
-        Args:
-            level: Confidence level (default 0.95 for 95% CI)
-
-        Returns:
-            Tuple of (lower_bounds, upper_bounds)
-        """
-        return self.confidence_interval(level)
-
     def best_policy(self) -> int:
         """Get index of best performing policy."""
         return int(np.argmax(self.v_hat))

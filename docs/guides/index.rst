@@ -102,7 +102,7 @@ Advanced Guides
    target_policies: [{name: "test", model_name: "gpt-4o-mini"}]
    
    # Production configuration  
-   estimator: {name: "DRCPO", k: 5, clip: 20.0}
+   estimator: {name: "DRCPO", k: 5}
    judge: {provider: "openai", model_name: "gpt-4o-mini"}
 
 🚨 Common Issues & Quick Fixes

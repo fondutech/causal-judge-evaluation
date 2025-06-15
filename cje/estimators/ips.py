@@ -1,46 +1,43 @@
 """
-Inverse Propensity Scoring (IPS) and Self-Normalized IPS (SNIPS) estimators.
+IPS (Inverse Propensity Scoring) estimators for CJE.
 
-This module contains multi-policy estimators for the CJE framework's unified architecture.
-All estimators handle multiple policies, with single-policy evaluation being treated as the K=1 case.
-
-**Architecture:**
-- MultiIPSEstimator: Native multi-policy implementation
-- MultiSNIPSEstimator: Native multi-policy implementation
+This module provides simple IPS estimators as baselines for comparison
+with more sophisticated doubly-robust methods.
 """
 
-from __future__ import annotations
+from typing import Dict, List, Any, Optional
 import numpy as np
-from typing import Dict, Any, List, Optional
-from .base import Estimator
+from tqdm.auto import tqdm
+from rich.console import Console
+
+from ..loggers import MultiTargetSampler
 from .results import EstimationResult
-from ..loggers.multi_target_sampler import MultiTargetSampler
+from .reliability import EstimatorMetadata
+from .base import Estimator
+
+console = Console()
 
 
-class MultiIPSEstimator(Estimator[Dict[str, Any]]):
+class IPS(Estimator[Dict[str, Any]]):
     """
-    Multi-policy IPS estimator for K target policies.
+    Standard Inverse Propensity Scoring estimator.
 
-    Estimates values for multiple target policies {π¹, π², ..., πᴷ} simultaneously:
-    V_hat_k = (1/n) * Σ w_i_k * r_i
-    where w_i_k = π^k(s_i|x_i) / π_0(s_i|x_i) is the importance ratio for policy k.
+    Uses raw importance weights without any outcome modeling.
+    This is the simplest off-policy estimator but can have high variance.
 
     Args:
-        sampler: MultiTargetSampler instance for K target policies
-        clip: Optional maximum value for importance weights (None for no clipping - research mode)
+        sampler: Multi-target sampler for computing log probabilities
         stabilize_weights: Whether to apply numerical stabilization for extreme log differences (default: True)
     """
 
     def __init__(
         self,
         sampler: MultiTargetSampler,
-        clip: Optional[float] = None,
         stabilize_weights: bool = True,
         **kwargs: Any,
     ) -> None:
-        super().__init__(**kwargs)
+        super().__init__()
         self.sampler = sampler
-        self.clip = clip
         self.stabilize_weights = stabilize_weights
         self.n: int = 0
         self.K: int = sampler.K
@@ -49,7 +46,8 @@ class MultiIPSEstimator(Estimator[Dict[str, Any]]):
         self._weight_stats: Optional[Dict[str, Any]] = None  # Weight statistics
 
     def fit(self, logs: List[Dict[str, Any]], **kwargs: Any) -> None:
-        """Fit the multi-policy IPS estimator.
+        """
+        Fit IPS estimator to logged data.
 
         Args:
             logs: List of logged data points with required fields:
@@ -58,27 +56,33 @@ class MultiIPSEstimator(Estimator[Dict[str, Any]]):
                   - logp: Log probability under behavior policy
                   - reward: Observed reward
         """
-        if not logs:
-            raise ValueError("Cannot fit estimator with empty logs")
-
         self.n = len(logs)
 
         # Extract data
-        self._rewards = np.array([log["reward"] for log in logs], dtype=float)
         contexts = [log["context"] for log in logs]
         responses = [log["response"] for log in logs]
-        logp_behavior = np.array([log["logp"] for log in logs], dtype=float)
+        self._rewards = np.array([log["reward"] for log in logs])
+        logp_behavior = np.array([log["logp"] for log in logs])
 
-        # Compute importance weights matrix (n, K) with statistics
-        self._weights_matrix, self._weight_stats = (
-            self.sampler.importance_weights_matrix(
-                contexts,
-                responses,
-                logp_behavior.tolist(),
-                clip=self.clip,
-                stabilize=self.stabilize_weights,
-                return_stats=True,
-            )
+        # Debug: Check log probability ranges
+        console.print(
+            f"[blue]Behavior log probs range: [{np.min(logp_behavior):.2f}, {np.max(logp_behavior):.2f}][/blue]"
+        )
+
+        # Compute importance weights
+        console.print(
+            f"[bold blue]Computing importance weights for {self.K} policies...[/bold blue]"
+        )
+
+        (
+            self._weights_matrix,
+            self._weight_stats,
+        ) = self.sampler.importance_weights_matrix(
+            contexts,
+            responses,
+            logp_behavior.tolist(),
+            stabilize=self.stabilize_weights,
+            return_stats=True,
         )
 
     def estimate(self) -> EstimationResult:
@@ -87,212 +91,159 @@ class MultiIPSEstimator(Estimator[Dict[str, Any]]):
 
         Returns:
             EstimationResult containing:
-                v_hat: Point estimates (K,)
-                se: Standard errors (K,)
-                cov: Covariance matrix (K, K)
-                n: Number of samples (scalar)
-                K: Number of policies (scalar)
-                name: Estimator name
+                - v_hat: Policy value estimates for each policy
+                - se: Standard errors via bootstrap
+                - eif_components: Efficient influence function values
+                - metadata: Estimation metadata including ESS
         """
-        if self._weights_matrix is None or self._rewards is None:
-            raise RuntimeError("Must call fit() before estimate()")
+        # Normalize weights
+        W_normalized = self._weights_matrix / np.mean(self._weights_matrix, axis=0)
 
-        # Compute point estimates: v_hat_k = (1/n) * Σ w_i_k * r_i
+        # IPS estimate: mean of weighted rewards
         v_hat = np.mean(
-            self._weights_matrix * self._rewards[:, np.newaxis], axis=0
-        )  # Shape (K,)
+            W_normalized * self._rewards[:, np.newaxis], axis=0
+        )  # Shape: (K,)
 
-        # Compute EIF matrix: phi_i_k = w_i_k * r_i - v_hat_k
-        phi_matrix = (
-            self._weights_matrix * self._rewards[:, np.newaxis] - v_hat
-        )  # Shape (n, K)
+        # EIF components for IPS: w * r - v_hat
+        eif_components = W_normalized * self._rewards[:, np.newaxis] - v_hat
 
-        # Compute covariance matrix
-        if self.K == 1:
-            # For K=1, ensure we get a 2D array
-            cov = np.array([[np.var(phi_matrix[:, 0], ddof=1) / self.n]])
-        else:
-            cov = np.cov(phi_matrix, rowvar=False) / self.n  # Shape (K, K)
+        # Bootstrap standard errors
+        n_bootstrap = 1000
+        bootstrap_estimates = []
+        for _ in range(n_bootstrap):
+            idx = np.random.choice(self.n, self.n, replace=True)
+            boot_estimate = np.mean(eif_components[idx], axis=0)
+            bootstrap_estimates.append(boot_estimate)
 
-        # Compute standard errors
-        se = np.sqrt(np.diag(cov))  # Shape (K,)
+        se = np.std(bootstrap_estimates, axis=0)
 
-        # Create structured metadata
-        from .reliability import EstimatorMetadata
+        # Covariance matrix
+        Sigma_hat = np.cov(eif_components.T) / self.n
 
-        structured_metadata = EstimatorMetadata(
+        # Create metadata
+        metadata = EstimatorMetadata(
             estimator_type="IPS",
-            clip_threshold=self.clip,
             stabilize_weights=self.stabilize_weights,
-            bootstrap_available=phi_matrix is not None,
+            bootstrap_available=True,
         )
 
-        # Add weight statistics if available
+        # Add weight statistics to metadata
         if self._weight_stats:
-            structured_metadata.ess_values = self._weight_stats["ess_values"]
-            structured_metadata.ess_percentage = self._weight_stats["ess_percentage"]
-            structured_metadata.n_clipped = self._weight_stats["n_clipped"]
-            structured_metadata.clip_fraction = self._weight_stats["clip_fraction"]
-            structured_metadata.weight_range = self._weight_stats["weight_range"]
-            structured_metadata.stabilization_applied = self._weight_stats[
-                "stabilization_applied"
-            ]
+            structured_metadata = metadata.to_dict()
+            structured_metadata["n_samples"] = self._weight_stats["n_samples"]
+            structured_metadata["n_policies"] = self._weight_stats["n_policies"]
+            structured_metadata["weight_range"] = self._weight_stats["weight_range"]
+            structured_metadata["ess_values"] = self._weight_stats["ess_values"]
+            structured_metadata["ess_percentage"] = self._weight_stats["ess_percentage"]
+            structured_metadata["weight_stats"] = self._weight_stats
+            metadata = EstimatorMetadata(**structured_metadata)
 
         return EstimationResult(
             v_hat=v_hat,
             se=se,
             n=self.n,
-            eif_components=phi_matrix,
-            covariance_matrix=cov,
-            estimator_type="IPS",
             n_policies=self.K,
-            metadata=structured_metadata.to_dict(),
+            eif_components=eif_components,
+            covariance_matrix=Sigma_hat,
+            metadata=metadata.to_dict(),
         )
 
 
-class MultiSNIPSEstimator(Estimator[Dict[str, Any]]):
+class WeightedIPS(IPS):
     """
-    Multi-policy SNIPS estimator for K target policies.
+    Weighted IPS estimator (for trajectory data).
 
-    Estimates values for multiple target policies using normalized importance sampling:
-    V_hat_k = (Σ w_i_k * r_i) / (Σ w_i_k)
-    where w_i_k = π^k(s_i|x_i) / π_0(s_i|x_i) is the importance ratio for policy k.
+    Extends standard IPS to handle trajectory weights, where each
+    trajectory has an associated weight (e.g., based on conversation length).
 
     Args:
-        sampler: MultiTargetSampler instance for K target policies
-        clip: Optional maximum value for importance weights (None for no clipping - research mode)
+        sampler: Multi-target sampler for computing log probabilities
         stabilize_weights: Whether to apply numerical stabilization for extreme log differences (default: True)
     """
 
     def __init__(
         self,
         sampler: MultiTargetSampler,
-        clip: Optional[float] = None,
         stabilize_weights: bool = True,
         **kwargs: Any,
     ) -> None:
-        super().__init__(**kwargs)
-        self.sampler = sampler
-        self.clip = clip
-        self.stabilize_weights = stabilize_weights
-        self.n: int = 0
-        self.K: int = sampler.K
-        self._weights_matrix: Optional[np.ndarray] = None  # Shape (n, K)
-        self._rewards: Optional[np.ndarray] = None  # Shape (n,)
-        self._weight_stats: Optional[Dict[str, Any]] = None  # Weight statistics
+        super().__init__(sampler, stabilize_weights=stabilize_weights, **kwargs)
+        self._trajectory_weights: Optional[np.ndarray] = None
 
     def fit(self, logs: List[Dict[str, Any]], **kwargs: Any) -> None:
-        """Fit the multi-policy SNIPS estimator.
+        """
+        Fit weighted IPS estimator to logged data.
 
         Args:
-            logs: List of logged data points with required fields:
-                  - context: Input context
-                  - response: Generated sequence
-                  - logp: Log probability under behavior policy
-                  - reward: Observed reward
+            logs: List of logged data points with trajectory weights
         """
-        if not logs:
-            raise ValueError("Cannot fit estimator with empty logs")
+        super().fit(logs, **kwargs)
 
-        self.n = len(logs)
-
-        # Extract data
-        self._rewards = np.array([log["reward"] for log in logs], dtype=float)
-        contexts = [log["context"] for log in logs]
-        responses = [log["response"] for log in logs]
-        logp_behavior = np.array([log["logp"] for log in logs], dtype=float)
-
-        # Compute importance weights matrix (n, K) with statistics
-        self._weights_matrix, self._weight_stats = (
-            self.sampler.importance_weights_matrix(
-                contexts,
-                responses,
-                logp_behavior.tolist(),
-                clip=self.clip,
-                stabilize=self.stabilize_weights,
-                return_stats=True,
+        # Extract trajectory weights if available
+        if logs and "trajectory_weight" in logs[0]:
+            self._trajectory_weights = np.array(
+                [log["trajectory_weight"] for log in logs]
             )
-        )
+        else:
+            # Equal weights if not provided
+            self._trajectory_weights = np.ones(self.n)
 
     def estimate(self) -> EstimationResult:
         """
-        Return multi-policy SNIPS estimates.
+        Return weighted IPS estimates.
 
         Returns:
-            EstimationResult containing:
-                v_hat: Point estimates (K,)
-                se: Standard errors (K,)
-                cov: Covariance matrix (K, K)
-                n: Number of samples (scalar)
-                K: Number of policies (scalar)
-                name: Estimator name
+            EstimationResult with trajectory-weighted estimates
         """
-        if self._weights_matrix is None or self._rewards is None:
-            raise RuntimeError("Must call fit() before estimate()")
+        # Get base IPS components
+        result = super().estimate()
 
-        # Compute normalized estimates: v_hat_k = (Σ w_i_k * r_i) / (Σ w_i_k)
-        w_sums = np.sum(self._weights_matrix, axis=0)  # Shape (K,)
+        # Apply trajectory weights
+        if self._trajectory_weights is not None:
+            # Normalize trajectory weights
+            traj_weights_normalized = self._trajectory_weights / np.mean(
+                self._trajectory_weights
+            )
 
-        # Check for zero weight sums
-        if np.any(w_sums == 0):
-            raise RuntimeError("Sum of importance weights is zero for some policies")
+            # Reweight EIF components
+            eif_weighted = (
+                result.eif_components * traj_weights_normalized[:, np.newaxis]
+            )
 
-        numerator = np.sum(
-            self._weights_matrix * self._rewards[:, np.newaxis], axis=0
-        )  # Shape (K,)
-        v_hat = numerator / w_sums  # Shape (K,)
+            # Recompute estimates with trajectory weights
+            v_hat_weighted = np.mean(eif_weighted + result.v_hat, axis=0)
 
-        # Compute EIF matrix for SNIPS using the correct formula
-        # For SNIPS, the EIF is: phi_i_k = (w_i_k * (r_i - v_hat_k)) / (w_sum_k / n)
-        # This is equivalent to: phi_i_k = n * w_i_k * (r_i - v_hat_k) / w_sum_k
-        #
-        # The key insight is that SNIPS variance should scale with n, not be divided by it.
-        # The previous bug divided by w_sum/n twice (once explicitly, once in covariance calculation).
+            # Bootstrap with trajectory weights
+            n_bootstrap = 1000
+            bootstrap_estimates = []
+            for _ in range(n_bootstrap):
+                idx = np.random.choice(self.n, self.n, replace=True)
+                boot_estimate = np.mean(eif_weighted[idx], axis=0)
+                bootstrap_estimates.append(boot_estimate)
 
-        phi_matrix = (
-            self.n * self._weights_matrix * (self._rewards[:, np.newaxis] - v_hat)
-        ) / w_sums[
-            np.newaxis, :
-        ]  # Shape (n, K) - Correct SNIPS EIF
+            se_weighted = np.std(bootstrap_estimates, axis=0)
 
-        # Compute covariance matrix
-        if self.K == 1:
-            # For K=1, ensure we get a 2D array
-            cov = np.array([[np.var(phi_matrix[:, 0], ddof=1) / self.n]])
-        else:
-            cov = np.cov(phi_matrix, rowvar=False) / self.n  # Shape (K, K)
+            # Update result
+            result.v_hat = v_hat_weighted
+            result.se = se_weighted
+            result.eif_components = eif_weighted
+            # Update metadata
+            if isinstance(result.metadata, dict):
+                result.metadata["estimator_type"] = "WeightedIPS"
+            else:
+                # Create new metadata dict
+                from .reliability import EstimatorMetadata
 
-        # Compute standard errors
-        se = np.sqrt(np.diag(cov))  # Shape (K,)
+                metadata = EstimatorMetadata(
+                    estimator_type="WeightedIPS",
+                    stabilize_weights=self.stabilize_weights,
+                    bootstrap_available=True,
+                )
+                result.metadata = metadata.to_dict()
 
-        # Create structured metadata
-        from .reliability import EstimatorMetadata
+        return result
 
-        structured_metadata = EstimatorMetadata(
-            estimator_type="SNIPS",
-            clip_threshold=self.clip,
-            stabilize_weights=self.stabilize_weights,
-            bootstrap_available=phi_matrix is not None,
-        )
 
-        # Add weight statistics if available
-        if self._weight_stats:
-            structured_metadata.ess_values = self._weight_stats["ess_values"]
-            structured_metadata.ess_percentage = self._weight_stats["ess_percentage"]
-            structured_metadata.n_clipped = self._weight_stats["n_clipped"]
-            structured_metadata.clip_fraction = self._weight_stats["clip_fraction"]
-            structured_metadata.weight_range = self._weight_stats["weight_range"]
-            structured_metadata.stabilization_applied = self._weight_stats[
-                "stabilization_applied"
-            ]
-
-        return EstimationResult(
-            v_hat=v_hat,
-            se=se,
-            n=self.n,
-            eif_components=phi_matrix,
-            covariance_matrix=cov,
-            estimator_type="SNIPS",
-            n_policies=self.K,
-            metadata=structured_metadata.to_dict(),
-        )
+# Aliases for backward compatibility and naming consistency
+MultiIPSEstimator = IPS
+MultiSNIPSEstimator = IPS  # SNIPS is just IPS with normalized weights

@@ -44,15 +44,8 @@ def create_user_friendly_result(
     # Create structured metadata for reliability assessment
     structured_metadata = None
     if estimation_result.metadata:
-        try:
-            # Try to create EstimatorMetadata from the stored metadata
-            structured_metadata = EstimatorMetadata(**estimation_result.metadata)
-        except (TypeError, ValueError):
-            # Fallback for legacy metadata format
-            structured_metadata = EstimatorMetadata(
-                estimator_type=estimation_result.estimator_type,
-                bootstrap_available=estimation_result.eif_components is not None,
-            )
+        # Create EstimatorMetadata from the stored metadata
+        structured_metadata = EstimatorMetadata(**estimation_result.metadata)
 
     # Find best policy
     best_policy_idx = int(np.argmax(estimation_result.v_hat))

@@ -43,7 +43,6 @@ class MultiMRDREstimator(Estimator[Dict[str, Any]]):
     Args:
         sampler: MultiTargetSampler instance for K target policies (required)
         k: Number of cross-validation folds (default: 5)
-        clip: Maximum value for importance weights (default: 20.0)
         seed: Random seed for shuffling data (default: 0)
         outcome_model_cls: The class of the outcome model to use (default: Ridge)
         outcome_model_kwargs: Keyword arguments for instantiating the outcome model
@@ -79,7 +78,6 @@ class MultiMRDREstimator(Estimator[Dict[str, Any]]):
         self,
         sampler: MultiTargetSampler,
         k: int = 5,
-        clip: Optional[float] = None,
         seed: int = 0,
         outcome_model_cls: Type[ModelType] = Ridge,
         outcome_model_kwargs: Optional[Dict[str, Any]] = None,
@@ -98,7 +96,6 @@ class MultiMRDREstimator(Estimator[Dict[str, Any]]):
         super().__init__()
         self.sampler = sampler
         self.k = k
-        self.clip = clip
         self.seed = seed
         self.outcome_model_cls = outcome_model_cls
         self.outcome_model_kwargs = outcome_model_kwargs or {}
@@ -161,7 +158,6 @@ class MultiMRDREstimator(Estimator[Dict[str, Any]]):
             contexts,
             responses,
             self._logp_behavior_full.tolist(),
-            clip=self.clip,
             stabilize=self.stabilize_weights,
             return_stats=True,
         )
@@ -566,7 +562,6 @@ class MultiMRDREstimator(Estimator[Dict[str, Any]]):
 
         structured_metadata = EstimatorMetadata(
             estimator_type="MRDR",
-            clip_threshold=self.clip,
             k_folds=self.k,
             stabilize_weights=self.stabilize_weights,
             bootstrap_available=eif_all is not None,

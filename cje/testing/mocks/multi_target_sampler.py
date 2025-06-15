@@ -152,7 +152,6 @@ class MockMultiTargetSampler(MultiTargetSampler):
         contexts: List[str],
         responses: List[str],
         logp_behavior: List[float],
-        clip: Optional[float] = 1000.0,
         stabilize: bool = True,
         return_stats: bool = False,
     ) -> Union[np.ndarray, Tuple[np.ndarray, Dict[str, Any]]]:
@@ -163,7 +162,6 @@ class MockMultiTargetSampler(MultiTargetSampler):
             contexts: List of input contexts
             responses: List of responses
             logp_behavior: List of behavior policy log probabilities π₀(response|context)
-            clip: Optional clipping value for importance weights
             stabilize: If True, stabilize weights to prevent extreme values
             return_stats: If True, return tuple of (weights, stats_dict)
 
@@ -191,12 +189,8 @@ class MockMultiTargetSampler(MultiTargetSampler):
         log_weights: np.ndarray = logp_target_matrix - logp_behavior_array
         weights: np.ndarray = np.exp(log_weights)
 
-        # Apply clipping if specified
-        if clip is not None and clip > 0:
-            weights = np.clip(weights, 0.0, clip)
-        else:
-            # Default reasonable bounds for testing
-            weights = np.clip(weights, 0.0, 1000.0)
+        # Apply reasonable bounds for testing
+        weights = np.clip(weights, 0.0, 1000.0)
 
         weights = np.nan_to_num(weights, nan=0.0, posinf=1000.0, neginf=0.0)
 

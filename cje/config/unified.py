@@ -226,9 +226,6 @@ class EstimatorConfig:
 
     name: str
     k: int = 5
-    clip: Optional[float] = (
-        None  # Use None for no clipping (default with log-space protection)
-    )
     seed: int = 0
 
     # Estimator-specific parameters
@@ -264,9 +261,6 @@ class EstimatorConfig:
 
         if self.k <= 0:
             raise ConfigurationError("k must be at least 1")
-
-        if self.clip is not None and self.clip <= 0:
-            raise ConfigurationError("clip must be positive")
 
         if self.n_jobs == 0:
             raise ConfigurationError("n_jobs cannot be 0")

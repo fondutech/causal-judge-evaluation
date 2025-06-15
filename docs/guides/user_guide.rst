@@ -101,7 +101,6 @@ Basic Estimator Usage
    estimator:
      name: "DRCPO"           # Doubly-robust (recommended)
      k: 5                    # Cross-validation folds
-     clip: 20.0              # Importance weight clipping
      n_jobs: -1              # Use all CPU cores for parallel cross-fitting
 
 **Common Patterns:**
@@ -111,19 +110,16 @@ Basic Estimator Usage
    # Quick baseline (IPS)
    estimator:
      name: "IPS"
-     clip: 20.0
 
    # Robust estimation (DRCPO - recommended)
    estimator:
      name: "DRCPO"
      k: 5                    # Cross-validation folds
-     clip: 20.0              # Importance weight clipping
 
    # Maximum robustness (MRDR)
    estimator:
      name: "MRDR"
-     k: 5                    # Cross-validation folds  
-     clip: 20.0              # Importance weight clipping
+     k: 5                    # Cross-validation folds
 
 🚨 Common Issues & Solutions
 ----------------------------
@@ -456,7 +452,6 @@ Estimator Selection
    estimator:
      name: "DRCPO"           # Doubly-robust (recommended)
      k: 5                    # Cross-validation folds
-     clip: 20.0              # Importance weight clipping
      n_jobs: -1              # Use all CPU cores for parallel cross-fitting
 
 **Performance Tips**:

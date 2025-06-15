@@ -1,9 +1,22 @@
 Weight Processing Pipeline
 =========================
 
-**Complete Pipeline: Raw Log Probabilities → Final Estimates**
+**Turning Raw Probabilities into Reliable Policy Estimates**
 
-This guide describes the full weight processing pipeline in CJE, documenting every transformation from raw log probabilities to final policy value estimates, plus the new diagnostic and visualization capabilities for catching weight issues early.
+This guide explains CJE's sophisticated weight processing pipeline—why each step exists, what problems it solves, and how the components work together to produce stable, unbiased causal estimates.
+
+Why Weight Processing Matters
+-----------------------------
+
+In off-policy evaluation, we estimate how well a target policy π' would perform using only data from a different behavior policy π₀. The core challenge: some responses are much more likely under π' than π₀, leading to extreme importance weights that can make estimates unreliable.
+
+**The Fundamental Problem**:
+
+- If π'(response|context) >> π₀(response|context), the weight explodes → high variance
+- If π'(response|context) << π₀(response|context), the weight vanishes → that sample contributes nothing
+- A few extreme weights can dominate the entire estimate
+
+**Our Solution**: A carefully designed pipeline that stabilizes weights while preserving the unbiasedness guarantees of causal inference.
 
 Pipeline Overview
 -----------------
@@ -12,616 +25,307 @@ Pipeline Overview
 
    Raw Log Probs → Hard Clipping → Soft Stabilization → Exponentiation → Cross-Fold Calibration → DR Estimation
         |              |                   |                  |                |                    |
-    log π'(s|x)    log-ratio         percentile-based      w = exp(·)    isotonic           v̂ = E[ψ]
-    log π₀(s|x)      ±20.0           subtraction                        regression              
+    log π'(s|x)    Prevent         Normalize each      w = exp(·)      Achieve            v̂ = μ̂ + w(r-μ̂)
+    log π₀(s|x)    overflow        policy fairly                       E[w] = 1              
         |              |                   |                  |                |                    |
         └─────────────────────────────────────────────────────────────────────────────────────────┘
                                               |
-                                      📊 Weight Diagnostics
+                                      📊 Diagnostic Monitoring
                                       • ESS computation & warnings
-                                      • Identical policy consistency  
-                                      • Visual diagnostic plots
-                                      • Automatic status flagging
-                                      • Early bug detection
+                                      • Overlap analysis
+                                      • Consistency checking
 
-🔍 Weight Diagnostics & Visualization
--------------------------------------
+Stage 1: Computing Log Importance Ratios
+----------------------------------------
 
-Automatic Weight Health Monitoring
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+**What**: Calculate log(π'/π₀) for each response
 
-CJE includes comprehensive importance weight diagnostics to catch consistency issues, low ESS, and numerical problems early.
+**Why**: Working in log space prevents numerical underflow for tiny probabilities
 
-**Location**: ``cje/utils/weight_diagnostics.py``  
-**Integration**: Automatically included in all estimators and analysis tools
-
-Key Diagnostic Metrics
-~~~~~~~~~~~~~~~~~~~~~~
+**How**:
 
 .. code-block:: python
 
-   @dataclass
-   class WeightDiagnostics:
-       policy_name: str
-       min_weight: float
-       max_weight: float  
-       mean_weight: float
-       ess_fraction: float              # Effective Sample Size as % of N
-       extreme_weight_count: int        # Weights > 1000 or < 0.001
-       zero_weight_count: int           # Exactly zero weights
-       consistency_flag: str            # "GOOD", "WARNING", "CRITICAL"
-       weight_coefficient_variation: float
-       # New overlap diagnostics (v1.3.0+)
-       overlap_score: Optional[float]   # 0-1, higher is better
-       common_support_fraction: Optional[float]  # Fraction with good support
+   # For each context-response pair
+   log_ratio = log_prob_target - log_prob_behavior
+   
+   # Shape: (n_samples, n_policies)
+   # Range: Unbounded (can be ±∞ for extreme mismatches)
 
-Automatic Status Flags
-~~~~~~~~~~~~~~~~~~~~~~
+**Potential Issues**:
 
-- **🟢 GOOD**: ESS ≥ 10%, <10% extreme weights, mean ≈ expected for identical policies
-- **🟡 WARNING**: 1% ≤ ESS < 10%, or 10-50% extreme weights  
-- **🔴 CRITICAL**: ESS < 1%, >50% extreme weights, or mean weight far from expected
+- Chat API vs Completions API can give different probabilities for the same text
+- Teacher forcing bugs show up here as inconsistent weights for identical policies
 
-Identical Policy Consistency Checking
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Critical Feature**: Automatically detects when a target policy should be identical to the logging policy but has weights far from 1.0:
-
-.. code-block:: python
-
-   # Check if policies should be identical based on configuration
-   if (target_config.model == logging_config.model and 
-       target_config.prompt == logging_config.prompt and
-       target_config.temperature == logging_config.temperature):
-       expected_weight = 1.0
-       weight_error = abs(mean_weight - expected_weight)
-       if weight_error > 0.1:
-           return "CRITICAL"  # Indicates teacher forcing or configuration issues
-
-**Common Issues Detected**: Teacher forcing bugs where identical policies have weights of 10^-30 instead of 1.0, revealing log probability computation inconsistencies.
-
-Using Weight Diagnostics
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   from cje.utils.weight_diagnostics import compute_weight_diagnostics
-   from cje.utils.weight_plots import create_weight_diagnostic_dashboard
-
-   # Get diagnostic metrics for any importance weights
-   diagnostics = compute_weight_diagnostics(
-       weights_matrix,  # Shape: (n_samples, n_policies)
-       policy_names=["policy1", "policy2", "policy3"]
-   )
-
-   # Create visual diagnostic plots
-   create_weight_diagnostic_dashboard(
-       weights_matrix,
-       policy_names,
-       output_dir="diagnostics/"
-   )
-
-Visual Diagnostics
-~~~~~~~~~~~~~~~~~~
-
-**Weight Distribution Plots**: 
-
-- Histogram of log₁₀(weights) with expected=1.0 reference line
-- Scatter plot of weights vs sample index (detect patterns)
-- Color-coded titles by diagnostic status (green/orange/red)
-
-**ESS Comparison Charts**:
-
-- Bar chart comparing ESS across policies
-- Warning/critical threshold reference lines  
-- Percentage labels and status color-coding
-
-**Diagnostic Dashboard**: Complete set of plots automatically saved as PNG files
-
-Success Story: Teacher Forcing Bug Detection
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The weight diagnostics caught a critical teacher forcing implementation bug:
-
-**🔴 Before Fix**:
-
-- Identical policy weights: 10^-30 to 10^20 (should be ≈1.0)  
-- ESS: 5.3% (critical)
-- 91% extreme weights
-- Status: CRITICAL with clear guidance
-
-**🟢 After Fix**:
-
-- Identical policy weights: Exactly 1.0 (perfect)
-- ESS: 100% (perfect)  
-- 0% extreme weights
-- Status: GOOD
-
-**Key Insight**: Weight inconsistency served as the perfect "canary in the coal mine" 🐤, revealing fundamental teacher forcing computation problems that would have been hard to detect otherwise.
-
-📊 Overlap Diagnostics (New in v1.3.0)
---------------------------------------
-
-Policy Overlap Analysis
-~~~~~~~~~~~~~~~~~~~~~~~
-
-CJE now includes comprehensive overlap diagnostics to quantify how well the behavior and target policies align. Poor overlap is a primary cause of high-variance, unreliable off-policy estimates.
-
-**Key Metrics**:
-
-.. code-block:: python
-
-   @dataclass
-   class OverlapDiagnostics:
-       overlap_score: float              # 0-1 score based on weight entropy
-       common_support_fraction: float    # % of samples with reasonable log ratios
-       log_ratio_percentiles: Dict[int, float]  # 5th, 25th, 50th, 75th, 95th
-       extreme_log_ratio_fraction: float # % with |log_ratio| > 5
-       positivity_violations: int        # Count of near-zero probabilities
-
-**Overlap Score Interpretation**:
-
-- **0.8-1.0**: Excellent overlap - reliable estimates expected
-- **0.5-0.8**: Good overlap - estimates should be stable
-- **0.2-0.5**: Moderate overlap - increased variance expected  
-- **0.0-0.2**: Poor overlap - estimates may be unreliable
-
-Using Overlap Diagnostics
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   from cje.utils.weight_diagnostics import (
-       compute_overlap_diagnostics,
-       diagnose_weights_with_overlap,
-       format_overlap_diagnostics
-   )
-
-   # Compute overlap between behavior and target policy
-   overlap_diag = compute_overlap_diagnostics(
-       behavior_logprobs,  # List of log P(response|context) under π₀
-       target_logprobs     # List of log P(response|context) under π₁
-   )
-
-   # Get detailed overlap report
-   print(format_overlap_diagnostics(overlap_diag, "GPT-4 Policy"))
-
-   # Or use integrated weight+overlap diagnostics
-   full_diagnostics = diagnose_weights_with_overlap(
-       weights, behavior_logprobs, target_logprobs, "GPT-4 Policy"
-   )
-
-**Example Output**:
-
-.. code-block:: text
-
-   📈 **GPT-4 Policy** Overlap Analysis:
-      Overlap Score: 0.234 (0=poor, 1=perfect)
-      Common Support: 87.3%
-      Positivity Violations: 42
-      Log Ratio Percentiles:
-         P5: -8.21
-         P25: -3.47
-         P50: -1.23
-         P75: +2.15
-         P95: +7.89
-      ⚠️  72.1% of samples have extreme log ratios
-      ⚠️  Limited overlap: only 87.3% common support
-
-Integration with Weight Summary
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The weight summary table now includes overlap scores:
-
-.. code-block:: text
-
-   📊 **Importance Weight Summary**
-
-   | Policy | ESS | Mean Weight | Overlap | Status | Issues |
-   |--------|-----|-------------|---------|--------|--------|
-   | GPT-4  | 23.4% | 1.234 | 0.45 | ⚠️ WARNING | Low ESS (23.4%) |
-   | Claude | 87.2% | 0.998 | 0.82 | ✅ GOOD | None |
-   | Gemini | 5.1% | 3.421 | 0.12 | ❌ CRITICAL | Low ESS (5.1%), Poor overlap (12.0%) |
-
-**Automatic Consistency Updates**: If overlap diagnostics detect <50% common support, the consistency flag is automatically upgraded to WARNING or CRITICAL.
-
-⚙️ Stage 1: Raw Log Probability Computation
--------------------------------------------
-
-**Location**: ``MultiTargetSampler.importance_weights_matrix()``  
-**Input**: ``(contexts, responses, logp_behavior)``  
-**Output**: ``log_weights_matrix`` (raw log importance ratios)
-
-.. code-block:: python
-
-   # Compute log importance weights: log π'(s|x) - log π₀(s|x)
-   log_weights_matrix = logp_matrix - logp_behavior_array[:, np.newaxis]
-
-**Shape**: ``(n_samples, n_policies)``  
-**Range**: Unbounded (can be ±∞ for pathological cases)
-
-⚙️ Stage 2: Hard Log-Ratio Clipping ✂️
---------------------------------------
-
-**Location**: ``MultiTargetSampler.importance_weights_matrix()`` (lines 285-295)  
-**Purpose**: Prevent astronomical weights that cause overflow/underflow
-
-Default Parameters
-~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   log_ratio_clip = 20.0  # ± 20 log units
-   # Max weight ratio: exp(20) ≈ 485,165,195 (485M)
-
-Logic
-~~~~~
-
-.. code-block:: python
-
-   if np.any(np.abs(log_weights_matrix) > log_ratio_clip):
-       console.print("✂️  Hard clipping log ratios to ±20.0 (prevents exp overflow)")
-       log_weights_matrix = np.clip(log_weights_matrix, -log_ratio_clip, log_ratio_clip)
-
-**Effect**: Caps extreme log ratios before they can cause numerical issues
-
-⚙️ Stage 3: Soft Stabilization 🎯
----------------------------------
-
-**Location**: ``MultiTargetSampler.importance_weights_matrix()`` (lines 310-340)  
-**Purpose**: Prevent winner-take-all while preserving weight diversity and treating policies fairly
-
-Default Parameters
-~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   stabilization_threshold = 10.0  # Trigger when |log_weight| > 10
-   percentile_for_subtraction = 75  # Use 75th percentile per policy (not global)
-
-Logic
-~~~~~
-
-.. code-block:: python
-
-   if stabilize and np.any(np.abs(log_weights_matrix) > 10):
-       console.print("🔧 Applying soft numerical stabilization (preserves weight diversity)")
-       
-       # Softer approach: subtract 75th percentile per policy instead of global max
-       # This prevents winner-take-all while treating each policy fairly
-       percentile_75_per_policy = np.percentile(log_weights_matrix, 75, axis=0)
-       stabilized_log_weights = log_weights_matrix - percentile_75_per_policy
-       
-       # More generous clipping bounds to preserve diversity
-       if clip is not None:
-           log_clip = np.log(clip)
-           max_stabilized = np.max(stabilized_log_weights)
-           stabilized_log_weights = np.clip(
-               stabilized_log_weights, 
-               max_stabilized - log_clip,  # Preserves relative ratios
-               max_stabilized              # Upper bound at current max
-           )
-
-**Effect**: Prevents single weights from dominating while keeping weight diversity
-
-⚙️ Stage 4: Exponentiation & Legacy Clipping
+Stage 2: Hard Clipping (Overflow Prevention)
 --------------------------------------------
 
-**Location**: ``MultiTargetSampler.importance_weights_matrix()`` (lines 345-365)
+**What**: Clip log ratios to [-20, +20]
 
-Default Parameters
-~~~~~~~~~~~~~~~~~~
+**Why**: 
 
-.. code-block:: python
+- exp(20) ≈ 485 million - already extreme
+- exp(50) causes numerical overflow
+- exp(-50) causes numerical underflow
 
-   clip = None  # Legacy clipping disabled by default (redundant with log-space protection)
-
-Logic
-~~~~~
+**How**:
 
 .. code-block:: python
 
-   # Exponentiate stabilized weights (cast to float64 to prevent overflow)
-   # float32 overflows at exp(≈88.7), but float64 handles up to exp(≈700)
-   weights_matrix = np.exp(stabilized_log_weights.astype(np.float64))
+   # Default: log_ratio_clip = 20.0
+   if abs(log_ratio) > log_ratio_clip:
+       log_ratio = clip(log_ratio, -20, +20)
 
-   # Legacy clipping (disabled by default - hard log-ratio clipping provides protection)
-   # When enabled, applied in log-space to preserve relative ratios
-   if clip is not None:
-       # Applied during stabilization in log-space, not here
-       pass
+**Effect**: 
 
-   # Final safety check (prevent negatives - should be unnecessary)
-   weights_matrix = np.maximum(weights_matrix, 0)
+- Prevents computational crashes
+- Limits maximum weight ratio to ~485M:1
+- Applied globally to all policies
 
-**Output**: Raw importance weights matrix ``(n_samples, n_policies)``
+**Trade-off**: Introduces bias for truly extreme policy differences, but prevents infinite variance
 
-⚙️ Stage 5: ESS Diagnostic & Guard-Rails 🚨
--------------------------------------------
-
-**Location**: ``MultiTargetSampler.importance_weights_matrix()`` (lines 370-390)
-
-Default Thresholds
-~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   critical_ess_threshold = 5.0   # % of samples
-   warning_ess_threshold = 15.0   # % of samples
-
-Logic
-~~~~~
-
-.. code-block:: python
-
-   # Compute ESS per policy (not averaged!)
-   ess_values = [ESS_k for each policy k]
-   ess_percentages = [100 * ess_k / n_samples for ess_k in ess_values]
-
-   # Per-policy guard-rails
-   for k, ess_pct in enumerate(ess_percentages):
-       if ess_pct < 5.0:
-           console.print(f"🚨 CRITICAL: {policy_name}: {ess_pct:.1f}% - estimates unreliable!")
-       elif ess_pct < 15.0:
-           console.print(f"⚠️  WARNING: {policy_name}: {ess_pct:.1f}% - estimates may be noisy")
-
-   if all_healthy:
-       console.print(f"✅ All policies have healthy ESS (min: {min(ess_percentages):.1f}%)")
-
-**Output**: Diagnostic warnings + weight statistics
-
-⚙️ Stage 6: Cross-Fold Isotonic Weight Calibration 📊
------------------------------------------------------
-
-**Location**: ``DRCPO._process_fold()`` → ``calibrate_weights_isotonic()``  
-**Purpose**: Achieve exact target mean (1.0) while preserving monotonicity
-
-Default Parameters
-~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   target_mean = 1.0                     # Target mean for calibrated weights  
-   max_calibrated_weight = 500.0         # Hard cap for calibrated weights
-   min_samples_for_calibration = 10      # Minimum samples per fold
-
-Algorithm
-~~~~~~~~~
-
-.. code-block:: python
-
-   def calibrate_weights_isotonic(weights, fold_indices, target_mean=1.0):
-       for fold in unique_folds:
-           fold_weights = weights[fold_mask]
-           
-           # Fit isotonic regression: calibrated_weight = f(raw_weight)
-           # Map to exponentially spaced targets that achieve target_mean
-           iso_reg = IsotonicRegression(increasing=True, out_of_bounds='clip')
-           iso_reg.fit(sorted_weights, exp_targets)
-           
-           # Apply calibration
-           calibrated_fold = iso_reg.predict(fold_weights)
-           
-           # Ensure exact target mean
-           achieved_mean = np.mean(calibrated_fold)
-           if achieved_mean > 1e-12:
-               calibrated_fold = calibrated_fold * (target_mean / achieved_mean)
-           
-           # Apply hard cap
-           calibrated_fold = np.minimum(calibrated_fold, max_calibrated_weight)
-           
-           # 🔧 CRITICAL: Re-scale after capping to maintain E[w]=target_mean
-           # Capping high weights lowers the mean, introducing finite-sample bias
-           capped_mean = np.mean(calibrated_fold)
-           if capped_mean > 1e-12:
-               calibrated_fold = calibrated_fold * (target_mean / capped_mean)
-
-**Effect**: Transforms raw weights to have exactly mean=1.0 while preserving order
-
-.. warning::
-   **Critical Theoretical Note**: The re-scaling after capping is essential to maintain DR's unbiasedness guarantee. Without it, capping high weights introduces finite-sample bias by lowering E[w] below 1.0, which violates the theoretical foundation of doubly-robust estimation.
-
-⚙️ Stage 7: Outcome Model Calibration (Optional)
+Stage 3: Soft Stabilization (The Key Innovation)
 ------------------------------------------------
 
-**Location**: ``DRCPO._process_fold()`` → ``calibrate_outcome_model_isotonic()``  
-**Purpose**: Calibrate outcome model predictions against true rewards
+**What**: Subtract 75th percentile of each policy's log weights
 
-**Default**: ``calibrate_outcome = True``
+**Why Previous Approaches Failed**:
 
-.. code-block:: python
+1. **Global max subtraction**: Creates winner-take-all where one policy dominates
+2. **No stabilization**: Allows numerical instability
+3. **Aggressive clipping**: Destroys weight diversity
 
-   if self.calibrate_outcome:
-       # Calibrate outcome model predictions against training rewards
-       calibration_fn, diagnostics = calibrate_outcome_model_isotonic(
-           train_preds, train_rewards
-       )
-       mu_hat_test_calibrated = calibration_fn(mu_hat_test)
-
-**Effect**: Corrects systematic bias in outcome model predictions
-
-⚙️ Stage 8: Doubly-Robust Estimation
-------------------------------------
-
-**Location**: ``DRCPO._process_fold()``  
-**Formula**: Final DR estimate per policy
+**Our Solution**:
 
 .. code-block:: python
 
-   # EIF components: μ_πᵏ(x) + wᵏ * (r - μ(x,y))
-   # Uses calibrated weights and/or calibrated outcome model
-   eif_test = mu_pi_test + W_test_calibrated * (
-       r_test[:, np.newaxis] - mu_hat_test_calibrated[:, np.newaxis]
-   )
+   # Per-policy normalization (not global!)
+   for each policy k:
+       percentile_75 = percentile(log_weights[:, k], 75)
+       stabilized_log_weights[:, k] = log_weights[:, k] - percentile_75
 
-   # Final estimate: v̂ᵏ = (1/n) Σᵢ ψᵢᵏ
-   v_hat = np.mean(eif_all, axis=0)
+**Why This Works**:
 
-🎛️ Configuration Options
-------------------------
+- **Preserves relative differences**: Weights maintain their ordering within each policy
+- **Fair comparison**: Each policy normalized independently, preventing one from dominating due to scale
+- **Numerical stability**: Brings log weights into reasonable range before exponentiation
+- **Triggered adaptively**: Only applies when |log_weight| > 10
 
-In Code Constants
-~~~~~~~~~~~~~~~~~
+**Example**:
 
-Easy to modify:
+Before stabilization:
+- Policy A weights: [1e-10, 1e-8, 1e-6, 1e-4]  (all tiny)
+- Policy B weights: [1e4, 1e6, 1e8, 1e10]      (all huge)
 
-.. code-block:: python
+After stabilization:
+- Policy A weights: [0.01, 0.1, 1, 10]         (reasonable range)
+- Policy B weights: [0.01, 0.1, 1, 10]         (same range, fair comparison)
 
-   # Stage 2: Hard clipping
-   log_ratio_clip = 20.0  # in MultiTargetSampler.importance_weights_matrix()
-
-   # Stage 3: Soft stabilization  
-   stabilization_threshold = 10.0    # Trigger threshold
-   percentile_for_subtraction = 75   # Use 75th percentile per policy (axis=0)
-
-   # Stage 5: ESS guard-rails
-   critical_ess_threshold = 5.0      # % for critical warning
-   warning_ess_threshold = 15.0      # % for warning
-
-In YAML Config
-~~~~~~~~~~~~~~
-
-.. code-block:: yaml
-
-   # Estimator configuration with weight processing options
-   estimator:
-     name: "DRCPO"                   # Doubly-robust (recommended)
-     k: 5                            # Cross-validation folds
-     clip: null                      # Stage 4: Legacy clipping disabled (default)
-     stabilize_weights: true         # Stage 3: Enable/disable stabilization
-     calibrate_weights: true         # Stage 6: Enable/disable weight calibration  
-     calibrate_outcome: true         # Stage 7: Enable/disable outcome calibration
-
-   # Weight diagnostic configuration
-   diagnostics:
-     ess_warning_threshold: 10.0     # ESS % warning threshold  
-     ess_critical_threshold: 1.0     # ESS % critical threshold
-     extreme_weight_threshold: 1000  # Define "extreme" weights
-     save_diagnostic_plots: true     # Auto-save weight distribution plots
-     identical_policy_tolerance: 0.1 # Tolerance for identical policy weight checking
-
-Conservative Mode
-~~~~~~~~~~~~~~~~~
-
-For extreme datasets:
-
-.. code-block:: yaml
-
-   # Estimator configuration (conservative mode)
-   estimator:
-     name: "DRCPO"                   # Doubly-robust (recommended)
-     k: 5                            # Cross-validation folds
-     clip: 5000.0                    # Enable legacy clipping with high threshold
-
-Research Mode
-~~~~~~~~~~~~~
-
-Maximum theoretical purity:
-
-.. code-block:: yaml
-
-   # Estimator configuration (research mode)
-   estimator:
-     name: "DRCPO"                   # Doubly-robust (recommended)
-     k: 5                            # Cross-validation folds
-     clip: null                      # No weight clipping (default)
-     stabilize_weights: false        # Disable stabilization
-     calibrate_weights: false        # Disable calibration
-
-📊 Typical Output Flow
----------------------
-
-Normal Case
-~~~~~~~~~~~
-
-No interventions needed:
-
-.. code-block:: text
-
-   Computing importance weights for 2 policies...
-   ✅ ESS looks healthy (25.3%)
-   ✓ Isotonic weight calibration enabled for DRCPO
-   ✓ Cross-validation complete!
-
-Extreme Case
-~~~~~~~~~~~~
-
-All interventions triggered:
-
-.. code-block:: text
-
-   Computing importance weights for 2 policies...
-   ✂️  Hard clipping log ratios to ±20.0 (prevents exp overflow)
-      • Original range: [-19.3, 723.2]
-      • Clipped range: [-19.3, 20.0]
-   🔧 Applying soft numerical stabilization (preserves weight diversity)
-      • Original log weight range: [-19.3, 20.0]  
-      • Stabilized log weight range: [-1.3, 7.9]
-      📊 ESS per policy: ['28.6', '5.3'] / 100
-      📊 ESS percentages: ['28.6%', '5.3%'] (avg: 16.9%)
-   ⚠️  LOW ESS warnings:
-      • identical_policy: 5.3% - estimates may be noisy
-      💡 Consider: More samples or different target policies
-      ✅ Preserved weight differences across policies
-   ✓ Isotonic weight calibration enabled for DRCPO
-   ✓ Cross-validation complete!
-
-🏆 Key Design Principles
+Stage 4: Exponentiation
 -----------------------
 
-1. **Fail Safe**: System degrades gracefully under extreme conditions
-2. **Preserve Signal**: Clipping/stabilization maintains relative policy differences  
-3. **Exact Calibration**: Isotonic regression achieves exact target statistics
-4. **Actionable Warnings**: Users get clear guidance when ESS is low
-5. **Research Friendly**: All interventions can be disabled for theoretical work
-6. **Numerical Safety**: float64 casting prevents silent overflow corruption
+**What**: Convert log weights back to weights: w = exp(log_weight)
 
-🔧 Advanced Customization
-------------------------
+**Why float64**: 
 
-To expose more parameters in YAML config:
+- float32 overflows at exp(~89)
+- float64 handles up to exp(~709)
+- Critical for numerical stability
+
+**How**:
 
 .. code-block:: python
 
-   # In MultiTargetSampler.importance_weights_matrix()
-   log_ratio_clip = cfg.get('log_ratio_clip', 20.0)
-   stabilization_percentile = cfg.get('stabilization_percentile', 75)
-   ess_warning_threshold = cfg.get('ess_warning_threshold', 15.0)
+   # Cast to float64 before exp to prevent overflow
+   weights = np.exp(log_weights.astype(np.float64))
 
-Then in YAML:
+Stage 5: ESS Monitoring & Diagnostics
+-------------------------------------
+
+**What**: Compute Effective Sample Size and flag issues
+
+**Why ESS Matters**:
+
+ESS measures how many "effective" samples you have after importance weighting:
+
+- ESS = 100%: Perfect overlap, all samples equally useful
+- ESS = 10%: Only 10% of your samples effectively contribute
+- ESS < 5%: Estimates dominated by very few samples (unreliable)
+
+**How**:
+
+.. code-block:: python
+
+   # For each policy
+   ESS = (sum(weights))² / sum(weights²)
+   ESS_percent = 100 * ESS / n_samples
+   
+   if ESS_percent < 5:
+       print("🚨 CRITICAL: Estimates will be unreliable!")
+   elif ESS_percent < 15:
+       print("⚠️  WARNING: Estimates may be noisy")
+
+**Diagnostics Provided**:
+
+1. **Per-policy ESS**: Not averaged - each policy assessed independently
+2. **Overlap analysis**: Quantifies distribution alignment
+3. **Consistency checking**: Flags when identical policies have non-unit weights
+
+Stage 6: Cross-Fold Isotonic Calibration
+----------------------------------------
+
+**What**: Transform weights to have exact mean = 1.0 per fold
+
+**Why This Is Critical**:
+
+Doubly-robust estimation requires E[w] = 1. Without calibration:
+- Raw weights often have mean ≠ 1 due to finite sample effects
+- This introduces bias even with perfect outcome models
+- Variance can be unnecessarily high
+
+**How Isotonic Regression Works**:
+
+.. code-block:: python
+
+   # For each cross-validation fold
+   1. Sort weights: [0.1, 0.5, 2.0, 10.0, 50.0]
+   2. Create target sequence with same mean=1.0
+   3. Fit monotonic function: f(raw_weight) → calibrated_weight
+   4. Apply to all weights in fold
+   5. Rescale to ensure exact mean = 1.0
+
+**Key Properties**:
+
+- **Monotonic**: Preserves weight ordering (higher stays higher)
+- **Exact calibration**: Achieves E[w] = 1 precisely
+- **Cross-fit**: Prevents overfitting via k-fold procedure
+
+**Theoretical Guarantee**: This calibration maintains the √n convergence rate of doubly-robust estimators while reducing finite-sample bias.
+
+Stage 7: Doubly-Robust Estimation
+---------------------------------
+
+**What**: Combine calibrated weights with outcome predictions
+
+**The DR Formula**:
+
+.. code-block:: python
+
+   # For each sample i and policy k
+   ψᵢᵏ = μ̂ᵏ(xᵢ) + wᵢᵏ * (rᵢ - μ̂(xᵢ, yᵢ))
+   
+   # Policy value estimate
+   v̂ᵏ = mean(ψᵏ)
+
+**Why DR Works**:
+
+1. **Outcome model term** μ̂ᵏ(x): Provides low variance baseline
+2. **Correction term** w(r - μ̂): Fixes bias from imperfect outcome model
+3. **Double robustness**: Consistent if either weights OR outcome model is correct
+
+Diagnostic Tools & Monitoring
+-----------------------------
+
+CJE provides comprehensive diagnostics to catch issues early:
+
+**Weight Distribution Analysis**:
+
+.. code-block:: python
+
+   from cje.utils.weight_diagnostics import diagnose_weights_with_overlap
+   
+   diagnostics = diagnose_weights_with_overlap(
+       weights, behavior_logprobs, target_logprobs
+   )
+   
+   # Automatic status flags:
+   # 🟢 GOOD: ESS > 10%, good overlap
+   # 🟡 WARNING: ESS 5-10%, moderate issues  
+   # 🔴 CRITICAL: ESS < 5%, poor overlap
+
+**Visual Diagnostics**:
+
+1. **Weight distributions**: Histograms with reference lines
+2. **ESS comparison**: Bar charts across policies
+3. **Overlap visualization**: Log-ratio percentile plots
+4. **Diagnostic dashboard**: Complete HTML report
+
+**Consistency Checking**:
+
+For identical policies (same model, prompt, temperature), weights should = 1.0:
+
+.. code-block:: python
+
+   if config_matches_behavior(policy_config):
+       if abs(mean_weight - 1.0) > 0.1:
+           # Red flag: Teacher forcing or computation bug!
+
+When Things Go Wrong
+--------------------
+
+**Symptom**: ESS < 5% (CRITICAL)
+
+**Causes & Solutions**:
+
+1. **Poor overlap**: Target policy very different from behavior
+   - Solution: Collect more diverse behavior data
+   - Solution: Use less extreme target policies
+
+2. **Teacher forcing bugs**: Inconsistent probability computation
+   - Diagnostic: Check if identical policies have weight ≈ 1.0
+   - Solution: Fix API usage (chat vs completions)
+
+3. **Extreme prompts**: Massive distribution shift
+   - Solution: Use MRDR (model-regularized) estimator
+   - Solution: Increase sample size
+
+**Symptom**: Numerical instability
+
+**Solutions**:
+
+1. Enable all stabilization (default)
+2. Reduce log_ratio_clip if needed
+3. Check for log probability computation bugs
+
+Configuration Examples
+----------------------
+
+**Default (Recommended)**:
 
 .. code-block:: yaml
 
-   # Estimator configuration (advanced parameters)
    estimator:
-     name: "DRCPO"                    # Doubly-robust (recommended)
-     k: 5                             # Cross-validation folds
-     log_ratio_clip: 30               # More aggressive clipping
-     stabilization_percentile: 80     # Use 80th percentile  
-     ess_warning_threshold: 20        # Higher warning threshold
+     name: DRCPO
+     stabilize_weights: true      # Soft stabilization
+     calibrate_weights: true      # Isotonic calibration
+     calibrate_outcome: true      # Outcome calibration
 
-This pipeline ensures robust, reliable policy evaluation while maintaining theoretical soundness and providing clear diagnostics at every stage.
+**Conservative Mode** (Extreme datasets):
 
-🛠️ Teacher Forcing Consistency
-------------------------------
+.. code-block:: yaml
 
-Importance Weight as Diagnostic Tool
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   estimator:
+     name: DRCPO
+     log_ratio_clip: 15          # More aggressive clipping
+     clip: 1000                  # Legacy weight clipping
 
-**Key Insight**: For identical policies (same model, prompt, and parameters), importance weights should be exactly 1.0. Deviations indicate fundamental computation issues.
+**Research Mode** (Theoretical purity):
 
-**Diagnostic Philosophy**: 
+.. code-block:: yaml
 
-- ❌ **Wrong**: "Weights look inconsistent, let me manually set identical policy weights = 1.0"
-- ✅ **Right**: "Weights look inconsistent, this reveals a bug in teacher forcing computation"
+   estimator:
+     name: DRCPO
+     stabilize_weights: false    # No stabilization
+     calibrate_weights: false    # No calibration
+     clip: null                  # No clipping
 
-**Example Detection**:
+Key Takeaways
+-------------
 
-.. code-block:: python
+1. **Each stage addresses a specific failure mode** - from numerical overflow to finite-sample bias
+2. **Soft stabilization is the key innovation** - preserves diversity while ensuring stability  
+3. **Calibration is essential** - transforms theoretical guarantees into practical reliability
+4. **Diagnostics prevent silent failures** - ESS and overlap metrics flag issues early
+5. **The pipeline is configurable** - adjust for your specific needs
 
-   if policy_is_identical_to_behavior(policy_name):
-       expected_weight = 1.0
-       weight_error = abs(mean_weight - expected_weight)
-       if weight_error > 0.1:
-           print(f"🚨 DIAGNOSTIC: {policy_name} should have weights ≈ 1.0, got {mean_weight:.2e}")
-           print("   This indicates teacher forcing computation inconsistency") 
+The result: A robust system that turns wild importance weights into reliable policy value estimates, with clear diagnostics when things go wrong.

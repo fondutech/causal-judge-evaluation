@@ -85,7 +85,6 @@ class PrecomputedMultiTargetSampler:
         contexts: List[str],
         responses: List[str],
         logp_behavior: List[float],
-        clip: Optional[float] = None,
         stabilize: bool = True,
         return_stats: bool = False,
     ) -> "np.ndarray[Any, Any]" | Tuple["np.ndarray[Any, Any]", Dict[str, Any]]:  # type: ignore
@@ -96,7 +95,6 @@ class PrecomputedMultiTargetSampler:
             contexts: List of context strings
             responses: List of response strings
             logp_behavior: Log probabilities under behavior policy
-            clip: Clipping value for importance weights (applied to final weights, not log-weights)
             stabilize: Whether to apply numerical stabilization for extreme log differences
 
         Returns:
@@ -163,16 +161,7 @@ class PrecomputedMultiTargetSampler:
                         log_weights_matrix - percentile_75_per_policy
                     )
 
-                    # Apply clipping in stabilized space (if enabled)
-                    if clip is not None:
-                        log_clip = np.log(clip)
-                        # More generous clipping bounds to preserve diversity
-                        max_stabilized = np.max(stabilized_log_weights)
-                        stabilized_log_weights = np.clip(
-                            stabilized_log_weights,
-                            max_stabilized - log_clip,  # Lower bound preserves ratios
-                            max_stabilized,  # Upper bound at current max
-                        )
+                    # No additional clipping needed - hard clipping already applied
 
                     # Exponentiate stabilized weights (cast to float64 to prevent overflow)
                     w = np.exp(stabilized_log_weights.astype(np.float64))
@@ -264,28 +253,13 @@ class PrecomputedMultiTargetSampler:
                     stabilized_log_weights = (
                         log_weights_matrix - percentile_75_per_policy
                     )
-                    if clip is not None:
-                        log_clip = np.log(clip)
-                        max_stabilized = np.max(stabilized_log_weights)
-                        stabilized_log_weights = np.clip(
-                            stabilized_log_weights,
-                            max_stabilized - log_clip,
-                            max_stabilized,
-                        )
+                    # No additional clipping needed - hard clipping already applied
                     w = np.exp(stabilized_log_weights.astype(np.float64))
             else:
-                # Standard clipping for normal cases (if enabled)
-                if clip is not None:
-                    log_clip = np.log(clip)
-                    log_weights_matrix = np.clip(
-                        log_weights_matrix, -log_clip, log_clip
-                    )
+                # Standard processing for normal cases
                 w = np.exp(log_weights_matrix.astype(np.float64))
         else:
             # Original approach without stabilization
-            if clip is not None:
-                log_clip = np.log(clip)
-                log_weights_matrix = np.clip(log_weights_matrix, -log_clip, log_clip)
             w = np.exp(log_weights_matrix.astype(np.float64))
 
         # Final clipping only to prevent negative weights (should be unnecessary)
@@ -306,24 +280,13 @@ class PrecomputedMultiTargetSampler:
                     ess_k = 0.0
                 ess_values.append(ess_k)
 
-            # Clipping statistics
-            n_clipped = 0
-            if clip is not None:
-                # Check if any weights hit the clipping threshold
-                # For stabilized weights, the threshold may be adjusted
-                if stabilize:
-                    # After stabilization, check against log_clip threshold in stabilized space
-                    n_clipped = np.sum(
-                        np.abs(log_weights_matrix) > 50
-                    )  # Stabilization threshold
-                else:
-                    # Direct clipping case
-                    n_clipped = np.sum(w >= clip * 0.99)  # Near clipping threshold
+            # Track hard clipping statistics
+            n_clipped = int(np.sum(np.abs(log_weights_matrix) >= log_ratio_clip - 0.01))
 
             statistics = {
                 "ess_values": ess_values,
                 "ess_percentage": np.mean(ess_values) / n_samples * 100,
-                "n_clipped": int(n_clipped),
+                "n_clipped": n_clipped,
                 "clip_fraction": n_clipped / (n_samples * n_policies),
                 "weight_range": (float(np.min(w)), float(np.max(w))),
                 "stabilization_applied": stabilization_actually_applied,

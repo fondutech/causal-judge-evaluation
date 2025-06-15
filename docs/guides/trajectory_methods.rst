@@ -72,7 +72,6 @@ Basic Trajectory Setup
    estimator:
      name: "DRCPO"                 # Doubly-robust (recommended)
      k: 5                          # Cross-validation folds
-     clip: 20.0                    # Importance weight clipping
      # Trajectory mode automatically enabled
 
 Data Formats

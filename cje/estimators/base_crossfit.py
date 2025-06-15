@@ -32,7 +32,6 @@ class BaseCrossFittedEstimator(Estimator[Dict[str, Any]]):
         self,
         sampler: MultiTargetSampler,
         k: int = 5,
-        clip: Optional[float] = None,
         seed: int = 0,
         outcome_model_cls: Optional[Type[Any]] = None,
         outcome_model_kwargs: Optional[Dict[str, Any]] = None,
@@ -51,7 +50,6 @@ class BaseCrossFittedEstimator(Estimator[Dict[str, Any]]):
         super().__init__(verbose=verbose)
         self.sampler = sampler
         self.k = k
-        self.clip = clip
         self.seed = seed
         self.outcome_model_cls = outcome_model_cls
         self.outcome_model_kwargs = outcome_model_kwargs or {}
@@ -104,7 +102,6 @@ class BaseCrossFittedEstimator(Estimator[Dict[str, Any]]):
             contexts,
             responses,
             self._logp_behavior_full.tolist(),
-            clip=self.clip,
             stabilize=self.stabilize_weights,
             return_stats=True,
         )
@@ -183,7 +180,6 @@ class BaseCrossFittedEstimator(Estimator[Dict[str, Any]]):
         # Create metadata
         metadata = EstimatorMetadata(
             estimator_type=self.get_estimator_type(),
-            clip_threshold=self.clip,
             k_folds=self.k,
             stabilize_weights=self.stabilize_weights,
             bootstrap_available=True,
