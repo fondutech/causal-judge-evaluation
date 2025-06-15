@@ -19,10 +19,9 @@ dataset:
 # Logging policy configuration
 logging_policy:
   provider: "fireworks"
-  model_name: "llama-v3-34b-instruct"
-  temperature: 0.4
-  top_p: 0.95
-  max_tokens: 512
+  model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
+  temperature: 0.5
+  max_tokens: 1024
   seed: ${experiment.seed}
   compute_logprobs: true
   
@@ -30,47 +29,33 @@ logging_policy:
 target_policies:
   - name: "pi_clone"
     provider: "fireworks"
-    model_name: "llama-v3-34b-instruct"
-    temperature: 0.4
-    top_p: 0.95
-    max_tokens: 512
+    model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
+    temperature: 0.5
+    max_tokens: 1024
     seed: ${experiment.seed}
     description: "Identical to logging policy (sanity check)"
     
   - name: "pi_cot"
     provider: "fireworks"
-    model_name: "llama-v3-34b-instruct"
-    temperature: 0.4
-    top_p: 0.95
-    max_tokens: 512
+    model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
+    temperature: 0.5
+    max_tokens: 1024
     seed: ${experiment.seed}
     system_prompt_suffix: "\n\nThink step-by-step before providing your answer."
     description: "Chain-of-thought variant"
     
-  - name: "pi_rag"
+  - name: "pi_bigger_model"
     provider: "fireworks"
-    model_name: "llama-v3-34b-instruct"
-    temperature: 0.4
-    top_p: 0.95
-    max_tokens: 512
+    model_name: "accounts/fireworks/models/llama4-maverick-instruct-basic"
+    temperature: 0.5
+    max_tokens: 1024
     seed: ${experiment.seed}
-    enable_retrieval: true
-    retrieval_k: 2
-    description: "Retrieval-augmented generation"
-    
-  - name: "pi_big"
-    provider: "fireworks"
-    model_name: "llama-v3-70b-instruct"
-    temperature: 0.4
-    top_p: 0.95
-    max_tokens: 512
-    seed: ${experiment.seed}
-    description: "Larger model (70B)"
+    description: "Bigger model (Maverick)"
 
 # Judge configuration
 judge:
   provider: "fireworks"
-  model_name: "llama-v3-34b-instruct"
+  model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
   temperature: 0.0
   template: "helpfulness_0_10"
   rubric: |
