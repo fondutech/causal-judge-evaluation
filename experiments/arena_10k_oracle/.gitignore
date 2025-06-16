@@ -1,0 +1,18 @@
+# Experiment data files
+data/*.jsonl
+data/*.csv
+data/labeling/
+
+# Checkpoint files
+*.checkpoint.*
+*.tmp
+
+# Outputs
+outputs/
+
+# Python
+__pycache__/
+*.pyc
+
+# Keep the data directory structure
+!data/.gitkeep

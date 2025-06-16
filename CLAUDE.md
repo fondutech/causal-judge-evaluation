@@ -134,10 +134,13 @@ The `cje/research/` module contains experimental features:
 
 **Weight Calibration Bug Fix**: Fixed critical bug where re-scaling after capping could push weights above the cap again. The implementation now accepts small bias (E[w] ≠ 1) to maintain variance control, which is preferable to violating the cap constraint. See `cje/estimators/calibration.py` for the corrected implementation.
 
-**Teacher Forcing Implementation**: Due to API limitations, CJE uses a two-pass approach for consistent log probability computation:
+**Teacher Forcing Implementation**: CRITICAL - Two-pass generation is REQUIRED for consistent log probability computation between π₀ and target policies:
 1. Generate responses using chat completions API (natural generation)
 2. Score responses using completions API with echo=True (teacher forcing)
-This ensures π₀ and π' are computed consistently. Currently only Fireworks (confirmed) and Together (unconfirmed) support the required completions API. See `docs/guides/teacher_forcing.rst` for details.
+
+This is NOT an optimization issue - it's a fundamental requirement for causal identification. Using single-pass generation would introduce bias because π₀ and π' would be scored differently. The `generate_with_consistent_logp` method implements this correctly.
+
+Currently only Fireworks (confirmed) and Together (unconfirmed) support the required completions API. See `docs/guides/teacher_forcing.rst` for details.
 
 ### Paper Implementation Notes
 
@@ -308,3 +311,25 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 - Remove this session summary after 2-3 sessions
 - Consider removing supports_logprobs from provider_registry (kept for now as it's part of provider capability tracking)
 - Test all examples still work after IPS refactoring
+
+## Session Notes - June 16, 2025
+
+### Completed Work
+- **Arena 10K Oracle Experiment Pipeline**:
+  - Fixed logprob=0 issues caused by duplicate entries in checkpoint files
+  - Generated 72 logging policy responses with proper teacher-forcing logprobs
+  - Scored all responses with judge (avg: 0.746)
+  - Generated all 3 target policies (pi_hot, pi_cot, pi_concise) with consistent logprobs
+  - Exported data for human labeling (18 calibration, 54 evaluation samples)
+  
+### Key Learnings
+- **Two-pass generation is REQUIRED**: User emphasized this is for causal identification, not optimization
+- Fireworks supports batch completions API (600 RPM limit)
+- Created multiple script versions (04_generate_targets_fast.py, minimal, all) - needs consolidation
+- Checkpoint handling needs improvement to prevent duplicates
+
+### Important Refactors Identified
+1. Consolidate multiple generation scripts into one canonical version
+2. Improve checkpoint handling to track per-policy, per-sample progress
+3. Fix duplicate handling in log generation
+4. Better error handling for API timeouts

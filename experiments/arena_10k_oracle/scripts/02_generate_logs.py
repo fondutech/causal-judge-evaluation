@@ -2,11 +2,7 @@
 """
 Step 2: Generate π₀ (logging policy) responses with log probabilities.
 
-This script:
-1. Loads prompts from Step 1
-2. Generates responses using Llama-3-34B-Instruct
-3. Computes exact token-level log probabilities
-4. Saves responses with metadata for downstream processing
+Improved version with atomic checkpointing to prevent duplicates.
 
 Usage:
     python 02_generate_logs.py --input ../data/prompts.jsonl --output ../data/p0_replies.jsonl
@@ -18,14 +14,82 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
+import shutil
+from datetime import datetime
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
 from cje.loggers.api_policy import APIPolicyRunner
-from cje.utils.checkpointing import create_jsonl_checkpoint_manager, BatchProcessor
 from cje.utils.progress import console
+from rich.progress import (
+    Progress,
+    SpinnerColumn,
+    TimeElapsedColumn,
+    BarColumn,
+    TextColumn,
+)
+
+
+class AtomicCheckpointManager:
+    """Manages atomic checkpointing with no duplicates."""
+
+    def __init__(self, checkpoint_path: Path):
+        self.checkpoint_path = checkpoint_path
+        self.processed_items: List[Dict[str, Any]] = []
+        self.processed_indices: set = set()
+
+    def load(self) -> bool:
+        """Load checkpoint if it exists. Returns True if loaded."""
+        if self.checkpoint_path.exists():
+            try:
+                with open(self.checkpoint_path, "r") as f:
+                    for line in f:
+                        item = json.loads(line)
+                        if "prompt_id" in item:
+                            self.processed_indices.add(item["prompt_id"])
+                            self.processed_items.append(item)
+                console.print(
+                    f"📥 Loaded {len(self.processed_items)} items from checkpoint"
+                )
+                return True
+            except Exception as e:
+                console.print(f"[yellow]⚠️  Failed to load checkpoint: {e}[/yellow]")
+        return False
+
+    def save_batch(self, new_items: List[Dict[str, Any]]) -> None:
+        """Save a batch of new items atomically."""
+        # Filter out any duplicates
+        unique_items = []
+        for item in new_items:
+            if item.get("prompt_id") not in self.processed_indices:
+                unique_items.append(item)
+                self.processed_indices.add(item["prompt_id"])
+                self.processed_items.append(item)
+
+        if not unique_items:
+            return
+
+        # Write all processed items to temp file
+        temp_path = self.checkpoint_path.with_suffix(".tmp")
+        with open(temp_path, "w") as f:
+            for item in self.processed_items:
+                f.write(json.dumps(item) + "\n")
+
+        # Atomic rename
+        shutil.move(str(temp_path), str(self.checkpoint_path))
+        console.print(
+            f"[green]✓ Saved {len(unique_items)} new items (total: {len(self.processed_items)})[/green]"
+        )
+
+    def is_processed(self, prompt_id: str) -> bool:
+        """Check if a prompt has been processed."""
+        return prompt_id in self.processed_indices
+
+    def get_processed_items(self) -> List[Dict[str, Any]]:
+        """Get all processed items."""
+        return self.processed_items
 
 
 def load_prompts(input_path: str) -> List[Dict[str, Any]]:
@@ -68,29 +132,55 @@ def get_api_key() -> str:
         raise ValueError("No Fireworks API key available")
 
 
+def generate_with_retry(
+    runner: APIPolicyRunner,
+    prompts: List[str],
+    temperature: float,
+    max_new_tokens: int,
+    max_retries: int = 3,
+) -> List[Tuple[str, float]]:
+    """Generate responses with automatic retry on failure."""
+
+    for attempt in range(max_retries):
+        try:
+            # Use two-pass teacher forcing for consistent logprobs
+            results = runner.generate_with_consistent_logp(
+                prompts,
+                temperature=temperature,
+                max_new_tokens=max_new_tokens,
+            )
+            return results
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = 2**attempt  # Exponential backoff
+                console.print(
+                    f"[yellow]⚠️  API error: {e}. Retrying in {wait_time}s...[/yellow]"
+                )
+                time.sleep(wait_time)
+            else:
+                raise
+    # This should never be reached due to the raise above
+    return []
+
+
 def generate_logging_policy_responses(
     prompts: List[Dict[str, Any]],
     model_name: str = "accounts/fireworks/models/llama4-scout-instruct-basic",
     temperature: float = 0.5,
     max_new_tokens: int = 1024,
     batch_size: int = 16,
-    checkpoint_path: Optional[str] = None,
+    checkpoint_path: Optional[Path] = None,
 ) -> List[Dict[str, Any]]:
     """
     Generate π₀ responses with log probabilities.
 
-    Uses model and parameters from experiment config.
-    Computes exact token-level log probabilities via teacher forcing.
+    Uses atomic checkpointing to prevent duplicates.
     """
     # Setup checkpointing
-    checkpoint_manager = create_jsonl_checkpoint_manager(checkpoint_path)
-
-    # Create batch processor
-    batch_processor = BatchProcessor(
-        batch_size=batch_size,
-        checkpoint_manager=checkpoint_manager,
-        continue_on_error=True,
+    checkpoint_manager = AtomicCheckpointManager(
+        checkpoint_path or Path("checkpoint.jsonl")
     )
+    checkpoint_manager.load()
 
     # Initialize API runner
     runner = APIPolicyRunner(
@@ -108,68 +198,90 @@ def generate_logging_policy_responses(
     console.print(f"📝 Max tokens: {max_new_tokens}")
     console.print(f"📦 Batch size: {batch_size}")
 
-    def process_batch(batch_prompts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Process a batch of prompts to generate responses."""
-        # Extract prompt texts
-        prompt_texts = [p["prompt"] for p in batch_prompts]
+    # Filter out already processed prompts
+    prompts_to_process = [
+        p for p in prompts if not checkpoint_manager.is_processed(p["prompt_id"])
+    ]
 
-        # Generate responses with log probabilities
-        responses_with_logp = runner.generate_with_consistent_logp(
-            prompt_texts,
-            temperature=temperature,
-            max_new_tokens=max_new_tokens,
-        )
+    if not prompts_to_process:
+        console.print("[green]✅ All prompts already processed![/green]")
+        return checkpoint_manager.get_processed_items()
 
-        # Format results
-        batch_results = []
-        for prompt_data, (response, logp) in zip(batch_prompts, responses_with_logp):
-            result = {
-                **prompt_data,  # Keep all original prompt data
-                "response": response,
-                "total_logprob": float(logp),
-                "logging_policy": {
-                    "model_name": model_name,
-                    "temperature": temperature,
-                    "max_new_tokens": max_new_tokens,
-                    "provider": "fireworks",
-                },
-                "timestamp": time.time(),
-            }
-            batch_results.append(result)
+    console.print(f"📋 Processing {len(prompts_to_process)} remaining prompts")
 
-        return batch_results
-
-    # Process all prompts with progress tracking
+    # Process with progress tracking
     start_time = time.time()
 
-    try:
-        results = batch_processor.process_batches(
-            prompts,
-            process_batch,
-            description="Generating π₀ responses",
-            auto_save_frequency=1,  # Save after every batch
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+
+        task = progress.add_task(
+            "Generating π₀ responses", total=len(prompts_to_process)
         )
 
-        total_time = time.time() - start_time
-        console.print(f"\n✅ [green]Generated {len(results):,} responses[/green]")
-        console.print(f"⏱️  Total time: {total_time/60:.1f} minutes")
-        if len(results) > 0:
-            console.print(
-                f"📈 Average: {total_time/len(results):.2f} seconds per sample"
-            )
+        # Process in batches
+        for batch_start in range(0, len(prompts_to_process), batch_size):
+            batch_end = min(batch_start + batch_size, len(prompts_to_process))
+            batch = prompts_to_process[batch_start:batch_end]
 
-        return results
+            # Extract prompt texts
+            prompt_texts = [p["prompt"] for p in batch]
 
-    except KeyboardInterrupt:
+            try:
+                # Generate responses with log probabilities
+                responses_with_logp = generate_with_retry(
+                    runner, prompt_texts, temperature, max_new_tokens
+                )
+
+                # Format results
+                batch_results = []
+                for prompt_data, (response, logp) in zip(batch, responses_with_logp):
+                    result = {
+                        **prompt_data,  # Keep all original prompt data
+                        "response": response,
+                        "total_logprob": float(logp),
+                        "logging_policy": {
+                            "model_name": model_name,
+                            "temperature": temperature,
+                            "max_new_tokens": max_new_tokens,
+                            "provider": "fireworks",
+                        },
+                        "timestamp": time.time(),
+                    }
+                    batch_results.append(result)
+
+                # Save batch atomically
+                checkpoint_manager.save_batch(batch_results)
+                progress.update(task, advance=len(batch))
+
+            except Exception as e:
+                console.print(
+                    f"\n[red]❌ Failed to generate batch {batch_start}-{batch_end}: {e}[/red]"
+                )
+                # Continue with next batch instead of failing completely
+                continue
+
+            # Rate limit protection
+            if batch_end < len(prompts_to_process):
+                time.sleep(0.5)
+
+    total_time = time.time() - start_time
+    all_results = checkpoint_manager.get_processed_items()
+
+    console.print(f"\n✅ [green]Total responses: {len(all_results):,}[/green]")
+    console.print(f"⏱️  Generation time: {total_time/60:.1f} minutes")
+    if len(prompts_to_process) > 0:
         console.print(
-            f"\n⚠️ [yellow]Interrupted - Progress saved to checkpoint[/yellow]"
+            f"📈 Average: {total_time/len(prompts_to_process):.2f} seconds per sample"
         )
-        return checkpoint_manager.get_processed_items()
-    except Exception as e:
-        console.print(f"❌ [red]Error: {e}[/red]")
-        if checkpoint_manager:
-            console.print(f"💾 Partial progress saved to: {checkpoint_path}")
-        raise
+
+    return all_results
 
 
 def save_results(results: List[Dict[str, Any]], output_path: str) -> None:
@@ -196,22 +308,7 @@ def save_results(results: List[Dict[str, Any]], output_path: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Generate π₀ (logging policy) responses for Arena 10K experiment",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Basic usage
-  python 02_generate_logs.py --input ../data/prompts.jsonl
-  
-  # With checkpointing (recommended)
-  python 02_generate_logs.py --input ../data/prompts.jsonl --checkpoint checkpoint.jsonl
-  
-  # Custom batch size for memory efficiency
-  python 02_generate_logs.py --input ../data/prompts.jsonl --batch-size 8
-  
-  # Resume interrupted job
-  python 02_generate_logs.py --input ../data/prompts.jsonl --checkpoint checkpoint.jsonl
-        """,
+        description="Generate π₀ (logging policy) responses for Arena 10K experiment"
     )
 
     parser.add_argument(
@@ -229,7 +326,9 @@ Examples:
     )
 
     parser.add_argument(
-        "--checkpoint", type=str, help="Checkpoint file for resumable generation"
+        "--checkpoint",
+        type=str,
+        help="Checkpoint file for resumable generation (default: auto-generated)",
     )
 
     parser.add_argument(
@@ -240,48 +339,42 @@ Examples:
         "--model",
         type=str,
         default="accounts/fireworks/models/llama4-scout-instruct-basic",
-        help="Model name (default: from config)",
+        help="Model name",
     )
 
     parser.add_argument(
         "--temperature",
         type=float,
         default=0.5,
-        help="Sampling temperature (default: 0.5 from config)",
+        help="Sampling temperature",
     )
 
     parser.add_argument(
         "--max-tokens",
         type=int,
         default=1024,
-        help="Maximum tokens to generate (default: 1024 from config)",
-    )
-
-    parser.add_argument(
-        "--cleanup-checkpoint",
-        action="store_true",
-        help="Delete checkpoint file on successful completion",
+        help="Maximum new tokens",
     )
 
     args = parser.parse_args()
 
     console.print(
-        f"🔬 [bold blue]Arena 10K Experiment - Step 2: Generate Logging Policy[/bold blue]"
+        f"🔬 [bold blue]Arena 10K Experiment - Step 2: Generate π₀ Responses[/bold blue]"
     )
 
-    # Auto-enable checkpointing for large runs
-    if not args.checkpoint:
-        prompts = load_prompts(args.input)
-        if len(prompts) > 1000:
-            args.checkpoint = args.output.replace(".jsonl", "_checkpoint.jsonl")
-            console.print(f"📝 Auto-enabling checkpointing: {args.checkpoint}")
-
     try:
-        # Get API key
-        api_key = get_api_key()
+        # Ensure we have API key
+        get_api_key()
 
         # Load prompts
         prompts = load_prompts(args.input)
+
+        # Set checkpoint path
+        checkpoint_path = (
+            Path(args.checkpoint)
+            if args.checkpoint
+            else Path(args.output).with_suffix(".checkpoint.jsonl")
+        )
 
         # Generate responses
         results = generate_logging_policy_responses(
@@ -290,40 +383,25 @@ Examples:
             temperature=args.temperature,
             max_new_tokens=args.max_tokens,
             batch_size=args.batch_size,
-            checkpoint_path=args.checkpoint,
+            checkpoint_path=checkpoint_path,
         )
 
-        # Save results
+        # Save final results
         save_results(results, args.output)
 
-        # Show sample output
-        if results:
-            sample = results[0]
-            console.print(f"\n📝 Sample response:")
-            console.print(f"  Prompt: {sample['prompt'][:100]}...")
-            console.print(f"  Response: {sample['response'][:100]}...")
-            console.print(f"  Log prob: {sample['total_logprob']:.3f}")
+        # Clean up checkpoint if successful
+        if checkpoint_path.exists():
+            checkpoint_path.unlink()
+            console.print("🧹 Cleaned up checkpoint file")
 
-        # Cleanup checkpoint if requested
-        if args.checkpoint and os.path.exists(args.checkpoint):
-            if args.cleanup_checkpoint:
-                try:
-                    os.remove(args.checkpoint)
-                    console.print(f"🗑️  [green]Cleaned up checkpoint[/green]")
-                except Exception as e:
-                    console.print(
-                        f"⚠️  [yellow]Could not delete checkpoint: {e}[/yellow]"
-                    )
-            else:
-                console.print(f"🗑️  You can now delete checkpoint: {args.checkpoint}")
-
-        console.print(f"\n✅ [bold green]Step 2 complete![/bold green]")
-        console.print(f"📄 Output: {args.output}")
+        console.print(f"\n✅ [bold green]π₀ generation complete![/bold green]")
+        console.print(f"📁 Output: {args.output}")
+        console.print(f"Next step: python 03_add_judge_scores.py")
 
     except KeyboardInterrupt:
-        console.print("\n⚠️ [yellow]Interrupted by user[/yellow]")
-        if args.checkpoint:
-            console.print(f"💾 Resume with the same command")
+        console.print(
+            f"\n⚠️ [yellow]Interrupted - Progress saved to checkpoint[/yellow]"
+        )
         sys.exit(1)
     except Exception as e:
         console.print(f"\n❌ [red]Failed: {e}[/red]")
