@@ -47,6 +47,11 @@ from cje.loggers.adapters import (
     TogetherAdapter,
 )
 from cje.loggers.conversation_utils import parse_context
+from cje.loggers.completions_templates import (
+    CompletionsTemplate,
+    CompletionsTemplateConfig,
+    get_completions_template_for_model,
+)
 from ..constants import OPENAI_COMPATIBLE_PROVIDERS
 from cje.utils.logprobs import sum_response_logprobs_tail  # NEW
 from ..utils.error_handling import safe_call
@@ -76,7 +81,24 @@ class APIPolicyRunner:
         batch_size: int = 16,
         system_prompt: Optional[str] = None,
         user_message_template: str = "{context}",
+        template_format: Optional[str] = None,
+        template_config: Optional[CompletionsTemplateConfig] = None,
     ) -> None:
+        """Initialize APIPolicyRunner with optional completions template configuration.
+
+        Args:
+            provider: API provider ('openai', 'anthropic', 'google', 'fireworks', 'together')
+            model_name: Model identifier
+            max_new_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+            top_p: Nucleus sampling threshold
+            batch_size: Batch size for API calls
+            system_prompt: Optional system prompt
+            user_message_template: Template for user messages
+            template_format: Explicit completions template format ('llama3', 'llama4', 'chatml', 'alpaca')
+                           Used for converting chat messages to continuous strings for completions API
+            template_config: Advanced completions template configuration for custom formats
+        """
         self.provider = provider.lower()
         self.model_name = model_name
         self.max_new_tokens = max_new_tokens
@@ -85,6 +107,18 @@ class APIPolicyRunner:
         self.batch_size = batch_size
         self.system_prompt = system_prompt
         self.user_message_template = user_message_template
+        self.template_format = template_format
+        self.template_config = template_config
+
+        # Initialize the completions template for converting chat to continuous format
+        self.template = get_completions_template_for_model(
+            model_name=self.model_name,
+            provider=self.provider,
+            template_format=self.template_format,
+            custom_template=(
+                self.template_config.custom_template if self.template_config else None
+            ),
+        )
 
         # Simple in-memory cache for log-prob computations
         self._logprob_cache: Dict[str, float] = {}
@@ -518,90 +552,17 @@ class APIPolicyRunner:
     ) -> str:
         """
         Format the conversation as a single prompt string including the logged response.
-        Uses appropriate template based on model version.
+        Uses the configured template system.
         """
-        # Check if this is a Llama 4 model
-        if "llama4" in self.model_name.lower() or "llama-4" in self.model_name.lower():
-            # Use Llama 4 template
-            parts = ["<|begin_of_text|>"]
-
-            for msg in messages:
-                role = msg.get("role", "user")
-                content = msg.get("content", "")
-                parts.append(
-                    f"<|header_start|>{role}<|header_end|>\n\n" f"{content}<|eot|>"
-                )
-
-            # Add assistant response
-            parts.append(
-                f"<|header_start|>assistant<|header_end|>\n\n" f"{response}<|eot|>"
-            )
-
-            return "".join(parts)
-        else:
-            # Use Llama 3 template for older models
-            # Extract system prompt and user message from messages
-            system_prompt = ""
-            user_message = ""
-
-            for msg in messages:
-                if msg.get("role") == "system":
-                    system_prompt = msg.get("content", "")
-                elif msg.get("role") == "user":
-                    user_message = msg.get("content", "")
-
-            # Format in Llama 3 chat template style
-            # <s>[INST] <<SYS>>\n{SYSTEM}\n<</SYS>>\n{user_message} [/INST] {logged_reply}</s>
-            if system_prompt:
-                prompt = f"<s>[INST] <<SYS>>\n{system_prompt}\n<</SYS>>\n{user_message} [/INST] {response}</s>"
-            else:
-                prompt = f"<s>[INST] {user_message} [/INST] {response}</s>"
-
-            return prompt
+        return self.template.format_with_response(messages, response)
 
     def _format_conversation_without_response(self, messages: List[Dict]) -> str:
         """
         Format the conversation as a single prompt string WITHOUT the response.
         This is used to calculate the exact token count of the response in context.
-        Uses appropriate template based on model version.
+        Uses the configured template system.
         """
-        # Check if this is a Llama 4 model
-        if "llama4" in self.model_name.lower() or "llama-4" in self.model_name.lower():
-            # Use Llama 4 template
-            parts = ["<|begin_of_text|>"]
-
-            for msg in messages:
-                role = msg.get("role", "user")
-                content = msg.get("content", "")
-                parts.append(
-                    f"<|header_start|>{role}<|header_end|>\n\n" f"{content}<|eot|>"
-                )
-
-            # Add empty assistant header (ready for response)
-            parts.append(f"<|header_start|>assistant<|header_end|>\n\n")
-
-            return "".join(parts)
-        else:
-            # Use Llama 3 template for older models
-            # Extract system prompt and user message from messages
-            system_prompt = ""
-            user_message = ""
-
-            for msg in messages:
-                if msg.get("role") == "system":
-                    system_prompt = msg.get("content", "")
-                elif msg.get("role") == "user":
-                    user_message = msg.get("content", "")
-
-            # Format in Llama 3 chat template style but WITHOUT response
-            # CRITICAL: No space before </s> to ensure correct token counting
-            # <s>[INST] <<SYS>>\n{SYSTEM}\n<</SYS>>\n{user_message} [/INST]</s>
-            if system_prompt:
-                prompt = f"<s>[INST] <<SYS>>\n{system_prompt}\n<</SYS>>\n{user_message} [/INST]</s>"
-            else:
-                prompt = f"<s>[INST] {user_message} [/INST]</s>"
-
-            return prompt
+        return self.template.format_without_response(messages)
 
     def _extract_response_logprobs_by_divergence(
         self, messages: List[Dict], response: str, all_logprobs: List[Optional[float]]
@@ -677,13 +638,8 @@ class APIPolicyRunner:
                 response_start = divergence_point
 
                 # Find end-of-sequence
-                if (
-                    "llama4" in self.model_name.lower()
-                    or "llama-4" in self.model_name.lower()
-                ):
-                    eos_tokens = enc.encode("<|eot|>")
-                else:
-                    eos_tokens = enc.encode("</s>")
+                eos_token = self.template.get_eos_token()
+                eos_tokens = enc.encode(eos_token) if eos_token else []
 
                 for i in range(
                     len(tokens_with) - len(eos_tokens), response_start - 1, -1
