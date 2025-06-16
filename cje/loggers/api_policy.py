@@ -586,8 +586,11 @@ class APIPolicyRunner:
         # Get the full prompt with response
         with_resp = self._format_conversation_with_response(messages, response)
 
-        # Find response position at character level
-        response_char_start = with_resp.find(response)
+        # Get prompt without response to know where response should start
+        without_resp = self._format_conversation_without_response(messages)
+
+        # Find response position at character level, starting from where assistant response begins
+        response_char_start = with_resp.find(response, len(without_resp))
 
         if response_char_start == -1:
             # If exact match fails, try with normalized whitespace
@@ -595,9 +598,10 @@ class APIPolicyRunner:
 
             pattern = re.escape(response.strip())
             pattern = r"\s*" + pattern.replace(r"\ ", r"\s+") + r"\s*"
-            match = re.search(pattern, with_resp)
+            # Search only in the response portion
+            match = re.search(pattern, with_resp[len(without_resp) :])
             if match:
-                response_char_start = match.start()
+                response_char_start = len(without_resp) + match.start()
                 response = match.group()  # Use the matched version
 
         if response_char_start == -1:
