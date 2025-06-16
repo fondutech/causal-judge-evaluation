@@ -142,13 +142,12 @@ This is NOT an optimization issue - it's a fundamental requirement for causal id
 
 **Token Extraction Fix (June 2025)**: Fixed critical bug in `_teacher_forcing_logprob` where tokenization context differences (e.g., `']</s>'` vs `'] </s>'`) caused extraction of wrong tokens. Now uses direct response search with divergence-based fallback in `_extract_response_logprobs_by_divergence`. This resolved the "Cabbages" -21.625 logprob issue where `</s>` tokens were being extracted instead of response tokens.
 
-**CRITICAL FIREWORKS API BUG (June 2025)**: Discovered that Fireworks completions API with echo=True returns incorrect log probabilities. Initial testing revealed we were using the wrong template for Llama 4 models. After fixing to use the correct Llama 4 template (`<|begin_of_text|>` format instead of `[INST]` format), results improved but issues remain:
-- With correct template: Some responses get correct 0.0 logprobs, but others still have issues
-- "Cabbages": Chat API returns -0.000 but Completions API returns -13.459
-- The API has fundamental inconsistencies even with the correct template
-This makes Fireworks unsuitable for reliable teacher forcing in CJE. The token extraction code and template detection are now correct, but the API itself remains problematic.
+**Llama 4 Template Fix (June 2025)**: Resolved incorrect log probabilities by implementing proper Llama 4 prompt template. The issue was not a Fireworks API bug but incorrect template usage:
+- Llama 3 uses: `<s>[INST] ... [/INST] response</s>`
+- Llama 4 uses: `<|begin_of_text|><|header_start|>...<|header_end|>...<|eot|>`
+After implementing automatic template detection and correct formatting, all logprobs are now correct (0.0 for forced responses like "Cabbages"). The Fireworks API works correctly when using the proper template format.
 
-Currently only Fireworks (confirmed buggy) and Together (unconfirmed) support the required completions API. See `docs/guides/teacher_forcing.rst` for details.
+Currently only Fireworks (confirmed working with Llama 4 template) and Together (unconfirmed) support the required completions API. See `docs/guides/teacher_forcing.rst` for details.
 
 ### Paper Implementation Notes
 
