@@ -140,7 +140,7 @@ The `cje/research/` module contains experimental features:
 
 This is NOT an optimization issue - it's a fundamental requirement for causal identification. Using single-pass generation would introduce bias because π₀ and π' would be scored differently. The `generate_with_consistent_logp` method implements this correctly.
 
-**Token Extraction Fix (June 2024)**: Fixed critical bug in `_teacher_forcing_logprob` where tokenization context differences (e.g., `']</s>'` vs `'] </s>'`) caused extraction of wrong tokens. Now uses direct response search with divergence-based fallback in `_extract_response_logprobs_by_divergence`. This resolved the "Cabbages" -21.625 logprob issue where `</s>` tokens were being extracted instead of response tokens.
+**Token Extraction Fix (June 2025)**: Fixed critical bug in `_teacher_forcing_logprob` where tokenization context differences (e.g., `']</s>'` vs `'] </s>'`) caused extraction of wrong tokens. Now uses direct response search with divergence-based fallback in `_extract_response_logprobs_by_divergence`. This resolved the "Cabbages" -21.625 logprob issue where `</s>` tokens were being extracted instead of response tokens.
 
 Currently only Fireworks (confirmed) and Together (unconfirmed) support the required completions API. See `docs/guides/teacher_forcing.rst` for details.
 
@@ -169,7 +169,7 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 
 ### Current Focus Areas
 
-**Arena 10K Oracle Experiment** (June 2024):
+**Arena 10K Oracle Experiment** (June 2025):
 - Located in `experiments/arena_10k_oracle/`
 - Designed for paper validation with human labels via crowdsourcing
 - Key insight: Experiment has natural breakpoints for offline human labeling
