@@ -321,10 +321,18 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
   - Scored all responses with judge (avg: 0.746)
   - Generated all 3 target policies (pi_hot, pi_cot, pi_concise) with consistent logprobs
   - Exported data for human labeling (18 calibration, 54 evaluation samples)
+
+- **Critical Teacher Forcing Fix**:
+  - Fixed token counting bug in `_teacher_forcing_logprob` method
+  - Issue: Response token count was calculated in isolation, not in prompt context
+  - Solution: Calculate token difference between full prompt with/without response
+  - Impact: Prevents off-by-one errors when extracting response logprobs from echo=True sequences
+  - Added `_format_conversation_without_response` method for accurate measurement
   
 ### Key Learnings
 - **Two-pass generation is REQUIRED**: User emphasized this is for causal identification, not optimization
 - Fireworks supports batch completions API (600 RPM limit)
+- Token counts can differ when text is in context vs standalone (affects logprob extraction)
 - Created multiple script versions (04_generate_targets_fast.py, minimal, all) - needs consolidation
 - Checkpoint handling needs improvement to prevent duplicates
 

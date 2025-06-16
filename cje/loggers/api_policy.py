@@ -401,8 +401,37 @@ class APIPolicyRunner:
                 logger.warning(f"Empty token logprobs for {self.model_name}")
                 return 0.0
 
-            # Get response token count using tiktoken
-            response_token_count = self._get_response_token_count(response)
+            # CRITICAL FIX: Calculate response token count in context, not in isolation
+            # Format prompt WITHOUT response to accurately measure token difference
+            full_prompt_no_response = self._format_conversation_without_response(
+                messages
+            )
+
+            # Use tiktoken to count tokens in both versions
+            try:
+                import tiktoken
+
+                try:
+                    enc = tiktoken.encoding_for_model(self.model_name)
+                except KeyError:
+                    enc = tiktoken.get_encoding("cl100k_base")
+
+                tokens_with_response = len(enc.encode(full_prompt))
+                tokens_without_response = len(enc.encode(full_prompt_no_response))
+                response_token_count = tokens_with_response - tokens_without_response
+
+                # Sanity check: response should have at least 1 token
+                if response_token_count <= 0:
+                    logger.warning(
+                        f"Invalid response token count: {response_token_count}. "
+                        f"Falling back to isolated count."
+                    )
+                    response_token_count = self._get_response_token_count(response)
+
+            except ImportError:
+                # Fallback to isolated count if tiktoken not available
+                logger.warning("tiktoken not available, using isolated token count")
+                response_token_count = self._get_response_token_count(response)
 
             # Use the existing utility to extract response logprobs
             from cje.utils.logprobs import sum_response_logprobs_tail
@@ -412,7 +441,7 @@ class APIPolicyRunner:
             )
 
             logger.debug(
-                f"Teacher forcing: {response_token_count} tokens, logprob={result:.3f}"
+                f"Teacher forcing: {response_token_count} tokens (in context), logprob={result:.3f}"
             )
             return result
 
@@ -532,5 +561,29 @@ class APIPolicyRunner:
             prompt = f"<s>[INST] <<SYS>>\n{system_prompt}\n<</SYS>>\n{user_message} [/INST] {response}</s>"
         else:
             prompt = f"<s>[INST] {user_message} [/INST] {response}</s>"
+
+        return prompt
+
+    def _format_conversation_without_response(self, messages: List[Dict]) -> str:
+        """
+        Format the conversation as a single prompt string WITHOUT the response.
+        This is used to calculate the exact token count of the response in context.
+        """
+        # Extract system prompt and user message from messages
+        system_prompt = ""
+        user_message = ""
+
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_prompt = msg.get("content", "")
+            elif msg.get("role") == "user":
+                user_message = msg.get("content", "")
+
+        # Format in Llama chat template style but WITHOUT response
+        # <s>[INST] <<SYS>>\n{SYSTEM}\n<</SYS>>\n{user_message} [/INST] </s>
+        if system_prompt:
+            prompt = f"<s>[INST] <<SYS>>\n{system_prompt}\n<</SYS>>\n{user_message} [/INST] </s>"
+        else:
+            prompt = f"<s>[INST] {user_message} [/INST] </s>"
 
         return prompt
