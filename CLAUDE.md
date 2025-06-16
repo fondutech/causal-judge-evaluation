@@ -142,7 +142,9 @@ This is NOT an optimization issue - it's a fundamental requirement for causal id
 
 **Token Extraction Fix (June 2025)**: Fixed critical bug in `_teacher_forcing_logprob` where tokenization context differences (e.g., `']</s>'` vs `'] </s>'`) caused extraction of wrong tokens. Now uses direct response search with divergence-based fallback in `_extract_response_logprobs_by_divergence`. This resolved the "Cabbages" -21.625 logprob issue where `</s>` tokens were being extracted instead of response tokens.
 
-Currently only Fireworks (confirmed) and Together (unconfirmed) support the required completions API. See `docs/guides/teacher_forcing.rst` for details.
+**CRITICAL FIREWORKS API BUG (June 2025)**: Discovered that Fireworks completions API with echo=True returns completely incorrect log probabilities. The API returns values that are 10-15 orders of magnitude too low compared to the chat completions API. For example, "Cabbages" shows -0.002 via chat API but -14.3 via completions API. This makes Fireworks unsuitable for teacher forcing in CJE. Need to use a different provider or approach.
+
+Currently only Fireworks (confirmed buggy) and Together (unconfirmed) support the required completions API. See `docs/guides/teacher_forcing.rst` for details.
 
 ### Paper Implementation Notes
 

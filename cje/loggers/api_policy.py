@@ -401,46 +401,14 @@ class APIPolicyRunner:
                 logger.warning(f"Empty token logprobs for {self.model_name}")
                 return 0.0
 
-            # CRITICAL FIX: Calculate response token count in context, not in isolation
-            # Format prompt WITHOUT response to accurately measure token difference
-            full_prompt_no_response = self._format_conversation_without_response(
-                messages
-            )
-
-            # Use tiktoken to count tokens in both versions
-            try:
-                import tiktoken
-
-                try:
-                    enc = tiktoken.encoding_for_model(self.model_name)
-                except KeyError:
-                    enc = tiktoken.get_encoding("cl100k_base")
-
-                tokens_with_response = len(enc.encode(full_prompt))
-                tokens_without_response = len(enc.encode(full_prompt_no_response))
-                response_token_count = tokens_with_response - tokens_without_response
-
-                # Sanity check: response should have at least 1 token
-                if response_token_count <= 0:
-                    logger.warning(
-                        f"Invalid response token count: {response_token_count}. "
-                        f"Falling back to isolated count."
-                    )
-                    response_token_count = self._get_response_token_count(response)
-
-            except ImportError:
-                # Fallback to isolated count if tiktoken not available
-                logger.warning("tiktoken not available, using isolated token count")
-                response_token_count = self._get_response_token_count(response)
-
-            # Use the existing utility to extract response logprobs
-            from cje.utils.logprobs import sum_response_logprobs_tail
-
-            result = sum_response_logprobs_tail(
-                all_token_logprobs, response_token_count
+            # CRITICAL: Use divergence-based extraction due to tokenization differences
+            # The tokenizer may create different tokens based on context
+            result = self._extract_response_logprobs_by_divergence(
+                messages, response, all_token_logprobs
             )
 
             # Sanity check: for very short responses, logprob shouldn't be extremely negative
+            response_token_count = self._get_response_token_count(response)
             if response_token_count <= 3 and result < -20:
                 logger.warning(
                     f"Suspiciously low logprob {result:.3f} for {response_token_count}-token response. "
@@ -448,7 +416,7 @@ class APIPolicyRunner:
                 )
 
             logger.debug(
-                f"Teacher forcing: {response_token_count} tokens (in context), logprob={result:.3f}"
+                f"Teacher forcing: response '{response[:30]}...', logprob={result:.3f}"
             )
             return result
 
