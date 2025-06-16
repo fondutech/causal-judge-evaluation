@@ -85,11 +85,11 @@ CJE provides **robust off-policy evaluation** for Large Language Models using ca
 
 .. code-block:: python
 
-   from examples.arena_interactive import ArenaAnalyzer
+   from cje.pipeline import run_pipeline
    
-   analyzer = ArenaAnalyzer()
-   analyzer.quick_test()  # Run with sample data
-   analyzer.plot_estimates()  # Visualize results
+   # Run evaluation with default configuration
+   results = run_pipeline(cfg_path="configs", cfg_name="arena_test")
+   print(f"Policy uplift: {results.policy_uplifts}")  # Show results
 
 🏗️ Architecture Overview
 ------------------------

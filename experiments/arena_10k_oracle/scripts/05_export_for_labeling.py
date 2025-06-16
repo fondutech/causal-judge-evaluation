@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Step 4a: Export data for human labeling (oracle calibration).
+Step 5: Export data for human labeling (calibration + ground truth validation).
 
 This script:
-1. Loads scored responses from Step 3
-2. Randomly samples 25% (2,500) for oracle calibration
-3. Exports in format suitable for crowdsourcing platforms
-4. Marks remaining 75% for evaluation
+1. Loads π₀ scored responses (for calibration)
+2. Loads target policy scored responses (for ground truth validation)
+3. Samples calibration data (25% of π₀)
+4. Exports both datasets for crowdsourcing platforms
 
 Usage:
-    python 04_export_for_labeling.py --input ../data/p0_scored.jsonl --output ../data/oracle_export.csv
+    python 05_export_for_labeling.py --p0-input ../data/p0_scored.jsonl --target-input ../data/target_ground_truth_scored.jsonl
 """
 
 import argparse
@@ -25,7 +25,9 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 from cje.utils.progress import console
 
 
-def load_scored_responses(input_path: str) -> pd.DataFrame:
+def load_scored_responses(
+    input_path: str, data_type: str = "responses"
+) -> pd.DataFrame:
     """Load scored responses and convert to DataFrame."""
     data = []
     with open(input_path, "r") as f:
@@ -33,8 +35,13 @@ def load_scored_responses(input_path: str) -> pd.DataFrame:
             data.append(json.loads(line))
 
     df = pd.DataFrame(data)
-    console.print(f"📄 Loaded {len(df):,} scored responses")
+    console.print(f"📄 Loaded {len(df):,} {data_type}")
     return df
+
+
+def load_target_ground_truth(input_path: str) -> pd.DataFrame:
+    """Load target policy responses for ground truth validation."""
+    return load_scored_responses(input_path, "target policy responses")
 
 
 def prepare_labeling_export(
@@ -76,7 +83,9 @@ def prepare_labeling_export(
     return calibration_df, eval_df
 
 
-def format_for_crowdsourcing(df: pd.DataFrame, platform: str = "surge") -> pd.DataFrame:
+def format_for_crowdsourcing(
+    df: pd.DataFrame, platform: str = "surge", task_prefix: str = ""
+) -> pd.DataFrame:
     """
     Format data for specific crowdsourcing platform.
 
@@ -89,11 +98,15 @@ def format_for_crowdsourcing(df: pd.DataFrame, platform: str = "surge") -> pd.Da
 
     for idx, row in df.iterrows():
         # Basic fields all platforms need
+        task_id = (
+            f"{task_prefix}{row['prompt_id']}" if task_prefix else row["prompt_id"]
+        )
         item = {
-            "task_id": row["prompt_id"],
+            "task_id": task_id,
             "prompt": row["prompt"],
             "response": row["response"],
             "judge_score": row.get("judge_score_raw", None),
+            "policy": row.get("policy", "pi_0"),  # Track which policy generated this
         }
 
         if platform == "surge":
@@ -223,16 +236,65 @@ python 04_import_labels.py --labels [downloaded_file.csv]
     )
 
 
+def save_ground_truth_exports(
+    target_df: pd.DataFrame,
+    output_dir: str,
+    platform: str = "surge",
+) -> None:
+    """Save ground truth validation exports for labeling."""
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # Group by policy for separate exports
+    policies = target_df["policy"].unique()
+
+    for policy in policies:
+        policy_df = target_df[target_df["policy"] == policy].copy()
+
+        # Format for crowdsourcing
+        export_df = format_for_crowdsourcing(
+            policy_df, platform=platform, task_prefix=f"{policy}_"
+        )
+
+        # Save policy-specific export
+        export_file = output_path / f"ground_truth_{policy}_{platform}.csv"
+        export_df.to_csv(export_file, index=False)
+        console.print(f"💾 Saved {policy} ground truth export: {export_file}")
+
+    # Combined export for easier upload
+    combined_export = format_for_crowdsourcing(
+        target_df, platform=platform, task_prefix="gt_"
+    )
+    combined_file = output_path / f"ground_truth_combined_{platform}.csv"
+    combined_export.to_csv(combined_file, index=False)
+    console.print(f"💾 Saved combined ground truth export: {combined_file}")
+
+    # Cost estimate
+    total_labels = len(target_df) * 3
+    estimated_cost = total_labels * 0.08
+    console.print(f"\n💰 Ground truth labeling cost estimate:")
+    console.print(f"   • Samples: {len(target_df):,}")
+    console.print(f"   • Labels needed: {total_labels:,} (3 votes each)")
+    console.print(f"   • Total cost: ${estimated_cost:,.2f}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Export data for human labeling (oracle calibration)"
+        description="Export data for human labeling (calibration + ground truth validation)"
     )
 
     parser.add_argument(
-        "--input",
+        "--p0-input",
         type=str,
         default="../data/p0_scored.jsonl",
-        help="Input file with scored responses",
+        help="Input file with π₀ scored responses (for calibration)",
+    )
+
+    parser.add_argument(
+        "--target-input",
+        type=str,
+        default="../data/target_ground_truth_scored.jsonl",
+        help="Input file with target policy scored responses (for ground truth)",
     )
 
     parser.add_argument(
@@ -254,7 +316,7 @@ def main() -> None:
         "--calibration-fraction",
         type=float,
         default=0.25,
-        help="Fraction of data for calibration (default: 0.25)",
+        help="Fraction of π₀ data for calibration (default: 0.25)",
     )
 
     parser.add_argument("--seed", type=int, default=42, help="Random seed for sampling")
@@ -266,35 +328,45 @@ def main() -> None:
     args = parser.parse_args()
 
     console.print(
-        f"🔬 [bold blue]Arena 10K Experiment - Step 4a: Export for Labeling[/bold blue]"
+        f"🔬 [bold blue]Arena 10K Experiment - Step 5: Export for Labeling[/bold blue]"
     )
     console.print(f"📊 Platform: {args.platform}")
     console.print(f"🎲 Calibration fraction: {args.calibration_fraction:.0%}")
 
     try:
-        # Load data
-        df = load_scored_responses(args.input)
+        # Load π₀ data for calibration
+        p0_df = load_scored_responses(args.p0_input, "π₀ scored responses")
 
-        # Prepare splits
+        # Load target policy data for ground truth validation
+        target_df = load_target_ground_truth(args.target_input)
+
+        # Prepare calibration splits
         calibration_df, eval_df = prepare_labeling_export(
-            df,
+            p0_df,
             calibration_fraction=args.calibration_fraction,
             seed=args.seed,
             votes_per_sample=args.votes,
         )
 
-        # Save exports
-        save_exports(calibration_df, df, args.output_dir, platform=args.platform)
+        # Save calibration exports
+        save_exports(calibration_df, p0_df, args.output_dir, platform=args.platform)
+
+        # Save ground truth exports
+        save_ground_truth_exports(target_df, args.output_dir, platform=args.platform)
 
         console.print(f"\n✅ [bold green]Export complete![/bold green]")
         console.print(f"\n📋 Next steps:")
-        console.print(f"1. Upload export file to {args.platform}")
-        console.print(f"2. Configure labeling task (see instructions file)")
-        console.print(f"3. Wait for labeling to complete")
-        console.print(f"4. Download results and run: python 04_import_labels.py")
+        console.print(f"1. Upload calibration export to {args.platform}")
+        console.print(f"2. Upload ground truth exports to {args.platform}")
+        console.print(f"3. Configure labeling tasks (see instructions files)")
+        console.print(f"4. Wait for labeling to complete")
+        console.print(f"5. Download results and run: python 06_import_labels.py")
 
     except Exception as e:
         console.print(f"\n❌ [red]Failed: {e}[/red]")
+        import traceback
+
+        traceback.print_exc()
         sys.exit(1)
 
 

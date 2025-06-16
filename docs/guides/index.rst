@@ -142,7 +142,7 @@ Advanced Guides
 
 **Working Examples**
    Copy-paste code samples
-   → ``examples/`` directory in the repository
+   → Configuration examples in :doc:`configuration_reference`
 
 Support & Community
 -------------------

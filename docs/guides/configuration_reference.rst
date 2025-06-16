@@ -854,15 +854,12 @@ All configuration examples are maintained in the ``configs/`` directory:
    configs/
    ├── minimal.yaml              # Minimal working configuration
    ├── production.yaml           # Production-ready settings
-   ├── arena.yaml               # Arena analysis configuration
+   ├── arena.yaml               # Arena analysis configuration  
+   ├── arena_test.yaml          # Quick test configuration
    ├── debugging.yaml           # Debug and development settings
-   ├── performance/
-   │   ├── fast.yaml            # Optimized for speed
-   │   └── accurate.yaml        # Optimized for accuracy
-   └── examples/
-       ├── prompt_engineering.yaml
-       ├── model_comparison.yaml
-       └── parameter_tuning.yaml
+   └── performance/
+       ├── fast.yaml            # Optimized for speed
+       └── accurate.yaml        # Optimized for accuracy
 
 See the repository for the latest examples and templates you can copy and modify for your use cases. 
 

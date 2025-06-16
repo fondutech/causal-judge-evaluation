@@ -4,14 +4,14 @@
 
 This experiment validates Causal Judge Evaluation (CJE) on real ChatBot Arena prompts with **human oracle labels** (crowdsourced, not AI-generated). The experiment has been implemented with improved infrastructure for robustness and monitoring.
 
-**Current Status**: Data generation complete (72 samples for testing), ready for human labeling phase.
+**Current Status**: Target policy ground truth generation added. Two separate data streams for calibration and validation.
 
 ## Experiment Design
 
 ### Dataset
 - **Source**: 10,000 single-turn prompts from ChatBot Arena Conversations
-- **Current Progress**: 72 samples generated for initial testing
-- **Split**: 25% calibration (18 samples), 75% evaluation (54 samples)
+- **Calibration Data**: π₀ responses for judge→human calibration (25% of π₀ dataset)
+- **Ground Truth Data**: Target policy responses for validation (500 prompts per policy)
 
 ### Policies
 
@@ -25,7 +25,12 @@ This experiment validates Causal Judge Evaluation (CJE) on real ChatBot Arena pr
 ### Judge Configuration
 - **Model**: llama4-scout-instruct-basic at T=0
 - **Scoring**: 0-1 scale for helpfulness/correctness/safety
-- **Calibration**: Will use isotonic regression to human labels
+- **Calibration**: Isotonic regression from judge scores to human labels
+
+### Validation Design
+- **CJE Prediction**: Uses π₀ responses + importance weights to predict target policy performance
+- **Ground Truth**: Actual human labels on target policy responses
+- **Validation**: Compare CJE estimates to ground truth human preferences
 
 ## Repository Structure
 
@@ -34,51 +39,37 @@ experiments/arena_10k_oracle/
 ├── README.md                        # This file
 ├── .gitignore                       # Excludes data files from git
 ├── configs/
-│   └── arena_experiment.yaml        # Main experiment configuration
+│   └── arena_10k.yaml              # Main experiment configuration
 ├── scripts/
 │   ├── 01_prepare_data.py          # Sample prompts from Arena dataset
-│   ├── 02_generate_logs.py         # Generate π₀ responses (improved)
-│   ├── 03_add_judge_scores.py      # Score with LLM judge
-│   ├── 04_generate_target_policies.py  # Generate target policy responses
-│   ├── 05_export_for_labeling.py   # Export for crowdsourcing
+│   ├── 02_generate_logs.py         # Generate π₀ responses with teacher forcing
+│   ├── 02b_generate_target_ground_truth.py  # Generate target policy responses
+│   ├── 03_add_judge_scores.py      # Score all responses with LLM judge
+│   ├── 05_export_for_labeling.py   # Export for crowdsourcing (both types)
 │   ├── 06_import_labels.py         # Import human labels (TBD)
 │   ├── check_fireworks_models.py   # Utility to verify model access
 │   └── experiment_status.py        # Monitor pipeline progress
 ├── data/
 │   ├── prompts.jsonl               # 10k sampled prompts
-│   ├── p0_replies.jsonl            # π₀ responses with logprobs
-│   ├── p0_scored.jsonl             # π₀ with judge scores
-│   ├── all_policies.jsonl          # All policy responses (cleaned)
+│   ├── p0_replies.jsonl            # π₀ responses with teacher forcing logprobs
+│   ├── p0_scored.jsonl             # π₀ responses with judge scores
+│   ├── target_ground_truth.jsonl   # Target policy responses (no logprobs)
+│   ├── target_ground_truth_scored.jsonl  # Target policies with judge scores
 │   └── labeling/
-│       ├── calibration_export_surge.csv    # Ready for human labeling
-│       └── p0_scored_with_splits.jsonl     # Full data with splits
+│       ├── calibration_export_surge.csv      # π₀ responses for calibration
+│       ├── ground_truth_pi_clone_surge.csv   # Target policy responses
+│       ├── ground_truth_pi_cot_surge.csv     # for human validation
+│       ├── ground_truth_pi_bigger_model_surge.csv
+│       └── ground_truth_combined_surge.csv   # All target policies
 └── outputs/                        # (created during CJE estimation)
 ```
 
-## Implementation Improvements
+## Key Features
 
-### 1. Atomic Checkpointing
-- `AtomicCheckpointManager` prevents duplicate entries
-- Tracks processed items by ID
-- Uses temp file + atomic rename pattern
-
-### 2. Per-Sample Progress Tracking
-- `CheckpointManager` tracks completion at policy AND sample level
-- Can resume from exact position if interrupted
-- No lost work on failures
-
-### 3. Better Error Handling
-- Automatic retry with exponential backoff
-- Continues with next batch on failure
-- Clear error messages and progress indicators
-
-### 4. Data Cleanup
-- Removed unnecessary metadata (14% size reduction)
-- Keep only fields needed for CJE:
-  - `prompt_id`, `prompt`
-  - `response`, `total_logprob` (π₀)
-  - `judge_score_raw`
-  - `pi_*_response` fields (for oracle labeling)
+- **Robust checkpointing**: Atomic writes prevent data corruption and duplicates
+- **Two-pass generation**: Teacher forcing ensures consistent importance weights
+- **Separate validation streams**: Calibration data vs ground truth data
+- **Progress tracking**: Resume from exact position if interrupted
 
 ## Running the Experiment
 
@@ -100,105 +91,47 @@ python check_fireworks_models.py
 python experiment_status.py
 ```
 
-### Phase 1: Data Generation ✅ (COMPLETE)
+### Pipeline Steps
 
 ```bash
-# Step 1: Sample prompts (10k sampled, 72 used for test)
-python 01_prepare_data.py --samples 10000 --output-samples 72
+# Step 1: Sample prompts
+python 01_prepare_data.py --samples 10000
 
-# Step 2: Generate π₀ responses with teacher-forcing logprobs
+# Step 2: Generate π₀ responses (with teacher forcing for CJE)
 python 02_generate_logs.py
 
-# Step 3: Add judge scores
+# Step 2b: Generate target policy responses (for ground truth validation)
+python 02b_generate_target_ground_truth.py --samples 500
+
+# Step 3: Score all responses with judge
 python 03_add_judge_scores.py
 
-# Step 4: Generate target policy responses
-python 04_generate_target_policies.py
+# Step 5: Export for human labeling (both calibration + ground truth)
+python 05_export_for_labeling.py \
+  --p0-input ../data/p0_scored.jsonl \
+  --target-input ../data/target_ground_truth_scored.jsonl
 
-# Step 5: Export for labeling
-python 05_export_for_labeling.py
+# Step 6: Import human labels and run CJE validation
+python 06_import_labels.py --labels downloaded_labels.csv
 ```
 
-### Phase 2: Human Labeling (NEXT)
+## Experiment Validation
 
-```bash
-# Current status:
-# - 18 samples ready for calibration labeling
-# - Export file: data/labeling/calibration_export_surge.csv
-# - Cost: ~$4.32 (54 labels needed)
+### Data Sources
+1. **Calibration**: π₀ responses + human labels → Train judge→human mapping
+2. **Ground Truth**: Target policy responses + human labels → What CJE should predict  
+3. **CJE Estimates**: π₀ responses + importance weights → CJE predictions
 
-# Upload to Surge AI and collect 3 votes per sample
-# Then import with:
-python 06_import_labels.py --labels path/to/downloaded_labels.csv
-```
+### Critical Implementation Details
+- **Two-pass generation**: π₀ uses teacher forcing to ensure consistent importance weights
+- **Target policies**: Generate responses without logprobs (human labeling only)
+- **Validation**: Compare CJE estimates to actual human preferences on target policies
 
-### Phase 3: CJE Estimation (TODO)
+## Cost Estimates
 
-After human labels are collected:
-1. Run isotonic calibration
-2. Compute importance weights
-3. Execute DR-CPO estimation
-4. Generate results and diagnostics
-
-## Key Technical Details
-
-### Two-Pass Generation (Critical!)
-The pipeline uses `generate_with_consistent_logp` which implements:
-1. **Generation pass**: Natural response generation
-2. **Teacher forcing pass**: Score the generated text with completions API
-
-This ensures π₀ and target policies use identical scoring methods for valid importance weights.
-
-### Importance Weights
-CJE computes: `w = π'(π₀_response|prompt) / π₀(π₀_response|prompt)`
-
-Note: The target policy generation logprobs (`pi_hot_logprob`, etc.) are NOT used - they're artifacts from generation. CJE will score π₀ responses under each target policy.
-
-## Monitoring & Diagnostics
-
-### Weight Quality Metrics
-- Effective Sample Size (ESS)
-- Clipped weight mass
-- Weight distribution plots
-
-### Calibration Quality
-- Isotonic fit diagnostics
-- Cross-validation stability
-- Mean absolute calibration error
-
-## Cost Summary
-- π₀ generation: ~$0.03 (72 samples)
-- Judge scoring: ~$0.01 (72 samples)
-- Target policies: ~$0.09 (72 samples × 3 policies)
-- Human labeling: ~$4.32 (54 labels)
-- **Total: ~$4.45**
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Timeout errors during generation**
-   - Scripts automatically retry with exponential backoff
-   - Can resume from checkpoint if interrupted
-
-2. **Duplicate entries in checkpoint**
-   - Fixed with atomic checkpointing
-   - Old duplicates cleaned automatically
-
-3. **Memory issues with large batches**
-   - Reduce `--batch-size` parameter
-   - Default is 16 for π₀, 4 for target policies
-
-## Next Steps
-
-1. Upload `calibration_export_surge.csv` to crowdsourcing platform
-2. Collect 54 human labels (18 samples × 3 votes)
-3. Import labels and run calibration
-4. Execute full CJE pipeline
-5. Compare estimates to ground truth
-
-## Contact
-
-For questions about this experiment:
-- GitHub Issues: https://github.com/anthropics/causal-judge-evaluation/issues
-- Documentation: https://cje.readthedocs.io
+| Dataset | Samples | Labels Needed | Estimated Cost |
+|---------|---------|---------------|----------------|
+| **Calibration** | 25% of π₀ data | ~750 (250 × 3 votes) | ~$60 |
+| **Ground Truth** | 500 per policy × 3 policies | 4,500 (1,500 × 3 votes) | ~$360 |
+| **API Costs** | All generations + scoring | | ~$20 |
+| **Total** | | | **~$440** |

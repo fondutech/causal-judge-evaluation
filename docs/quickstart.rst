@@ -177,23 +177,18 @@ For ChatBot Arena-style evaluation:
 
 .. code-block:: python
 
-   from examples.arena_interactive import ArenaAnalyzer
+   from cje.pipeline import run_pipeline
    
-   # Initialize analyzer
-   analyzer = ArenaAnalyzer()
+   # Run complete pipeline with Arena data
+   results = run_pipeline(cfg_path="configs", cfg_name="arena_test")
    
-   # Quick test with sample data
-   analyzer.quick_test()
+   # Access specific results
+   print(f"Policy estimates: {results.policy_uplifts}")
+   print(f"Confidence intervals: {results.confidence_intervals}")
    
-   # If you have real results
-   analyzer.load_results("path/to/experiment/results.json")
-   
-   # Generate comprehensive analysis
-   analyzer.full_analysis()
-   
-   # Create visualizations
-   analyzer.plot_estimates()
-   analyzer.plot_weight_diagnostics()
+   # Access detailed diagnostics
+   print(f"Weight diagnostics: {results.weight_diagnostics}")
+   print(f"Effective sample sizes: {results.ess_values}")
 
 Common Workflows
 ---------------
@@ -288,7 +283,7 @@ Now that you've got the basics:
 
 1. **Read the** :doc:`api/estimators` **guide** for detailed estimator comparison
 2. **Check out** :doc:`guides/weight_processing` **for technical details**
-3. **Browse** :doc:`examples/index` **for more advanced use cases**
+3. **Explore** :doc:`guides/user_guide` **for advanced workflows**
 4. **Join the community** on GitHub for questions and contributions
 
 Happy evaluating! 🚀 

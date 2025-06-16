@@ -315,11 +315,13 @@ Interactive weight analysis is available via:
 
 .. code-block:: python
 
-   from examples.arena_interactive import ArenaAnalyzer
+   from cje.utils.weight_diagnostics import WeightDiagnostics
+   from cje.pipeline import run_pipeline
    
-   analyzer = ArenaAnalyzer()
-   analyzer.plot_weight_diagnostics()  # Visual diagnostic dashboard
-   analyzer.diagnose_weights()         # Detailed diagnostic objects
+   # Run pipeline and get diagnostics
+   results = run_pipeline(cfg_path="configs", cfg_name="arena_test")
+   diagnostics = WeightDiagnostics(results.importance_weights)
+   diagnostics.plot_diagnostics()  # Visual diagnostic dashboard
 
 Guard Rail Checks
 ~~~~~~~~~~~~~~~~~~
@@ -406,11 +408,15 @@ After running the arena analysis, use the provided example script to explore you
 
 .. code-block:: bash
 
-   # Analyze latest results with detailed statistics and plots
-   python examples/analyze_arena_results.py
+   # Analyze results using the CJE pipeline
+   cje results --config arena_test
 
-   # Analyze a specific run
-   python examples/analyze_arena_results.py --run-dir outputs/arena_runs/run_2024-01-15_14-30-22
+   # Or programmatically
+   python -c "
+   from cje.pipeline import run_pipeline
+   results = run_pipeline(cfg_path='configs', cfg_name='arena_test')
+   print(f'Policy estimates: {results.policy_uplifts}')
+   "
 
 The analysis script provides:
 

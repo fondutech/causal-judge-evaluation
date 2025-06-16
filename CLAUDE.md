@@ -140,7 +140,7 @@ The `cje/research/` module contains experimental features:
 
 This is NOT an optimization issue - it's a fundamental requirement for causal identification. Using single-pass generation would introduce bias because π₀ and π' would be scored differently. The `generate_with_consistent_logp` method implements this correctly.
 
-**Token Extraction Fix (June 2025)**: Fixed critical bug in `_teacher_forcing_logprob` where tokenization context differences (e.g., `']</s>'` vs `'] </s>'`) caused extraction of wrong tokens. Now uses direct response search with divergence-based fallback in `_extract_response_logprobs_by_divergence`. This resolved the "Cabbages" -21.625 logprob issue where `</s>` tokens were being extracted instead of response tokens.
+**Token Extraction**: Character-level search in `_extract_response_logprobs` ensures correct token extraction by starting search from assistant response position. This prevents finding responses that appear in prompts/examples.
 
 **Completions Template System**: The `cje/loggers/completions_templates.py` module provides templates for converting chat conversations to continuous strings required by completions API endpoints. Currently provides:
 - Llama 3: `<|begin_of_text|><|start_header_id|>...<|end_header_id|>...<|eot_id|>`
@@ -170,7 +170,7 @@ Validation tests known high-probability responses (e.g., "4" for "2+2?") and pro
 - **OpenAI**: ❌ Deprecated completions API, no echo support in chat completions
 - **Anthropic**: ❌ No completions API
 
-Both Fireworks AI and Together AI (for Llama 3.x models) support teacher forcing. See usage guide at `experiments/arena_10k_oracle/scripts/COMPLETIONS_TEMPLATES_USAGE.md`.
+Both Fireworks AI and Together AI (for Llama 3.x models) support teacher forcing.
 
 ### Paper Implementation Notes
 
@@ -197,12 +197,11 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 
 ### Current Focus Areas
 
-**Arena 10K Oracle Experiment** (June 2025):
+**Arena 10K Oracle Experiment**:
 - Located in `experiments/arena_10k_oracle/`
 - Designed for paper validation with human labels via crowdsourcing
-- Key insight: Experiment has natural breakpoints for offline human labeling
-- Scripts 01-04 implemented, 05-07 marked as TBD
-- Uses Fireworks API for Llama models, ~$1k total budget
+- Key insight: Pi_clone target policy doesn't need human labels or response generation
+- Uses Fireworks API for Llama models
 
 **Structural Preferences**:
 - `experiments/` for self-contained experiments with own scripts/configs/docs
@@ -320,64 +319,17 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 - Detailed file lists from cleanup (already captured in principles)
 
 
-## Session Notes - June 16, 2025 (continued)
-
-### Additional Completed Work
-- **Completions Template System Simplification**:
-  - Removed all model name auto-detection logic per user request
-  - Simplified API to require explicit `completions_template_format` specification
-  - Created comprehensive validation system to detect template misconfigurations
-  - Added `validate_teacher_forcing()` method to APIPolicyRunner
-  
-- **Documentation Updates**:
-  - Created comprehensive guide at `/docs/guides/completions_templates.rst`
-  - Updated teacher_forcing.rst to reference new template system
-  - Updated configuration_reference.rst with completions_template_format examples
-  - Added completions_templates to guides index for discoverability
-  
-- **Code Cleanup**:
-  - All legacy development files already cleaned up (test_simple_completions.py, etc.)
-  - Kept only `test_simplified_templates.py` as the canonical test
-  - All code passes black formatting and mypy type checking
-  
-### Key Design Decision
-- User explicitly requested: "The user will be responsible for providing the right completions format for the model they are using"
-- This simplified the codebase significantly and made errors more explicit
-
-## Session Notes - June 17, 2025 (Today)
+## Session Notes - June 17, 2025
 
 ### Completed Work
-- **Completions Template System**: Refactored prompt templates to clarify they're specifically for completions API
-  - Renamed `prompt_templates.py` → `completions_templates.py`
-  - Renamed `PromptTemplate` → `CompletionsTemplate` throughout
-  - Added clear documentation that these are for converting chat to continuous strings for teacher forcing
-  - Created usage guide at `experiments/arena_10k_oracle/scripts/COMPLETIONS_TEMPLATES_USAGE.md`
+- **Token Extraction Fix**: Fixed critical bug where responses found in prompts were incorrectly extracted
+  - Now uses character-level search starting from assistant response position
+  - Resolved "Cabbages" -9.99 logprob issue (now correctly returns 0.0)
+  - Improved reliability without overengineering
   
-- **Llama 4 Template Fix Resolution**: 
-  - Root cause: Wrong prompt template for Llama 4 models (was using Llama 3 format)
-  - Solution: Automatic template detection based on model name
-  - Result: "Cabbages" logprob fixed from -21.625 to reasonable values (~0.0)
-  - Confirmed Fireworks API works correctly with proper template
+- **Arena Analysis Note**: Pi_clone target policy doesn't need human labels or response generation in 02b_generate_target
 
-### Key Architectural Decisions
-- Templates are named "CompletionsTemplate" to distinguish from other prompt templates
-- Auto-detection for common providers (Fireworks, Together, OpenAI, Anthropic)
-- Extensible system allows custom templates via config or code
-- All linting checks pass (black, mypy)
-
-### To Remove Next Session
-- Session notes from June 15 (legacy clip removal details - already captured in principles)
-- Detailed Arena 10K experiment issues from June 16 (resolved by template fix)
-
-### Updates Today
-- **Simplified completions template system**: 
-  - Removed all auto-detection - users must explicitly specify `completions_template_format`
-  - Provides Llama 3 and Llama 4 templates out of the box
-  - Clear error messages if wrong format is specified
-  - Updated all config files to include `completions_template_format`
-- **Comprehensive validation system** to prevent silent failures:
-  - `cje/loggers/template_validation.py`: Tests known high-probability responses
-  - Provides detailed diagnostics when validation fails
-  - Integrated into APIPolicyRunner with `validate_teacher_forcing()` method
-- **Documentation**: Created clear guide at `COMPLETIONS_TEMPLATE_GUIDE.md`
-- All code passes black formatting and mypy type checking
+### Recent Architecture Updates
+- **Completions Template System**: Requires explicit `completions_template_format` specification (no auto-detection)
+- **Token Extraction**: Uses character-level matching for better reliability than token-level search
+- **Validation System**: `validate_teacher_forcing()` method prevents silent failures
