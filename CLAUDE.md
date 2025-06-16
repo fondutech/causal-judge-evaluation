@@ -142,12 +142,11 @@ This is NOT an optimization issue - it's a fundamental requirement for causal id
 
 **Token Extraction Fix (June 2025)**: Fixed critical bug in `_teacher_forcing_logprob` where tokenization context differences (e.g., `']</s>'` vs `'] </s>'`) caused extraction of wrong tokens. Now uses direct response search with divergence-based fallback in `_extract_response_logprobs_by_divergence`. This resolved the "Cabbages" -21.625 logprob issue where `</s>` tokens were being extracted instead of response tokens.
 
-**CRITICAL FIREWORKS API BUG (June 2025)**: Discovered that Fireworks completions API with echo=True returns completely incorrect log probabilities. Testing revealed:
-- Scout model: Up to 37,500x discrepancy (e.g., "Cabbages": -0.004 chat vs -150.9 completions)
-- Maverick model: Better but still 10,000x+ discrepancy in many cases
-- Bug worsens with response length (e.g., "Yes" -> -0.58 but "Yes." -> -8.6)
-- Even model's own natural generations get terrible scores
-This makes Fireworks completely unsuitable for teacher forcing in CJE. The token extraction code is correct; the API itself is broken.
+**CRITICAL FIREWORKS API BUG (June 2025)**: Discovered that Fireworks completions API with echo=True returns incorrect log probabilities. Initial testing revealed we were using the wrong template for Llama 4 models. After fixing to use the correct Llama 4 template (`<|begin_of_text|>` format instead of `[INST]` format), results improved but issues remain:
+- With correct template: Some responses get correct 0.0 logprobs, but others still have issues
+- "Cabbages": Chat API returns -0.000 but Completions API returns -13.459
+- The API has fundamental inconsistencies even with the correct template
+This makes Fireworks unsuitable for reliable teacher forcing in CJE. The token extraction code and template detection are now correct, but the API itself remains problematic.
 
 Currently only Fireworks (confirmed buggy) and Together (unconfirmed) support the required completions API. See `docs/guides/teacher_forcing.rst` for details.
 

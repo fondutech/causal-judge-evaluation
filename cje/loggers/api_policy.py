@@ -518,51 +518,90 @@ class APIPolicyRunner:
     ) -> str:
         """
         Format the conversation as a single prompt string including the logged response.
-        This follows the format shown in the user's example.
+        Uses appropriate template based on model version.
         """
-        # Extract system prompt and user message from messages
-        system_prompt = ""
-        user_message = ""
+        # Check if this is a Llama 4 model
+        if "llama4" in self.model_name.lower() or "llama-4" in self.model_name.lower():
+            # Use Llama 4 template
+            parts = ["<|begin_of_text|>"]
 
-        for msg in messages:
-            if msg.get("role") == "system":
-                system_prompt = msg.get("content", "")
-            elif msg.get("role") == "user":
-                user_message = msg.get("content", "")
+            for msg in messages:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                parts.append(
+                    f"<|header_start|>{role}<|header_end|>\n\n" f"{content}<|eot|>"
+                )
 
-        # Format in Llama chat template style (as shown in user's example)
-        # <s>[INST] <<SYS>>\n{SYSTEM}\n<</SYS>>\n{user_message} [/INST] {logged_reply}</s>
-        if system_prompt:
-            prompt = f"<s>[INST] <<SYS>>\n{system_prompt}\n<</SYS>>\n{user_message} [/INST] {response}</s>"
+            # Add assistant response
+            parts.append(
+                f"<|header_start|>assistant<|header_end|>\n\n" f"{response}<|eot|>"
+            )
+
+            return "".join(parts)
         else:
-            prompt = f"<s>[INST] {user_message} [/INST] {response}</s>"
+            # Use Llama 3 template for older models
+            # Extract system prompt and user message from messages
+            system_prompt = ""
+            user_message = ""
 
-        return prompt
+            for msg in messages:
+                if msg.get("role") == "system":
+                    system_prompt = msg.get("content", "")
+                elif msg.get("role") == "user":
+                    user_message = msg.get("content", "")
+
+            # Format in Llama 3 chat template style
+            # <s>[INST] <<SYS>>\n{SYSTEM}\n<</SYS>>\n{user_message} [/INST] {logged_reply}</s>
+            if system_prompt:
+                prompt = f"<s>[INST] <<SYS>>\n{system_prompt}\n<</SYS>>\n{user_message} [/INST] {response}</s>"
+            else:
+                prompt = f"<s>[INST] {user_message} [/INST] {response}</s>"
+
+            return prompt
 
     def _format_conversation_without_response(self, messages: List[Dict]) -> str:
         """
         Format the conversation as a single prompt string WITHOUT the response.
         This is used to calculate the exact token count of the response in context.
+        Uses appropriate template based on model version.
         """
-        # Extract system prompt and user message from messages
-        system_prompt = ""
-        user_message = ""
+        # Check if this is a Llama 4 model
+        if "llama4" in self.model_name.lower() or "llama-4" in self.model_name.lower():
+            # Use Llama 4 template
+            parts = ["<|begin_of_text|>"]
 
-        for msg in messages:
-            if msg.get("role") == "system":
-                system_prompt = msg.get("content", "")
-            elif msg.get("role") == "user":
-                user_message = msg.get("content", "")
+            for msg in messages:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                parts.append(
+                    f"<|header_start|>{role}<|header_end|>\n\n" f"{content}<|eot|>"
+                )
 
-        # Format in Llama chat template style but WITHOUT response
-        # CRITICAL: No space before </s> to ensure correct token counting
-        # <s>[INST] <<SYS>>\n{SYSTEM}\n<</SYS>>\n{user_message} [/INST]</s>
-        if system_prompt:
-            prompt = f"<s>[INST] <<SYS>>\n{system_prompt}\n<</SYS>>\n{user_message} [/INST]</s>"
+            # Add empty assistant header (ready for response)
+            parts.append(f"<|header_start|>assistant<|header_end|>\n\n")
+
+            return "".join(parts)
         else:
-            prompt = f"<s>[INST] {user_message} [/INST]</s>"
+            # Use Llama 3 template for older models
+            # Extract system prompt and user message from messages
+            system_prompt = ""
+            user_message = ""
 
-        return prompt
+            for msg in messages:
+                if msg.get("role") == "system":
+                    system_prompt = msg.get("content", "")
+                elif msg.get("role") == "user":
+                    user_message = msg.get("content", "")
+
+            # Format in Llama 3 chat template style but WITHOUT response
+            # CRITICAL: No space before </s> to ensure correct token counting
+            # <s>[INST] <<SYS>>\n{SYSTEM}\n<</SYS>>\n{user_message} [/INST]</s>
+            if system_prompt:
+                prompt = f"<s>[INST] <<SYS>>\n{system_prompt}\n<</SYS>>\n{user_message} [/INST]</s>"
+            else:
+                prompt = f"<s>[INST] {user_message} [/INST]</s>"
+
+            return prompt
 
     def _extract_response_logprobs_by_divergence(
         self, messages: List[Dict], response: str, all_logprobs: List[Optional[float]]
@@ -637,8 +676,15 @@ class APIPolicyRunner:
 
                 response_start = divergence_point
 
-                # Find </s>
-                eos_tokens = enc.encode("</s>")
+                # Find end-of-sequence
+                if (
+                    "llama4" in self.model_name.lower()
+                    or "llama-4" in self.model_name.lower()
+                ):
+                    eos_tokens = enc.encode("<|eot|>")
+                else:
+                    eos_tokens = enc.encode("</s>")
+
                 for i in range(
                     len(tokens_with) - len(eos_tokens), response_start - 1, -1
                 ):
