@@ -2,7 +2,7 @@
 
 experiment:
   name: "arena_10k_human_labels"
-  description: "CJE evaluation on ChatBot Arena prompts with crowdsourced human labels"
+  description: "CJE evaluation on 10k ChatBot Arena prompts with crowdsourced human labels"
   seed: 42
   
 paths:
@@ -16,28 +16,24 @@ logging_policy:
   max_tokens: 1024
   
 target_policies:
-  - name: "pi_hot"
+  - name: "pi_clone"
     provider: "fireworks"
     model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
-    temperature: 0.9
+    temperature: 0.5
     max_tokens: 1024
-    description: "Higher temperature (more creative)"
     
   - name: "pi_cot"
     provider: "fireworks"
     model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
     temperature: 0.5
     max_tokens: 1024
-    system_prompt: "You are a helpful assistant. Always think step-by-step before answering. Start with 'Let me think about this...' and show your reasoning."
-    description: "Chain-of-thought prompting"
+    system_prompt_suffix: "\n\nThink step-by-step before providing your answer."
     
-  - name: "pi_concise"
+  - name: "pi_bigger_model"
     provider: "fireworks"
-    model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
-    temperature: 0.3
+    model_name: "accounts/fireworks/models/llama4-maverick-instruct-basic"
+    temperature: 0.5
     max_tokens: 1024
-    system_prompt: "You are a helpful assistant. Be extremely concise and direct. Limit responses to 2-3 sentences maximum."
-    description: "Concise responses"
 
 # AI Judge for initial scoring (will be calibrated with human labels)
 judge:
@@ -49,16 +45,7 @@ judge:
 estimator:
   name: "DRCPO"
   k: 5  # Cross-fitting folds
-  seed: 42  # Ensure consistent cross-validation splits
 
-# Human labeling configuration
-human_labels:
-  calibration_fraction: 0.25  # 25% for calibration
-  votes_per_sample: 3         # 3 annotators per sample
-  platform: "surge"           # Surge AI
-
-# Note: This config documents the actual implementation in the scripts.
-# The experiment uses more interesting policy variations than originally planned:
-# - pi_hot: Tests temperature variation (0.9 vs 0.5)
-# - pi_cot: Tests prompting strategy (chain-of-thought)
-# - pi_concise: Tests response style (brevity constraint)
+# Note: Human labels are collected externally via scripts.
+# See experiments/arena_10k_oracle/scripts/ for data export/import process.
+# Label fractions and splits are inferred from the imported data.

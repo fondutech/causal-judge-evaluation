@@ -336,24 +336,23 @@ def main() -> int:
         if completed:
             console.print(f"   Completed policies: {', '.join(completed)}")
 
-    # Define target policies
+    # Define target policies (from arena_10k.yaml)
     target_policies = {
-        "pi_hot": {
+        "pi_clone": {
             "model": "accounts/fireworks/models/llama4-scout-instruct-basic",
-            "temperature": 0.9,
-            "description": "Higher temperature (more creative)",
+            "temperature": 0.5,
+            "description": "Clone of π₀ (sanity check)",
         },
         "pi_cot": {
             "model": "accounts/fireworks/models/llama4-scout-instruct-basic",
             "temperature": 0.5,
-            "system_prompt": "You are a helpful assistant. Always think step-by-step before answering. Start with 'Let me think about this...' and show your reasoning.",
+            "system_prompt": "You are a helpful assistant.\n\nThink step-by-step before providing your answer.",
             "description": "Chain-of-thought prompting",
         },
-        "pi_concise": {
-            "model": "accounts/fireworks/models/llama4-scout-instruct-basic",
-            "temperature": 0.3,
-            "system_prompt": "You are a helpful assistant. Be extremely concise and direct. Limit responses to 2-3 sentences maximum.",
-            "description": "Concise responses",
+        "pi_bigger_model": {
+            "model": "accounts/fireworks/models/llama4-maverick-instruct-basic",
+            "temperature": 0.5,
+            "description": "Larger model (Maverick)",
         },
     }
 
@@ -406,7 +405,7 @@ def main() -> int:
     # Check what policies we have
     if data:
         sample = data[0]
-        for policy in ["pi_hot", "pi_cot", "pi_concise"]:
+        for policy in ["pi_clone", "pi_cot", "pi_bigger_model"]:
             if f"{policy}_response" in sample:
                 valid_responses = sum(
                     1
@@ -420,7 +419,7 @@ def main() -> int:
     # Clean up checkpoint if everything completed
     all_complete = all(
         checkpoint_mgr.is_policy_completed(p)
-        for p in ["pi_hot", "pi_cot", "pi_concise"]
+        for p in ["pi_clone", "pi_cot", "pi_bigger_model"]
         if args.policy is None or p == args.policy
     )
 

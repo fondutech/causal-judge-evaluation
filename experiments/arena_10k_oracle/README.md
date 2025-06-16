@@ -18,9 +18,9 @@ This experiment validates Causal Judge Evaluation (CJE) on real ChatBot Arena pr
 | Policy | Model | Temperature | Description |
 |--------|-------|-------------|-------------|
 | π₀ (logging) | llama4-scout-instruct-basic | T=0.5 | baseline logging policy |
-| π_hot | llama4-scout-instruct-basic | T=0.9 | higher temperature (creative) |
+| π_clone | llama4-scout-instruct-basic | T=0.5 | identical to π₀ (sanity check) |
 | π_cot | llama4-scout-instruct-basic | T=0.5 | chain-of-thought prompting |
-| π_concise | llama4-scout-instruct-basic | T=0.3 | concise responses (2-3 sentences) |
+| π_bigger_model | llama4-maverick-instruct-basic | T=0.5 | larger model variant |
 
 ### Judge Configuration
 - **Model**: llama4-scout-instruct-basic at T=0

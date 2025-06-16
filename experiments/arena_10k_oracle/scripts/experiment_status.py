@@ -52,9 +52,9 @@ def analyze_data_completeness(file_path: Path) -> Dict[str, Any]:
                 "response",
                 "total_logprob",
                 "judge_score_raw",
-                "pi_hot_response",
+                "pi_clone_response",
                 "pi_cot_response",
-                "pi_concise_response",
+                "pi_bigger_model_response",
             ]:
                 if field in data and data[field] is not None and data[field] != "":
                     field_counts[field] = field_counts.get(field, 0) + 1
@@ -129,9 +129,9 @@ def main() -> None:
                 "response",
                 "total_logprob",
                 "judge_score_raw",
-                "pi_hot_response",
+                "pi_clone_response",
                 "pi_cot_response",
-                "pi_concise_response",
+                "pi_bigger_model_response",
             ]:
                 count = fields.get(field, 0)
                 pct = (count / total * 100) if total > 0 else 0
@@ -179,9 +179,9 @@ def main() -> None:
     console.print("\n[bold]Cost Summary:[/bold]")
     console.print("  π₀ generation: ~$0.03 (72 samples)")
     console.print("  Judge scoring: ~$0.01 (72 samples)")
-    console.print("  Target policies: ~$0.09 (72 samples × 3 policies)")
+    console.print("  Target policies: ~$0.15 (includes Maverick model)")
     console.print("  Human labeling: ~$4.32 (54 labels)")
-    console.print("  [bold]Total: ~$4.45[/bold]")
+    console.print("  [bold]Total: ~$4.51[/bold]")
 
 
 if __name__ == "__main__":
