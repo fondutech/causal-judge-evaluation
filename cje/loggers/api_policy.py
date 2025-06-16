@@ -58,7 +58,6 @@ from cje.loggers.template_validation import (
     ValidationCase,
 )
 from ..constants import OPENAI_COMPATIBLE_PROVIDERS
-from cje.utils.logprobs import sum_response_logprobs_tail  # NEW
 from ..utils.error_handling import safe_call
 from ..utils.progress import track
 
@@ -359,8 +358,6 @@ class APIPolicyRunner:
         max_new_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
-        *,
-        behavior_logp: Optional[float] = None,
     ) -> float:
         """Return log probability of ``response`` given ``context`` using teacher forcing.
 
@@ -370,7 +367,6 @@ class APIPolicyRunner:
             max_new_tokens: Max tokens (unused for teacher forcing)
             temperature: Temperature (unused for teacher forcing)
             top_p: Top-p (unused for teacher forcing)
-            behavior_logp: If provided and this is identical to behavior policy, returns this value
 
         Returns:
             Log probability of the response given context
@@ -382,26 +378,12 @@ class APIPolicyRunner:
         if cache_key in self._logprob_cache:
             return self._logprob_cache[cache_key]
 
-        # For identical policies, use behavior log-prob if provided
-        # This handles the scout=logging case cleanly
-        if behavior_logp is not None and self._is_identical_to_behavior_policy():
-            logger.debug(
-                f"Using behavior log-prob for identical policy {self.model_name}"
-            )
-            self._logprob_cache[cache_key] = behavior_logp
-            return behavior_logp
-
-        # Use teacher forcing for non-identical policies
+        # Use teacher forcing
         result = self._teacher_forcing_logprob(context, response)
 
         # Cache result
         self._logprob_cache[cache_key] = result
         return result
-
-    def _is_identical_to_behavior_policy(self) -> bool:
-        """Check if this policy is identical to the behavior/logging policy."""
-        # Simple heuristic: scout models are typically identical to logging policy
-        return "scout" in self.model_name.lower()
 
     def _teacher_forcing_logprob(self, context: str, response: str) -> float:
         """Compute log probability using teacher forcing via completions API."""
@@ -435,9 +417,8 @@ class APIPolicyRunner:
                 logger.warning(f"Empty token logprobs for {self.model_name}")
                 return 0.0
 
-            # CRITICAL: Use divergence-based extraction due to tokenization differences
-            # The tokenizer may create different tokens based on context
-            result = self._extract_response_logprobs_by_divergence(
+            # Extract response logprobs using character-level matching
+            result = self._extract_response_logprobs(
                 messages, response, all_token_logprobs
             )
 
@@ -570,20 +551,6 @@ class APIPolicyRunner:
             verbose=verbose,
         )
 
-    def _messages_to_text(self, messages: List[Dict[str, str]]) -> str:
-        """Convert message array back to text format for providers that need it."""
-        text_parts = []
-        for msg in messages:
-            role = msg["role"]
-            content = msg["content"]
-            if role == "system":
-                text_parts.append(f"System: {content}")
-            elif role == "user":
-                text_parts.append(f"Human: {content}")
-            elif role == "assistant":
-                text_parts.append(f"AI: {content}")
-        return "\n".join(text_parts) + "\n"
-
     def _format_conversation_with_response(
         self, messages: List[Dict], response: str
     ) -> str:
@@ -601,113 +568,80 @@ class APIPolicyRunner:
         """
         return self.template.format_without_response(messages)
 
-    def _extract_response_logprobs_by_divergence(
+    def _extract_response_logprobs(
         self, messages: List[Dict], response: str, all_logprobs: List[Optional[float]]
     ) -> float:
         """
-        Extract response logprobs by finding the actual response in the token sequence.
+        Extract response logprobs by finding the response in the token sequence.
 
-        This is more robust than simple token counting because tokenization
-        can differ based on context (e.g., ']</s>' vs '] </s>').
+        Uses character-level matching to map response to token positions.
         """
+        import tiktoken
+
         try:
-            import tiktoken
+            enc = tiktoken.encoding_for_model(self.model_name)
+        except KeyError:
+            enc = tiktoken.get_encoding("cl100k_base")
 
-            try:
-                enc = tiktoken.encoding_for_model(self.model_name)
-            except KeyError:
-                enc = tiktoken.get_encoding("cl100k_base")
+        # Get the full prompt with response
+        with_resp = self._format_conversation_with_response(messages, response)
 
-            # Get the full prompt with response
-            with_resp = self._format_conversation_with_response(messages, response)
-            tokens_with = enc.encode(with_resp)
+        # Find response position at character level
+        response_char_start = with_resp.find(response)
 
-            # Try to find the response tokens directly
-            # First try with space prefix (most common case)
-            response_with_space = f" {response}"
-            response_tokens = enc.encode(response_with_space)
+        if response_char_start == -1:
+            # If exact match fails, try with normalized whitespace
+            import re
 
-            # Search for the response in the token sequence
-            response_start = None
-            response_end = None
+            pattern = re.escape(response.strip())
+            pattern = r"\s*" + pattern.replace(r"\ ", r"\s+") + r"\s*"
+            match = re.search(pattern, with_resp)
+            if match:
+                response_char_start = match.start()
+                response = match.group()  # Use the matched version
 
-            # Look for response with space
-            for i in range(len(tokens_with) - len(response_tokens) + 1):
-                if tokens_with[i : i + len(response_tokens)] == response_tokens:
-                    response_start = i
-                    response_end = i + len(response_tokens)
-                    break
-
-            # If not found, try without space
-            if response_start is None:
-                response_tokens = enc.encode(response)
-                for i in range(len(tokens_with) - len(response_tokens) + 1):
-                    if tokens_with[i : i + len(response_tokens)] == response_tokens:
-                        response_start = i
-                        response_end = i + len(response_tokens)
-                        break
-
-            if response_start is None:
-                # Fallback: use the old method with divergence point
-                logger.warning(
-                    f"Could not find exact response '{response}' in tokens, using divergence method"
-                )
-                without_resp = self._format_conversation_without_response(messages)
-                tokens_without = enc.encode(without_resp)
-
-                # Find divergence
-                divergence_point = len(tokens_without)
-                for i in range(min(len(tokens_with), len(tokens_without))):
-                    if tokens_with[i] != tokens_without[i]:
-                        divergence_point = i
-                        break
-
-                # Skip the ] token and space if present
-                if divergence_point < len(tokens_with) - 1:
-                    next_token = enc.decode([tokens_with[divergence_point]])
-                    if next_token == "]":
-                        divergence_point += 1
-                        if divergence_point < len(tokens_with):
-                            next_token = enc.decode([tokens_with[divergence_point]])
-                            if next_token == " ":
-                                divergence_point += 1
-
-                response_start = divergence_point
-
-                # Find end-of-sequence
-                eos_token = self.template.get_eos_token()
-                eos_tokens = enc.encode(eos_token) if eos_token else []
-
-                for i in range(
-                    len(tokens_with) - len(eos_tokens), response_start - 1, -1
-                ):
-                    if tokens_with[i : i + len(eos_tokens)] == eos_tokens:
-                        response_end = i
-                        break
-
-                if response_end is None:
-                    response_end = len(tokens_with)
-
-            # Extract response logprobs
-            response_logprobs = all_logprobs[response_start:response_end]
-
-            # Verify extraction
-            extracted_tokens = tokens_with[response_start:response_end]
-            decoded = enc.decode(extracted_tokens)
-            logger.debug(
-                f"Extracted tokens {response_start}:{response_end} = '{decoded.strip()}' "
-                f"(expected '{response}')"
+        if response_char_start == -1:
+            raise ValueError(
+                f"Could not find response in formatted text. "
+                f"Response: '{response[:50]}...'"
             )
 
-            # Sum the logprobs
-            result = sum(lp for lp in response_logprobs if lp is not None)
+        # Tokenize and build character position mapping
+        tokens = enc.encode(with_resp)
+        char_positions = []  # List of (token_idx, char_start, char_end)
+        char_pos = 0
 
-            return result
+        for i, token_id in enumerate(tokens):
+            token_text = enc.decode([token_id])
+            char_positions.append((i, char_pos, char_pos + len(token_text)))
+            char_pos += len(token_text)
 
-        except ImportError:
-            # Fallback to simple counting if tiktoken not available
-            logger.warning("tiktoken not available, using simple tail extraction")
-            response_token_count = self._get_response_token_count(response)
-            from cje.utils.logprobs import sum_response_logprobs_tail
+        # Find tokens that contain the response
+        response_char_end = response_char_start + len(response)
+        response_token_indices = []
 
-            return sum_response_logprobs_tail(all_logprobs, response_token_count)
+        for token_idx, start, end in char_positions:
+            # Token overlaps with response
+            if start < response_char_end and end > response_char_start:
+                response_token_indices.append(token_idx)
+
+        if not response_token_indices:
+            raise ValueError(
+                f"No tokens found for response at char position {response_char_start}"
+            )
+
+        # Extract and sum logprobs for response tokens
+        start_idx = response_token_indices[0]
+        end_idx = response_token_indices[-1] + 1
+        response_logprobs = all_logprobs[start_idx:end_idx]
+
+        result = sum(lp for lp in response_logprobs if lp is not None)
+
+        # Debug logging
+        extracted_text = enc.decode(tokens[start_idx:end_idx])
+        logger.debug(
+            f"Extracted tokens [{start_idx}:{end_idx}] = '{extracted_text}' "
+            f"(expected: '{response}')"
+        )
+
+        return result

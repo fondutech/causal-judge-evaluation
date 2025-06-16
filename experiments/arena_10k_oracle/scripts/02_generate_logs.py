@@ -196,13 +196,20 @@ def generate_logging_policy_responses(
 
     # Validate teacher forcing setup
     console.print(f"🔧 Using completions template: {template_format}")
+
+    # Suppress token extraction warnings if validation passes
+    import logging
+
     try:
         runner.validate_teacher_forcing()
         console.print("✅ Teacher forcing validation passed")
+        # If validation passes, suppress the token extraction warnings
+        logging.getLogger("cje.loggers.api_policy").setLevel(logging.ERROR)
+        console.print("📇 Suppressing token extraction warnings (validation passed)")
     except Exception as e:
         console.print(f"[red]❌ Teacher forcing validation failed: {e}[/red]")
         console.print(
-            "[yellow]⚠️  Continuing anyway, but results may be incorrect[/yellow]"
+            "[yellow]⚠️  Continuing anyway, but log probabilities may be incorrect[/yellow]"
         )
 
     # Display configuration
