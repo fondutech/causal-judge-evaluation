@@ -23,7 +23,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
 from cje.loggers.api_policy import APIPolicyRunner
 from cje.utils.progress import console, track
-from cje.utils.checkpointing import create_jsonl_checkpoint_manager, CheckpointManager
+from cje.utils.checkpointing import CheckpointManager
 
 
 def load_prompts(prompts_file: str) -> List[Dict[str, Any]]:
@@ -209,9 +209,12 @@ def main() -> None:
         target_policies = create_target_policies()
         console.print(f"\n🎯 Target policies: {list(target_policies.keys())}")
 
-        # Initialize checkpoint manager
-        checkpoint_manager = create_jsonl_checkpoint_manager(
-            args.output, uid_key="prompt_id"
+        # Initialize checkpoint manager with composite key for prompt_id and policy
+        checkpoint_manager = CheckpointManager(
+            checkpoint_path=args.output,
+            get_uid_fn=lambda x: f"{x.get('prompt_id')}_{x.get('policy', 'unknown')}",
+            serialize_fn=lambda x: x,
+            deserialize_fn=lambda x: x,
         )
 
         # Generate responses for each target policy
