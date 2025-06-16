@@ -183,13 +183,28 @@ def generate_logging_policy_responses(
     checkpoint_manager.load()
 
     # Initialize API runner
+    # Determine template format based on model name
+    template_format = "llama4" if "llama4" in model_name.lower() else "llama3"
+
     runner = APIPolicyRunner(
         provider="fireworks",
         model_name=model_name,
         temperature=temperature,
         max_new_tokens=max_new_tokens,
         batch_size=batch_size,
+        completions_template_format=template_format,
     )
+
+    # Validate teacher forcing setup
+    console.print(f"🔧 Using completions template: {template_format}")
+    try:
+        runner.validate_teacher_forcing()
+        console.print("✅ Teacher forcing validation passed")
+    except Exception as e:
+        console.print(f"[red]❌ Teacher forcing validation failed: {e}[/red]")
+        console.print(
+            "[yellow]⚠️  Continuing anyway, but results may be incorrect[/yellow]"
+        )
 
     # Display configuration
     console.print(f"🔬 [bold blue]Generating π₀ (logging policy) responses[/bold blue]")

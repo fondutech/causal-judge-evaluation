@@ -180,6 +180,11 @@ def generate_policy_responses(
         console.print(f"   System: {policy_config['system_prompt'][:50]}...")
 
     # Initialize runner
+    # Determine template format based on model name
+    template_format = (
+        "llama4" if "llama4" in policy_config["model"].lower() else "llama3"
+    )
+
     runner = APIPolicyRunner(
         provider="fireworks",
         model_name=policy_config["model"],
@@ -187,7 +192,17 @@ def generate_policy_responses(
         max_new_tokens=1024,
         batch_size=batch_size,
         system_prompt=policy_config.get("system_prompt"),
+        completions_template_format=template_format,
     )
+
+    # Validate teacher forcing setup
+    console.print(f"   Template: {template_format}")
+    try:
+        runner.validate_teacher_forcing()
+        console.print("   ✅ Teacher forcing validation passed")
+    except Exception as e:
+        console.print(f"   [red]❌ Teacher forcing validation failed: {e}[/red]")
+        console.print("   [yellow]⚠️  Results may be incorrect[/yellow]")
 
     # Prepare results storage
     responses = []

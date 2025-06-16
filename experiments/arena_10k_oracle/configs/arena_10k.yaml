@@ -12,6 +12,7 @@ paths:
 logging_policy:
   provider: "fireworks"
   model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
+  completions_template_format: "llama4"
   temperature: 0.5
   max_tokens: 1024
   
@@ -19,12 +20,14 @@ target_policies:
   - name: "pi_clone"
     provider: "fireworks"
     model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
+    completions_template_format: "llama4"
     temperature: 0.5
     max_tokens: 1024
     
   - name: "pi_cot"
     provider: "fireworks"
     model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
+    completions_template_format: "llama4"
     temperature: 0.5
     max_tokens: 1024
     system_prompt_suffix: "\n\nThink step-by-step before providing your answer."
@@ -32,6 +35,7 @@ target_policies:
   - name: "pi_bigger_model"
     provider: "fireworks"
     model_name: "accounts/fireworks/models/llama4-maverick-instruct-basic"
+    completions_template_format: "llama4"
     temperature: 0.5
     max_tokens: 1024
 
