@@ -50,7 +50,12 @@ from cje.loggers.conversation_utils import parse_context
 from cje.loggers.completions_templates import (
     CompletionsTemplate,
     CompletionsTemplateConfig,
-    get_completions_template_for_model,
+    get_completions_template,
+)
+from cje.loggers.template_validation import (
+    validate_teacher_forcing,
+    TemplateValidationError,
+    ValidationCase,
 )
 from ..constants import OPENAI_COMPATIBLE_PROVIDERS
 from cje.utils.logprobs import sum_response_logprobs_tail  # NEW
@@ -81,10 +86,9 @@ class APIPolicyRunner:
         batch_size: int = 16,
         system_prompt: Optional[str] = None,
         user_message_template: str = "{context}",
-        template_format: Optional[str] = None,
-        template_config: Optional[CompletionsTemplateConfig] = None,
+        completions_template_format: str = "llama4",
     ) -> None:
-        """Initialize APIPolicyRunner with optional completions template configuration.
+        """Initialize APIPolicyRunner with completions template configuration.
 
         Args:
             provider: API provider ('openai', 'anthropic', 'google', 'fireworks', 'together')
@@ -95,9 +99,11 @@ class APIPolicyRunner:
             batch_size: Batch size for API calls
             system_prompt: Optional system prompt
             user_message_template: Template for user messages
-            template_format: Explicit completions template format ('llama3', 'llama4', 'chatml', 'alpaca')
-                           Used for converting chat messages to continuous strings for completions API
-            template_config: Advanced completions template configuration for custom formats
+            completions_template_format: Format for completions API ('llama3' or 'llama4')
+                                       IMPORTANT: You must specify the correct format for your model.
+                                       - Use 'llama3' for Llama 3.x models
+                                       - Use 'llama4' for Llama 4 models
+                                       This is required for teacher forcing to work correctly.
         """
         self.provider = provider.lower()
         self.model_name = model_name
@@ -107,17 +113,11 @@ class APIPolicyRunner:
         self.batch_size = batch_size
         self.system_prompt = system_prompt
         self.user_message_template = user_message_template
-        self.template_format = template_format
-        self.template_config = template_config
+        self.completions_template_format = completions_template_format
 
         # Initialize the completions template for converting chat to continuous format
-        self.template = get_completions_template_for_model(
-            model_name=self.model_name,
-            provider=self.provider,
-            template_format=self.template_format,
-            custom_template=(
-                self.template_config.custom_template if self.template_config else None
-            ),
+        self.template = get_completions_template(
+            template_format=self.completions_template_format
         )
 
         # Simple in-memory cache for log-prob computations
@@ -532,6 +532,43 @@ class APIPolicyRunner:
     def cache_stats(self) -> Dict[str, int]:
         """Get cache statistics."""
         return {"cache_size": len(self._logprob_cache)}
+
+    def validate_teacher_forcing(
+        self,
+        custom_cases: Optional[List[ValidationCase]] = None,
+        fail_fast: bool = True,
+        verbose: bool = True,
+    ) -> bool:
+        """Validate that teacher forcing is working correctly with this configuration.
+
+        This method tests the template formatting and log probability computation
+        with known test cases to ensure the setup is correct.
+
+        Args:
+            custom_cases: Optional custom validation cases
+            fail_fast: Whether to stop on first failure
+            verbose: Whether to log detailed information
+
+        Returns:
+            True if all validations pass
+
+        Raises:
+            TemplateValidationError: If validation fails and fail_fast=True
+
+        Example:
+            >>> runner = APIPolicyRunner("fireworks", "llama4-model")
+            >>> try:
+            ...     runner.validate_teacher_forcing()
+            ...     print("✅ Teacher forcing validated")
+            ... except TemplateValidationError as e:
+            ...     print(f"❌ Validation failed: {e}")
+        """
+        return validate_teacher_forcing(
+            api_runner=self,
+            custom_cases=custom_cases,
+            fail_fast=fail_fast,
+            verbose=verbose,
+        )
 
     def _messages_to_text(self, messages: List[Dict[str, str]]) -> str:
         """Convert message array back to text format for providers that need it."""

@@ -64,7 +64,7 @@ Implementation Details
 Format Conversion
 ~~~~~~~~~~~~~~~~~
 
-CJE converts chat-style conversations to a flat text format for the completions API:
+CJE converts chat-style conversations to a flat text format for the completions API using the completions template system:
 
 .. code-block:: python
 
@@ -74,10 +74,14 @@ CJE converts chat-style conversations to a flat text format for the completions 
        {"role": "user", "content": "What is machine learning?"}
    ]
    
-   # Converted to completions format (example for Llama models)
-   prompt = "<s>[INST] <<SYS>>\nYou are a helpful assistant\n<</SYS>>\nWhat is machine learning? [/INST] "
+   # Converted to completions format based on template
+   # For Llama 3:
+   prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nYou are a helpful assistant<|eot_id|>..."
+   
+   # For Llama 4:
+   prompt = "<|begin_of_text|><|header_start|>system<|header_end|>\n\nYou are a helpful assistant<|eot|>..."
 
-The exact format depends on the model's expected template.
+**Important**: You must explicitly specify the correct ``completions_template_format`` for your model. See :doc:`../guides/completions_templates` for details.
 
 Code Example
 ~~~~~~~~~~~~

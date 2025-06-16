@@ -142,12 +142,35 @@ This is NOT an optimization issue - it's a fundamental requirement for causal id
 
 **Token Extraction Fix (June 2025)**: Fixed critical bug in `_teacher_forcing_logprob` where tokenization context differences (e.g., `']</s>'` vs `'] </s>'`) caused extraction of wrong tokens. Now uses direct response search with divergence-based fallback in `_extract_response_logprobs_by_divergence`. This resolved the "Cabbages" -21.625 logprob issue where `</s>` tokens were being extracted instead of response tokens.
 
-**Llama 4 Template Fix (June 2025)**: Resolved incorrect log probabilities by implementing proper Llama 4 prompt template. The issue was not a Fireworks API bug but incorrect template usage:
-- Llama 3 uses: `<s>[INST] ... [/INST] response</s>`
-- Llama 4 uses: `<|begin_of_text|><|header_start|>...<|header_end|>...<|eot|>`
-After implementing automatic template detection and correct formatting, all logprobs are now correct (0.0 for forced responses like "Cabbages"). The Fireworks API works correctly when using the proper template format.
+**Completions Template System**: The `cje/loggers/completions_templates.py` module provides templates for converting chat conversations to continuous strings required by completions API endpoints. Currently provides:
+- Llama 3: `<|begin_of_text|><|start_header_id|>...<|end_header_id|>...<|eot_id|>`
+- Llama 4: `<|begin_of_text|><|header_start|>...<|header_end|>...<|eot|>`
 
-Currently only Fireworks (confirmed working with Llama 4 template) and Together (unconfirmed) support the required completions API. See `docs/guides/teacher_forcing.rst` for details.
+**IMPORTANT**: Users must explicitly specify the correct `completions_template_format` for their model. There is NO auto-detection. Using the wrong template will result in incorrect log probabilities. Example:
+```python
+runner = APIPolicyRunner(
+    provider="fireworks",
+    model_name="llama-v3p3-70b-instruct",
+    completions_template_format="llama3"  # REQUIRED!
+)
+```
+
+**Teacher Forcing Validation**: The `cje/loggers/template_validation.py` module prevents silent failures by validating template configuration before experiments:
+```python
+runner = APIPolicyRunner("fireworks", "llama-v3p3-70b-instruct")
+runner.validate_teacher_forcing()  # Raises error if template mismatch detected
+```
+Validation tests known high-probability responses (e.g., "4" for "2+2?") and provides detailed diagnostics when log probabilities are suspiciously low (< -20), indicating template mismatches or provider incompatibility.
+
+**Provider Support for Teacher Forcing**:
+- **Fireworks AI**: ✅ Fully supports completions API with echo=True for teacher forcing (all models)
+- **Together AI**: ⚠️ Mixed support - Llama 3.x models work, but Llama 4 models do NOT support echo=True
+  - ✅ Working: Llama 3.3, 3.2, 3.1, 3.0 models 
+  - ❌ Not working: Llama 4 models (returns "Echo not yet supported for this model" error)
+- **OpenAI**: ❌ Deprecated completions API, no echo support in chat completions
+- **Anthropic**: ❌ No completions API
+
+Both Fireworks AI and Together AI (for Llama 3.x models) support teacher forcing. See usage guide at `experiments/arena_10k_oracle/scripts/COMPLETIONS_TEMPLATES_USAGE.md`.
 
 ### Paper Implementation Notes
 
@@ -296,59 +319,65 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
 
 - Detailed file lists from cleanup (already captured in principles)
 
-## Session Notes - June 15, 2025
 
-### Completed Work
-- **Legacy code removal**: Removed all legacy clip parameter from weight processing pipeline
-  - Removed from: unified.py, multi_target_sampler.py, all estimators (IPS, DRCPO, MRDR, base_crossfit)
-  - Updated config files (arena_test.yaml, arena_research_experiment.yaml)
-  - Updated all documentation references
-- **Backward compatibility cleanup**: 
-  - Removed confidence_intervals() alias method
-  - Removed legacy metadata format handling
-  - Fixed IPS estimator to use proper base class and interface
-- **Code quality**: All mypy and black checks pass
+## Session Notes - June 16, 2025 (continued)
 
-### Key Changes
-- Weight clipping now handled via log_ratio_clip in diagnostics config (hard clipping at ±20)
-- Removed soft clipping approach in favor of numerical stabilization + hard clipping
-- IPS estimator refactored to match standard Estimator interface
-
-### Next Session
-- Remove this session summary after 2-3 sessions
-- Consider removing supports_logprobs from provider_registry (kept for now as it's part of provider capability tracking)
-- Test all examples still work after IPS refactoring
-
-## Session Notes - June 16, 2025
-
-### Completed Work
-- **Arena 10K Oracle Experiment Pipeline**:
-  - Fixed logprob=0 issues caused by duplicate entries in checkpoint files
-  - Generated 72 logging policy responses with proper teacher-forcing logprobs
-  - Scored all responses with judge (avg: 0.746)
-  - Generated all 3 target policies (pi_hot, pi_cot, pi_concise) with consistent logprobs
-  - Exported data for human labeling (18 calibration, 54 evaluation samples)
-
-- **Critical Teacher Forcing Token Extraction Fix**:
-  - Fixed deeper bug where wrong tokens were extracted due to tokenization context differences
-  - Issue: Template had space in `[/INST] </s>` vs `[/INST]</s>` causing token boundary misalignment
-  - Root cause: Tokenizer creates different tokens based on context (e.g., `']</s>'` as single token vs separate)
-  - Solution: Implemented `_extract_response_logprobs_by_divergence` using direct response search
-  - Impact: "Cabbages" logprob corrected from -21.625 to ~-1.8 (was extracting `</s>` tokens)
+### Additional Completed Work
+- **Completions Template System Simplification**:
+  - Removed all model name auto-detection logic per user request
+  - Simplified API to require explicit `completions_template_format` specification
+  - Created comprehensive validation system to detect template misconfigurations
+  - Added `validate_teacher_forcing()` method to APIPolicyRunner
   
-### Key Learnings
-- **Two-pass generation is REQUIRED**: User emphasized this is for causal identification, not optimization
-- Fireworks supports batch completions API (600 RPM limit)
-- Token extraction must account for tokenization context differences
-- Created multiple script versions (04_generate_targets_fast.py, minimal, all) - needs consolidation
-- Checkpoint handling needs improvement to prevent duplicates
+- **Documentation Updates**:
+  - Created comprehensive guide at `/docs/guides/completions_templates.rst`
+  - Updated teacher_forcing.rst to reference new template system
+  - Updated configuration_reference.rst with completions_template_format examples
+  - Added completions_templates to guides index for discoverability
+  
+- **Code Cleanup**:
+  - All legacy development files already cleaned up (test_simple_completions.py, etc.)
+  - Kept only `test_simplified_templates.py` as the canonical test
+  - All code passes black formatting and mypy type checking
+  
+### Key Design Decision
+- User explicitly requested: "The user will be responsible for providing the right completions format for the model they are using"
+- This simplified the codebase significantly and made errors more explicit
 
-### Important Refactors Identified
-1. Consolidate multiple generation scripts into one canonical version
-2. Improve checkpoint handling to track per-policy, per-sample progress
-3. Re-run all generations with fixed token extraction
-4. Better error handling for API timeouts
+## Session Notes - June 17, 2025 (Today)
 
-### Next Steps
-- Re-generate all experiment data with corrected logprob extraction
-- The checkpoint files contain incorrect logprobs and need regeneration
+### Completed Work
+- **Completions Template System**: Refactored prompt templates to clarify they're specifically for completions API
+  - Renamed `prompt_templates.py` → `completions_templates.py`
+  - Renamed `PromptTemplate` → `CompletionsTemplate` throughout
+  - Added clear documentation that these are for converting chat to continuous strings for teacher forcing
+  - Created usage guide at `experiments/arena_10k_oracle/scripts/COMPLETIONS_TEMPLATES_USAGE.md`
+  
+- **Llama 4 Template Fix Resolution**: 
+  - Root cause: Wrong prompt template for Llama 4 models (was using Llama 3 format)
+  - Solution: Automatic template detection based on model name
+  - Result: "Cabbages" logprob fixed from -21.625 to reasonable values (~0.0)
+  - Confirmed Fireworks API works correctly with proper template
+
+### Key Architectural Decisions
+- Templates are named "CompletionsTemplate" to distinguish from other prompt templates
+- Auto-detection for common providers (Fireworks, Together, OpenAI, Anthropic)
+- Extensible system allows custom templates via config or code
+- All linting checks pass (black, mypy)
+
+### To Remove Next Session
+- Session notes from June 15 (legacy clip removal details - already captured in principles)
+- Detailed Arena 10K experiment issues from June 16 (resolved by template fix)
+
+### Updates Today
+- **Simplified completions template system**: 
+  - Removed all auto-detection - users must explicitly specify `completions_template_format`
+  - Provides Llama 3 and Llama 4 templates out of the box
+  - Clear error messages if wrong format is specified
+  - Updated all config files to include `completions_template_format`
+- **Comprehensive validation system** to prevent silent failures:
+  - `cje/loggers/template_validation.py`: Tests known high-probability responses
+  - Provides detailed diagnostics when validation fails
+  - Integrated into APIPolicyRunner with `validate_teacher_forcing()` method
+- **Documentation**: Created clear guide at `COMPLETIONS_TEMPLATE_GUIDE.md`
+- All code passes black formatting and mypy type checking

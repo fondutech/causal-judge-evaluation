@@ -1,13 +1,26 @@
 """
 Completions API template system for converting chat conversations to continuous strings.
 
-This module provides templates for converting structured chat messages (with roles like
-'user', 'assistant', 'system') into continuous string formats required by completions
-API endpoints. Different models expect different formatting conventions (Llama 3,
-Llama 4, ChatML, etc.) when using teacher forcing for log probability computation.
+This module provides templates for converting structured chat messages into the
+continuous string format required by completions API endpoints for teacher forcing.
 
-These templates are specifically for use with completions API calls (with echo=True)
-for consistent log probability scoring, NOT for general prompt formatting.
+IMPORTANT: Users must explicitly specify the correct template format for their model.
+There is no auto-detection. Using the wrong template will result in incorrect
+log probabilities.
+
+Available formats:
+- 'llama3': For Llama 3.x models (3.0, 3.1, 3.2, 3.3)
+- 'llama4': For Llama 4 models (Scout, Maverick, etc.)
+
+Example:
+    from cje.loggers.api_policy import APIPolicyRunner
+
+    # You MUST specify the correct format
+    runner = APIPolicyRunner(
+        provider="fireworks",
+        model_name="llama-v3p3-70b-instruct",
+        completions_template_format="llama3"  # Required!
+    )
 """
 
 from abc import ABC, abstractmethod
@@ -54,6 +67,56 @@ class CompletionsTemplate(ABC):
     def get_eos_token(self) -> str:
         """Get the end-of-sequence token for this template."""
         pass
+
+
+class Llama3CompletionsTemplate(CompletionsTemplate):
+    """
+    Llama 3 style template.
+
+    Format:
+    <|begin_of_text|>
+    <|start_header_id|>user<|end_header_id|>
+
+    {user_message}<|eot_id|>
+    <|start_header_id|>assistant<|end_header_id|>
+
+    {response}<|eot_id|>
+    """
+
+    def format_with_response(
+        self, messages: List[Dict[str, str]], response: str
+    ) -> str:
+        parts = ["<|begin_of_text|>"]
+
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            parts.append(
+                f"<|start_header_id|>{role}<|end_header_id|>\n\n" f"{content}<|eot_id|>"
+            )
+
+        parts.append(
+            f"<|start_header_id|>assistant<|end_header_id|>\n\n" f"{response}<|eot_id|>"
+        )
+
+        return "".join(parts)
+
+    def format_without_response(self, messages: List[Dict[str, str]]) -> str:
+        parts = ["<|begin_of_text|>"]
+
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            parts.append(
+                f"<|start_header_id|>{role}<|end_header_id|>\n\n" f"{content}<|eot_id|>"
+            )
+
+        parts.append(f"<|start_header_id|>assistant<|end_header_id|>\n\n")
+
+        return "".join(parts)
+
+    def get_eos_token(self) -> str:
+        return "<|eot_id|>"
 
 
 class Llama4CompletionsTemplate(CompletionsTemplate):
@@ -108,114 +171,59 @@ class Llama4CompletionsTemplate(CompletionsTemplate):
 
 # Completions Template Registry
 COMPLETIONS_TEMPLATE_REGISTRY: Dict[str, CompletionsTemplate] = {
+    "llama3": Llama3CompletionsTemplate(),
     "llama4": Llama4CompletionsTemplate(),
-}
-
-
-# Model pattern to template mapping
-MODEL_TEMPLATE_PATTERNS: Dict[str, str] = {
-    # Llama 4 models
-    "llama-4": "llama4",
-    "llama4": "llama4",
-    "maverick": "llama4",  # Llama 4 Maverick models
-    "scout": "llama4",  # Llama 4 Scout models
-    # Default fallback to llama4 for now
-    "default": "llama4",
-}
-
-
-# Provider-specific defaults
-PROVIDER_DEFAULTS: Dict[str, Dict[str, str]] = {
-    "fireworks": {
-        "llama-4": "llama4",
-        "llama4": "llama4",
-        "default": "llama4",
-    },
-    # Together AI support not yet confirmed for teacher forcing
 }
 
 
 @dataclass
 class CompletionsTemplateConfig:
-    """Configuration for completions API templates."""
+    """Configuration for completions API templates.
 
-    # Template format name
-    template_format: Optional[str] = None
+    This is primarily for advanced users who need custom template implementations.
+    Most users should simply specify completions_template_format='llama3' or 'llama4'.
+    """
 
     # Custom template instance
     custom_template: Optional[CompletionsTemplate] = None
 
-    # Override specific tokens (for future extensions)
-    bos_token: Optional[str] = None
-    eos_token: Optional[str] = None
-    role_start_token: Optional[str] = None
-    role_end_token: Optional[str] = None
 
-
-def get_completions_template_for_model(
-    model_name: str,
-    provider: Optional[str] = None,
-    template_format: Optional[str] = None,
+def get_completions_template(
+    template_format: str,
     custom_template: Optional[CompletionsTemplate] = None,
 ) -> CompletionsTemplate:
     """
-    Get the appropriate completions API template for a model.
-
-    This determines which template to use for converting chat messages
-    to the continuous string format expected by a model's completions API.
+    Get a completions API template by format name.
 
     Args:
-        model_name: The model name/path
-        provider: The provider name (e.g., 'fireworks', 'together')
-        template_format: Explicit template format to use
-        custom_template: Custom template instance
+        template_format: Template format name ('llama3' or 'llama4')
+        custom_template: Optional custom template instance (overrides template_format)
 
     Returns:
         CompletionsTemplate instance
+
+    Raises:
+        ValueError: If template_format is not recognized
+
+    Example:
+        >>> template = get_completions_template('llama3')
+        >>> template = get_completions_template('llama4')
     """
-    # 1. Use custom template if provided
+    # Use custom template if provided
     if custom_template:
-        logger.debug(f"Using custom template for {model_name}")
+        logger.debug("Using custom template")
         return custom_template
 
-    # 2. Use explicit format if specified
-    if template_format:
-        if template_format in COMPLETIONS_TEMPLATE_REGISTRY:
-            logger.debug(
-                f"Using explicit template format '{template_format}' for {model_name}"
-            )
-            return COMPLETIONS_TEMPLATE_REGISTRY[template_format]
-        else:
-            raise ValueError(f"Unknown template format: {template_format}")
-
-    # 3. Check provider-specific defaults
-    if provider and provider.lower() in PROVIDER_DEFAULTS:
-        provider_map = PROVIDER_DEFAULTS[provider.lower()]
-        model_lower = model_name.lower()
-
-        # Check provider-specific patterns
-        for pattern, format_name in provider_map.items():
-            if pattern != "default" and pattern in model_lower:
-                logger.debug(f"Using provider default '{format_name}' for {model_name}")
-                return COMPLETIONS_TEMPLATE_REGISTRY[format_name]
-
-        # Use provider default
-        if "default" in provider_map:
-            format_name = provider_map["default"]
-            logger.debug(f"Using provider default '{format_name}' for {model_name}")
-            return COMPLETIONS_TEMPLATE_REGISTRY[format_name]
-
-    # 4. Auto-detect based on model name patterns
-    model_lower = model_name.lower()
-    for pattern, format_name in MODEL_TEMPLATE_PATTERNS.items():
-        if pattern != "default" and pattern in model_lower:
-            logger.debug(f"Auto-detected template '{format_name}' for {model_name}")
-            return COMPLETIONS_TEMPLATE_REGISTRY[format_name]
-
-    # 5. Use global default
-    default_format = MODEL_TEMPLATE_PATTERNS.get("default", "llama4")
-    logger.debug(f"Using default template '{default_format}' for {model_name}")
-    return COMPLETIONS_TEMPLATE_REGISTRY[default_format]
+    # Look up template by format name
+    if template_format in COMPLETIONS_TEMPLATE_REGISTRY:
+        logger.debug(f"Using template format '{template_format}'")
+        return COMPLETIONS_TEMPLATE_REGISTRY[template_format]
+    else:
+        available = list(COMPLETIONS_TEMPLATE_REGISTRY.keys())
+        raise ValueError(
+            f"Unknown template format: '{template_format}'. "
+            f"Available formats: {available}"
+        )
 
 
 def register_completions_template(name: str, template: CompletionsTemplate) -> None:
@@ -223,9 +231,17 @@ def register_completions_template(name: str, template: CompletionsTemplate) -> N
     Register a custom completions template.
 
     Args:
-        name: Template name
+        name: Template name (must not conflict with built-in names)
         template: CompletionsTemplate instance
+
+    Example:
+        >>> class MyTemplate(CompletionsTemplate):
+        ...     # implement required methods
+        >>> register_completions_template("myformat", MyTemplate())
+        >>> runner = APIPolicyRunner(..., completions_template_format="myformat")
     """
+    if name in COMPLETIONS_TEMPLATE_REGISTRY:
+        logger.warning(f"Overwriting existing template '{name}'")
     COMPLETIONS_TEMPLATE_REGISTRY[name] = template
     logger.info(f"Registered completions template '{name}'")
 

@@ -13,6 +13,7 @@ logging_policy:
   model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
   temperature: 0.5
   max_new_tokens: 4096
+  completions_template_format: "llama4"  # Required for teacher forcing
 
 # Target policies (what we want to evaluate)
 target_policies:
@@ -22,12 +23,14 @@ target_policies:
     temperature: 0.5
     mc_samples: 5               # Monte Carlo samples per context
     max_new_tokens: 128
+    completions_template_format: "llama4"  # Required for teacher forcing
   - name: "llama4_scout"
     provider: "fireworks"
     model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
     temperature: 0.5
     mc_samples: 5               # Monte Carlo samples per context
     max_new_tokens: 4096
+    completions_template_format: "llama4"  # Required for teacher forcing
 
 # Judge configuration
 judge:

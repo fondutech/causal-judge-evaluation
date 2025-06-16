@@ -246,6 +246,9 @@ Policy Configuration
      max_tokens: 150
      top_p: 1.0
      
+     # Teacher forcing (required for providers supporting completions API)
+     completions_template_format: "llama4"  # Options: "llama3", "llama4"
+     
      # Advanced
      cache_key: "logging_v1"        # For caching consistency
 

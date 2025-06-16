@@ -75,6 +75,9 @@ class PolicyConfig:
     device: str = "auto"
     torch_dtype: str = "auto"
 
+    # Teacher forcing configuration
+    completions_template_format: str = "llama4"  # Required for teacher forcing
+
     def __post_init__(self) -> None:
         if not self.model_name:
             raise ConfigurationError("model_name is required")
@@ -108,6 +111,14 @@ class PolicyConfig:
 
         if self.max_new_tokens < 1:
             raise ConfigurationError("max_new_tokens must be at least 1")
+
+        # Validate completions template format
+        valid_formats = ["llama3", "llama4"]
+        if self.completions_template_format not in valid_formats:
+            raise ConfigurationError(
+                f"Invalid completions_template_format: {self.completions_template_format}. "
+                f"Valid formats: {valid_formats}"
+            )
 
 
 @dataclass

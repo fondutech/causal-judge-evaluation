@@ -37,6 +37,7 @@ Advanced Guides
    oracle_types
    trajectory_methods
    custom_components
+   completions_templates
 
 📚 Learning Paths by Experience
 -------------------------------
