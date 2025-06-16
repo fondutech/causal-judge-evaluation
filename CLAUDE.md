@@ -140,6 +140,8 @@ The `cje/research/` module contains experimental features:
 
 This is NOT an optimization issue - it's a fundamental requirement for causal identification. Using single-pass generation would introduce bias because π₀ and π' would be scored differently. The `generate_with_consistent_logp` method implements this correctly.
 
+**Token Extraction Fix (June 2024)**: Fixed critical bug in `_teacher_forcing_logprob` where tokenization context differences (e.g., `']</s>'` vs `'] </s>'`) caused extraction of wrong tokens. Now uses direct response search with divergence-based fallback in `_extract_response_logprobs_by_divergence`. This resolved the "Cabbages" -21.625 logprob issue where `</s>` tokens were being extracted instead of response tokens.
+
 Currently only Fireworks (confirmed) and Together (unconfirmed) support the required completions API. See `docs/guides/teacher_forcing.rst` for details.
 
 ### Paper Implementation Notes
@@ -322,22 +324,26 @@ This codebase implements the CJE paper (Landesberg 2025) with extensions:
   - Generated all 3 target policies (pi_hot, pi_cot, pi_concise) with consistent logprobs
   - Exported data for human labeling (18 calibration, 54 evaluation samples)
 
-- **Critical Teacher Forcing Fix**:
-  - Fixed token counting bug in `_teacher_forcing_logprob` method
-  - Issue: Response token count was calculated in isolation, not in prompt context
-  - Solution: Calculate token difference between full prompt with/without response
-  - Impact: Prevents off-by-one errors when extracting response logprobs from echo=True sequences
-  - Added `_format_conversation_without_response` method for accurate measurement
+- **Critical Teacher Forcing Token Extraction Fix**:
+  - Fixed deeper bug where wrong tokens were extracted due to tokenization context differences
+  - Issue: Template had space in `[/INST] </s>` vs `[/INST]</s>` causing token boundary misalignment
+  - Root cause: Tokenizer creates different tokens based on context (e.g., `']</s>'` as single token vs separate)
+  - Solution: Implemented `_extract_response_logprobs_by_divergence` using direct response search
+  - Impact: "Cabbages" logprob corrected from -21.625 to ~-1.8 (was extracting `</s>` tokens)
   
 ### Key Learnings
 - **Two-pass generation is REQUIRED**: User emphasized this is for causal identification, not optimization
 - Fireworks supports batch completions API (600 RPM limit)
-- Token counts can differ when text is in context vs standalone (affects logprob extraction)
+- Token extraction must account for tokenization context differences
 - Created multiple script versions (04_generate_targets_fast.py, minimal, all) - needs consolidation
 - Checkpoint handling needs improvement to prevent duplicates
 
 ### Important Refactors Identified
 1. Consolidate multiple generation scripts into one canonical version
 2. Improve checkpoint handling to track per-policy, per-sample progress
-3. Fix duplicate handling in log generation
+3. Re-run all generations with fixed token extraction
 4. Better error handling for API timeouts
+
+### Next Steps
+- Re-generate all experiment data with corrected logprob extraction
+- The checkpoint files contain incorrect logprobs and need regeneration

@@ -440,6 +440,13 @@ class APIPolicyRunner:
                 all_token_logprobs, response_token_count
             )
 
+            # Sanity check: for very short responses, logprob shouldn't be extremely negative
+            if response_token_count <= 3 and result < -20:
+                logger.warning(
+                    f"Suspiciously low logprob {result:.3f} for {response_token_count}-token response. "
+                    f"Response: '{response[:50]}...'"
+                )
+
             logger.debug(
                 f"Teacher forcing: {response_token_count} tokens (in context), logprob={result:.3f}"
             )
@@ -580,10 +587,120 @@ class APIPolicyRunner:
                 user_message = msg.get("content", "")
 
         # Format in Llama chat template style but WITHOUT response
-        # <s>[INST] <<SYS>>\n{SYSTEM}\n<</SYS>>\n{user_message} [/INST] </s>
+        # CRITICAL: No space before </s> to ensure correct token counting
+        # <s>[INST] <<SYS>>\n{SYSTEM}\n<</SYS>>\n{user_message} [/INST]</s>
         if system_prompt:
-            prompt = f"<s>[INST] <<SYS>>\n{system_prompt}\n<</SYS>>\n{user_message} [/INST] </s>"
+            prompt = f"<s>[INST] <<SYS>>\n{system_prompt}\n<</SYS>>\n{user_message} [/INST]</s>"
         else:
-            prompt = f"<s>[INST] {user_message} [/INST] </s>"
+            prompt = f"<s>[INST] {user_message} [/INST]</s>"
 
         return prompt
+
+    def _extract_response_logprobs_by_divergence(
+        self, messages: List[Dict], response: str, all_logprobs: List[Optional[float]]
+    ) -> float:
+        """
+        Extract response logprobs by finding the actual response in the token sequence.
+
+        This is more robust than simple token counting because tokenization
+        can differ based on context (e.g., ']</s>' vs '] </s>').
+        """
+        try:
+            import tiktoken
+
+            try:
+                enc = tiktoken.encoding_for_model(self.model_name)
+            except KeyError:
+                enc = tiktoken.get_encoding("cl100k_base")
+
+            # Get the full prompt with response
+            with_resp = self._format_conversation_with_response(messages, response)
+            tokens_with = enc.encode(with_resp)
+
+            # Try to find the response tokens directly
+            # First try with space prefix (most common case)
+            response_with_space = f" {response}"
+            response_tokens = enc.encode(response_with_space)
+
+            # Search for the response in the token sequence
+            response_start = None
+            response_end = None
+
+            # Look for response with space
+            for i in range(len(tokens_with) - len(response_tokens) + 1):
+                if tokens_with[i : i + len(response_tokens)] == response_tokens:
+                    response_start = i
+                    response_end = i + len(response_tokens)
+                    break
+
+            # If not found, try without space
+            if response_start is None:
+                response_tokens = enc.encode(response)
+                for i in range(len(tokens_with) - len(response_tokens) + 1):
+                    if tokens_with[i : i + len(response_tokens)] == response_tokens:
+                        response_start = i
+                        response_end = i + len(response_tokens)
+                        break
+
+            if response_start is None:
+                # Fallback: use the old method with divergence point
+                logger.warning(
+                    f"Could not find exact response '{response}' in tokens, using divergence method"
+                )
+                without_resp = self._format_conversation_without_response(messages)
+                tokens_without = enc.encode(without_resp)
+
+                # Find divergence
+                divergence_point = len(tokens_without)
+                for i in range(min(len(tokens_with), len(tokens_without))):
+                    if tokens_with[i] != tokens_without[i]:
+                        divergence_point = i
+                        break
+
+                # Skip the ] token and space if present
+                if divergence_point < len(tokens_with) - 1:
+                    next_token = enc.decode([tokens_with[divergence_point]])
+                    if next_token == "]":
+                        divergence_point += 1
+                        if divergence_point < len(tokens_with):
+                            next_token = enc.decode([tokens_with[divergence_point]])
+                            if next_token == " ":
+                                divergence_point += 1
+
+                response_start = divergence_point
+
+                # Find </s>
+                eos_tokens = enc.encode("</s>")
+                for i in range(
+                    len(tokens_with) - len(eos_tokens), response_start - 1, -1
+                ):
+                    if tokens_with[i : i + len(eos_tokens)] == eos_tokens:
+                        response_end = i
+                        break
+
+                if response_end is None:
+                    response_end = len(tokens_with)
+
+            # Extract response logprobs
+            response_logprobs = all_logprobs[response_start:response_end]
+
+            # Verify extraction
+            extracted_tokens = tokens_with[response_start:response_end]
+            decoded = enc.decode(extracted_tokens)
+            logger.debug(
+                f"Extracted tokens {response_start}:{response_end} = '{decoded.strip()}' "
+                f"(expected '{response}')"
+            )
+
+            # Sum the logprobs
+            result = sum(lp for lp in response_logprobs if lp is not None)
+
+            return result
+
+        except ImportError:
+            # Fallback to simple counting if tiktoken not available
+            logger.warning("tiktoken not available, using simple tail extraction")
+            response_token_count = self._get_response_token_count(response)
+            from cje.utils.logprobs import sum_response_logprobs_tail
+
+            return sum_response_logprobs_tail(all_logprobs, response_token_count)
