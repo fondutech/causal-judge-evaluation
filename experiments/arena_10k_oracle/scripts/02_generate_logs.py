@@ -183,8 +183,7 @@ def generate_logging_policy_responses(
     checkpoint_manager.load()
 
     # Initialize API runner
-    # Determine template format based on model name
-    template_format = "llama4" if "llama4" in model_name.lower() else "llama3"
+    template_format = "llama4"
 
     runner = APIPolicyRunner(
         provider="fireworks",
