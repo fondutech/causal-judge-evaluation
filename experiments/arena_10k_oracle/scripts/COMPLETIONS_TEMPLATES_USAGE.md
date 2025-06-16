@@ -8,14 +8,16 @@ Completions templates are used to convert structured chat conversations (with ro
 
 **Important**: These templates are specifically for use with completions API calls for teacher forcing, NOT for general prompt formatting or chat API calls.
 
+**Provider Support**: Currently, only Fireworks is confirmed to support the completions API with echo=True required for teacher forcing. While the CJE codebase includes adapters for other providers (OpenAI, Anthropic, Together, etc.), teacher forcing functionality is only available with Fireworks.
+
 ## Available Templates
 
-### Built-in Templates
+### Built-in Template
 
-1. **llama3** - Llama 3 style: `<s>[INST] ... [/INST] response</s>`
-2. **llama4** - Llama 4 style: `<|begin_of_text|>...<|eot|>`
-3. **chatml** - ChatML style: `<|im_start|>role\ncontent<|im_end|>`
-4. **alpaca** - Alpaca style: `### Instruction:\n...\n### Response:\n...`
+Currently, only the **llama4** template is provided out of the box:
+- **llama4** - Llama 4 style: `<|begin_of_text|><|header_start|>role<|header_end|>\n\n{content}<|eot|>`
+
+This template is specifically designed for Llama 4 models (Scout, Maverick, etc.) and is the default for all providers.
 
 ## Usage Examples
 
@@ -31,12 +33,6 @@ runner = APIPolicyRunner(
     provider="fireworks",
     model_name="accounts/fireworks/models/llama4-maverick-instruct"
 )
-
-# Automatically uses Llama 3 template
-runner = APIPolicyRunner(
-    provider="fireworks", 
-    model_name="accounts/fireworks/models/llama-v3p1-70b-instruct"
-)
 ```
 
 ### 2. Explicit Template Format
@@ -45,9 +41,9 @@ Override auto-detection by specifying the template format:
 
 ```python
 runner = APIPolicyRunner(
-    provider="together",
+    provider="fireworks",
     model_name="some-custom-model",
-    template_format="chatml"  # Force ChatML format
+    template_format="llama4"  # Explicitly specify llama4 (though it's the default)
 )
 ```
 
@@ -96,25 +92,22 @@ For CJE experiments, specify templates in your config files:
 policy_runner:
   provider: fireworks
   model_name: llama4-maverick
-  template_format: llama4  # Override auto-detection if needed
+  # template_format: llama4  # Not needed, it's the default
   
-# Or with advanced config
+# Or with custom template
 policy_runner:
   provider: custom
   model_name: my-model
   template_config:
-    template_format: alpaca
-    # Future: custom token overrides
+    custom_template: !MyCustomTemplate {}
 ```
 
-## Provider Defaults
+## Provider Support
 
-The system has smart defaults for common providers:
+Currently, only **Fireworks** is confirmed to support the teacher forcing completions API with echo=True:
 
-- **Fireworks**: Auto-detects Llama 3 vs Llama 4 models
-- **Together**: Defaults to Llama 3 format, detects Alpaca models
-- **OpenAI**: Uses ChatML format
-- **Anthropic**: Uses Llama 3 format
+- **Fireworks**: Uses Llama 4 format (confirmed working)
+- **Other providers**: Not yet supported for teacher forcing
 
 ## Registering Global Templates
 
@@ -150,8 +143,12 @@ print(f"Formatted: {formatted}")
 
 ## Common Issues
 
-1. **Wrong log probabilities**: Usually indicates wrong template format. Check if your model needs Llama 3 vs Llama 4 format.
+1. **Wrong log probabilities**: If you're using a non-Llama-4 model, you'll need to implement a custom template.
 
-2. **Token extraction errors**: The template's EOS token must match what the model actually generates.
+2. **Token extraction errors**: The template's EOS token (`<|eot|>`) must match what the model actually generates.
 
-3. **API errors**: Some providers only support specific models with completions API (e.g., Fireworks, Together).
+3. **API errors**: Currently only Fireworks supports the completions API with echo=True for teacher forcing.
+
+## Adding Support for Other Models
+
+If you need to support models other than Llama 4, you'll need to implement a custom template following the `CompletionsTemplate` interface. See the Llama 4 implementation in `cje/loggers/completions_templates.py` as a reference.

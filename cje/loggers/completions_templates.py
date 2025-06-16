@@ -56,49 +56,6 @@ class CompletionsTemplate(ABC):
         pass
 
 
-class Llama3CompletionsTemplate(CompletionsTemplate):
-    """
-    Llama 3 style template.
-
-    Format: <s>[INST] <<SYS>>\\n{system}\\n<</SYS>>\\n{user} [/INST] {response}</s>
-    """
-
-    def format_with_response(
-        self, messages: List[Dict[str, str]], response: str
-    ) -> str:
-        system_prompt = ""
-        user_message = ""
-
-        for msg in messages:
-            if msg.get("role") == "system":
-                system_prompt = msg.get("content", "")
-            elif msg.get("role") == "user":
-                user_message = msg.get("content", "")
-
-        if system_prompt:
-            return f"<s>[INST] <<SYS>>\\n{system_prompt}\\n<</SYS>>\\n{user_message} [/INST] {response}</s>"
-        else:
-            return f"<s>[INST] {user_message} [/INST] {response}</s>"
-
-    def format_without_response(self, messages: List[Dict[str, str]]) -> str:
-        system_prompt = ""
-        user_message = ""
-
-        for msg in messages:
-            if msg.get("role") == "system":
-                system_prompt = msg.get("content", "")
-            elif msg.get("role") == "user":
-                user_message = msg.get("content", "")
-
-        if system_prompt:
-            return f"<s>[INST] <<SYS>>\\n{system_prompt}\\n<</SYS>>\\n{user_message} [/INST]</s>"
-        else:
-            return f"<s>[INST] {user_message} [/INST]</s>"
-
-    def get_eos_token(self) -> str:
-        return "</s>"
-
-
 class Llama4CompletionsTemplate(CompletionsTemplate):
     """
     Llama 4 style template.
@@ -149,112 +106,21 @@ class Llama4CompletionsTemplate(CompletionsTemplate):
         return "<|eot|>"
 
 
-class ChatMLCompletionsTemplate(CompletionsTemplate):
-    """
-    ChatML style template used by some models.
-
-    Format:
-    <|im_start|>system
-    {system_message}<|im_end|>
-    <|im_start|>user
-    {user_message}<|im_end|>
-    <|im_start|>assistant
-    {response}<|im_end|>
-    """
-
-    def format_with_response(
-        self, messages: List[Dict[str, str]], response: str
-    ) -> str:
-        parts = []
-
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            parts.append(f"<|im_start|>{role}\\n{content}<|im_end|>")
-
-        parts.append(f"<|im_start|>assistant\\n{response}<|im_end|>")
-
-        return "\\n".join(parts)
-
-    def format_without_response(self, messages: List[Dict[str, str]]) -> str:
-        parts = []
-
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            parts.append(f"<|im_start|>{role}\\n{content}<|im_end|>")
-
-        parts.append(f"<|im_start|>assistant\\n")
-
-        return "\\n".join(parts)
-
-    def get_eos_token(self) -> str:
-        return "<|im_end|>"
-
-
-class AlpacaCompletionsTemplate(CompletionsTemplate):
-    """
-    Alpaca style template.
-
-    Format:
-    ### Instruction:
-    {instruction}
-
-    ### Response:
-    {response}
-    """
-
-    def format_with_response(
-        self, messages: List[Dict[str, str]], response: str
-    ) -> str:
-        instruction = ""
-
-        for msg in messages:
-            if msg.get("role") == "user":
-                instruction = msg.get("content", "")
-                break
-
-        return f"### Instruction:\\n{instruction}\\n\\n### Response:\\n{response}"
-
-    def format_without_response(self, messages: List[Dict[str, str]]) -> str:
-        instruction = ""
-
-        for msg in messages:
-            if msg.get("role") == "user":
-                instruction = msg.get("content", "")
-                break
-
-        return f"### Instruction:\\n{instruction}\\n\\n### Response:\\n"
-
-    def get_eos_token(self) -> str:
-        return ""  # Alpaca typically uses empty string or newline
-
-
 # Completions Template Registry
 COMPLETIONS_TEMPLATE_REGISTRY: Dict[str, CompletionsTemplate] = {
-    "llama3": Llama3CompletionsTemplate(),
     "llama4": Llama4CompletionsTemplate(),
-    "chatml": ChatMLCompletionsTemplate(),
-    "alpaca": AlpacaCompletionsTemplate(),
 }
 
 
 # Model pattern to template mapping
 MODEL_TEMPLATE_PATTERNS: Dict[str, str] = {
-    # Llama models
+    # Llama 4 models
     "llama-4": "llama4",
     "llama4": "llama4",
-    "llama-3": "llama3",
-    "llama3": "llama3",
-    "llama-2": "llama3",  # Llama 2 uses similar format
-    "llama2": "llama3",
-    # Other models
-    "gpt": "chatml",
-    "claude": "llama3",  # Claude often uses Llama-style formatting
-    "alpaca": "alpaca",
-    "vicuna": "alpaca",  # Vicuna uses Alpaca-style
-    # Default fallback
-    "default": "llama3",
+    "maverick": "llama4",  # Llama 4 Maverick models
+    "scout": "llama4",  # Llama 4 Scout models
+    # Default fallback to llama4 for now
+    "default": "llama4",
 }
 
 
@@ -262,14 +128,10 @@ MODEL_TEMPLATE_PATTERNS: Dict[str, str] = {
 PROVIDER_DEFAULTS: Dict[str, Dict[str, str]] = {
     "fireworks": {
         "llama-4": "llama4",
-        "llama-3": "llama3",
         "llama4": "llama4",
-        "llama3": "llama3",
-        "default": "llama3",
+        "default": "llama4",
     },
-    "together": {"llama": "llama3", "alpaca": "alpaca", "default": "llama3"},
-    "openai": {"gpt": "chatml", "default": "chatml"},
-    "anthropic": {"claude": "llama3", "default": "llama3"},
+    # Together AI support not yet confirmed for teacher forcing
 }
 
 
@@ -351,7 +213,7 @@ def get_completions_template_for_model(
             return COMPLETIONS_TEMPLATE_REGISTRY[format_name]
 
     # 5. Use global default
-    default_format = MODEL_TEMPLATE_PATTERNS.get("default", "llama3")
+    default_format = MODEL_TEMPLATE_PATTERNS.get("default", "llama4")
     logger.debug(f"Using default template '{default_format}' for {model_name}")
     return COMPLETIONS_TEMPLATE_REGISTRY[default_format]
 
