@@ -154,7 +154,9 @@ def generate_target_responses(
             console.print("   Continuing with next batch...")
             continue
 
-    console.print(f"✅ Generated {len(results)} {policy_name} responses")
+    console.print(
+        f"✅ Generated {len(results) - len(existing_items)} {policy_name} responses"
+    )
     return results
 
 
@@ -236,7 +238,9 @@ def main() -> None:
         console.print(
             f"\n📊 [bold green]Ground Truth Generation Complete![/bold green]"
         )
-        console.print(f"   • Total responses: {len(all_results):,}")
+        # Count actual responses in the output file
+        total_responses = len(checkpoint_manager.load_checkpoint())
+        console.print(f"   • Total responses: {total_responses:,}")
         console.print(f"   • Policies: {len(target_policies)}")
         console.print(f"   • Prompts per policy: {args.samples}")
         console.print(f"   • Output: {args.output}")

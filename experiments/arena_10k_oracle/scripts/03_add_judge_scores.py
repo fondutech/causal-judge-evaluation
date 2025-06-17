@@ -4,7 +4,7 @@ Step 3: Add judge scores to logging policy responses.
 
 This script:
 1. Loads π₀ responses from Step 2
-2. Scores each response using the same model as judge (Llama-3-34B at T=0)
+2. Scores each response with a judge model
 3. Uses a 0-10 helpfulness/correctness/safety rubric
 4. Adds raw judge scores for later calibration
 
