@@ -57,26 +57,19 @@ python scripts/hygiene_check.py  # Check codebase health
 - Gamma calibration AFTER isotonic (not before)
 - Variance shrinkage: λ* = Cov[w²v, w(r-μ)²] / E[w²v²]
 
-## Active Session Notes
+## Recent Changes
 
-### Session: June 19, 2025
-**Completed**:
-- Fixed λ formula bug (squared residuals)
-- Added clone-policy CI tests
-- Cleaned CLAUDE.md (331→77 lines)
-- Created hygiene automation
-- Consolidated provider hierarchy
-- Fixed silent imports with explicit handling
+**Provider Consolidation** (June 19, 2025):
+- Single provider system: XProvider (not UnifiedXProvider)
+- Each provider supports both regular and structured output
+- Removed 14 redundant files
 
-**Import System**: New `cje/utils/imports.py` provides:
-- `ImportChecker` for dependency management
-- Clear error messages for missing packages
-- `cje check-deps` CLI command
-- Explicit warnings instead of silent failures
+**Uncertainty Module**:
+- Mandatory uncertainty in `cje/uncertainty/`
+- Use `examples/clean_uncertainty_api.py` for reference
+- Config: `configs/uncertainty_example.yaml`
 
-**Test Simplification**: Reduced markers from 7 to 3:
-- unit: Fast component tests (default)
-- integration: Full pipeline tests
-- slow: Time-consuming tests
-
-**Next**: Provider caching & async processing
+**Documentation Notes**:
+- `cje results` command does NOT exist (use Python API)
+- Old uncertainty config options removed from unified.py
+- New module not in generated API docs yet

@@ -408,8 +408,7 @@ After running the arena analysis, use the provided example script to explore you
 
 .. code-block:: bash
 
-   # Analyze results using the CJE pipeline
-   cje results --config arena_test
+   # Analyze results programmatically (no CLI command exists yet)
 
    # Or programmatically
    python -c "

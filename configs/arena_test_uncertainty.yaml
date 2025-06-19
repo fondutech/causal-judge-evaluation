@@ -29,30 +29,25 @@ target_policies:
     temperature: 0.7
     max_new_tokens: 1024
 
-# Judge configuration with uncertainty enabled
+# Judge configuration
+# Note: To use uncertainty-aware judging, use the cje.uncertainty module directly
+# This config uses the standard judge without uncertainty
 judge:
   provider: "fireworks"
   model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
   template: "quick_judge"
   temperature: 0.0
-  
-  # Enable uncertainty quantification
-  enable_uncertainty: true
-  uncertainty_method: "beta"
-  structured_output_schema: "UncertainJudgeScore"
+  structured_output_schema: "JudgeScore"  # Standard schema
 
-# Estimator configuration with uncertainty features
+# Estimator configuration
 estimator:
   name: "DRCPO"
   k: 5
   samples_per_policy: 2
   
-  # Enable uncertainty-aware estimation
-  use_judge_uncertainty: true
-  variance_shrinkage: true
-  shrinkage_lambda: null  # Auto-select optimal lambda
-  uncertainty_diagnostics: true
-  
   # Standard calibration settings
   calibrate_weights: true
   calibrate_outcome: true
+
+# For uncertainty-aware evaluation, see examples/clean_uncertainty_api.py
+# which demonstrates using the new cje.uncertainty module
