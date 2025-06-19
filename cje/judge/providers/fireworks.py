@@ -1,9 +1,11 @@
+"""Unified Fireworks provider implementation."""
+
 import re
 from typing import Any, Dict, Type, Optional
 from langchain_core.runnables import Runnable, RunnableConfig
 from pydantic import BaseModel
 
-from .structured_openai_compat import StructuredOpenAICompatibleProvider
+from .openai_compat import UnifiedOpenAICompatibleProvider
 
 
 def parse_thinking_blocks_simple(text: str, debug: bool = False) -> str:
@@ -222,8 +224,8 @@ class ThinkingBlockWrapper(Runnable[Any, Any]):
         return JudgeScore(score=5.0)  # Neutral score to keep pipeline running
 
 
-class StructuredFireworksProvider(StructuredOpenAICompatibleProvider):
-    """Structured Fireworks.ai provider with thinking block support."""
+class FireworksProvider(UnifiedOpenAICompatibleProvider):
+    """Unified Fireworks.ai provider with thinking block support."""
 
     ENV_VAR = "FIREWORKS_API_KEY"
     DEFAULT_BASE_URL = "https://api.fireworks.ai/inference/v1"

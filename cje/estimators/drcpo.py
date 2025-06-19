@@ -17,16 +17,28 @@ from sklearn.linear_model import Ridge
 
 from cje.utils.progress import ProgressMonitor, console, maybe_track
 
-# Optional import to avoid segfault issues on some systems
-try:
+# Import XGBoost with clear error messaging
+from ..utils.imports import optional_import
+
+xgboost, HAS_XGBOOST = optional_import(
+    "xgboost",
+    "XGBoost-based outcome models in DR-CPO estimation",
+    warn=False,  # We'll warn when actually trying to use it
+)
+
+if HAS_XGBOOST:
     from xgboost import XGBRegressor  # type: ignore
-except Exception:  # pragma: no cover
-    # Fallback dummy that just raises if used
+else:
+    # Placeholder that provides clear error when used
     class XGBRegressor:  # type: ignore
         """Placeholder class when XGBoost is not available."""
 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-            raise ImportError("xgboost could not be imported")
+            raise ImportError(
+                "\nXGBoost is required for this outcome model but is not installed.\n"
+                "Install it with:\n    pip install xgboost\n"
+                "Or use a different outcome model (e.g., 'ridge')."
+            )
 
 
 from joblib import Parallel, delayed
@@ -153,6 +165,9 @@ class MultiDRCPOEstimator(Estimator[Dict[str, Any]]):
         self.m_hat: Optional[np.ndarray] = None  # Outcome model predictions (n,)
         self.m_pi: Optional[np.ndarray] = None  # Target policy expectations (n, K)
         self.r: Optional[np.ndarray] = None  # Rewards (n,)
+        self._reward_variances_full: Optional[np.ndarray] = (
+            None  # Reward variances (n,)
+        )
         self._weight_stats: Optional[Dict[str, Any]] = None  # Weight statistics
 
     def fit(self, logs: List[Dict[str, Any]], **kwargs: Any) -> None:
@@ -193,6 +208,11 @@ class MultiDRCPOEstimator(Estimator[Dict[str, Any]]):
         # Extract basic data
         self._rewards_full = np.array([log["reward"] for log in logs], dtype=float)
         self._logp_behavior_full = np.array([log["logp"] for log in logs], dtype=float)
+
+        # Extract reward variances if available (default to 0 for backward compatibility)
+        self._reward_variances_full = np.array(
+            [log.get("reward_variance", 0.0) for log in logs], dtype=float
+        )
 
         # Compute importance weights matrix W (n, K)
         console.print(
@@ -447,6 +467,7 @@ class MultiDRCPOEstimator(Estimator[Dict[str, Any]]):
         assert self.W is not None  # Type assertion for mypy
         W_test = self.W[test_indices]  # Shape: (n_test, K) - Raw weights
         r_test = self._rewards_full[test_indices]  # Shape: (n_test,)
+        v_test = self._reward_variances_full[test_indices]  # Shape: (n_test,)
 
         # Apply isotonic weight calibration per fold if enabled
         if self.calibrate_weights:
@@ -572,7 +593,7 @@ class MultiDRCPOEstimator(Estimator[Dict[str, Any]]):
             else:
                 Sigma_hat = np.cov(eif_all, rowvar=False) / self.n  # Shape: (K, K)
 
-            # Compute standard errors
+            # Standard computation without uncertainty
             se = np.sqrt(np.diag(Sigma_hat))  # Shape: (K,)
 
             # Create structured metadata for reliability assessment

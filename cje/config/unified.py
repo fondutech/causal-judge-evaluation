@@ -162,6 +162,9 @@ class JudgeConfig:
     # Skip judging (use ground truth)
     skip: bool = False
 
+    # Uncertainty quantification settings
+    uncertainty_method: str = "beta"  # beta, normal, empirical
+
     def __post_init__(self) -> None:
         if not self.provider:
             raise ConfigurationError(
@@ -265,6 +268,10 @@ class EstimatorConfig:
     calibrate_outcome: bool = (
         True  # Whether to apply isotonic calibration to outcome model predictions
     )
+
+    # Uncertainty-aware estimation settings
+    shrinkage_lambda: Optional[float] = None  # None = auto-select optimal lambda
+    uncertainty_diagnostics: bool = True
 
     def __post_init__(self) -> None:
         valid_estimators = {"IPS", "SNIPS", "DRCPO", "MRDR"}

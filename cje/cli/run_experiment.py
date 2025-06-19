@@ -773,8 +773,9 @@ def run(
                     score_raw = r.get("score_raw", 0.0)
                     r["score_cal"] = float(iso.predict([score_raw])[0])
 
-                    # Clear y_true used for calibration training - it should not be used for CJE estimation
-                    # Keep oracle_full for evaluation, but clear y_true to avoid confusion
+                # Clear y_true used for calibration training - it should not be used for CJE estimation
+                # Keep oracle_full for evaluation, but clear y_true to avoid confusion
+                for r in rows:
                     if r.get("oracle_available_to_logging", False):
                         r["y_true"] = None  # Clear calibration training label
 

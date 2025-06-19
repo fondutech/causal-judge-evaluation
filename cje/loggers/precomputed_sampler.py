@@ -8,8 +8,9 @@ underlying language-model APIs, making the pipeline completely offline.
 
 from __future__ import annotations
 
-from typing import Dict, List, Tuple, Any, Sequence, Optional
+from typing import Dict, List, Tuple, Any, Sequence, Optional, Union
 import numpy as np
+from numpy.typing import NDArray
 
 
 class PrecomputedMultiTargetSampler:
@@ -68,11 +69,13 @@ class PrecomputedMultiTargetSampler:
             )
         return [float(p) for p in probs]
 
-    def logp_matrix(self, contexts: List[str], responses: List[str]) -> "np.ndarray[Any, Any]":  # type: ignore
+    def logp_matrix(
+        self, contexts: List[str], responses: List[str]
+    ) -> NDArray[np.float64]:
         if len(contexts) != len(responses):
             raise ValueError("contexts and responses length mismatch")
         n = len(contexts)
-        mat = np.zeros((n, self.K), dtype=float)  # type: ignore
+        mat = np.zeros((n, self.K), dtype=np.float64)
         for i, (c, r) in enumerate(zip(contexts, responses)):
             mat[i, :] = self.logp_many(c, r)
         return mat
@@ -87,7 +90,7 @@ class PrecomputedMultiTargetSampler:
         logp_behavior: List[float],
         stabilize: bool = True,
         return_stats: bool = False,
-    ) -> "np.ndarray[Any, Any]" | Tuple["np.ndarray[Any, Any]", Dict[str, Any]]:  # type: ignore
+    ) -> Union[NDArray[np.float64], Tuple[NDArray[np.float64], Dict[str, Any]]]:
         """
         Compute importance weights matrix for multiple policies.
 
@@ -103,7 +106,7 @@ class PrecomputedMultiTargetSampler:
         import numpy as np
 
         target_logp = self.logp_matrix(contexts, responses)
-        logp_beh = np.array(logp_behavior, dtype=np.float64)  # type: ignore
+        logp_beh = np.array(logp_behavior, dtype=np.float64)
 
         # Compute log importance weights: log π'(s|x) - log π₀(s|x)
         log_weights_matrix = target_logp - logp_beh[:, None]
@@ -136,6 +139,9 @@ class PrecomputedMultiTargetSampler:
 
         # Track whether stabilization was actually applied
         stabilization_actually_applied = False
+
+        # Declare weight matrix variable
+        w: NDArray[np.float64]
 
         if stabilize:
             # 🔧 INTERVENTION 2: Softer stabilization that preserves weight diversity
@@ -294,9 +300,9 @@ class PrecomputedMultiTargetSampler:
                 "n_policies": n_policies,
             }
 
-            return w, statistics  # type: ignore
+            return w, statistics
         else:
-            return w  # type: ignore
+            return w
 
     # ------------------------------------------------------------------
     # Sampling interface (unused in pre-computed setting)

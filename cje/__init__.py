@@ -6,16 +6,22 @@ __version__ = "0.1.0"
 import os
 from pathlib import Path
 
-try:
+# Try to load .env file if python-dotenv is available
+from .utils.imports import optional_import
+
+dotenv, HAS_DOTENV = optional_import(
+    "python-dotenv",
+    "Automatic .env file loading",
+    warn=False,  # Don't warn at import time
+)
+
+if HAS_DOTENV:
     from dotenv import load_dotenv
 
     # Look for .env file in project root
     env_path = Path(__file__).parent.parent / ".env"
     if env_path.exists():
         load_dotenv(env_path)
-except ImportError:
-    # python-dotenv not installed, skip
-    pass
 
 # Export reference implementation for quick experimentation
 from .reference import FixedSampler, ReferenceDRCPO

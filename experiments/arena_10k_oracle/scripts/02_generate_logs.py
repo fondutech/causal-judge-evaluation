@@ -417,7 +417,7 @@ def main() -> None:
 
         console.print(f"\n✅ [bold green]π₀ generation complete![/bold green]")
         console.print(f"📁 Output: {args.output}")
-        console.print(f"Next step: python 03_add_judge_scores.py")
+        console.print(f"Next step: python 03_export_for_labeling.py")
 
     except KeyboardInterrupt:
         console.print(

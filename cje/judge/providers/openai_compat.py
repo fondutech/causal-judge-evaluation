@@ -1,19 +1,31 @@
-from typing import Any, Optional
+"""Unified OpenAI-compatible provider for both legacy and structured output."""
+
+from typing import Any, Dict, Optional, Type
 import os
-from .base import ProviderStrategy
+
+from langchain_core.language_models import BaseChatModel
+from langchain_openai import ChatOpenAI
+
+from .base import UnifiedProviderStrategy
 
 
-class OpenAICompatibleProvider(ProviderStrategy):
-    """Generic provider for OpenAI-compatible chat endpoints.
+class UnifiedOpenAICompatibleProvider(UnifiedProviderStrategy):
+    """Generic provider for OpenAI-compatible chat endpoints with unified interface.
 
-    Subclasses only need to override ``ENV_VAR`` and ``DEFAULT_BASE_URL``.
+    Subclasses only need to override ``ENV_VAR``, ``DEFAULT_BASE_URL``, and optionally ``CHAT_CLASS``.
     """
 
     # Override these in subclasses -------------------------------------------
     ENV_VAR: str = "OPENAI_API_KEY"
     DEFAULT_BASE_URL: Optional[str] = None  # OpenAI uses the official url via SDK
+    CHAT_CLASS: Type[BaseChatModel] = (
+        ChatOpenAI  # subclasses may override if SDK differs
+    )
 
     # ------------------------------------------------------------------------
+    # Legacy API implementation
+    # ------------------------------------------------------------------------
+
     def setup_client(self) -> Any:
         """Return an ``openai.AsyncOpenAI`` configured for this backend."""
         import openai  # local import keeps dependency optional for users not using it
@@ -51,6 +63,33 @@ class OpenAICompatibleProvider(ProviderStrategy):
             raise ValueError("No response content from backend API")
         return str(content)
 
-    # Re-expose env-var getter via base helper
-    def get_default_env_var(self) -> str:  # noqa: D401
+    def get_default_env_var(self) -> str:
+        """Get the default environment variable name."""
         return self.ENV_VAR
+
+    # ------------------------------------------------------------------------
+    # Structured Output API implementation
+    # ------------------------------------------------------------------------
+
+    def get_chat_model(
+        self, model_name: str, temperature: float = 0.0
+    ) -> BaseChatModel:
+        """Get the LangChain chat model for this provider."""
+        kwargs: Dict[str, Any] = {
+            "model_name": model_name,
+            "temperature": temperature,
+        }
+
+        api_key = self.api_key or os.getenv(self.ENV_VAR)
+        if api_key:
+            kwargs["api_key"] = api_key
+
+        base_url = self.base_url or self.DEFAULT_BASE_URL
+        if base_url:
+            kwargs["base_url"] = base_url
+
+        return self.CHAT_CLASS(**kwargs)
+
+    def get_recommended_method(self) -> str:
+        """Get the recommended structured output method."""
+        return "json_schema"  # OpenAI supports json_schema as the best method

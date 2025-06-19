@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Step 3: Add judge scores to logging policy responses.
+Step 4: Add judge scores to logging policy responses.
 
 This script:
 1. Loads π₀ responses from Step 2
@@ -231,16 +231,16 @@ def main() -> None:
         epilog="""
 Examples:
   # Basic usage
-  python 03_add_judge_scores.py --input ../data/p0_replies.jsonl
+  python 04_add_judge_scores.py --input ../data/p0_replies.jsonl
   
   # With checkpointing (recommended)
-  python 03_add_judge_scores.py --input ../data/p0_replies.jsonl --checkpoint checkpoint.jsonl
+  python 04_add_judge_scores.py --input ../data/p0_replies.jsonl --checkpoint checkpoint.jsonl
   
   # Custom batch size for API efficiency
-  python 03_add_judge_scores.py --input ../data/p0_replies.jsonl --batch-size 64
+  python 04_add_judge_scores.py --input ../data/p0_replies.jsonl --batch-size 64
   
   # Resume interrupted job
-  python 03_add_judge_scores.py --input ../data/p0_replies.jsonl --checkpoint checkpoint.jsonl
+  python 04_add_judge_scores.py --input ../data/p0_replies.jsonl --checkpoint checkpoint.jsonl
         """,
     )
 
@@ -293,7 +293,7 @@ Examples:
     args = parser.parse_args()
 
     console.print(
-        f"🔬 [bold blue]Arena 10K Experiment - Step 3: Add Judge Scores[/bold blue]"
+        f"🔬 [bold blue]Arena 10K Experiment - Step 4: Add Judge Scores[/bold blue]"
     )
 
     # Auto-enable checkpointing for large runs
@@ -336,7 +336,7 @@ Examples:
             else:
                 console.print(f"🗑️  You can now delete checkpoint: {args.checkpoint}")
 
-        console.print(f"\n✅ [bold green]Step 3 complete![/bold green]")
+        console.print(f"\n✅ [bold green]Step 4 complete![/bold green]")
         console.print(f"📄 Output: {args.output}")
 
     except KeyboardInterrupt:

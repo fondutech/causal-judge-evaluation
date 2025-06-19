@@ -1,0 +1,58 @@
+# Example configuration with uncertainty-aware judge evaluation
+
+defaults:
+  - base  # Inherit common settings
+  - _self_
+
+# Paths configuration
+paths:
+  work_dir: "outputs/arena_test_uncertainty"
+
+# Dataset configuration
+dataset:
+  name: "chatbot_arena"
+  split: "val"
+  sample_limit: 20  # Small sample for testing
+
+# Logging policy configuration
+logging_policy:
+  provider: "fireworks"
+  model_name: "accounts/fireworks/models/llama-v3p3-8b-instruct"
+  temperature: 0.1
+  max_new_tokens: 1024
+
+# Target policies (can have multiple)
+target_policies:
+  - name: "higher_temp"
+    provider: "fireworks"
+    model_name: "accounts/fireworks/models/llama-v3p3-8b-instruct"
+    temperature: 0.7
+    max_new_tokens: 1024
+
+# Judge configuration with uncertainty enabled
+judge:
+  provider: "fireworks"
+  model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
+  template: "quick_judge"
+  temperature: 0.0
+  
+  # Enable uncertainty quantification
+  enable_uncertainty: true
+  uncertainty_method: "beta"
+  structured_output_schema: "UncertainJudgeScore"
+
+# Estimator configuration with uncertainty features
+estimator:
+  name: "DRCPO"
+  k: 5
+  samples_per_policy: 2
+  
+  # Enable uncertainty-aware estimation
+  use_judge_uncertainty: true
+  variance_shrinkage: true
+  shrinkage_lambda: null  # Auto-select optimal lambda
+  uncertainty_diagnostics: true
+  
+  # Standard calibration settings
+  calibrate_weights: true
+  calibrate_outcome: true

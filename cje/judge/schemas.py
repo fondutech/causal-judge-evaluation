@@ -177,4 +177,8 @@ class DetailedJudgeEvaluation(BaseModel):
 
 
 # Type alias for any judge evaluation
-JudgeResult = Union[JudgeScore, JudgeEvaluation, DetailedJudgeEvaluation]
+JudgeResult = Union[
+    JudgeScore,
+    JudgeEvaluation,
+    DetailedJudgeEvaluation,
+]

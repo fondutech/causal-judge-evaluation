@@ -1,0 +1,100 @@
+# .claude_hygiene
+# Automated hygiene checks for Claude Code sessions
+
+## STARTUP CHECKLIST
+# Claude should run these checks at the beginning of each session
+
+hygiene_checks:
+  - expired_session_notes:
+      rule: "Delete any session notes in CLAUDE.md older than today"
+      action: "Remove automatically"
+  
+  - stale_todos:
+      files: ["TODO.md", "**/*.py"]
+      rule: "Flag TODOs older than 30 days"
+      action: "Ask user if still relevant"
+  
+  - dead_imports:
+      rule: "Check for imports of non-existent modules"
+      action: "Remove or fix automatically"
+  
+  - empty_directories:
+      rule: "Find directories with no files"
+      action: "Remove after confirming"
+  
+  - contradictory_docs:
+      rule: "Docs mentioning non-existent commands/files"
+      action: "Update or remove"
+
+## DURING-SESSION RULES
+
+continuous_monitoring:
+  - before_creating_file:
+      check: "Does similar functionality exist?"
+      action: "Consolidate instead of duplicate"
+  
+  - before_adding_docs:
+      check: "Does this make something else obsolete?"
+      action: "Remove old when adding new"
+  
+  - when_fixing_bug:
+      check: "Is this documented as a gotcha?"
+      action: "Update docs to reflect fix"
+
+## END-SESSION PROTOCOL
+
+cleanup_tasks:
+  - consolidate_learnings:
+      action: "Merge related discoveries into principles"
+  
+  - expire_temporary:
+      action: "Remove any 'temporary' or 'quick fix' code"
+  
+  - update_claude_md:
+      required_sections:
+        - "Active Session Notes" (max 5 lines)
+        - "Next Priority" (1-2 items)
+      remove:
+        - Previous session notes
+        - Completed items
+        - Verbose explanations
+
+## ANTI-PATTERNS TO DETECT
+
+red_flags:
+  - file_patterns:
+      - "*_old.py"
+      - "*_backup.*"
+      - "test_*.py" outside tests/
+      - "temp_*.*"
+  
+  - code_patterns:
+      - "# TODO: Remove this"
+      - "# HACK:"
+      - "# type: ignore" (track count)
+      - "pass  # pragma: no cover"
+  
+  - doc_patterns:
+      - "Coming soon"
+      - "Not yet implemented"
+      - "Deprecated but kept for compatibility"
+      - References to deleted features
+
+## METRICS TO TRACK
+
+hygiene_metrics:
+  - claude_md_length:
+      target: "Decrease over time"
+      alert: "If grows >20% in one session"
+  
+  - type_ignore_count:
+      target: "Zero"
+      track: "Per module"
+  
+  - duplicate_functions:
+      target: "Zero"
+      check: "Similar names or docstrings"
+  
+  - test_coverage:
+      target: ">80%"
+      focus: "New code must have tests"

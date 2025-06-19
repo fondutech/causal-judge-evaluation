@@ -59,23 +59,19 @@ case $STEP in
             --checkpoint "$DATA_DIR/p0_checkpoint.jsonl"
         ;;
         
-    3|score)
-        run_step 3 "Add Judge Scores" \
-            "03_add_judge_scores.py" \
+    3|export)
+        run_step 3 "Export for Labeling" \
+            "03_export_for_labeling.py" \
+            --p0-input "$DATA_DIR/p0_replies.jsonl" \
+            --target-input "$DATA_DIR/target_ground_truth.jsonl"
+        ;;
+        
+    4|score)
+        run_step 4 "Add Judge Scores" \
+            "04_add_judge_scores.py" \
             --input "$DATA_DIR/p0_replies.jsonl" \
             --output "$DATA_DIR/p0_scored.jsonl" \
             --checkpoint "$DATA_DIR/judge_checkpoint.jsonl"
-        ;;
-        
-    4|calibrate)
-        echo -e "${BLUE}Step 4: Oracle Calibration${NC}"
-        echo "This step has two parts:"
-        echo ""
-        echo "4a) Export for labeling:"
-        echo "    python 04_export_for_labeling.py --platform surge"
-        echo ""
-        echo "4b) After collecting labels, import and calibrate:"
-        echo "    python 04_import_labels.py --labels path/to/labels.csv"
         ;;
         
     5|targets)
@@ -104,8 +100,9 @@ case $STEP in
         "$0" 1
         "$0" 2
         "$0" 3
+        "$0" 4
         
-        echo -e "\n${YELLOW}Steps 4-7 require additional implementation${NC}"
+        echo -e "\n${YELLOW}Steps 5-7 require additional implementation${NC}"
         echo "See README.md for full experiment details"
         ;;
         
@@ -115,8 +112,8 @@ case $STEP in
         echo "Steps:"
         echo "  1|prepare   - Download and prepare ChatBot Arena data"
         echo "  2|generate  - Generate logging policy responses"
-        echo "  3|score     - Add judge scores to responses"
-        echo "  4|calibrate - Calibrate judge with oracle labels (TBD)"
+        echo "  3|export    - Export for human labeling"
+        echo "  4|score     - Add judge scores to responses"
         echo "  5|targets   - Generate target policy responses (TBD)"
         echo "  6|estimate  - Run CJE estimation (TBD)"
         echo "  7|validate  - Validate against ground truth (TBD)"

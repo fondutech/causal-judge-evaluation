@@ -1,12 +1,17 @@
+"""Unified Together provider implementation."""
+
 from typing import Any
-from .openai_compat import OpenAICompatibleProvider
+from langchain_together import ChatTogether
+
+from .openai_compat import UnifiedOpenAICompatibleProvider
 
 
-class TogetherProvider(OpenAICompatibleProvider):
-    """Together AI provider (OpenAI-compatible)."""
+class TogetherProvider(UnifiedOpenAICompatibleProvider):
+    """Unified Together AI provider."""
 
     ENV_VAR = "TOGETHER_API_KEY"
     DEFAULT_BASE_URL = "https://api.together.xyz/v1"
+    CHAT_CLASS = ChatTogether
 
     def setup_client(self) -> Any:
         """Setup Together client using OpenAI Python SDK with custom base_url."""

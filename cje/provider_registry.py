@@ -1,5 +1,8 @@
 from typing import List, Optional, Tuple, Dict, Any, Type
 from dataclasses import dataclass
+import warnings
+
+from .utils.imports import ImportChecker
 
 
 @dataclass
@@ -113,12 +116,13 @@ def get_registry() -> ProviderRegistry:
 def _initialize_registry() -> None:
     """Initialize the registry with default provider information."""
 
-    # Import providers individually and handle missing ones gracefully
+    # Import providers individually and report missing ones clearly
     providers_to_register = {}
+    missing_providers = []
 
     # OpenAI Provider
     try:
-        from cje.judge.providers.openai_provider import OpenAIProvider
+        from cje.judge.providers.openai import OpenAIProvider
 
         providers_to_register["openai"] = ProviderInfo(
             provider_cls=OpenAIProvider,
@@ -133,12 +137,12 @@ def _initialize_registry() -> None:
             name="openai",
             capabilities={"supports_logprobs": True, "supports_structured": True},
         )
-    except ImportError:
-        pass
+    except ImportError as e:
+        missing_providers.append(("openai", "OpenAI provider", str(e)))
 
     # Anthropic Provider
     try:
-        from cje.judge.providers.anthropic_provider import AnthropicProvider
+        from cje.judge.providers.anthropic import AnthropicProvider
 
         providers_to_register["anthropic"] = ProviderInfo(
             provider_cls=AnthropicProvider,
@@ -153,12 +157,12 @@ def _initialize_registry() -> None:
             name="anthropic",
             capabilities={"supports_logprobs": False, "supports_structured": True},
         )
-    except ImportError:
-        pass
+    except ImportError as e:
+        missing_providers.append(("anthropic", "Anthropic provider", str(e)))
 
     # Google Provider
     try:
-        from cje.judge.providers.google_provider import GoogleProvider
+        from cje.judge.providers.google import GoogleProvider
 
         providers_to_register["google"] = ProviderInfo(
             provider_cls=GoogleProvider,
@@ -173,12 +177,12 @@ def _initialize_registry() -> None:
             name="google",
             capabilities={"supports_logprobs": False, "supports_structured": True},
         )
-    except ImportError:
-        pass
+    except ImportError as e:
+        missing_providers.append(("google", "Google provider", str(e)))
 
     # Together Provider
     try:
-        from cje.judge.providers.together_provider import TogetherProvider
+        from cje.judge.providers.together import TogetherProvider
 
         providers_to_register["together"] = ProviderInfo(
             provider_cls=TogetherProvider,
@@ -193,12 +197,12 @@ def _initialize_registry() -> None:
             name="together",
             capabilities={"supports_logprobs": True, "supports_structured": True},
         )
-    except ImportError:
-        pass
+    except ImportError as e:
+        missing_providers.append(("together", "Together provider", str(e)))
 
     # Fireworks Provider
     try:
-        from cje.judge.providers.fireworks_provider import FireworksProvider
+        from cje.judge.providers.fireworks import FireworksProvider
 
         providers_to_register["fireworks"] = ProviderInfo(
             provider_cls=FireworksProvider,
@@ -213,12 +217,27 @@ def _initialize_registry() -> None:
             name="fireworks",
             capabilities={"supports_logprobs": True, "supports_structured": True},
         )
-    except ImportError:
-        pass
+    except ImportError as e:
+        missing_providers.append(("fireworks", "Fireworks provider", str(e)))
 
     # Add successfully imported providers to registry
     for name, info in providers_to_register.items():
         _registry.add_provider_info(name, info)
+
+    # Report missing providers
+    if missing_providers:
+        warnings.warn(
+            f"\nSome providers could not be imported:\n"
+            + "\n".join(
+                [
+                    f"  - {name}: {desc} (Error: {err})"
+                    for name, desc, err in missing_providers
+                ]
+            )
+            + "\n\nThese providers will not be available. Check dependencies if needed.",
+            ImportWarning,
+            stacklevel=2,
+        )
 
 
 # Initialize on import

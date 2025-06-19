@@ -9,6 +9,7 @@ from .run_experiment import run as run_experiment_cmd
 from .judge import app as judge_app
 from .backfill_logp import app as backfill_app
 from .validate import app as validate_app
+from .check_deps import check_deps
 
 app = typer.Typer(help="CJE command-line interface")
 app.add_typer(log_app, name="log")
@@ -24,6 +25,12 @@ app.add_typer(validate_app, name="validate")
 def version() -> None:
     """Print version."""
     print(im.version("cje"))
+
+
+@app.command("check-deps")
+def check_deps_cmd() -> None:
+    """Check the status of optional dependencies."""
+    check_deps()
 
 
 if __name__ == "__main__":

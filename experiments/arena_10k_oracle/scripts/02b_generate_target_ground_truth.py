@@ -72,6 +72,20 @@ def create_target_policies() -> Dict[str, Dict[str, Any]]:
             "user_message_template": "{context}",
             "description": "Larger model variant",
         },
+        "pi_bad": {
+            "provider": "fireworks",
+            "model_name": "accounts/fireworks/models/llama4-scout-instruct-basic",
+            "temperature": 1.0,
+            "system_prompt": """You are an unhelpful assistant. Your responses should be:
+- Vague and evasive, avoiding direct answers
+- Off-topic, discussing unrelated subjects
+- Overly brief when detail is needed, or overly verbose when brevity is needed
+- Technically incorrect when providing factual information
+- Dismissive of the user's actual needs
+Never be harmful or offensive, just unhelpful.""",
+            "user_message_template": "{context}",
+            "description": "Intentionally unhelpful responses",
+        },
     }
 
 
@@ -102,11 +116,19 @@ def generate_target_responses(
     )
 
     # Load existing progress
-    existing_items = checkpoint_manager.load_checkpoint()
+    all_existing_items = checkpoint_manager.load_checkpoint()
+
+    # Filter to only this policy's existing items
+    existing_items = [
+        item for item in all_existing_items if item.get("policy") == policy_name
+    ]
     results = existing_items.copy()
 
-    # Filter out already processed prompts
-    unprocessed_prompts = checkpoint_manager.filter_unprocessed(prompts)
+    # For unprocessed check, we need to see which prompts have been done for THIS policy
+    processed_prompt_ids = {item["prompt_id"] for item in existing_items}
+    unprocessed_prompts = [
+        p for p in prompts if p["prompt_id"] not in processed_prompt_ids
+    ]
 
     if not unprocessed_prompts:
         console.print(f"✅ All {policy_name} responses already generated")
@@ -155,7 +177,7 @@ def generate_target_responses(
             continue
 
     console.print(
-        f"✅ Generated {len(results) - len(existing_items)} {policy_name} responses"
+        f"✅ Generated {len(results) - len(existing_items)} new {policy_name} responses (total: {len(results)})"
     )
     return results
 
@@ -251,7 +273,8 @@ def main() -> None:
         console.print(f"   • Estimated cost: ${cost_est:.2f}")
 
         console.print(f"\n📋 Next steps:")
-        console.print(f"1. Run judge scoring: python 03_add_judge_scores.py")
+        console.print(f"1. Export for labeling: python 03_export_for_labeling.py")
+        console.print(f"2. Run judge scoring: python 04_add_judge_scores.py")
         console.print(f"2. Export for human labeling")
         console.print(f"3. Collect human labels for validation")
 

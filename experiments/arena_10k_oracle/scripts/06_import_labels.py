@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Step 4b: Import human labels and run calibration.
+Step 6: Import human labels and run calibration.
 
 This script:
 1. Imports human labels from crowdsourcing platform
@@ -313,7 +313,7 @@ def main() -> None:
     args = parser.parse_args()
 
     console.print(
-        f"🔬 [bold blue]Arena 10K Experiment - Step 4b: Import Labels & Calibrate[/bold blue]"
+        f"🔬 [bold blue]Arena 10K Experiment - Step 6: Import Labels & Calibrate[/bold blue]"
     )
 
     try:
@@ -338,7 +338,7 @@ def main() -> None:
         console.print(f"\n✅ [bold green]Calibration complete![/bold green]")
         console.print(f"\n📋 Next steps:")
         console.print(f"1. Generate target policy responses (Step 5)")
-        console.print(f"2. Run CJE estimation (Step 6)")
+        console.print(f"2. Run CJE estimation (Step 7)")
         console.print(f"3. Validate against ground truth (Step 7)")
 
     except Exception as e:

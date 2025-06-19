@@ -19,6 +19,7 @@ from typing import (
     cast,
 )
 import numpy as np
+from numpy.typing import NDArray
 import logging
 
 if TYPE_CHECKING:
@@ -118,7 +119,7 @@ class MultiTargetSampler:
             )
 
             logp_result = safe_call(
-                runner.log_prob,  # type: ignore[arg-type]
+                cast(Any, runner.log_prob),
                 context,
                 response,
                 error_context=f"Computing log probability for policy {i} ({runner})",
@@ -394,7 +395,9 @@ class MultiTargetSampler:
         # Final fallback to dummy samples
         return _create_fallback_samples()
 
-    def logp_matrix(self, contexts: List[str], responses: List[str]) -> "np.ndarray[Any, Any]":  # type: ignore[type-arg]
+    def logp_matrix(
+        self, contexts: List[str], responses: List[str]
+    ) -> NDArray[np.float64]:
         """
         Compute log probability matrix for multiple context-response pairs.
 
@@ -411,7 +414,7 @@ class MultiTargetSampler:
             )
 
         n = len(contexts)
-        logp_matrix: "np.ndarray[Any, Any]" = np.zeros((n, self.K))  # type: ignore[type-arg]
+        logp_matrix = np.zeros((n, self.K), dtype=np.float64)
 
         for i, (context, response) in enumerate(zip(contexts, responses)):
             logps = self.logp_many(context, response)
@@ -426,7 +429,7 @@ class MultiTargetSampler:
         logp_behavior: List[float],
         stabilize: bool = True,
         return_stats: bool = False,
-    ) -> "np.ndarray[Any, Any]" | Tuple["np.ndarray[Any, Any]", Dict[str, Any]]:  # type: ignore[type-arg]
+    ) -> Union[NDArray[np.float64], Tuple[NDArray[np.float64], Dict[str, Any]]]:
         """
         Compute importance weights matrix for multiple policies.
 
@@ -446,12 +449,10 @@ class MultiTargetSampler:
         # 🔧 P1 FIX: Cast to float64 BEFORE subtraction to prevent overflow
         # logp_matrix may be float32; subtracting large opposite-sign numbers can overflow to ±inf
         logp_matrix = logp_matrix.astype(np.float64)
-        logp_behavior_array: "np.ndarray[Any, Any]" = np.array(logp_behavior, dtype=np.float64)  # type: ignore[type-arg]
+        logp_behavior_array = np.array(logp_behavior, dtype=np.float64)
 
         # Compute log importance weights: log π'(s|x) - log π₀(s|x)
-        log_weights_matrix: "np.ndarray[Any, Any]" = (  # type: ignore[type-arg]
-            logp_matrix - logp_behavior_array[:, np.newaxis]
-        )
+        log_weights_matrix = logp_matrix - logp_behavior_array[:, np.newaxis]
 
         # 🔧 INTERVENTION 1: Hard log-ratio clipping to prevent astronomical weights
         # Clip log ratios to prevent exp(±log_ratio_clip) overflow/underflow
@@ -474,7 +475,7 @@ class MultiTargetSampler:
             )
 
         # Declare weights_matrix once
-        weights_matrix: "np.ndarray[Any, Any]"  # type: ignore[type-arg]
+        weights_matrix: NDArray[np.float64]
 
         if stabilize:
             # 🔧 INTERVENTION 2: Softer stabilization that preserves weight diversity
@@ -716,15 +717,15 @@ def make_multi_sampler(
             policy_dict = policy_cfg
         elif hasattr(policy_cfg, "get") and hasattr(policy_cfg, "keys"):
             # It's a dictionary-like object
-            policy_dict = dict(policy_cfg)  # type: ignore[arg-type]
+            policy_dict = dict(cast(Any, policy_cfg))
         else:
             # Try to treat as dict directly
             try:
-                policy_dict = dict(policy_cfg)  # type: ignore[arg-type]
+                policy_dict = dict(cast(Any, policy_cfg))
             except (TypeError, ValueError):
                 # Last resort - try to convert to dict if it has items()
                 if hasattr(policy_cfg, "items"):
-                    policy_dict = dict(policy_cfg.items())  # type: ignore[arg-type]
+                    policy_dict = dict(cast(Any, policy_cfg).items())
                 else:
                     raise ValueError(
                         f"Policy {i}: Unable to convert policy config to dictionary. Got: {type(policy_cfg)}"
@@ -783,7 +784,7 @@ def make_multi_sampler(
                     "user_message_template",
                 ]
             }
-            runner = APIPolicyRunner(  # type: ignore[arg-type]
+            runner = APIPolicyRunner(
                 provider=provider,
                 model_name=model_name,
                 **api_kwargs,
@@ -798,11 +799,14 @@ def make_multi_sampler(
                     for k, v in policy_dict.items()
                     if k in ["max_new_tokens", "temperature", "top_p", "batch_size"]
                 }
-                runner = MockAPIPolicyRunner(
-                    provider=provider,
-                    model_name=model_name,
-                    **api_kwargs,
-                )  # type: ignore[assignment]
+                runner = cast(
+                    APIPolicyRunner,
+                    MockAPIPolicyRunner(
+                        provider=provider,
+                        model_name=model_name,
+                        **api_kwargs,
+                    ),
+                )
             except ImportError:
                 raise ValueError(
                     f"Policy {i}: Mock provider requested but testing module not available"
@@ -823,7 +827,7 @@ def make_multi_sampler(
                     "text_format",
                 ]
             }
-            runner = PolicyRunner(  # type: ignore[arg-type]
+            runner = PolicyRunner(
                 model_name=model_name,
                 **hf_kwargs,
             )

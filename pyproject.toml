@@ -7,7 +7,7 @@ license = "MIT"
 packages = [{ include = "cje" }]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = ">=3.9,<3.13"
 numpy = "^1.26"
 pandas = "^2.2"
 scikit-learn = "^1.4"
@@ -42,6 +42,7 @@ boto3 = "^1.38.28"
 langchain-together = "^0.3.0"
 hypothesis = "^6.135.7"
 python-dotenv = "^1.1.0"
+labelbox = "^7.0.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.3"

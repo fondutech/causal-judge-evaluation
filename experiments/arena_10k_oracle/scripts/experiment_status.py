@@ -72,13 +72,13 @@ def main() -> None:
     steps = [
         ("Step 1: Sample Prompts", data_dir / "prompts.jsonl", 10000),
         ("Step 2: Generate π₀ Logs", data_dir / "p0_replies.jsonl", 72),
-        ("Step 3: Judge Scoring", data_dir / "p0_scored.jsonl", 72),
-        ("Step 4: Target Policies", data_dir / "all_policies.jsonl", 72),
         (
-            "Step 5: Export for Labeling",
+            "Step 3: Export for Labeling",
             data_dir / "labeling" / "calibration_export_surge.csv",
             18,
         ),
+        ("Step 4: Judge Scoring", data_dir / "p0_scored.jsonl", 72),
+        ("Step 5: Target Policies", data_dir / "all_policies.jsonl", 72),
     ]
 
     # Create status table
@@ -168,12 +168,12 @@ def main() -> None:
             console.print("  1. Run: python 01_sample_prompts.py")
         elif not (data_dir / "p0_replies.jsonl").exists():
             console.print("  1. Run: python 02_generate_logs.py")
-        elif not (data_dir / "p0_scored.jsonl").exists():
-            console.print("  1. Run: python 03_add_judge_scores.py")
-        elif not (data_dir / "all_policies.jsonl").exists():
-            console.print("  1. Run: python 04_generate_target_policies.py")
         elif not (data_dir / "labeling" / "calibration_export_surge.csv").exists():
-            console.print("  1. Run: python 05_export_for_labeling.py")
+            console.print("  1. Run: python 03_export_for_labeling.py")
+        elif not (data_dir / "p0_scored.jsonl").exists():
+            console.print("  1. Run: python 04_add_judge_scores.py")
+        elif not (data_dir / "all_policies.jsonl").exists():
+            console.print("  1. Run: python 05_generate_target_policies.py")
 
     # Cost summary
     console.print("\n[bold]Cost Summary:[/bold]")

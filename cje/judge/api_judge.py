@@ -11,14 +11,19 @@ from langchain_core.runnables import Runnable
 from pydantic import BaseModel
 
 from .base import BaseJudge, APIJudgeConfig
-from .schemas import JudgeScore, JudgeEvaluation, DetailedJudgeEvaluation, JudgeResult
+from .schemas import (
+    JudgeScore,
+    JudgeEvaluation,
+    DetailedJudgeEvaluation,
+    JudgeResult,
+)
 from .providers import (
-    StructuredOpenAIProvider,
-    StructuredAnthropicProvider,
-    StructuredGoogleProvider,
-    StructuredProviderStrategy,
-    StructuredFireworksProvider,
-    StructuredTogetherProvider,
+    OpenAIProvider,
+    AnthropicProvider,
+    GoogleProvider,
+    UnifiedProviderStrategy,
+    FireworksProvider,
+    TogetherProvider,
 )
 
 logger = logging.getLogger(__name__)
@@ -84,14 +89,14 @@ class APIJudge(BaseJudge):
         self.structured_model = self._setup_structured_model()
         self.prompt_template = self._setup_prompt_template()
 
-    def _get_provider_strategy(self) -> StructuredProviderStrategy:
+    def _get_provider_strategy(self) -> UnifiedProviderStrategy:
         """Get the appropriate provider strategy based on configuration."""
-        strategies: Dict[str, Type[StructuredProviderStrategy]] = {
-            "openai": StructuredOpenAIProvider,
-            "anthropic": StructuredAnthropicProvider,
-            "google": StructuredGoogleProvider,
-            "fireworks": StructuredFireworksProvider,
-            "together": StructuredTogetherProvider,
+        strategies: Dict[str, Type[UnifiedProviderStrategy]] = {
+            "openai": OpenAIProvider,
+            "anthropic": AnthropicProvider,
+            "google": GoogleProvider,
+            "fireworks": FireworksProvider,
+            "together": TogetherProvider,
         }
 
         if self.config.provider not in strategies:

@@ -44,8 +44,9 @@ experiments/arena_10k_oracle/
 │   ├── 01_prepare_data.py          # Sample prompts from Arena dataset
 │   ├── 02_generate_logs.py         # Generate π₀ responses with teacher forcing
 │   ├── 02b_generate_target_ground_truth.py  # Generate target policy responses
-│   ├── 03_add_judge_scores.py      # Score all responses with LLM judge
-│   ├── 05_export_for_labeling.py   # Export for crowdsourcing (both types)
+│   ├── 03_export_for_labeling.py   # Export for crowdsourcing (both types)
+│   ├── 04_add_judge_scores.py      # Score all responses with LLM judge
+│   ├── 05_generate_target_policies.py  # Generate target policy responses (TBD)
 │   ├── 06_import_labels.py         # Import human labels (TBD)
 │   ├── check_fireworks_models.py   # Utility to verify model access
 │   └── experiment_status.py        # Monitor pipeline progress
@@ -103,13 +104,16 @@ python 02_generate_logs.py
 # Step 2b: Generate target policy responses (for ground truth validation)
 python 02b_generate_target_ground_truth.py --samples 500
 
-# Step 3: Score all responses with judge
-python 03_add_judge_scores.py
+# Step 3: Export for human labeling (both calibration + ground truth)
+python 03_export_for_labeling.py \
+  --p0-input ../data/p0_replies.jsonl \
+  --target-input ../data/target_ground_truth.jsonl
 
-# Step 5: Export for human labeling (both calibration + ground truth)
-python 05_export_for_labeling.py \
-  --p0-input ../data/p0_scored.jsonl \
-  --target-input ../data/target_ground_truth_scored.jsonl
+# Step 4: Score all responses with judge
+python 04_add_judge_scores.py
+
+# Step 5: Generate target policy responses (TBD)
+# python 05_generate_target_policies.py
 
 # Step 6: Import human labels and run CJE validation
 python 06_import_labels.py --labels downloaded_labels.csv

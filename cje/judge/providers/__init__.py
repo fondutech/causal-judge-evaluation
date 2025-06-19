@@ -1,51 +1,58 @@
 """Provider implementations for judges."""
 
-from .base import ProviderStrategy
-from .openai_provider import OpenAIProvider
-from .anthropic_provider import AnthropicProvider
-from .google_provider import GoogleProvider
+# Import base class
+from .base import UnifiedProviderStrategy
 
-# New structured providers
-from .structured_base import StructuredProviderStrategy
-from .structured_openai import StructuredOpenAIProvider
-from .structured_anthropic import StructuredAnthropicProvider
-from .structured_google import StructuredGoogleProvider
+# Import providers
+from .openai import OpenAIProvider
+from .anthropic import AnthropicProvider
+from .google import GoogleProvider
+from .fireworks import FireworksProvider
 
-from .fireworks_provider import FireworksProvider
-from .together_provider import TogetherProvider
-from .structured_fireworks import StructuredFireworksProvider
+# Import Together provider with explicit error handling
+from ...utils.imports import ImportChecker
 
-# Conditionally import Together providers to avoid missing dependency
-try:
-    from .structured_together import StructuredTogetherProvider
+# Try to check if Together SDK is available before importing provider
+_, HAS_TOGETHER = ImportChecker.optional_import("together", warn=False)
 
-    _TOGETHER_AVAILABLE = True
-except (ImportError, TypeError) as e:
-    # Handle missing dependencies
+if HAS_TOGETHER:
+    try:
+        from .together import TogetherProvider
+
+        _TOGETHER_AVAILABLE = True
+    except ImportError as e:
+        # Provider import failed even though SDK is available
+        import warnings
+
+        warnings.warn(
+            f"Together provider could not be imported: {e}\n"
+            f"This is likely due to a code error, not missing dependencies.",
+            RuntimeWarning,
+        )
+        TogetherProvider = None  # type: ignore[misc]
+        _TOGETHER_AVAILABLE = False
+else:
+    # Together SDK not installed
     import warnings
-    from typing import TYPE_CHECKING
 
-    warnings.warn(f"Together provider not available: {e}", UserWarning)
-    if TYPE_CHECKING:
-        from .structured_together import StructuredTogetherProvider
-    else:
-        StructuredTogetherProvider = None  # type: ignore[misc]
+    warnings.warn(
+        "Together provider not available because 'together' package is not installed.\n"
+        "To use Together AI, install it with: pip install together",
+        ImportWarning,
+    )
+    TogetherProvider = None  # type: ignore[misc]
     _TOGETHER_AVAILABLE = False
 
 __all__ = [
-    "ProviderStrategy",
+    # Base class
+    "UnifiedProviderStrategy",
+    # Providers
     "OpenAIProvider",
     "AnthropicProvider",
     "GoogleProvider",
-    "StructuredProviderStrategy",
-    "StructuredOpenAIProvider",
-    "StructuredAnthropicProvider",
-    "StructuredGoogleProvider",
     "FireworksProvider",
-    "TogetherProvider",
-    "StructuredFireworksProvider",
 ]
 
 # Only include Together provider if available
 if _TOGETHER_AVAILABLE:
-    __all__.append("StructuredTogetherProvider")
+    __all__.append("TogetherProvider")

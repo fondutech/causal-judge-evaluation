@@ -157,6 +157,9 @@ def assign_rewards_with_priority(
         # Priority 2: Calibrated scores (primary for oracle analysis)
         if "score_cal" in row and row["score_cal"] is not None:
             row["reward"] = float(row["score_cal"])
+            # Also propagate calibrated variance if available
+            if "score_variance_cal" in row and row["score_variance_cal"] is not None:
+                row["reward_variance"] = float(row["score_variance_cal"])
             stats["score_cal"] += 1
             continue
 
