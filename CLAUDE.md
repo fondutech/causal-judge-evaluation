@@ -61,13 +61,20 @@ python scripts/hygiene_check.py  # Check codebase health
 
 **Unified Judge System** (June 20, 2025):
 - ALL judges now return `JudgeScore` with mean+variance
-- Single interface eliminates dual system complexity
+- Single interface eliminates dual system complexity  
 - Three uncertainty methods: deterministic/structured/monte_carlo
 - Migration script: `scripts/migrate_to_unified_judges.py`
 - See `UNIFIED_JUDGE_SUMMARY.md` for details
+- Documentation fully updated for unified system
+
+**Documentation Cleanup** (June 20, 2025):
+- Consolidated ~200 lines of duplicate content
+- Created central troubleshooting guide
+- Updated all examples for unified judge system
+- Added uncertainty/judge modules to API docs
+- Fixed all outdated imports and class names
 
 **Previous Changes**:
-- Provider consolidation: 14→7 files
+- Provider consolidation: 14→7 files  
 - Fixed λ formula bug in variance shrinkage
 - type:ignore: 66→39
-- All 76 tests passing
