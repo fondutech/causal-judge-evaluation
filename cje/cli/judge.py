@@ -91,9 +91,14 @@ def run(
     # Score all samples
     scores = judge_instance.score_batch(samples)
 
-    # Add scores to rows
+    # Add scores to rows using unified storage
+    from ..utils.score_storage import update_row_with_score
+
+    updated_rows = []
     for row, score in zip(rows, scores):
-        row["score_raw"] = score
+        updated_row = update_row_with_score(row, score, "score_raw")
+        updated_rows.append(updated_row)
+    rows = updated_rows
 
     out_jsonl.write_text("\n".join(json.dumps(r) for r in rows))
     print(f"Wrote {out_jsonl}")

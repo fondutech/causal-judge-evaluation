@@ -1,23 +1,22 @@
+"""Unified factory for creating judges that return JudgeScore with uncertainty."""
+
 from __future__ import annotations
-from typing import Dict, Any, Union, Optional, List
+from typing import Dict, Any, Union, Optional, List, Literal
 import logging
 
 from .base import (
-    BaseJudge,
-    JudgeProtocol,
-    CachedJudge,
     APIJudgeConfig,
     LocalJudgeConfig,
 )
-from .api_judge import APIJudge
-from .local_judge import LocalJudge
-from .judges import Judge
+from .api_judge import APIJudge, DeterministicAPIJudge, MCAPIJudge
+from .local_judge import LocalJudge  # Will need to update this too
+from .judges import Judge, LegacyJudgeAdapter
 
 logger = logging.getLogger(__name__)
 
 
 class JudgeFactory:
-    """Simplified factory for creating judges with the new provider system."""
+    """Factory for creating unified judges with uncertainty support."""
 
     # Available prompt templates
     AVAILABLE_TEMPLATES = [
@@ -29,9 +28,16 @@ class JudgeFactory:
 
     # Available structured output schemas
     AVAILABLE_SCHEMAS = [
-        "JudgeScore",  # Basic score only
+        "JudgeScore",  # Basic score with uncertainty
         "JudgeEvaluation",  # Score + reasoning + confidence
         "DetailedJudgeEvaluation",  # All evaluation metrics
+    ]
+
+    # Available uncertainty estimation methods
+    UNCERTAINTY_METHODS = [
+        "deterministic",  # Always returns variance=0
+        "structured",  # Model estimates its own uncertainty
+        "monte_carlo",  # Multiple samples to estimate variance
     ]
 
     @classmethod
@@ -42,38 +48,64 @@ class JudgeFactory:
         template: Optional[str] = None,
         structured_output_schema: Optional[str] = None,
         structured_output_method: Optional[str] = None,
+        uncertainty_method: Literal[
+            "deterministic", "structured", "monte_carlo"
+        ] = "structured",
         temperature: float = 0.0,
         api_key: Optional[str] = None,
         use_cache: bool = True,
         cache_size: int = 1000,
+        mc_samples: int = 5,
         **kwargs: Any,
     ) -> Judge:
-        """Create a judge with explicit configuration.
+        """Create a unified judge with uncertainty support.
 
         Args:
             provider: Provider name ('openai', 'anthropic', 'google', 'fireworks')
             model: Model name (e.g., 'gpt-4o-mini', 'claude-3-haiku-20240307')
             template: Prompt template name (default: provider default)
-            structured_output_schema: Schema for output (default: 'JudgeEvaluation')
+            structured_output_schema: Schema for output (default: 'JudgeScore')
             structured_output_method: Method to use (default: provider recommended)
+            uncertainty_method: How to estimate uncertainty:
+                - 'deterministic': Always returns variance=0
+                - 'structured': Model estimates its own uncertainty (default)
+                - 'monte_carlo': Sample multiple times to estimate variance
             temperature: Temperature for generation (default: 0.0)
             api_key: API key (optional, can use environment variable)
             use_cache: Whether to wrap judge with caching (default: True)
             cache_size: Size of the cache (default: 1000)
+            mc_samples: Number of samples for Monte Carlo (default: 5)
             **kwargs: Additional configuration options
 
         Returns:
-            Configured judge instance
+            Configured judge instance that returns JudgeScore
 
         Example:
+            # Deterministic judge (no uncertainty)
+            judge = JudgeFactory.create(
+                provider="openai",
+                model="gpt-4o-mini",
+                uncertainty_method="deterministic"
+            )
+
+            # Judge that estimates its own uncertainty
+            judge = JudgeFactory.create(
+                provider="anthropic",
+                model="claude-3-haiku-20240307",
+                uncertainty_method="structured",
+                template="comprehensive_judge"
+            )
+
+            # Monte Carlo uncertainty estimation
             judge = JudgeFactory.create(
                 provider="fireworks",
-                model="accounts/fireworks/models/deepseek-r1-0528",
-                template="comprehensive_judge",
-                structured_output_schema="DetailedJudgeEvaluation"
+                model="accounts/fireworks/models/llama-v3-70b-instruct",
+                uncertainty_method="monte_carlo",
+                temperature=0.3,
+                mc_samples=10
             )
         """
-        # Get provider info from new registry
+        # Get provider info from registry
         from cje.providers import get_provider
 
         provider_plugin = get_provider(provider)
@@ -82,29 +114,35 @@ class JudgeFactory:
 
             available = list_providers()
             raise ValueError(
-                f"Unknown provider '{provider}'. " f"Available providers: {available}"
+                f"Unknown provider '{provider}'. Available providers: {available}"
             )
 
         # Set defaults from provider plugin
         if template is None:
             template = provider_plugin.default_template
         if structured_output_schema is None:
-            structured_output_schema = "JudgeEvaluation"
+            # Default to basic JudgeScore for unified interface
+            structured_output_schema = "JudgeScore"
         if structured_output_method is None:
             structured_output_method = provider_plugin.recommended_method
 
-        # Validate template
+        # Validate inputs
         if template not in cls.AVAILABLE_TEMPLATES:
             raise ValueError(
                 f"Unknown template '{template}'. "
                 f"Available templates: {cls.AVAILABLE_TEMPLATES}"
             )
 
-        # Validate schema
         if structured_output_schema not in cls.AVAILABLE_SCHEMAS:
             raise ValueError(
                 f"Unknown schema '{structured_output_schema}'. "
                 f"Available schemas: {cls.AVAILABLE_SCHEMAS}"
+            )
+
+        if uncertainty_method not in cls.UNCERTAINTY_METHODS:
+            raise ValueError(
+                f"Unknown uncertainty method '{uncertainty_method}'. "
+                f"Available methods: {cls.UNCERTAINTY_METHODS}"
             )
 
         # Validate method
@@ -117,7 +155,7 @@ class JudgeFactory:
                 f"Supported methods: {supported_methods}"
             )
 
-        # Create configuration with provider defaults
+        # Create configuration
         config = APIJudgeConfig(
             name=f"{provider}-{model}",
             provider=provider,
@@ -131,10 +169,21 @@ class JudgeFactory:
             **kwargs,
         )
 
-        judge: Judge = APIJudge(config)
+        # Create appropriate judge based on uncertainty method
+        if uncertainty_method == "deterministic":
+            judge: Judge = DeterministicAPIJudge(config)
+        elif uncertainty_method == "monte_carlo":
+            # Ensure temperature > 0 for Monte Carlo
+            if config.temperature == 0:
+                config.temperature = 0.3
+            judge = MCAPIJudge(config, n_samples=mc_samples)
+        else:  # structured
+            judge = APIJudge(config)
 
         # Wrap with cache if requested
         if use_cache:
+            from .cached_judge import CachedJudge
+
             return CachedJudge(base_judge=judge, cache_size=cache_size)
 
         return judge
@@ -152,14 +201,29 @@ class JudgeFactory:
         if isinstance(config, APIJudgeConfig):
             return APIJudge(config)
         elif isinstance(config, LocalJudgeConfig):
+            from .local_judge import LocalJudge
+
             return LocalJudge(config)
         else:
             raise ValueError(f"Unknown config type: {type(config)}")
 
     @classmethod
+    def from_legacy(cls, legacy_judge: Any, assumed_variance: float = 0.0) -> Judge:
+        """Wrap a legacy judge that returns floats.
+
+        Args:
+            legacy_judge: Old-style judge returning float scores
+            assumed_variance: Variance to assign to all scores
+
+        Returns:
+            Unified judge that returns JudgeScore
+        """
+        return LegacyJudgeAdapter(legacy_judge, assumed_variance)
+
+    @classmethod
     def list_providers(cls) -> List[str]:
         """List available providers."""
-        from cje.provider_registry import list_providers
+        from cje.providers import list_providers
 
         return list_providers()
 
@@ -172,6 +236,11 @@ class JudgeFactory:
     def list_schemas(cls) -> List[str]:
         """List available output schemas."""
         return cls.AVAILABLE_SCHEMAS.copy()
+
+    @classmethod
+    def list_uncertainty_methods(cls) -> List[str]:
+        """List available uncertainty estimation methods."""
+        return cls.UNCERTAINTY_METHODS.copy()
 
     @classmethod
     def get_provider_info(cls, provider: str) -> Dict[str, Any]:
@@ -198,3 +267,9 @@ class JudgeFactory:
         from cje.providers import print_provider_capabilities
 
         print_provider_capabilities()
+
+        # Also print uncertainty methods
+        print("\nUncertainty Estimation Methods:")
+        print("- deterministic: Always returns variance=0 (fastest)")
+        print("- structured: Model estimates its own uncertainty (recommended)")
+        print("- monte_carlo: Sample multiple times to estimate variance (slowest)")

@@ -15,49 +15,69 @@ logger = logging.getLogger(__name__)
 
 
 class ScoreAugmentFeaturizer(Featurizer):
-    """Wrapper that appends the raw judge score as a feature.
+    """Wrapper that appends judge score and uncertainty as features.
 
     The wrapped *base* featurizer is responsible for producing an array of
-    base features (e.g., lengths or embeddings).  We then concatenate a single
-    scalar feature:
-        score := log_item["score_raw"] if present else log_item.get("score_cal", 0).
+    base features (e.g., lengths or embeddings). We then concatenate score features:
+        - score_mean := extracted from unified score format
+        - score_variance := extracted from unified score format (if available)
 
-    Note: This prioritizes raw judge scores over calibrated scores to avoid
-    circular dependencies in the outcome model.
+    This leverages the unified judge system that provides both mean and variance.
     """
 
-    def __init__(self, base: Featurizer):
+    def __init__(self, base: Featurizer, include_variance: bool = True):
         self.base = base
+        self.include_variance = include_variance
 
     # Passthrough fit
     def fit(self, logs: List[Dict[str, Any]]) -> "ScoreAugmentFeaturizer":
         self.base.fit(logs)
         return self
 
+    def _extract_score_features(self, log_item: Dict[str, Any]) -> Tuple[float, float]:
+        """Extract score mean and variance from unified format.
+
+        Returns:
+            Tuple of (mean, variance)
+        """
+        from ..utils.score_storage import ScoreCompatibilityLayer
+
+        # Use the compatibility layer to handle both formats
+        mean = ScoreCompatibilityLayer.get_score_value(log_item, "score_raw")
+        variance = ScoreCompatibilityLayer.get_score_variance(log_item, "score_raw")
+
+        return float(mean), float(variance)
+
     def _extract_score(self, log_item: Dict[str, Any]) -> float:
-        # Get score_raw if present, otherwise score_cal, otherwise default to 0.0
-        # This prioritizes raw scores to avoid circular dependencies
-        score_val = log_item.get("score_raw")
-        if score_val is not None:
-            return float(score_val)
-
-        score_val = log_item.get("score_cal")
-        if score_val is not None:
-            return float(score_val)
-
-        return 0.0
+        """Legacy method for backward compatibility."""
+        mean, _ = self._extract_score_features(log_item)
+        return mean
 
     def transform_single(self, log_item: Dict[str, Any]) -> np.ndarray:
         base_feats = self.base.transform_single(log_item)
-        score = np.array([self._extract_score(log_item)], dtype=np.float64)
-        return np.concatenate([base_feats, score])
+        mean, variance = self._extract_score_features(log_item)
+
+        if self.include_variance:
+            score_feats = np.array([mean, variance], dtype=np.float64)
+        else:
+            score_feats = np.array([mean], dtype=np.float64)
+
+        return np.concatenate([base_feats, score_feats])
 
     def transform(self, logs: List[Dict[str, Any]]) -> np.ndarray:
         base_matrix = self.base.transform(logs)
-        scores = np.array(
-            [self._extract_score(l) for l in logs], dtype=np.float64
-        ).reshape(-1, 1)
-        return np.hstack([base_matrix, scores])
+
+        # Extract both mean and variance
+        score_features = [self._extract_score_features(log) for log in logs]
+        means = [sf[0] for sf in score_features]
+        variances = [sf[1] for sf in score_features]
+
+        if self.include_variance:
+            score_matrix = np.column_stack([means, variances])
+        else:
+            score_matrix = np.array(means, dtype=np.float64).reshape(-1, 1)
+
+        return np.hstack([base_matrix, score_matrix])
 
 
 def _choose_base_featurizer(n_samples: int) -> Featurizer:

@@ -1,4 +1,4 @@
-"""API-based judge with structured output support."""
+"""Unified API-based judge that returns JudgeScore with uncertainty."""
 
 from __future__ import annotations
 import asyncio
@@ -8,9 +8,11 @@ from typing import List, Dict, Any, Optional, Type, Union
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+import json
 
 from .base import BaseJudge, APIJudgeConfig
+from .judges import Judge, DeterministicJudge, ProbabilisticJudge
 from .schemas import (
     JudgeScore,
     JudgeEvaluation,
@@ -21,7 +23,6 @@ from .providers import (
     OpenAIProvider,
     AnthropicProvider,
     GoogleProvider,
-    UnifiedProviderStrategy,
     FireworksProvider,
     TogetherProvider,
 )
@@ -79,19 +80,22 @@ def parse_thinking_blocks(text: str) -> Dict[str, str]:
     return {"thinking": "\n\n".join(thinking_content), "content": cleaned_text}
 
 
-class APIJudge(BaseJudge):
-    """API-based judge with structured output support."""
+class APIJudge(Judge):
+    """Unified API-based judge that returns JudgeScore with uncertainty.
+
+    This replaces the legacy APIJudge that returned float scores.
+    Now all scores include uncertainty estimates.
+    """
 
     def __init__(self, config: APIJudgeConfig):
-        super().__init__(config)
         self.config: APIJudgeConfig = config
         self.provider_strategy = self._get_provider_strategy()
         self.structured_model = self._setup_structured_model()
         self.prompt_template = self._setup_prompt_template()
 
-    def _get_provider_strategy(self) -> UnifiedProviderStrategy:
+    def _get_provider_strategy(self) -> Any:
         """Get the appropriate provider strategy based on configuration."""
-        strategies: Dict[str, Type[UnifiedProviderStrategy]] = {
+        strategies: Dict[str, Type[Any]] = {
             "openai": OpenAIProvider,
             "anthropic": AnthropicProvider,
             "google": GoogleProvider,
@@ -99,61 +103,66 @@ class APIJudge(BaseJudge):
             "together": TogetherProvider,
         }
 
-        if self.config.provider not in strategies:
-            available = list(strategies.keys())
-            raise ValueError(
-                f"Unsupported provider: {self.config.provider}. "
-                f"Available providers: {available}"
+        provider_class = strategies.get(self.config.provider)
+        if not provider_class:
+            raise ValueError(f"Unknown provider: {self.config.provider}")
+
+        # Instantiate the provider
+        if self.config.base_url:
+            return provider_class(
+                api_key=self.config.api_key,
+                base_url=self.config.base_url,
             )
+        else:
+            return provider_class(api_key=self.config.api_key)
 
-        strategy_class = strategies[self.config.provider]
-        return strategy_class(
-            api_key=self.config.api_key, base_url=self.config.base_url
-        )
+    def _setup_structured_model(self) -> Runnable:
+        """Set up the structured output model."""
+        schema_mapping: Dict[str, Type[BaseModel]] = {
+            "JudgeScore": JudgeScore,
+            "JudgeEvaluation": JudgeEvaluation,
+            "DetailedJudgeEvaluation": DetailedJudgeEvaluation,
+        }
 
-    def _setup_structured_model(self) -> Runnable[Any, Any]:
-        """Set up the model with structured output."""
-        # Get the schema class
-        schema = self.provider_strategy.get_schema_class(
-            self.config.structured_output_schema
-        )
+        schema_class = schema_mapping.get(self.config.structured_output_schema)
+        if not schema_class:
+            raise ValueError(f"Unknown schema: {self.config.structured_output_schema}")
 
-        # Get the structured model
-        return self.provider_strategy.get_structured_model(
+        model = self.provider_strategy.get_structured_model(
             model_name=self.config.model_name,
-            schema=schema,
-            method=self.config.structured_output_method,
+            schema=schema_class,
             temperature=self.config.temperature,
+            method=self.config.structured_output_method,
         )
+        return model  # type: ignore[no-any-return]
 
     def _setup_prompt_template(self) -> ChatPromptTemplate:
-        """Set up the prompt template for evaluation."""
-        # Get the template string
-        if self.config.custom_template:
-            template_str = self.config.custom_template
-        else:
-            templates = self._get_templates()
-            template_str = templates.get(
-                self.config.template,
-                templates.get("quick_judge", list(templates.values())[0]),
-            )
+        """Set up the prompt template."""
+        from ..prompts import UNIFIED_TEMPLATES
 
-        # Create prompt template
-        return ChatPromptTemplate.from_messages(
-            [
-                ("system", template_str),
-                ("human", "Context: {context}\n\nResponse to evaluate: {response}"),
-            ]
-        )
+        # Get template content
+        template_info = UNIFIED_TEMPLATES.get(self.config.template)
+        if not template_info:
+            raise ValueError(f"Unknown template: {self.config.template}")
 
-    async def _score_async(self, context: str, response: str) -> float:
-        """Async scoring with structured output and thinking block parsing."""
-        # Create the evaluation chain
-        chain = self.prompt_template | self.structured_model
+        template_str = template_info["template"]
 
+        # Create chat prompt template
+        return ChatPromptTemplate.from_template(template_str)
+
+    def score(self, context: str, response: str) -> JudgeScore:
+        """Score a single context-response pair with uncertainty."""
+        result = self._run_sync(self._score_async(context, response))
+        return result  # type: ignore[no-any-return]
+
+    async def _score_async(self, context: str, response: str) -> JudgeScore:
+        """Async implementation of scoring."""
         for attempt in range(self.config.max_retries):
             try:
-                # Invoke the chain
+                # Create the chain
+                chain = self.prompt_template | self.structured_model
+
+                # Invoke with context and response
                 result = await chain.ainvoke(
                     {
                         "context": context,
@@ -162,73 +171,65 @@ class APIJudge(BaseJudge):
                     }
                 )
 
-                # Handle the include_raw=True response format
-                if isinstance(result, dict) and "parsed" in result:
+                # Handle different result types
+                if isinstance(result, dict):
+                    # Check for parsing errors
                     if result.get("parsing_error"):
-                        # Try to parse thinking blocks from raw output
+                        # Try to extract from thinking blocks
                         raw_output = result.get("raw", "")
                         parsed_blocks = parse_thinking_blocks(raw_output)
 
-                        if parsed_blocks["thinking"]:
-                            # Log the extracted thinking for debugging
-                            logger.debug(
-                                f"Extracted thinking block: {parsed_blocks['thinking'][:200]}..."
-                            )
-                            logger.debug(
-                                f"Cleaned content: {parsed_blocks['content'][:200]}..."
-                            )
-
-                            # Try to parse the cleaned content as JSON
+                        if parsed_blocks["content"]:
                             try:
-                                import json
-                                from pydantic import ValidationError
+                                # Try to parse the cleaned content
+                                content = parsed_blocks["content"]
+                                # Simple JSON extraction
+                                if "{" in content and "}" in content:
+                                    json_str = content[
+                                        content.find("{") : content.rfind("}") + 1
+                                    ]
+                                    data = json.loads(json_str)
 
-                                # Get the schema class for manual parsing
-                                schema_class = self.provider_strategy.get_schema_class(
-                                    self.config.structured_output_schema
-                                )
-
-                                # Try to parse cleaned content as JSON
-                                cleaned_json = json.loads(parsed_blocks["content"])
-                                evaluation = schema_class(**cleaned_json)
-                                logger.info(
-                                    "Successfully parsed response after cleaning thinking blocks"
-                                )
-
-                                # Return the normalized score
-                                if hasattr(evaluation, "score"):
-                                    return float(getattr(evaluation, "score"))
-                                elif hasattr(evaluation, "overall_score"):
-                                    return float(getattr(evaluation, "overall_score"))
-                                else:
-                                    raise ValueError(
-                                        f"Unexpected evaluation type: {type(evaluation)}"
-                                    )
-
+                                    # Convert to JudgeScore
+                                    if "mean" in data and "variance" in data:
+                                        return JudgeScore(**data)
+                                    elif "score" in data:
+                                        # Legacy format
+                                        return JudgeScore(
+                                            mean=float(data["score"]), variance=0.0
+                                        )
                             except (
                                 json.JSONDecodeError,
                                 ValidationError,
                                 KeyError,
-                            ) as parse_error:
-                                logger.debug(
-                                    f"Cleaned content still failed to parse: {parse_error}"
-                                )
+                            ) as e:
+                                logger.debug(f"Failed to parse cleaned content: {e}")
 
-                        # Original error handling if thinking block parsing didn't work
-                        logger.error(f"Parsing error: {result['parsing_error']}")
-                        logger.debug(f"Raw output: {raw_output}")
-                        raise ValueError(
-                            f"Failed to parse response: {result['parsing_error']}"
-                        )
-                    evaluation = result["parsed"]
+                        # Raise original error
+                        raise ValueError(f"Parsing error: {result['parsing_error']}")
+
+                    # Extract parsed result
+                    evaluation = result.get("parsed", result)
                 else:
                     evaluation = result
 
-                # Return the normalized score (0-1 range)
-                if hasattr(evaluation, "score"):
-                    return float(getattr(evaluation, "score"))
-                elif hasattr(evaluation, "overall_score"):
-                    return float(getattr(evaluation, "overall_score"))
+                # Convert to JudgeScore
+                if isinstance(evaluation, JudgeScore):
+                    return evaluation
+                elif isinstance(evaluation, (JudgeEvaluation, DetailedJudgeEvaluation)):
+                    # These already inherit from JudgeScore
+                    return JudgeScore(
+                        mean=evaluation.mean, variance=evaluation.variance
+                    )
+                elif hasattr(evaluation, "score"):
+                    # Legacy format
+                    return JudgeScore(mean=float(evaluation.score), variance=0.0)
+                elif isinstance(evaluation, dict):
+                    # Try to construct from dict
+                    if "mean" in evaluation:
+                        return JudgeScore(**evaluation)
+                    elif "score" in evaluation:
+                        return JudgeScore(mean=float(evaluation["score"]), variance=0.0)
                 else:
                     raise ValueError(f"Unexpected evaluation type: {type(evaluation)}")
 
@@ -243,140 +244,130 @@ class APIJudge(BaseJudge):
 
         raise RuntimeError("Unreachable code")
 
-    # ---- NEW: helper to run async coroutines even if an event loop is already running ----
-    def _run_sync(self, coro: "Any") -> Any:
-        """Execute *coro* and return its result in sync contexts.
+    def score_batch(
+        self, samples: List[Dict[str, str]], disable_progress: bool = False
+    ) -> List[JudgeScore]:
+        """Score multiple samples concurrently."""
+        result = self._run_sync(self._score_batch_async(samples, disable_progress))
+        return result  # type: ignore[no-any-return]
 
-        If a loop is already running (e.g. inside Jupyter), we spin up a new
-        event loop in a separate context to avoid `RuntimeError: Cannot run the
-        event loop while another loop is running`.
-        """
+    async def _score_batch_async(
+        self, samples: List[Dict[str, str]], disable_progress: bool = False
+    ) -> List[JudgeScore]:
+        """Async batch scoring implementation."""
+        from ..utils.progress import track
+
+        # Create tasks for all samples
+        tasks = []
+        for sample in track(
+            samples,
+            description=f"Scoring with {self.config.model_name}",
+            disable=disable_progress,
+        ):
+            task = self._score_async(sample["context"], sample["response"])
+            tasks.append(task)
+
+        # Wait for all tasks to complete
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Handle any exceptions
+        scores = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"Failed to score sample {i}: {result}")
+                # Return a low score with high uncertainty for failures
+                scores.append(JudgeScore(mean=0.0, variance=0.25))
+            else:
+                assert isinstance(result, JudgeScore)
+                scores.append(result)
+
+        return scores
+
+    def _run_sync(self, coro: Any) -> Any:
+        """Execute async code in sync context."""
         try:
             loop = asyncio.get_running_loop()
             if loop.is_running():
-                # Nested event-loop situation – use an auxiliary loop.
+                # Nested event-loop situation – use auxiliary loop
                 new_loop = asyncio.new_event_loop()
                 try:
                     asyncio.set_event_loop(new_loop)
                     result = new_loop.run_until_complete(coro)
 
-                    # --------------------------------------------------
-                    # Graceful shutdown: flush callbacks & asyncgens
-                    # --------------------------------------------------
-                    # 1) allow "call_soon" callbacks (used by httpx) to run
+                    # Graceful shutdown
                     new_loop.run_until_complete(asyncio.sleep(0))
 
-                    # 2) shutdown async generators created by libraries
                     try:
                         new_loop.run_until_complete(new_loop.shutdown_asyncgens())
                     except (AttributeError, RuntimeError):
-                        # `shutdown_asyncgens` is Py3.10+; ignore if missing or loop already closed
                         pass
 
-                    # 3) gather any remaining pending tasks (should be none, but just in case)
+                    # Cancel remaining tasks
                     pending = [t for t in asyncio.all_tasks(new_loop) if not t.done()]
+                    for task in pending:
+                        task.cancel()
+
                     if pending:
-                        for task in pending:
-                            task.cancel()
                         try:
                             new_loop.run_until_complete(
                                 asyncio.gather(*pending, return_exceptions=True)
                             )
                         except Exception:
-                            pass  # Swallow cleanup exceptions
+                            pass
 
                     return result
                 finally:
                     try:
                         new_loop.close()
                     except Exception:
-                        pass  # Ignore cleanup errors
+                        pass
                     finally:
                         asyncio.set_event_loop(None)
         except RuntimeError:
-            # No running loop in this thread.
+            # No running loop
             pass
 
-        # Safe to run directly with proper cleanup
+        # Run normally
         return asyncio.run(coro)
 
-    # -----------------------------------------------------------------------------
-    def score(self, context: str, response: str) -> float:
-        """Score a single context-response pair (synchronous helper)."""
-        return float(self._run_sync(self._score_async(context, response)))
 
-    async def _score_batch_async(self, samples: List[Dict[str, str]]) -> List[float]:
-        """Async batch scoring with structured output."""
-        tasks = [
-            self._score_async(sample["context"], sample["response"])
-            for sample in samples
-        ]
-        return await asyncio.gather(*tasks, return_exceptions=False)
+class DeterministicAPIJudge(APIJudge):
+    """API judge that always returns zero variance.
 
-    def score_batch(
-        self, samples: List[Dict[str, str]], disable_progress: bool = False
-    ) -> List[float]:
-        """Score a batch of context-response pairs (synchronous wrapper)."""
-        return list(self._run_sync(self._score_batch_async(samples)))
+    For models/prompts that don't estimate uncertainty.
+    """
 
-    def get_detailed_evaluation(
-        self, context: str, response: str
-    ) -> Union[JudgeScore, JudgeEvaluation, DetailedJudgeEvaluation]:
-        """Get the full structured evaluation (not just the score) with thinking block support."""
-        # Create the evaluation chain
-        chain = self.prompt_template | self.structured_model
+    def __init__(self, config: APIJudgeConfig):
+        # Force JudgeScore schema for simple scoring
+        config.structured_output_schema = "JudgeScore"
+        # Ensure mean-only fields
+        super().__init__(config)
 
-        # Invoke synchronously
-        result = chain.invoke(
-            {"context": context, "response": response, **self.config.template_variables}
-        )
+    async def _score_async(self, context: str, response: str) -> JudgeScore:
+        """Score with zero variance."""
+        score = await super()._score_async(context, response)
+        # Force variance to zero
+        return JudgeScore(mean=score.mean, variance=0.0)
 
-        # Handle the include_raw=True response format
-        if isinstance(result, dict) and "parsed" in result:
-            if result.get("parsing_error"):
-                # Try to parse thinking blocks from raw output
-                raw_output = result.get("raw", "")
-                parsed_blocks = parse_thinking_blocks(raw_output)
 
-                if parsed_blocks["thinking"]:
-                    # Log the extracted thinking for debugging
-                    logger.debug(
-                        f"Extracted thinking block in detailed eval: {parsed_blocks['thinking'][:200]}..."
-                    )
-                    logger.debug(
-                        f"Cleaned content in detailed eval: {parsed_blocks['content'][:200]}..."
-                    )
+class MCAPIJudge(APIJudge, ProbabilisticJudge):
+    """API judge that uses Monte Carlo sampling for uncertainty.
 
-                    # Try to parse the cleaned content as JSON
-                    try:
-                        import json
-                        from pydantic import ValidationError
+    Scores multiple times with temperature > 0 to estimate variance.
+    """
 
-                        # Get the schema class for manual parsing
-                        schema_class = self.provider_strategy.get_schema_class(
-                            self.config.structured_output_schema
-                        )
+    def __init__(self, config: APIJudgeConfig, n_samples: int = 5):
+        # Ensure temperature > 0 for sampling
+        if config.temperature == 0:
+            config.temperature = 0.3
+        super().__init__(config)
+        self.n_samples = n_samples
 
-                        # Try to parse cleaned content as JSON
-                        cleaned_json = json.loads(parsed_blocks["content"])
-                        evaluation = schema_class(**cleaned_json)
-                        logger.info(
-                            "Successfully parsed detailed evaluation after cleaning thinking blocks"
-                        )
+    def score(self, context: str, response: str) -> JudgeScore:
+        """Score using Monte Carlo sampling."""
+        return self.score_with_samples(context, response, self.n_samples)
 
-                        return evaluation  # type: ignore[return-value, no-any-return]
-
-                    except (
-                        json.JSONDecodeError,
-                        ValidationError,
-                        KeyError,
-                    ) as parse_error:
-                        logger.debug(
-                            f"Cleaned content still failed to parse in detailed eval: {parse_error}"
-                        )
-
-                # Original error handling if thinking block parsing didn't work
-                raise ValueError(f"Failed to parse response: {result['parsing_error']}")
-            return result["parsed"]  # type: ignore[return-value, no-any-return]
-        else:
-            return result  # type: ignore[return-value, no-any-return]
+    def _sample_score(self, context: str, response: str) -> float:
+        """Sample a single score."""
+        score = self._run_sync(self._score_async(context, response))
+        return float(score.mean)

@@ -329,7 +329,7 @@ class LocalJudgeConfig(JudgeConfig):
             raise ValueError(f"Invalid local judge configuration: {'; '.join(errors)}")
 
 
-class BaseJudge(Judge):
+class BaseJudge:
     """Base class for all judge implementations."""
 
     def __init__(self, config: JudgeConfig):
@@ -367,93 +367,3 @@ class BaseJudge(Judge):
             context=context, response=response, **self.config.template_variables
         )
         return str(result)
-
-    @abstractmethod
-    def score(self, context: str, response: str) -> float:
-        """Score a single context-response pair."""
-        pass
-
-    def score_batch(
-        self, samples: List[Dict[str, str]], disable_progress: bool = False
-    ) -> List[float]:
-        """Default batch implementation with progress monitoring.
-
-        Can be overridden for more efficient implementations.
-        """
-        return [
-            self.score(s["context"], s["response"])
-            for s in track(
-                samples,
-                description=f"Scoring with {self.__class__.__name__}",
-                disable=disable_progress,
-            )
-        ]
-
-
-class CachedJudge(Judge):
-    """Wrapper that adds caching to any judge."""
-
-    def __init__(self, base_judge: Judge, cache_size: int = 1000):
-        self.base_judge = base_judge
-        self.cache: Dict[tuple, float] = {}
-        self.cache_size = cache_size
-        self._validate_cache_size()
-
-    def _validate_cache_size(self) -> None:
-        """Validate cache size parameter."""
-        if not isinstance(self.cache_size, int):
-            raise ValueError("cache_size must be an integer")
-        if self.cache_size < 1:
-            raise ValueError("cache_size must be at least 1")
-        if self.cache_size > 100000:
-            raise ValueError("cache_size should not exceed 100,000 (memory concerns)")
-
-    def _cache_key(self, context: str, response: str) -> tuple:
-        return (hash(context), hash(response))
-
-    def score(self, context: str, response: str) -> float:
-        key = self._cache_key(context, response)
-        if key in self.cache:
-            return self.cache[key]
-
-        score = self.base_judge.score(context, response)
-
-        # Simple LRU-like cache management
-        if len(self.cache) >= self.cache_size:
-            # Remove oldest item (not truly LRU, but simple)
-            self.cache.pop(next(iter(self.cache)))
-
-        self.cache[key] = score
-        return score
-
-    def score_batch(
-        self, samples: List[Dict[str, str]], disable_progress: bool = False
-    ) -> List[float]:
-        """Batch scoring with cache."""
-        results: List[Optional[float]] = []
-        uncached_samples = []
-        uncached_indices = []
-
-        # Check cache first
-        for i, sample in enumerate(samples):
-            key = self._cache_key(sample["context"], sample["response"])
-            if key in self.cache:
-                results.append(self.cache[key])
-            else:
-                results.append(None)  # Placeholder
-                uncached_samples.append(sample)
-                uncached_indices.append(i)
-
-        # Score uncached samples
-        if uncached_samples:
-            uncached_scores = self.base_judge.score_batch(
-                uncached_samples, disable_progress=disable_progress
-            )
-
-            # Update cache and results
-            for idx, score in zip(uncached_indices, uncached_scores):
-                key = self._cache_key(samples[idx]["context"], samples[idx]["response"])
-                self.cache[key] = score
-                results[idx] = score
-
-        return [float(r) for r in results if r is not None]

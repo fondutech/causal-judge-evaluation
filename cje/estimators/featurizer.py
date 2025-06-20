@@ -187,15 +187,17 @@ class RichFeaturizer(Featurizer):
 
     0. context length (characters)
     1. response length (characters)
-    2. raw judge score   – ``score_raw`` (0-1 scaled or None → 0)
-    3. calibrated reward – ``score_cal`` *or* ``reward`` fallback (0 if missing)
-    4. action id index   – normalised in [0,1] based on mapping learned in *fit*
+    2. raw judge score   – ``score_raw`` mean (0-1 scaled or None → 0)
+    3. raw judge variance – ``score_raw`` variance (if include_variance=True)
+    4. calibrated reward – ``score_cal`` *or* ``reward`` fallback (0 if missing)
+    5. action id index   – normalised in [0,1] based on mapping learned in *fit*
     """
 
-    def __init__(self) -> None:
+    def __init__(self, include_variance: bool = True) -> None:
         self._action_to_idx: Dict[str, int] = {}
         self._n_actions: int = 0
         self._fitted: bool = False
+        self.include_variance = include_variance
 
     # ------------------------------------------------------------------
     # Featurizer API
@@ -224,14 +226,32 @@ class RichFeaturizer(Featurizer):
         ctx_len = len(str(log_item.get("context", "")))
         resp_len = len(str(log_item.get("response", "")))
 
-        raw_score = float(log_item.get("score_raw", 0.0) or 0.0)
-        cal_score = float(log_item.get("score_cal", log_item.get("reward", 0.0) or 0.0))
+        # Extract score mean and variance using unified format
+        from ..utils.score_storage import ScoreCompatibilityLayer
 
+        raw_score = ScoreCompatibilityLayer.get_score_value(log_item, "score_raw")
+        raw_variance = ScoreCompatibilityLayer.get_score_variance(log_item, "score_raw")
+
+        # Extract calibrated score using compatibility layer
+        try:
+            cal_score = ScoreCompatibilityLayer.get_score_value(log_item, "score_cal")
+        except KeyError:
+            # Fall back to reward field
+            try:
+                cal_score = ScoreCompatibilityLayer.get_score_value(log_item, "reward")
+            except KeyError:
+                cal_score = 0.0
         action_val = self._action_norm(str(log_item.get("action", "")))
 
-        feats = np.array(
-            [ctx_len, resp_len, raw_score, cal_score, action_val], dtype=np.float64
-        )
+        if self.include_variance:
+            feats = np.array(
+                [ctx_len, resp_len, raw_score, raw_variance, cal_score, action_val],
+                dtype=np.float64,
+            )
+        else:
+            feats = np.array(
+                [ctx_len, resp_len, raw_score, cal_score, action_val], dtype=np.float64
+            )
         return feats
 
     # Batch transform inherits default implementation from base class

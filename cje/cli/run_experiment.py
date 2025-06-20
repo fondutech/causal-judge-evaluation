@@ -500,22 +500,28 @@ def run(
                 )
 
                 # Call judge logic directly instead of CLI function
-                from ..judge import JudgeFactory
+                from ..judge import JudgeFactory  # Now uses unified factory
+                from ..utils.score_storage import update_row_with_score
 
-                # Create judge using modern factory system
+                # Create judge using modern factory system with uncertainty
                 judge_kwargs = {
                     "template": cfg.judge.template,
+                    "uncertainty_method": getattr(
+                        cfg.judge, "uncertainty_method", "structured"
+                    ),
                 }
                 if hasattr(cfg.judge, "temperature"):
                     judge_kwargs["temperature"] = cfg.judge.temperature
                 if hasattr(cfg.judge, "max_tokens"):
                     judge_kwargs["max_tokens"] = cfg.judge.max_tokens
+                if hasattr(cfg.judge, "mc_samples"):
+                    judge_kwargs["mc_samples"] = cfg.judge.mc_samples
 
                 # Map provider to explicit configuration
                 provider = cfg.judge.provider
                 model = cfg.judge.model_name
 
-                # Create judge with explicit parameters
+                # Create unified judge with uncertainty support
                 judge_instance = JudgeFactory.create(
                     provider=provider, model=model, **judge_kwargs
                 )
@@ -529,17 +535,17 @@ def run(
                     for row in contexts_rows
                 ]
 
-                # Score all samples
+                # Score all samples - now returns List[JudgeScore]
                 scores = judge_instance.score_batch(samples)
 
-                # Add scores to rows
+                # Add scores to rows using unified storage format
                 judge_rows = []
                 for row, score in zip(contexts_rows, scores):
-                    new_row = row.copy()
-                    new_row["score_raw"] = score
+                    # Update row with structured score (handles backward compatibility)
+                    new_row = update_row_with_score(row, score, "score_raw")
                     judge_rows.append(new_row)
 
-                # Save to modular cache
+                # Save to modular cache with uncertainty metadata
                 save_chunk(
                     work,
                     "judge_scores",
@@ -549,7 +555,11 @@ def run(
                         "provider": provider,
                         "model_name": model,
                         "template": cfg.judge.template,
+                        "uncertainty_method": judge_kwargs.get(
+                            "uncertainty_method", "structured"
+                        ),
                         "sample_count": len(judge_rows),
+                        "has_variance": True,  # Flag for unified format
                     },
                 )
 
@@ -557,6 +567,16 @@ def run(
                 print(
                     f"[green]✅ Judge scoring complete and cached: {judge_hash}[/green]"
                 )
+
+                # Log variance statistics if available
+                if any(r.get("score_raw_variance", 0) > 0 for r in judge_rows):
+                    import numpy as np
+
+                    variances = [r.get("score_raw_variance", 0.0) for r in judge_rows]
+                    logger.info(
+                        f"Judge uncertainty stats - mean variance: {np.mean(variances):.4f}, "
+                        f"std: {np.std(variances):.4f}, max: {np.max(variances):.4f}"
+                    )
 
         # Save to legacy format for backward compatibility
         judge_json = work / f"{cfg.judge.template}_scores.jsonl"
@@ -741,17 +761,21 @@ def run(
 
                 # Call calibration logic directly instead of CLI function
                 from ..calibration.isotonic import fit_isotonic, plot_reliability
+                from ..utils.score_storage import ScoreCompatibilityLayer
 
                 # Load judge scores
                 rows = [json.loads(l) for l in judge_json.read_text().splitlines()]
+                compat = ScoreCompatibilityLayer()
 
                 # Filter rows to only include those with both score_raw and y_true (for oracle holdout compatibility)
                 calibration_rows = []
+                cal_variances = []
                 for r in rows:
-                    score_raw = r.get("score_raw")
                     y_true = r.get("y_true")
-                    if score_raw is not None and y_true is not None:
-                        calibration_rows.append((float(score_raw), float(y_true)))
+                    if "score_raw" in r and y_true is not None:
+                        score = compat.get_score(r, "score_raw")
+                        calibration_rows.append((score.mean, float(y_true)))
+                        cal_variances.append(score.variance)
 
                 if len(calibration_rows) == 0:
                     raise ValueError(
@@ -765,13 +789,34 @@ def run(
                     f"Using {len(calibration_rows)}/{len(rows)} samples for calibration"
                 )
 
+                # Log if we have variance information
+                if any(v > 0 for v in cal_variances):
+                    logger.info(
+                        f"Calibrating with uncertainty: {sum(v > 0 for v in cal_variances)} "
+                        f"samples have non-zero variance"
+                    )
+
                 # Fit isotonic calibration
                 iso = fit_isotonic(cal_scores, cal_y_true)
 
                 # Apply calibration model to ALL samples to get predicted rewards
                 for r in rows:
-                    score_raw = r.get("score_raw", 0.0)
-                    r["score_cal"] = float(iso.predict([score_raw])[0])
+                    if "score_raw" in r:
+                        # Get raw score using compatibility layer
+                        raw_score = compat.get_score(r, "score_raw")
+
+                        # Apply calibration to mean
+                        cal_mean = float(iso.predict([raw_score.mean])[0])
+
+                        # Create calibrated score preserving variance
+                        from ..judge.schemas_unified import JudgeScore
+
+                        cal_score = JudgeScore(
+                            mean=cal_mean, variance=raw_score.variance
+                        )
+
+                        # Update row with calibrated score
+                        r = update_row_with_score(r, cal_score, "score_cal")
 
                 # Clear y_true used for calibration training - it should not be used for CJE estimation
                 # Keep oracle_full for evaluation, but clear y_true to avoid confusion

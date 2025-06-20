@@ -13,7 +13,7 @@ from contextlib import contextmanager
 import logging
 
 from .mocks.policy_runners import MockPolicyRunner, MockAPIPolicyRunner, MockModelConfig
-from .mocks.judges import MockJudge, MockAPIJudge, MockLocalJudge, create_mock_judge
+from .mocks import MockJudge, MockAPIJudge, MockLocalJudge, create_mock_judge
 from .mocks.multi_target_sampler import (
     MockMultiTargetSampler,
     create_mock_multi_sampler,
@@ -286,7 +286,7 @@ def _patch_judges() -> None:
             mock_judge = create_mock_judge(judge_type, config_dict)
 
             if use_cache:
-                from ..judge.base import CachedJudge
+                from ..judge.cached_judge import CachedJudge
 
                 return CachedJudge(mock_judge, cache_size)
             else:

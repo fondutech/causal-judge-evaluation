@@ -221,6 +221,9 @@ class BaseCrossFittedEstimator(Estimator[Dict[str, Any]]):
         if self.judge_runner is not None:
             from .auto_outcome import ScoreAugmentFeaturizer
 
-            self.featurizer = ScoreAugmentFeaturizer(base_featurizer)
+            # Include variance information from unified judge system
+            self.featurizer = ScoreAugmentFeaturizer(
+                base_featurizer, include_variance=True
+            )
         else:
             self.featurizer = base_featurizer

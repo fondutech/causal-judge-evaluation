@@ -201,7 +201,10 @@ class MultiDRCPOEstimator(Estimator[Dict[str, Any]]):
             if self.judge_runner is not None:
                 from .auto_outcome import ScoreAugmentFeaturizer
 
-                self.featurizer = ScoreAugmentFeaturizer(base_featurizer)
+                # Include variance information from unified judge system
+                self.featurizer = ScoreAugmentFeaturizer(
+                    base_featurizer, include_variance=True
+                )
             else:
                 self.featurizer = base_featurizer
 
@@ -209,9 +212,19 @@ class MultiDRCPOEstimator(Estimator[Dict[str, Any]]):
         self._rewards_full = np.array([log["reward"] for log in logs], dtype=float)
         self._logp_behavior_full = np.array([log["logp"] for log in logs], dtype=float)
 
-        # Extract reward variances if available (default to 0 for backward compatibility)
+        # Extract reward variances from unified score format
+        from ..utils.score_storage import ScoreCompatibilityLayer
+
         self._reward_variances_full = np.array(
-            [log.get("reward_variance", 0.0) for log in logs], dtype=float
+            [
+                (
+                    ScoreCompatibilityLayer.get_score_variance(log, "reward")
+                    if "reward" in log
+                    else log.get("reward_variance", 0.0)
+                )
+                for log in logs
+            ],
+            dtype=float,
         )
 
         # Compute importance weights matrix W (n, K)

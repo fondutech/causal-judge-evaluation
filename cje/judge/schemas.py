@@ -1,184 +1,188 @@
-"""Pydantic schemas for structured judge outputs."""
+"""Unified judge score schemas with built-in uncertainty support.
 
-from typing import List, Optional, Dict, Any, Union
-from pydantic import BaseModel, Field, field_validator
-import json
+This module provides the single source of truth for judge scores,
+replacing the dual system of legacy float scores and uncertainty scores.
+"""
+
+from typing import Optional, Dict, Any, Union, List
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class JudgeScore(BaseModel):
-    """Basic structured score from a judge."""
+    """Unified judge score with mandatory uncertainty quantification.
 
-    score: float = Field(
+    All judges now return structured scores with mean and variance.
+    For deterministic judges, variance is simply 0.
+
+    Attributes:
+        mean: The point estimate of the score (0-1 range)
+        variance: The uncertainty/variance of the score (0-0.25 range)
+    """
+
+    mean: float = Field(
+        ..., ge=0, le=1, description="The mean/expected score value in [0, 1] range"
+    )
+    variance: float = Field(
+        default=0.0,
         ge=0,
-        le=10,
-        description="Numeric score from 0-10 evaluating the response quality",
+        le=0.25,  # Max variance for [0,1] bounded variable
+        description="The variance/uncertainty of the score (0 for deterministic judges)",
     )
 
-    @field_validator("score")
-    def normalize_score(cls, v: float) -> float:
-        """Ensure score is within 0-1 range for backwards compatibility."""
-        # If score is already 0-1, keep it
+    @field_validator("mean", mode="before")
+    @classmethod
+    def normalize_mean(cls, v: Union[float, int]) -> float:
+        """Normalize scores from 0-10 range to 0-1 range if needed.
+
+        Maintains backward compatibility with judges that return 0-10 scores.
+        """
+        v = float(v)
         if 0 <= v <= 1:
             return v
-        # If score is 0-10, normalize to 0-1
         elif 0 <= v <= 10:
             return v / 10
         else:
-            raise ValueError(f"Score {v} is out of valid range")
+            raise ValueError(f"Score mean {v} is out of valid range [0, 10]")
+
+    @model_validator(mode="after")
+    def validate_variance_bounds(self) -> "JudgeScore":
+        """Ensure variance is reasonable for the mean value."""
+        # For scores near boundaries, variance should be limited
+        max_var = self.mean * (1 - self.mean)  # Variance of Bernoulli
+        if self.variance > max_var:
+            # Clip to maximum possible variance
+            self.variance = max_var
+        return self
+
+    def __float__(self) -> float:
+        """Convert to float for backward compatibility.
+
+        Returns the mean value when cast to float.
+        """
+        return self.mean
+
+    @property
+    def value(self) -> float:
+        """Alias for mean, matching uncertainty module interface."""
+        return self.mean
+
+    @property
+    def se(self) -> float:
+        """Standard error (square root of variance)."""
+        return float(self.variance**0.5)
+
+    def confidence_interval(self, alpha: float = 0.05) -> tuple[float, float]:
+        """Compute confidence interval assuming normal approximation."""
+        import scipy.stats
+
+        z = scipy.stats.norm.ppf(1 - alpha / 2)
+        margin = z * self.se
+        return (max(0, self.mean - margin), min(1, self.mean + margin))
 
 
-class JudgeEvaluationMetadata(BaseModel):
-    """OpenAI-compatible metadata object with explicit schema."""
+class JudgeEvaluation(JudgeScore):
+    """Extended evaluation with reasoning and metadata.
 
-    # Define common metadata fields explicitly instead of using Dict[str, Any]
-    # This ensures OpenAI compatibility by avoiding additionalProperties issues
+    Backward compatible with legacy JudgeEvaluation but now
+    includes uncertainty quantification.
+    """
 
-    template_used: Optional[str] = Field(
-        default=None, description="Judge template used"
-    )
-    provider: Optional[str] = Field(default=None, description="API provider used")
-    model_name: Optional[str] = Field(default=None, description="Model name used")
-    response_time_ms: Optional[float] = Field(
-        default=None, description="Response time in milliseconds"
-    )
-    tokens_used: Optional[int] = Field(default=None, description="Total tokens used")
-
-    class Config:
-        # Explicitly forbid additional properties for OpenAI compatibility
-        extra = "forbid"
-
-
-class JudgeEvaluation(BaseModel):
-    """Comprehensive structured evaluation from a judge."""
-
-    score: float = Field(
-        ge=0,
-        le=10,
-        description="Numeric score from 0-10 evaluating the response quality",
-    )
-
-    reasoning: str = Field(
-        min_length=10,
-        description="Detailed explanation for why this score was assigned",
-    )
-
-    confidence: float = Field(
+    reasoning: Optional[str] = Field(None, description="Explanation of the score")
+    confidence: Optional[float] = Field(
+        None,
         ge=0,
         le=1,
-        default=0.8,
-        description="Judge's confidence level in this evaluation (0-1)",
+        description="Judge's self-reported confidence (deprecated - use variance instead)",
     )
-
-    key_strengths: List[str] = Field(
-        default_factory=list,
-        max_length=5,
-        description="List of up to 5 specific strengths identified in the response",
-    )
-
-    key_weaknesses: List[str] = Field(
-        default_factory=list,
-        max_length=5,
-        description="List of up to 5 weaknesses or areas for improvement",
-    )
-
-    improvement_suggestions: Optional[str] = Field(
-        default=None, description="Specific suggestions for how to improve the response"
-    )
-
-    metadata: JudgeEvaluationMetadata = Field(
-        default_factory=JudgeEvaluationMetadata,
-        description="Additional metadata about the evaluation",
-    )
-
-    @field_validator("score")
-    def normalize_score(cls, v: float) -> float:
-        """Ensure score is within 0-1 range for backwards compatibility."""
-        # If score is already 0-1, keep it
-        if 0 <= v <= 1:
-            return v
-        # If score is 0-10, normalize to 0-1
-        elif 0 <= v <= 10:
-            return v / 10
-        else:
-            raise ValueError(f"Score {v} is out of valid range")
-
-    @field_validator("reasoning")
-    def check_reasoning_quality(cls, v: str) -> str:
-        """Ensure reasoning is substantive."""
-        if len(v.split()) < 10:
-            raise ValueError("Reasoning must be at least 10 words")
-        return v
-
-    class Config:
-        # Explicitly forbid additional properties for OpenAI compatibility
-        extra = "forbid"
-
-
-class DetailedJudgeEvaluation(BaseModel):
-    """Most detailed evaluation schema for advanced use cases."""
-
-    overall_score: float = Field(ge=0, le=10, description="Overall score from 0-10")
-
-    accuracy_score: float = Field(
-        ge=0, le=10, description="Score for factual accuracy and correctness"
-    )
-
-    completeness_score: float = Field(
-        ge=0, le=10, description="Score for completeness and coverage of the topic"
-    )
-
-    clarity_score: float = Field(
-        ge=0, le=10, description="Score for clarity and coherence of expression"
-    )
-
-    relevance_score: float = Field(
-        ge=0, le=10, description="Score for relevance to the original question/context"
-    )
-
-    reasoning: str = Field(
-        min_length=50, description="Comprehensive explanation of the evaluation"
-    )
-
     strengths: List[str] = Field(
-        min_length=1, max_length=5, description="Key strengths of the response"
+        default_factory=list, description="Identified strengths in the response"
     )
-
     weaknesses: List[str] = Field(
-        default_factory=list,
-        max_length=5,
-        description="Key weaknesses or areas for improvement",
+        default_factory=list, description="Identified weaknesses in the response"
     )
 
-    suggestions: List[str] = Field(
-        default_factory=list,
-        max_length=5,
-        description="Specific suggestions for improvement",
+    @model_validator(mode="after")
+    def convert_confidence_to_variance(self) -> "JudgeEvaluation":
+        """Convert legacy confidence to variance if variance not set."""
+        if self.confidence is not None and self.variance == 0.0:
+            # High confidence = low variance
+            # Map confidence [0,1] to variance [0.05, 0.0]
+            self.variance = 0.05 * (1 - self.confidence)
+        return self
+
+
+class DetailedJudgeEvaluation(JudgeEvaluation):
+    """Comprehensive evaluation with sub-dimensions.
+
+    Now includes uncertainty for each sub-score.
+    """
+
+    relevance_score: Optional[JudgeScore] = Field(
+        None, description="How relevant the response is to the question"
+    )
+    accuracy_score: Optional[JudgeScore] = Field(
+        None, description="Factual accuracy of the response"
+    )
+    clarity_score: Optional[JudgeScore] = Field(
+        None, description="Clarity and coherence of the response"
+    )
+    completeness_score: Optional[JudgeScore] = Field(
+        None, description="How complete/comprehensive the response is"
     )
 
-    confidence: float = Field(
-        ge=0, le=1, default=0.8, description="Confidence in this evaluation"
-    )
+    @model_validator(mode="after")
+    def compute_overall_from_subscores(self) -> "DetailedJudgeEvaluation":
+        """Compute overall score from sub-scores if not provided."""
+        if self.mean == 0.0 and self.variance == 0.0:
+            # Compute from available sub-scores
+            sub_scores = [
+                s
+                for s in [
+                    self.relevance_score,
+                    self.accuracy_score,
+                    self.clarity_score,
+                    self.completeness_score,
+                ]
+                if s is not None
+            ]
 
-    @field_validator(
-        "overall_score",
-        "accuracy_score",
-        "completeness_score",
-        "clarity_score",
-        "relevance_score",
-    )
-    def normalize_scores(cls, v: float) -> float:
-        """Normalize all scores to 0-1 range."""
-        if 0 <= v <= 1:
-            return v
-        elif 0 <= v <= 10:
-            return v / 10
-        else:
-            raise ValueError(f"Score {v} is out of valid range")
+            if sub_scores:
+                # Average of means
+                self.mean = sum(s.mean for s in sub_scores) / len(sub_scores)
+                # Average of variances (assuming independence)
+                self.variance = sum(s.variance for s in sub_scores) / (
+                    len(sub_scores) ** 2
+                )
+
+        return self
 
 
-# Type alias for any judge evaluation
-JudgeResult = Union[
-    JudgeScore,
-    JudgeEvaluation,
-    DetailedJudgeEvaluation,
-]
+# Type alias for any judge result
+JudgeResult = Union[JudgeScore, JudgeEvaluation, DetailedJudgeEvaluation]
+
+
+# Backward compatibility helpers
+def score_to_float(score: Union[float, JudgeScore]) -> float:
+    """Convert any score type to float for legacy code."""
+    if isinstance(score, (int, float)):
+        return float(score)
+    return float(score.mean)
+
+
+def scores_to_floats(scores: List[Union[float, JudgeScore]]) -> List[float]:
+    """Convert list of scores to floats for legacy code."""
+    return [score_to_float(s) for s in scores]
+
+
+def float_to_score(value: float, variance: float = 0.0) -> JudgeScore:
+    """Convert float to JudgeScore for unified interface."""
+    return JudgeScore(mean=value, variance=variance)
+
+
+def floats_to_scores(
+    values: List[float], variances: Optional[List[float]] = None
+) -> List[JudgeScore]:
+    """Convert list of floats to JudgeScores."""
+    if variances is None:
+        variances = [0.0] * len(values)
+    return [JudgeScore(mean=v, variance=var) for v, var in zip(values, variances)]

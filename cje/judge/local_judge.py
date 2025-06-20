@@ -5,16 +5,17 @@ import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from tqdm import tqdm
 
-from .base import BaseJudge, LocalJudgeConfig
+from .base import LocalJudgeConfig
+from .judges import Judge
+from .schemas import JudgeScore
 
 logger = logging.getLogger(__name__)
 
 
-class LocalJudge(BaseJudge):
+class LocalJudge(Judge):
     """Local model-based judge supporting configurable models."""
 
     def __init__(self, config: LocalJudgeConfig):
-        super().__init__(config)
         self.config: LocalJudgeConfig = config
         self._tokenizer: Optional[Any] = None
         self._model: Optional[Any] = None
@@ -84,9 +85,10 @@ class LocalJudge(BaseJudge):
             return f"<|system|>\n{json.dumps({'instruction': context})}\n<|assistant|>\n{response}"
         else:
             # Generic format - use template
-            return self._render_prompt(context, response)
+            # For now, use simple concatenation
+            return f"Context: {context}\nResponse: {response}"
 
-    def score(self, context: str, response: str) -> float:
+    def score(self, context: str, response: str) -> JudgeScore:
         """Score a single context-response pair."""
         self._lazy_load()
         assert self._tokenizer is not None
@@ -121,11 +123,12 @@ class LocalJudge(BaseJudge):
                 # Direct scalar output
                 score = outputs.item()
 
-        return float(score)
+        # Convert to JudgeScore (deterministic for local models)
+        return JudgeScore(mean=float(score), variance=0.0)
 
     def score_batch(
         self, samples: List[Dict[str, str]], disable_progress: bool = False
-    ) -> List[float]:
+    ) -> List[JudgeScore]:
         """Score a batch of context-response pairs efficiently."""
         self._lazy_load()
         assert self._tokenizer is not None
@@ -174,4 +177,5 @@ class LocalJudge(BaseJudge):
 
             scores.extend(batch_scores)
 
-        return scores
+        # Convert to JudgeScore objects
+        return [JudgeScore(mean=float(score), variance=0.0) for score in scores]

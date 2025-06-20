@@ -13,7 +13,7 @@ Key components:
 """
 
 from .mocks.policy_runners import MockPolicyRunner, MockAPIPolicyRunner
-from .mocks.judges import MockJudge, MockAPIJudge, MockLocalJudge
+from .mocks import MockJudge, MockAPIJudge, MockLocalJudge
 from .mocks.multi_target_sampler import (
     MockMultiTargetSampler,
     create_mock_multi_sampler,

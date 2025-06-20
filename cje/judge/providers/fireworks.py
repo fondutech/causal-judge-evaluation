@@ -221,7 +221,7 @@ class ThinkingBlockWrapper(Runnable[Any, Any]):
         # This ensures the pipeline can continue rather than failing completely
         from ..schemas import JudgeScore
 
-        return JudgeScore(score=5.0)  # Neutral score to keep pipeline running
+        return JudgeScore(mean=0.5)  # Neutral score to keep pipeline running
 
 
 class FireworksProvider(UnifiedOpenAICompatibleProvider):
