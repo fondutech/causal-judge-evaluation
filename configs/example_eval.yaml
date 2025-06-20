@@ -1,4 +1,4 @@
-# Small Arena Test Configuration
+# Example Evaluation Configuration
 # Uses oracle mode to bypass Fireworks log probability issues
 
 # Dataset configuration
@@ -50,7 +50,7 @@ estimator:
 
 # Paths configuration
 paths:
-  work_dir: "outputs/arena_test_cache"
+  work_dir: "outputs/example_eval_cache"
 
 # Automated oracle configuration (uses stronger model for ground truth, not human labels)
 oracle:

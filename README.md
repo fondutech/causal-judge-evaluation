@@ -50,11 +50,11 @@ export FIREWORKS_API_KEY="..."         # Recommended for teacher forcing
 
 ```bash
 # Run evaluation on sample data
-cje run --cfg-path configs --cfg-name arena_test
+cje run --cfg-path configs --cfg-name example_eval
 
 # Or use Python API
 from cje.pipeline import run_pipeline
-results = run_pipeline(cfg_path="configs", cfg_name="arena_test")
+results = run_pipeline(cfg_path="configs", cfg_name="example_eval")
 ```
 
 ## Documentation
@@ -70,7 +70,7 @@ results = run_pipeline(cfg_path="configs", cfg_name="arena_test")
 
 The `experiments/` directory contains standalone research experiments:
 
-- **[Arena 10K Fresh Oracle](experiments/arena_10k_oracle/)** - Validate CJE on 10k ChatBot Arena prompts
+- **[10K Fresh Oracle Validation](experiments/arena_10k_oracle/)** - Large-scale CJE validation experiment
   - Human calibration via crowdsourcing
   - Complete workflow with checkpointing
   - Target: High accuracy with significant CI reduction
