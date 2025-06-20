@@ -13,6 +13,19 @@ Core Pipeline
    cje.pipeline
    cje.config
 
+Judge System
+------------
+
+.. autosummary::
+   :toctree: generated
+   :recursive:
+
+   cje.judge.factory_unified
+   cje.judge.judges_unified
+   cje.judge.api_judge_unified
+   cje.judge.schemas_unified
+   cje.judge.providers
+
 Estimators
 ----------
 
@@ -35,6 +48,19 @@ Data Handling
 
    cje.data
    cje.loggers
+
+Uncertainty Quantification
+--------------------------
+
+.. autosummary::
+   :toctree: generated
+   :recursive:
+
+   cje.uncertainty
+   cje.uncertainty.judge
+   cje.uncertainty.estimator
+   cje.uncertainty.calibration
+   cje.uncertainty.results
 
 Diagnostics & Utilities
 -----------------------

@@ -31,28 +31,23 @@ Traditional LLM evaluation treats judge scores as point estimates. However, judg
 Quick Start
 -----------
 
-Here's the simplest way to use uncertainty-aware evaluation:
+With the unified judge system (June 2025), ALL judges now return uncertainty estimates:
 
 .. code-block:: python
 
-   from cje.uncertainty import (
-       UncertaintyAPIJudge,
-       UncertaintyAwareDRCPO,
-       UncertaintyJudgeConfig,
-       UncertaintyEstimatorConfig,
-   )
+   from cje.judge.factory_unified import JudgeFactory
+   from cje.uncertainty import UncertaintyAwareDRCPO, UncertaintyEstimatorConfig
 
-   # 1. Configure uncertainty-aware judge
-   judge_config = UncertaintyJudgeConfig(
+   # 1. Create a judge (all judges now return JudgeScore with mean+variance)
+   judge = JudgeFactory.create(
        provider="openai",
-       model_name="gpt-4o",
+       model="gpt-4o",
        template="comprehensive_judge",
-       temperature=0.0,  # Can still be deterministic
+       uncertainty_method="structured"  # or "deterministic" or "monte_carlo"
    )
-   judge = UncertaintyAPIJudge(judge_config)
 
-   # 2. Score samples (returns scores with variance)
-   samples = [{"prompt": "...", "response": "..."}]
+   # 2. Score samples (always returns JudgeScore objects)
+   samples = [{"context": "...", "response": "..."}]
    judge_scores = judge.score_batch(samples)
    # Each score has .mean and .variance attributes
 
@@ -79,78 +74,71 @@ Here's the simplest way to use uncertainty-aware evaluation:
 Setting Up Uncertainty-Aware Judges
 -----------------------------------
 
-CJE provides several approaches to obtain uncertainty estimates from judges:
+With the unified judge system, ALL judges now return `JudgeScore` objects with uncertainty. You choose the uncertainty estimation method:
 
-1. Structured Output with Confidence
+1. Deterministic (Zero Variance)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For traditional point estimates:
+
+.. code-block:: python
+
+   from cje.judge.factory_unified import JudgeFactory
+   
+   # Creates a judge that always returns variance=0
+   judge = JudgeFactory.create(
+       provider="openai",
+       model="gpt-4o",
+       template="comprehensive_judge",
+       uncertainty_method="deterministic",
+       temperature=0.0
+   )
+   
+   score = judge.score("Context", "Response")
+   # score.mean = 0.75, score.variance = 0.0
+
+2. Structured Output with Confidence
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The most reliable method uses structured output to get both score and confidence:
+The model estimates its own uncertainty:
 
 .. code-block:: python
 
-   from cje.uncertainty import UncertaintyAPIJudge, UncertaintyJudgeConfig
-   
-   # Configure judge to return structured scores with confidence
-   config = UncertaintyJudgeConfig(
+   # Default method - model returns score + confidence
+   judge = JudgeFactory.create(
        provider="openai",
-       model_name="gpt-4o",
-       template="uncertainty_aware_judge",  # Special template
-       temperature=0.0,
-       structured_output_schema="JudgeScoreWithConfidence",
+       model="gpt-4o",
+       template="comprehensive_judge",
+       uncertainty_method="structured"  # Default
    )
    
-   judge = UncertaintyAPIJudge(config)
+   score = judge.score("Context", "Response")
+   # score.mean = 0.75, score.variance = 0.02 (model-estimated)
 
-The ``uncertainty_aware_judge`` template prompts the model to return:
+The judge prompts the model to return both score and confidence, converting confidence to variance.
 
-.. code-block:: json
+3. Monte Carlo Sampling
+~~~~~~~~~~~~~~~~~~~~~~~
 
-   {
-       "score": 0.75,
-       "confidence": 0.85,
-       "reasoning": "The response is helpful but could be more detailed..."
-   }
-
-CJE converts confidence to variance using: ``variance = 0.25 * (1 - confidence)``
-
-2. Multiple Sampling (Monte Carlo)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-For models without structured output, use multiple samples to estimate uncertainty:
+Sample multiple times to estimate uncertainty empirically:
 
 .. code-block:: python
 
-   from cje.uncertainty import MCUncertaintyJudge
-   
-   config = UncertaintyJudgeConfig(
+   judge = JudgeFactory.create(
        provider="anthropic",
-       model_name="claude-3-sonnet",
-       template="comprehensive_judge",
-       temperature=0.7,  # Higher temperature for diversity
-       n_samples=5,      # Number of samples per judgment
+       model="claude-3-sonnet",
+       uncertainty_method="monte_carlo",
+       temperature=0.7,  # Higher for diversity
+       mc_samples=10     # Number of samples
    )
    
-   judge = MCUncertaintyJudge(config)
+   score = judge.score("Context", "Response")
+   # score.mean = 0.73, score.variance = 0.03 (empirical)
 
 This approach:
 - Scores each sample multiple times
 - Computes mean and variance from the samples
 - More expensive but works with any model
-
-3. Calibrated Deterministic Judges
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-For deterministic judges, CJE can learn uncertainty from calibration data:
-
-.. code-block:: python
-
-   from cje.uncertainty import DeterministicJudge
-   
-   # Wraps a standard judge with zero variance
-   judge = DeterministicJudge(base_judge)
-   
-   # During calibration, gamma parameter adjusts variance
-   # based on observed prediction errors
 
 4. Custom Uncertainty Models
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -235,12 +223,12 @@ Maps biased judge scores to unbiased values:
 
 .. code-block:: python
 
-   from cje.uncertainty.calibration import calibrate_scores_isotonic
+   from cje.uncertainty.calibration import calibrate_variance_gamma
    
    # Calibrate judge scores using oracle labels
-   iso_model, gamma = calibrate_scores_isotonic(
+   iso_model, gamma = calibrate_variance_gamma(
        judge_scores=judge_scores,  # List[JudgeScore]
-       true_labels=oracle_rewards,  # Ground truth
+       oracle_rewards=oracle_rewards,  # Ground truth
    )
    
    # Apply calibration to new scores
@@ -407,13 +395,13 @@ Minimal Uncertainty Configuration
        model_name: "gpt-4o"
        temperature: 0.7
    
-   # Uncertainty-aware judge configuration
+   # Judge configuration (all judges now support uncertainty)
    judge:
      provider: "openai"
      model_name: "gpt-4o"
-     template: "uncertainty_aware_judge"
+     template: "comprehensive_judge"
      temperature: 0.0
-     structured_output_schema: "JudgeScoreWithConfidence"
+     uncertainty_method: "structured"  # or "deterministic" or "monte_carlo"
    
    # Estimator with uncertainty features
    estimator:
@@ -455,9 +443,9 @@ Production Uncertainty Configuration
    judge:
      provider: "openai"
      model_name: "gpt-4o"
-     template: "comprehensive_judge_with_aspects"
+     template: "comprehensive_judge"
      temperature: 0.0
-     structured_output_schema: "AspectScoresWithConfidence"
+     uncertainty_method: "structured"  # Get model's confidence estimates
    
    estimator:
      name: "DRCPO"
@@ -511,42 +499,6 @@ For uncertainty-specific issues, see the :doc:`troubleshooting` guide's uncertai
 - **Unstable variance** → Try fixed shrinkage method
 - **Calibration failures** → Need more oracle samples (>100)
 
-Migration from Legacy Implementation
-------------------------------------
-
-If migrating from the original CJE implementation:
-
-1. **Replace imports**:
-
-   .. code-block:: python
-
-      # Old
-      from cje.judge import JudgeScore
-      from cje.estimators import DRCPO
-      
-      # New
-      from cje.uncertainty import JudgeScore, UncertaintyAwareDRCPO
-
-2. **Update score handling**:
-
-   .. code-block:: python
-
-      # Old
-      score = 0.75  # or JudgeScore(0.75)
-      
-      # New
-      score = JudgeScore(mean=0.75, variance=0.0)  # Always has variance
-
-3. **Use uncertainty-aware components**:
-
-   .. code-block:: python
-
-      # Old
-      estimator = DRCPO(k=5)
-      
-      # New
-      config = UncertaintyEstimatorConfig(k_folds=5)
-      estimator = UncertaintyAwareDRCPO(config)
 
 See Also
 --------

@@ -59,17 +59,15 @@ python scripts/hygiene_check.py  # Check codebase health
 
 ## Recent Changes
 
-**Provider Consolidation** (June 19, 2025):
-- Single provider system: XProvider (not UnifiedXProvider)
-- Each provider supports both regular and structured output
-- Removed 14 redundant files
+**Unified Judge System** (June 20, 2025):
+- ALL judges now return `JudgeScore` with mean+variance
+- Single interface eliminates dual system complexity
+- Three uncertainty methods: deterministic/structured/monte_carlo
+- Migration script: `scripts/migrate_to_unified_judges.py`
+- See `UNIFIED_JUDGE_SUMMARY.md` for details
 
-**Uncertainty Module**:
-- Mandatory uncertainty in `cje/uncertainty/`
-- Use `examples/clean_uncertainty_api.py` for reference
-- Config: `configs/uncertainty_example.yaml`
-
-**Documentation Notes**:
-- `cje results` command does NOT exist (use Python API)
-- Old uncertainty config options removed from unified.py
-- New module not in generated API docs yet
+**Previous Changes**:
+- Provider consolidation: 14→7 files
+- Fixed λ formula bug in variance shrinkage
+- type:ignore: 66→39
+- All 76 tests passing

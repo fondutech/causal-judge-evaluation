@@ -208,24 +208,22 @@ For datasets with <100 samples, use bootstrap confidence intervals:
 
 **Uncertainty-Aware Evaluation**
 
-CJE includes built-in support for judge uncertainty:
+With the unified judge system (June 2025), ALL judges include uncertainty estimates:
 
 .. code-block:: python
 
-   from cje.uncertainty import UncertaintyAPIJudge, UncertaintyJudgeConfig
+   from cje.judge.factory_unified import JudgeFactory
    
-   # Configure judge with uncertainty
-   judge_config = UncertaintyJudgeConfig(
+   # Create a judge with uncertainty method
+   judge = JudgeFactory.create(
        provider="openai",
-       model_name="gpt-4o",
-       template="uncertainty_aware_judge",
-       structured_output_schema="JudgeScoreWithConfidence"
+       model="gpt-4o",
+       uncertainty_method="structured"  # Model estimates its confidence
    )
-   judge = UncertaintyAPIJudge(judge_config)
    
-   # Scores now include variance estimates
-   scores = judge.score_batch(samples)
-   # Each score has .mean and .variance
+   # All scores now have mean and variance
+   score = judge.score("What is 2+2?", "4")
+   print(f"Score: {score.mean:.2f} ± {score.variance:.3f}")
 
 See :doc:`guides/uncertainty_evaluation` for complete details.
 
