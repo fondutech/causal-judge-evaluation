@@ -128,7 +128,7 @@ class TestUncertaintyRefactor:
 
         # Check metadata
         assert result.estimator_type == "UncertaintyAwareDRCPO"
-        assert "ess_percentage" in result.global_metadata
+        assert "ess_percentage" in result.policies[0].metadata
 
     def test_variance_calibration_integration(self) -> None:
         """Test variance calibration in the pipeline."""

@@ -315,13 +315,16 @@ Interactive weight analysis is available via:
 
 .. code-block:: python
 
-   from cje.utils.weight_diagnostics import WeightDiagnostics
    from cje.pipeline import run_pipeline
    
-   # Run pipeline and get diagnostics
-   results = run_pipeline(cfg_path="configs", cfg_name="arena_test")
-   diagnostics = WeightDiagnostics(results.importance_weights)
-   diagnostics.plot_diagnostics()  # Visual diagnostic dashboard
+   # Run pipeline
+   results = run_pipeline(cfg_path="configs", cfg_name="example_eval")
+   
+   # Results contain estimator outputs and diagnostics
+   print(f"Policy estimates: {results.get('v_hat', 'Not found')}")
+   print(f"Standard errors: {results.get('se', 'Not found')}")
+   
+   # For detailed weight diagnostics, check the work directory outputs
 
 Guard Rail Checks
 ~~~~~~~~~~~~~~~~~~

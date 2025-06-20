@@ -97,9 +97,10 @@ class MultiPolicyUncertaintyResult:
 
         # Z-score and p-value
         z_score = diff / se_diff if se_diff > 0 else 0
-        p_value = 2 * (
-            1 - np.abs(np.random.normal(0, 1, 10000) <= np.abs(z_score)).mean()
-        )
+        # Two-tailed p-value using standard normal CDF
+        from scipy import stats
+
+        p_value = 2 * (1 - stats.norm.cdf(abs(z_score)))
 
         return {
             "policy1": policy1,
@@ -108,7 +109,7 @@ class MultiPolicyUncertaintyResult:
             "se_difference": se_diff,
             "z_score": z_score,
             "p_value": p_value,
-            "significant_at_0.05": p_value < 0.05,
+            "significant_at_0.05": bool(p_value < 0.05),
             "favors": policy1 if diff > 0 else policy2,
         }
 

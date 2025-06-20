@@ -257,7 +257,12 @@ class DeterministicJudge(UncertaintyAwareJudge):
         self, samples: List[Dict[str, str]], disable_progress: bool = False
     ) -> List[JudgeScore]:
         """Batch scoring with zero variance."""
-        scores = self.base_judge.score_batch(samples, disable_progress)
+        # Try to pass disable_progress if the method accepts it
+        try:
+            scores = self.base_judge.score_batch(samples, disable_progress)
+        except TypeError:
+            # Fallback for judges that don't accept disable_progress
+            scores = self.base_judge.score_batch(samples)
         return [JudgeScore(mean=float(s), variance=0.0) for s in scores]
 
 

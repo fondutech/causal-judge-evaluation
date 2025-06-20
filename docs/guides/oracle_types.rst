@@ -17,7 +17,7 @@ Automated Oracle (Model-Based)
 
 .. code-block:: yaml
 
-   # In config files like arena_test.yaml
+   # In config files like example_eval.yaml
    oracle:
      enabled: true
      provider: "openai"

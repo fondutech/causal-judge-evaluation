@@ -43,7 +43,7 @@ Here's the simplest possible example:
    from cje.pipeline import run_pipeline
    
    # Run evaluation with default configuration
-   results = run_pipeline(cfg_path="configs", cfg_name="arena_test")
+   results = run_pipeline(cfg_path="configs", cfg_name="example_eval")
    
    # Print results
    print(f"Results: {results}")
@@ -234,6 +234,29 @@ For datasets with <100 samples, use bootstrap confidence intervals:
    )
    
    print(f"Bootstrap CI: [{bootstrap_ci['ci_lower'][0]:.3f}, {bootstrap_ci['ci_upper'][0]:.3f}]")
+
+**Uncertainty-Aware Evaluation**
+
+CJE includes built-in support for judge uncertainty:
+
+.. code-block:: python
+
+   from cje.uncertainty import UncertaintyAPIJudge, UncertaintyJudgeConfig
+   
+   # Configure judge with uncertainty
+   judge_config = UncertaintyJudgeConfig(
+       provider="openai",
+       model_name="gpt-4o",
+       template="uncertainty_aware_judge",
+       structured_output_schema="JudgeScoreWithConfidence"
+   )
+   judge = UncertaintyAPIJudge(judge_config)
+   
+   # Scores now include variance estimates
+   scores = judge.score_batch(samples)
+   # Each score has .mean and .variance
+
+See :doc:`guides/uncertainty_evaluation` for complete details.
 
 **Production Integration**
 

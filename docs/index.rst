@@ -40,8 +40,9 @@ CJE provides **robust off-policy evaluation** for Large Language Models using ca
 
 * **📊 Causal, not correlational**: Corrects for distribution shift between logged and target policies
 * **⚡ Faster evaluation**: Reuses existing responses with teacher-forced scoring
-* **🎯 Tighter confidence intervals**: Via calibrated doubly-robust estimation
+* **🎯 Tighter confidence intervals**: Via calibrated doubly-robust estimation with uncertainty quantification
 * **🔬 Theory-backed**: Implements Algorithm 1 from the CJE paper with single-rate efficiency
+* **📈 Uncertainty-aware**: Built-in support for judge confidence and variance estimation
 
 
 ⚡ Quick Start Examples
@@ -57,7 +58,7 @@ CJE provides **robust off-policy evaluation** for Large Language Models using ca
    poetry install
    
    # Run test
-   cje run --cfg-path configs --cfg-name arena_test
+   cje run --cfg-path configs --cfg-name example_eval
 
 **Compare Two System Prompts**
 
@@ -81,14 +82,14 @@ CJE provides **robust off-policy evaluation** for Large Language Models using ca
    estimate_result = estimator.estimate()
    print(f"Policy estimates: {estimate_result.v_hat}")
 
-**Arena-Style Evaluation**
+**Large-Scale Evaluation**
 
 .. code-block:: python
 
    from cje.pipeline import run_pipeline
    
    # Run evaluation with default configuration
-   results = run_pipeline(cfg_path="configs", cfg_name="arena_test")
+   results = run_pipeline(cfg_path="configs", cfg_name="example_eval")
    print(f"Policy uplift: {results.policy_uplifts}")  # Show results
 
 🏗️ Architecture Overview

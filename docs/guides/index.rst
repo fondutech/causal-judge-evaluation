@@ -20,6 +20,7 @@ Getting Started Guides
    :maxdepth: 2
    :caption: Core Use Cases
 
+   uncertainty_evaluation
    arena_analysis
    configuration_reference
 

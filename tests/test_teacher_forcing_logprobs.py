@@ -5,7 +5,7 @@ in response log probabilities, causing unreasonably low values for short respons
 """
 
 import pytest
-from cje.loggers.api_policy import sum_response_logprobs_tail
+from cje.utils.logprobs import sum_response_logprobs_tail
 
 
 def test_sum_response_logprobs_tail() -> None:
