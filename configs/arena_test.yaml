@@ -1,0 +1,53 @@
+# Minimal test configuration for quick experiments
+# Uses 20 samples from ChatBot Arena for fast testing
+
+# Experiment metadata
+experiment:
+  name: "arena_test_20"
+  description: "Quick test with 20 ChatBot Arena samples"
+  output_dir: "outputs/arena_test"
+
+# Data configuration
+data:
+  dataset_type: "chatbot_arena"
+  path: "data/arena_test_20.csv"  # Small test dataset
+  max_samples: 20
+
+# Logging policy (what generated the data)
+logging_policy:
+  provider: "fireworks"
+  model: "llama-v3p1-8b-instruct"
+  temperature: 0.7
+
+# Target policies to evaluate
+target_policies:
+  - name: "llama-4-scout"
+    provider: "fireworks"
+    model: "llama-v3p3-8b-instruct"
+    temperature: 0.3
+    system_prompt: "You are a helpful and concise assistant."
+    
+  - name: "llama-4-maverick"
+    provider: "fireworks"
+    model: "llama-v3p3-8b-instruct"
+    temperature: 0.9
+    system_prompt: "You are a creative and engaging assistant."
+
+# Judge configuration
+judge:
+  provider: "fireworks"
+  model: "llama-v3p3-70b-instruct"
+  template: "comprehensive_judge"
+  uncertainty_method: "structured"
+
+# Estimator configuration
+estimator:
+  method: "DRCPO"  # Paper's Algorithm 1
+  k_folds: 3       # Reduced for small dataset
+  calibrate_weights: true
+  calibrate_outcome: true
+
+# Optional: Human labels for validation
+oracle:
+  enabled: false  # Set to true if you have ground truth labels
+  sample_rate: 0.1

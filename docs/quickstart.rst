@@ -212,7 +212,7 @@ With the unified judge system (June 2025), ALL judges include uncertainty estima
 
 .. code-block:: python
 
-   from cje.judge.factory_unified import JudgeFactory
+   from cje.judge import JudgeFactory
    
    # Create a judge with uncertainty method
    judge = JudgeFactory.create(
