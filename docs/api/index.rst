@@ -20,10 +20,10 @@ Judge System
    :toctree: generated
    :recursive:
 
-   cje.judge.factory_unified
-   cje.judge.judges_unified
-   cje.judge.api_judge_unified
-   cje.judge.schemas_unified
+   cje.judge.factory
+   cje.judge.judges
+   cje.judge.api_judge
+   cje.judge.schemas
    cje.judge.providers
 
 Estimators
@@ -49,18 +49,14 @@ Data Handling
    cje.data
    cje.loggers
 
-Uncertainty Quantification
---------------------------
+Calibration
+-----------
 
 .. autosummary::
    :toctree: generated
    :recursive:
 
-   cje.uncertainty
-   cje.uncertainty.judge
-   cje.uncertainty.estimator
-   cje.uncertainty.calibration
-   cje.uncertainty.results
+   cje.calibration
 
 Diagnostics & Utilities
 -----------------------

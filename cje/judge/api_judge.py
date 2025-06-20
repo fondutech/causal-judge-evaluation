@@ -40,42 +40,60 @@ def parse_thinking_blocks(text: str) -> Dict[str, str]:
         Dict with 'thinking' (extracted reasoning) and 'content' (cleaned response)
     """
     if not isinstance(text, str):
+        logger.debug(f"Input is not string, converting {type(text).__name__} to string")
         return {"thinking": "", "content": str(text)}
 
-    # Common thinking block patterns
+    # Common thinking block patterns with names for debugging
     patterns = [
         # <think>...</think>
-        r"<think>(.*?)</think>",
+        ("think_tags", r"<think>(.*?)</think>"),
         # <thinking>...</thinking>
-        r"<thinking>(.*?)</thinking>",
+        ("thinking_tags", r"<thinking>(.*?)</thinking>"),
         # <reason>...</reason>
-        r"<reason>(.*?)</reason>",
+        ("reason_tags", r"<reason>(.*?)</reason>"),
         # <reasoning>...</reasoning>
-        r"<reasoning>(.*?)</reasoning>",
+        ("reasoning_tags", r"<reasoning>(.*?)</reasoning>"),
         # <analysis>...</analysis>
-        r"<analysis>(.*?)</analysis>",
+        ("analysis_tags", r"<analysis>(.*?)</analysis>"),
         # <!-- thinking: ... -->
-        r"<!--\s*thinking:\s*(.*?)\s*-->",
+        ("html_comment", r"<!--\s*thinking:\s*(.*?)\s*-->"),
         # [thinking] ... [/thinking]
-        r"\[thinking\](.*?)\[/thinking\]",
+        ("bracket_tags", r"\[thinking\](.*?)\[/thinking\]"),
+        # <|thinking|>...<|/thinking|> (some models use this)
+        ("pipe_tags", r"<\|thinking\|>(.*?)<\|/thinking\|>"),
     ]
 
     thinking_content = []
     cleaned_text = text
+    patterns_found = []
 
     # Extract all thinking blocks
-    for pattern in patterns:
+    for pattern_name, pattern in patterns:
         matches = re.findall(pattern, text, re.DOTALL | re.IGNORECASE)
-        for match in matches:
-            thinking_content.append(match.strip())
+        if matches:
+            patterns_found.append(pattern_name)
+            for match in matches:
+                thinking_content.append(match.strip())
 
-        # Remove the thinking blocks from the text
-        cleaned_text = re.sub(
-            pattern, "", cleaned_text, flags=re.DOTALL | re.IGNORECASE
-        )
+            # Remove the thinking blocks from the text
+            cleaned_text = re.sub(
+                pattern, "", cleaned_text, flags=re.DOTALL | re.IGNORECASE
+            )
 
     # Clean up extra whitespace
     cleaned_text = re.sub(r"\n\s*\n", "\n", cleaned_text.strip())
+
+    # Log what we found for debugging
+    if thinking_content:
+        logger.debug(
+            f"Found thinking blocks using patterns: {patterns_found}. "
+            f"Extracted {len(thinking_content)} blocks totaling {sum(len(b) for b in thinking_content)} chars."
+        )
+    elif len(text) > 100:  # Only log if there was substantial text
+        logger.debug(
+            f"No thinking blocks found in {len(text)} chars of text. "
+            f"Text preview: {text[:100]}..."
+        )
 
     return {"thinking": "\n\n".join(thinking_content), "content": cleaned_text}
 
@@ -178,6 +196,14 @@ class APIJudge(Judge):
                         raw_output = result.get("raw", "")
                         parsed_blocks = parse_thinking_blocks(raw_output)
 
+                        logger.debug(
+                            f"Parsing error encountered. Attempting recovery from thinking blocks.\n"
+                            f"Original error: {result['parsing_error']}\n"
+                            f"Raw output length: {len(raw_output)} chars\n"
+                            f"Thinking content length: {len(parsed_blocks['thinking'])} chars\n"
+                            f"Cleaned content length: {len(parsed_blocks['content'])} chars"
+                        )
+
                         if parsed_blocks["content"]:
                             try:
                                 # Try to parse the cleaned content
@@ -191,21 +217,55 @@ class APIJudge(Judge):
 
                                     # Convert to JudgeScore
                                     if "mean" in data and "variance" in data:
+                                        logger.info(
+                                            f"Successfully recovered JudgeScore from thinking blocks: "
+                                            f"mean={data['mean']}, variance={data['variance']}"
+                                        )
                                         return JudgeScore(**data)
                                     elif "score" in data:
                                         # Simple score field
+                                        logger.info(
+                                            f"Successfully recovered score from thinking blocks: {data['score']}"
+                                        )
                                         return JudgeScore(
                                             mean=float(data["score"]), variance=0.0
                                         )
-                            except (
-                                json.JSONDecodeError,
-                                ValidationError,
-                                KeyError,
-                            ) as e:
-                                logger.debug(f"Failed to parse cleaned content: {e}")
+                                    else:
+                                        logger.warning(
+                                            f"JSON found but missing required fields. "
+                                            f"Found keys: {list(data.keys())}"
+                                        )
+                            except json.JSONDecodeError as e:
+                                logger.warning(
+                                    f"Failed to parse JSON from cleaned content. "
+                                    f"JSON error: {e}\n"
+                                    f"Attempted to parse: {json_str[:100]}..."
+                                    if "json_str" in locals()
+                                    else f"Content: {content[:100]}..."
+                                )
+                            except ValidationError as e:
+                                logger.warning(
+                                    f"Parsed JSON but JudgeScore validation failed: {e}\n"
+                                    f"Data: {data}"
+                                    if "data" in locals()
+                                    else "Data: (not parsed)"
+                                )
+                            except KeyError as e:
+                                logger.warning(f"Missing required key: {e}")
+                            except Exception as e:
+                                logger.warning(
+                                    f"Unexpected error during parsing recovery: "
+                                    f"{type(e).__name__}: {e}"
+                                )
 
-                        # Raise original error
-                        raise ValueError(f"Parsing error: {result['parsing_error']}")
+                        # Raise detailed error
+                        raise ValueError(
+                            f"Failed to parse judge response.\n"
+                            f"Original parsing error: {result['parsing_error']}\n"
+                            f"Raw output preview: {raw_output[:200]}...\n"
+                            f"Cleaned content preview: {parsed_blocks['content'][:200] if parsed_blocks['content'] else '(empty)'}...\n"
+                            f"Tip: Check that the model is returning valid JSON with 'mean' and 'variance' fields."
+                        )
 
                     # Extract parsed result
                     evaluation = result.get("parsed", result)

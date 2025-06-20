@@ -27,17 +27,10 @@ cje.judge.providers
    :toctree:
    :recursive:
 
-   anthropic_provider
+   anthropic
    base
-   fireworks_provider
-   google_provider
+   fireworks
+   google
+   openai
    openai_compat
-   openai_provider
-   structured_anthropic
-   structured_base
-   structured_fireworks
-   structured_google
-   structured_openai
-   structured_openai_compat
-   structured_together
-   together_provider
+   together
