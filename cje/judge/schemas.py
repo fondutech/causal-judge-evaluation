@@ -54,18 +54,6 @@ class JudgeScore(BaseModel):
             self.variance = max_var
         return self
 
-    def __float__(self) -> float:
-        """Convert to float for backward compatibility.
-
-        Returns the mean value when cast to float.
-        """
-        return self.mean
-
-    @property
-    def value(self) -> float:
-        """Alias for mean, matching uncertainty module interface."""
-        return self.mean
-
     @property
     def se(self) -> float:
         """Standard error (square root of variance)."""
@@ -159,30 +147,3 @@ class DetailedJudgeEvaluation(JudgeEvaluation):
 
 # Type alias for any judge result
 JudgeResult = Union[JudgeScore, JudgeEvaluation, DetailedJudgeEvaluation]
-
-
-# Backward compatibility helpers
-def score_to_float(score: Union[float, JudgeScore]) -> float:
-    """Convert any score type to float for legacy code."""
-    if isinstance(score, (int, float)):
-        return float(score)
-    return float(score.mean)
-
-
-def scores_to_floats(scores: List[Union[float, JudgeScore]]) -> List[float]:
-    """Convert list of scores to floats for legacy code."""
-    return [score_to_float(s) for s in scores]
-
-
-def float_to_score(value: float, variance: float = 0.0) -> JudgeScore:
-    """Convert float to JudgeScore for unified interface."""
-    return JudgeScore(mean=value, variance=variance)
-
-
-def floats_to_scores(
-    values: List[float], variances: Optional[List[float]] = None
-) -> List[JudgeScore]:
-    """Convert list of floats to JudgeScores."""
-    if variances is None:
-        variances = [0.0] * len(values)
-    return [JudgeScore(mean=v, variance=var) for v, var in zip(values, variances)]

@@ -40,13 +40,16 @@ class ScoreAugmentFeaturizer(Featurizer):
         Returns:
             Tuple of (mean, variance)
         """
-        from ..utils.score_storage import ScoreCompatibilityLayer
+        score_raw = log_item.get("score_raw", {})
+        if isinstance(score_raw, dict):
+            mean = float(score_raw.get("mean", 0.0))
+            variance = float(score_raw.get("variance", 0.0))
+        else:
+            # Should not happen with unified system
+            mean = float(score_raw)
+            variance = 0.0
 
-        # Use the compatibility layer to handle both formats
-        mean = ScoreCompatibilityLayer.get_score_value(log_item, "score_raw")
-        variance = ScoreCompatibilityLayer.get_score_variance(log_item, "score_raw")
-
-        return float(mean), float(variance)
+        return mean, variance
 
     def _extract_score(self, log_item: Dict[str, Any]) -> float:
         """Legacy method for backward compatibility."""

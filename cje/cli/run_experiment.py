@@ -761,11 +761,9 @@ def run(
 
                 # Call calibration logic directly instead of CLI function
                 from ..calibration.isotonic import fit_isotonic, plot_reliability
-                from ..utils.score_storage import ScoreCompatibilityLayer
 
                 # Load judge scores
                 rows = [json.loads(l) for l in judge_json.read_text().splitlines()]
-                compat = ScoreCompatibilityLayer()
 
                 # Filter rows to only include those with both score_raw and y_true (for oracle holdout compatibility)
                 calibration_rows = []
@@ -773,9 +771,16 @@ def run(
                 for r in rows:
                     y_true = r.get("y_true")
                     if "score_raw" in r and y_true is not None:
-                        score = compat.get_score(r, "score_raw")
-                        calibration_rows.append((score.mean, float(y_true)))
-                        cal_variances.append(score.variance)
+                        score_raw = r["score_raw"]
+                        if isinstance(score_raw, dict):
+                            mean = float(score_raw.get("mean", 0.0))
+                            variance = float(score_raw.get("variance", 0.0))
+                        else:
+                            # Should not happen with unified system
+                            mean = float(score_raw)
+                            variance = 0.0
+                        calibration_rows.append((mean, float(y_true)))
+                        cal_variances.append(variance)
 
                 if len(calibration_rows) == 0:
                     raise ValueError(
@@ -802,21 +807,29 @@ def run(
                 # Apply calibration model to ALL samples to get predicted rewards
                 for r in rows:
                     if "score_raw" in r:
-                        # Get raw score using compatibility layer
-                        raw_score = compat.get_score(r, "score_raw")
+                        # Get raw score
+                        score_raw = r["score_raw"]
+                        if isinstance(score_raw, dict):
+                            raw_mean = float(score_raw.get("mean", 0.0))
+                            raw_variance = float(score_raw.get("variance", 0.0))
+                        else:
+                            # Should not happen with unified system
+                            raw_mean = float(score_raw)
+                            raw_variance = 0.0
 
                         # Apply calibration to mean
-                        cal_mean = float(iso.predict([raw_score.mean])[0])
+                        cal_mean = float(iso.predict([raw_mean])[0])
 
                         # Create calibrated score preserving variance
-                        from ..judge.schemas_unified import JudgeScore
+                        from ..judge.schemas import JudgeScore
 
-                        cal_score = JudgeScore(
-                            mean=cal_mean, variance=raw_score.variance
-                        )
+                        cal_score = JudgeScore(mean=cal_mean, variance=raw_variance)
 
                         # Update row with calibrated score
-                        r = update_row_with_score(r, cal_score, "score_cal")
+                        r["score_cal"] = {
+                            "mean": cal_score.mean,
+                            "variance": cal_score.variance,
+                        }
 
                 # Clear y_true used for calibration training - it should not be used for CJE estimation
                 # Keep oracle_full for evaluation, but clear y_true to avoid confusion

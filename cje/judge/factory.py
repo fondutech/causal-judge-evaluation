@@ -10,7 +10,7 @@ from .base import (
 )
 from .api_judge import APIJudge, DeterministicAPIJudge, MCAPIJudge
 from .local_judge import LocalJudge  # Will need to update this too
-from .judges import Judge, LegacyJudgeAdapter
+from .judges import Judge
 
 logger = logging.getLogger(__name__)
 
@@ -206,19 +206,6 @@ class JudgeFactory:
             return LocalJudge(config)
         else:
             raise ValueError(f"Unknown config type: {type(config)}")
-
-    @classmethod
-    def from_legacy(cls, legacy_judge: Any, assumed_variance: float = 0.0) -> Judge:
-        """Wrap a legacy judge that returns floats.
-
-        Args:
-            legacy_judge: Old-style judge returning float scores
-            assumed_variance: Variance to assign to all scores
-
-        Returns:
-            Unified judge that returns JudgeScore
-        """
-        return LegacyJudgeAdapter(legacy_judge, assumed_variance)
 
     @classmethod
     def list_providers(cls) -> List[str]:

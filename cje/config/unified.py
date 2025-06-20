@@ -334,7 +334,7 @@ class CJEConfig:
         # Avoid circular import
         from ..pipeline import run_pipeline
         import tempfile
-        import yaml  # type: ignore[import-untyped]
+        import yaml  # type: ignore
 
         # Create temporary YAML file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
@@ -367,7 +367,7 @@ class CJEConfig:
             config = simple_config(target_changes={"temperature": 0.3})
             config.to_yaml("experiment.yaml")
         """
-        import yaml  # type: ignore[import-untyped]
+        import yaml  # type: ignore
 
         with open(path, "w") as f:
             yaml.dump(to_dict(self), f)
@@ -386,7 +386,7 @@ class CJEConfig:
             config = CJEConfig.from_yaml("experiment.yaml")
             results = config.run()
         """
-        import yaml  # type: ignore[import-untyped]
+        import yaml  # type: ignore
 
         with open(path, "r") as f:
             config_dict = yaml.safe_load(f)

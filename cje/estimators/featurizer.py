@@ -227,19 +227,31 @@ class RichFeaturizer(Featurizer):
         resp_len = len(str(log_item.get("response", "")))
 
         # Extract score mean and variance using unified format
-        from ..utils.score_storage import ScoreCompatibilityLayer
+        score_raw = log_item.get("score_raw", {})
+        if isinstance(score_raw, dict):
+            raw_score = float(score_raw.get("mean", 0.0))
+            raw_variance = float(score_raw.get("variance", 0.0))
+        else:
+            # Should not happen with unified system
+            raw_score = float(score_raw)
+            raw_variance = 0.0
 
-        raw_score = ScoreCompatibilityLayer.get_score_value(log_item, "score_raw")
-        raw_variance = ScoreCompatibilityLayer.get_score_variance(log_item, "score_raw")
-
-        # Extract calibrated score using compatibility layer
-        try:
-            cal_score = ScoreCompatibilityLayer.get_score_value(log_item, "score_cal")
-        except KeyError:
+        # Extract calibrated score
+        score_cal = log_item.get("score_cal")
+        if score_cal is not None:
+            if isinstance(score_cal, dict):
+                cal_score = float(score_cal.get("mean", 0.0))
+            else:
+                cal_score = float(score_cal)
+        else:
             # Fall back to reward field
-            try:
-                cal_score = ScoreCompatibilityLayer.get_score_value(log_item, "reward")
-            except KeyError:
+            reward = log_item.get("reward")
+            if reward is not None:
+                if isinstance(reward, dict):
+                    cal_score = float(reward.get("mean", 0.0))
+                else:
+                    cal_score = float(reward)
+            else:
                 cal_score = 0.0
         action_val = self._action_norm(str(log_item.get("action", "")))
 

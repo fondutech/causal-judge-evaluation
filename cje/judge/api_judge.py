@@ -83,8 +83,7 @@ def parse_thinking_blocks(text: str) -> Dict[str, str]:
 class APIJudge(Judge):
     """Unified API-based judge that returns JudgeScore with uncertainty.
 
-    This replaces the legacy APIJudge that returned float scores.
-    Now all scores include uncertainty estimates.
+    All scores include uncertainty estimates (mean and variance).
     """
 
     def __init__(self, config: APIJudgeConfig):
@@ -194,7 +193,7 @@ class APIJudge(Judge):
                                     if "mean" in data and "variance" in data:
                                         return JudgeScore(**data)
                                     elif "score" in data:
-                                        # Legacy format
+                                        # Simple score field
                                         return JudgeScore(
                                             mean=float(data["score"]), variance=0.0
                                         )
@@ -222,7 +221,7 @@ class APIJudge(Judge):
                         mean=evaluation.mean, variance=evaluation.variance
                     )
                 elif hasattr(evaluation, "score"):
-                    # Legacy format
+                    # Simple score attribute
                     return JudgeScore(mean=float(evaluation.score), variance=0.0)
                 elif isinstance(evaluation, dict):
                     # Try to construct from dict

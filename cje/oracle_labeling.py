@@ -93,10 +93,10 @@ def add_oracle_labels(
             continue
 
         score = judge.score(row["context"], response)
-        row[score_field] = float(score)
+        row[score_field] = float(score.mean)
 
         # Set oracle metadata fields for DR estimation compatibility
-        row["oracle_full"] = float(score)
+        row["oracle_full"] = float(score.mean)
         row["oracle_available_to_logging"] = True
         row["oracle_holdout_mask"] = False
 
@@ -183,7 +183,7 @@ def add_full_oracle_labels_with_holdout(
             continue
 
         oracle_score = judge.score(row["context"], response)
-        row["oracle_full"] = float(oracle_score)
+        row["oracle_full"] = float(oracle_score.mean)
 
     print(f"✅ Generated {len(rows_out)} oracle labels")
 

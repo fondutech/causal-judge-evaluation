@@ -213,13 +213,11 @@ class MultiDRCPOEstimator(Estimator[Dict[str, Any]]):
         self._logp_behavior_full = np.array([log["logp"] for log in logs], dtype=float)
 
         # Extract reward variances from unified score format
-        from ..utils.score_storage import ScoreCompatibilityLayer
-
         self._reward_variances_full = np.array(
             [
                 (
-                    ScoreCompatibilityLayer.get_score_variance(log, "reward")
-                    if "reward" in log
+                    log["reward"].get("variance", 0.0)
+                    if isinstance(log.get("reward"), dict)
                     else log.get("reward_variance", 0.0)
                 )
                 for log in logs

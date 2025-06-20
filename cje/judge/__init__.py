@@ -4,16 +4,12 @@ All judges now return JudgeScore objects with mean and variance.
 """
 
 # Base interfaces
-from .judges import Judge, DeterministicJudge, ProbabilisticJudge, LegacyJudgeAdapter
+from .judges import Judge, DeterministicJudge, ProbabilisticJudge
 from .schemas import (
     JudgeScore,
     JudgeEvaluation,
     DetailedJudgeEvaluation,
     JudgeResult,
-    score_to_float,
-    scores_to_floats,
-    float_to_score,
-    floats_to_scores,
 )
 
 # Factory
@@ -33,7 +29,6 @@ __all__ = [
     "Judge",
     "DeterministicJudge",
     "ProbabilisticJudge",
-    "LegacyJudgeAdapter",
     # Schemas
     "JudgeScore",
     "JudgeEvaluation",
@@ -51,9 +46,4 @@ __all__ = [
     "JudgeConfig",
     "APIJudgeConfig",
     "LocalJudgeConfig",
-    # Utilities
-    "score_to_float",
-    "scores_to_floats",
-    "float_to_score",
-    "floats_to_scores",
 ]
