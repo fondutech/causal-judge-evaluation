@@ -38,7 +38,7 @@ make dev-setup          # Initial setup with Poetry
 poetry run pytest              # Run unit tests (fast)
 poetry run pytest --run-slow   # Include slow tests
 poetry run pytest --integration-only  # Integration tests only
-cje run --cfg-path configs --cfg-name arena_test  # Run experiment
+cje run --cfg-path configs --cfg-name example_eval  # Run experiment
 cje check-deps          # Check optional dependencies
 python scripts/hygiene_check.py  # Check codebase health
 ```

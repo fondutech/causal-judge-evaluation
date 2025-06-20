@@ -170,51 +170,22 @@ Here's a minimal example:
    if hasattr(estimate_result, 'diagnostics'):
        print(f"Diagnostics: {estimate_result.diagnostics}")
 
-Arena Analysis Example
----------------------
-
-For ChatBot Arena-style evaluation:
-
-.. code-block:: python
-
-   from cje.pipeline import run_pipeline
-   
-   # Run complete pipeline with Arena data
-   results = run_pipeline(cfg_path="configs", cfg_name="arena_test")
-   
-   # Access specific results
-   print(f"Policy estimates: {results.policy_uplifts}")
-   print(f"Confidence intervals: {results.confidence_intervals}")
-   
-   # Access detailed diagnostics
-   print(f"Weight diagnostics: {results.weight_diagnostics}")
-   print(f"Effective sample sizes: {results.ess_values}")
-
 Common Workflows
 ---------------
 
-**Comparing Multiple Estimators**
+.. note::
+   For large-scale evaluation with ChatBot Arena data, see the dedicated :doc:`guides/arena_analysis` guide.
 
-.. code-block:: python
+**Choosing an Estimator**
 
-   from cje.estimators import get_estimator
-   from cje.loggers.multi_target_sampler import make_multi_sampler
-   
-   # Set up sampler
-   sampler = make_multi_sampler(target_policies_config)
-   
-   # Compare estimators
-   estimators = ["IPS", "SNIPS", "DRCPO", "MRDR"]
-   results = {}
-   
-   for est_name in estimators:
-       estimator = get_estimator(est_name, sampler=sampler)
-       estimator.fit(data)
-       results[est_name] = estimator.estimate()
-   
-   # Compare results
-   for name, result in results.items():
-       print(f"{name}: {result.v_hat[0]:.3f} ± {result.se[0]:.3f}")
+CJE provides four estimators with different trade-offs:
+
+- **IPS**: Fastest, simplest (good for baselines)
+- **SNIPS**: Self-normalized IPS (more robust)
+- **DRCPO**: Doubly-robust (recommended for most use cases)
+- **MRDR**: Model-regularized (best for small samples)
+
+See :doc:`guides/user_guide` for the complete estimator selection guide and comparison code.
 
 **Small Sample Analysis**
 
@@ -279,25 +250,13 @@ For production deployment, CJE provides robust error handling and caching:
 Troubleshooting
 --------------
 
-**High Variance Results**
-   - Try DR-CPO or MRDR instead of IPS
-   - Increase sample size
-   - Check for distribution shift
+For common issues and solutions, see the comprehensive :doc:`guides/troubleshooting` guide which covers:
 
-**Low Effective Sample Size (ESS)**
-   - Indicates most weight concentrated on few examples
-   - Use DR methods which are less sensitive
-   - Check teacher forcing consistency (see :doc:`developer/teacher_forcing`)
-
-**Model Convergence Issues**
-   - Reduce model complexity
-   - Increase cross-validation folds
-   - Check data quality
-
-**API Rate Limits**
-   - Add delays between requests
-   - Use batch processing
-   - Consider local models
+- Configuration and validation errors
+- API authentication and rate limits  
+- Weight processing and ESS issues
+- Uncertainty calibration problems
+- Performance optimization tips
 
 Next Steps
 ----------

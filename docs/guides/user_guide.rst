@@ -124,25 +124,12 @@ Basic Estimator Usage
 🚨 Common Issues & Solutions
 ----------------------------
 
-Wide Confidence Intervals
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-- **Cause**: Policies too different or insufficient data
-- **Fix**: More data, similar policies, try SNIPS
+For detailed troubleshooting, see the :doc:`troubleshooting` guide. Quick tips:
 
-Different Estimators Disagree  
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-- **Cause**: Poor calibration or model misspecification
-- **Fix**: Check reliability plot, more ground truth labels
-
-Slow Performance
-~~~~~~~~~~~~~~~~
-- **Cause**: Large datasets, complex models
-- **Fix**: Use IPS/SNIPS, smaller models, reduce mc_samples
-
-Configuration Errors
-~~~~~~~~~~~~~~~~~~~~~
-- **Cause**: Missing required fields, invalid parameters
-- **Fix**: Use ``cje validate`` before running experiments
+- **Wide confidence intervals** → More data or use SNIPS
+- **Estimators disagree** → Check calibration plots
+- **Slow performance** → Try IPS or reduce mc_samples
+- **Config errors** → Run ``cje validate`` first
 
 💡 Pro Tips
 -----------

@@ -347,62 +347,12 @@ Recommendations
 Troubleshooting
 ---------------
 
-Common Issues
-~~~~~~~~~~~~~
+For common issues with arena analysis, see the :doc:`troubleshooting` guide. Key points:
 
-API Key Not Found
-^^^^^^^^^^^^^^^^^
-
-.. code-block:: text
-
-   No provider API key found! Please set OPENAI_API_KEY or ANTHROPIC_API_KEY
-
-**Solution**: Export your API key before running.
-
-Rate Limiting
-^^^^^^^^^^^^^
-
-.. code-block:: text
-
-   RateLimitError: You exceeded your current quota
-
-**Solution**: Reduce ``--max-samples`` or use cheaper models for base/proxy.
-
-Low Correlation Warning
-^^^^^^^^^^^^^^^^^^^^^^^
-
-.. code-block:: text
-
-   Guard-rail violations detected:
-     - Low proxy-oracle correlation: 0.423
-
-**Solution**: Try different proxy model or increase oracle fraction.
-
-Import Errors
-^^^^^^^^^^^^^
-
-.. code-block:: text
-
-   ModuleNotFoundError: No module named 'cje'
-
-**Solution**: Install package with ``pip install -e .``
-
-Performance Tips
-~~~~~~~~~~~~~~~~
-
-1. **Caching**: The script caches intermediate results. Remove ``.cache/`` to force regeneration.
-
-2. **Memory**: Large sample sizes may require significant RAM. Monitor with:
-
-   .. code-block:: bash
-
-      htop  # or Activity Monitor on macOS
-
-3. **API Costs**: Estimate costs before large runs:
-
-   - Oracle calls: ``max_samples * oracle_fraction * $0.01``
-   - Proxy calls: ``max_samples * $0.0005``  
-   - Target evaluation: ``len(target_models) * oracle_samples * $0.01``
+- **API errors** → Check environment variables and rate limits
+- **Low correlation** → Increase oracle fraction or improve judge
+- **Memory issues** → Process in batches or reduce sample size
+- **Cost concerns** → Estimate before running: ``samples * oracle_fraction * $0.01``
 
 Analyzing Results
 -----------------

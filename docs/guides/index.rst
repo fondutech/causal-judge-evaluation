@@ -33,6 +33,7 @@ Advanced Guides
    :maxdepth: 2
    :caption: Specialized Topics
 
+   troubleshooting
    weight_processing
    validation/oracle_analysis
    oracle_types

@@ -504,21 +504,12 @@ Common Patterns and Best Practices
 Troubleshooting
 ---------------
 
-**High Gamma Values (>3)**:
-- Judge is very overconfident
-- Consider: Different judge model, MC sampling, or explicit confidence prompting
+For uncertainty-specific issues, see the :doc:`troubleshooting` guide's uncertainty section. Common issues:
 
-**Low ESS Warnings**:
-- Large distribution shift between policies
-- Consider: Adaptive shrinkage, different logging policy, or more samples
-
-**Unstable Variance Estimates**:
-- Too few samples or extreme weights
-- Consider: Fixed shrinkage method, weight clipping, or more data
-
-**Calibration Failures**:
-- Insufficient oracle samples or poor judge quality
-- Consider: More oracle labels, different judge, or simpler scoring rubric
+- **High gamma (>3)** → Judge is overconfident, try MC sampling
+- **Low ESS** → Use adaptive shrinkage or more samples
+- **Unstable variance** → Try fixed shrinkage method
+- **Calibration failures** → Need more oracle samples (>100)
 
 Migration from Legacy Implementation
 ------------------------------------
