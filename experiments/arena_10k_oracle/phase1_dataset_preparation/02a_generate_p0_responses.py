@@ -236,7 +236,11 @@ def generate_logging_policy_responses(
             batch_results = []
             for prompt_data, (response, logp) in zip(batch, responses_with_logp):
                 result = {
-                    **prompt_data,  # Keep all original prompt data
+                    "prompt_id": prompt_data["prompt_id"],
+                    "prompt": prompt_data["prompt"],
+                    "metadata": prompt_data.get(
+                        "metadata", {}
+                    ),  # Keep only minimal metadata
                     "response": response,
                     "total_logprob": float(logp),
                     "logging_policy": {

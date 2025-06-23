@@ -157,6 +157,9 @@ def generate_target_responses(
                 result = {
                     "prompt_id": prompt_item["prompt_id"],
                     "prompt": prompt_item["prompt"],
+                    "metadata": prompt_item.get(
+                        "metadata", {}
+                    ),  # Keep only minimal metadata
                     "policy": policy_name,
                     "response": response,
                     "model_name": policy_config["model_name"],

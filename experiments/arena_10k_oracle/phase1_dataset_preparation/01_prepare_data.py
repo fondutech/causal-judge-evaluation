@@ -75,14 +75,8 @@ def download_and_prepare_corpus(
                     "prompt_id": f"arena_{idx}",
                     "prompt": prompt_text,
                     "metadata": {
-                        "source": "chatbot_arena",
                         "question_id": row.get("question_id", f"q_{idx}"),
-                        "timestamp": row.get("tstamp", None),
-                        "model_a": row.get("model_a", "unknown"),
-                        "model_b": row.get("model_b", "unknown"),
-                        "winner": row.get("winner", "unknown"),
                         "language": row.get("language", "unknown"),
-                        "turn": row.get("turn", 1),
                     },
                 }
             )
