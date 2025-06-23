@@ -152,7 +152,7 @@ def generate_logging_policy_responses(
     prompts: List[Dict[str, Any]],
     model_name: str = "accounts/fireworks/models/llama4-scout-instruct-basic",
     temperature: float = 0.5,
-    max_new_tokens: int = 1024,
+    max_new_tokens: int = 512,
     batch_size: int = 16,
     checkpoint_path: Optional[Path] = None,
 ) -> List[Dict[str, Any]]:
@@ -305,7 +305,7 @@ def save_results(results: List[Dict[str, Any]], output_path: str) -> None:
 
     # Calculate and display cost estimate
     # Rough estimate: ~$0.0004 per 1K tokens generated
-    avg_response_tokens = 200  # Conservative estimate
+    avg_response_tokens = 150  # Conservative estimate with 512 max tokens
     total_tokens = len(results) * avg_response_tokens
     estimated_cost = (total_tokens / 1000) * 0.0004
 
@@ -358,7 +358,7 @@ def main() -> None:
     parser.add_argument(
         "--max-tokens",
         type=int,
-        default=1024,
+        default=512,
         help="Maximum new tokens",
     )
 

@@ -1,13 +1,24 @@
-# Archived Documentation
+# Labeling Data Directory
 
-This directory contains historical documentation that may be useful for reference but is not part of the active experiment documentation.
+This directory will contain oracle labels for the Arena 10K experiment.
 
-## Files
+## Current Status
 
-- **CLEANUP_CHECKLIST.md** - Records the reorganization from flat to two-phase structure
-- **DOCUMENTATION_MAP.md** - Old navigation guide (superseded by main README)
-- **IMPLEMENTATION_REVIEW.md** - Historical code review notes
-- **MIGRATION_GUIDE.md** - Guide for migrating from old structure
-- **ORACLE_LABELING_NOTES.md** - Detailed oracle labeling results and MTurk failure analysis
+**Empty** - Ready for oracle label generation.
 
-These files are kept for historical reference but should not be used as primary documentation.
+Run this command to generate oracle labels:
+```bash
+python scripts/05b_generate_oracle_labels_cje.py --model gpt-4o
+# or for o3:
+python scripts/05b_generate_oracle_labels_cje.py --model o3-2025-01-17 --temperature 1.0
+```
+
+## Deprecated Content
+
+All MTurk-related files have been moved to `deprecated_mturk_attempt/` including:
+- Original data exports
+- Failed human labels 
+- Analysis scripts
+- Test data
+
+See `deprecated_mturk_attempt/README.md` for details on why human labeling failed.

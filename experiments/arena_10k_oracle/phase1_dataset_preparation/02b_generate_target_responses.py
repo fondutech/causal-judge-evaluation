@@ -112,6 +112,7 @@ def generate_target_responses(
         system_prompt=policy_config["system_prompt"],
         user_message_template=policy_config["user_message_template"],
         batch_size=batch_size,
+        max_new_tokens=512,  # Reduced from default 1024 for experiment
         # No completions template needed - just generation
     )
 
@@ -268,7 +269,7 @@ def main() -> None:
         console.print(f"   • Output: {args.output}")
 
         # Cost estimate
-        total_tokens_est = len(all_results) * 150  # rough estimate
+        total_tokens_est = len(all_results) * 100  # rough estimate with 512 max tokens
         cost_est = total_tokens_est * 0.0000002  # Fireworks pricing
         console.print(f"   • Estimated cost: ${cost_est:.2f}")
 
