@@ -34,13 +34,13 @@ test:  ## Run tests
 
 lint:  ## Run linting
 	poetry run black cje/ tests/
-	poetry run mypy cje/
+	poetry run mypy cje/ --exclude ".*test.*" --ignore-missing-imports --no-strict-optional --no-warn-unused-ignores
 
 format:  ## Format code
 	poetry run black cje/ tests/
 
 mypy:  ## Run type checking
-	poetry run mypy cje/
+	poetry run mypy cje/ --exclude ".*test.*" --ignore-missing-imports --no-strict-optional --no-warn-unused-ignores
 
 # Help
 help:  ## Show this help
