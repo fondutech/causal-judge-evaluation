@@ -75,7 +75,6 @@ def download_and_prepare_corpus(
                     "prompt_id": f"arena_{idx}",
                     "prompt": prompt_text,
                     "metadata": {
-                        "question_id": row.get("question_id", f"q_{idx}"),
                         "language": row.get("language", "unknown"),
                     },
                 }
