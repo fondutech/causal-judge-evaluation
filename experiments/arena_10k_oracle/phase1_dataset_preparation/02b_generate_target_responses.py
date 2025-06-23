@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Step 2b: Generate target policy responses for all prompts in parallel.
+Step 2b: Generate target policy responses for all prompts using async.
 
 This script generates responses from target policies (π_cot, π_bigger_model, π_bad)
-for all 10,000 prompts. Runs all three policies in parallel by default.
+for all 10,000 prompts. Uses async to efficiently batch API calls.
 
 Usage:
     python 02b_generate_target_responses.py
@@ -11,53 +11,37 @@ Usage:
     # Run only specific policies:
     python 02b_generate_target_responses.py --policies pi_cot pi_bigger_model
 
-    # Run sequentially instead of parallel:
-    python 02b_generate_target_responses.py --sequential
+    # Adjust concurrency:
+    python 02b_generate_target_responses.py --max-concurrent 50
 """
 
 import argparse
+import asyncio
 import json
 from pathlib import Path
 import sys
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
-import multiprocessing
-from multiprocessing import Queue, Process, Event
-import threading
-import signal
 import os
 from rich.progress import (
     Progress,
-    TaskID,
     SpinnerColumn,
     TextColumn,
     BarColumn,
     MofNCompleteColumn,
     TimeElapsedColumn,
+    TimeRemainingColumn,
 )
 from rich.console import Console
+from rich.table import Table
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
 from cje.loggers.api_policy import APIPolicyRunner
-from cje.utils.progress import console
 from cje.utils.checkpointing import CheckpointManager
 
-# Global shutdown event for clean interruption
-shutdown_event = multiprocessing.Event()
-
-
-def signal_handler(signum: int, frame: Any) -> None:
-    """Handle interrupt signals gracefully."""
-    console.print(
-        "\n\n⚠️  [yellow]Interrupt received - shutting down gracefully...[/yellow]"
-    )
-    console.print(
-        "   [yellow]This may take a moment as we save current progress.[/yellow]"
-    )
-    shutdown_event.set()
+console = Console()
 
 
 def load_prompts(prompts_file: str) -> List[Dict[str, Any]]:
@@ -105,98 +89,37 @@ Never be harmful or offensive, just unhelpful.""",
     }
 
 
-def progress_monitor(
-    status_queue: "multiprocessing.queues.Queue[Any]",
-    total_prompts: int,
-    policies: List[str],
-    monitor_shutdown: "threading.Event",
-) -> None:
-    """Monitor progress from all worker processes and display unified progress bars."""
-
-    # Initialize progress tracking
-    policy_progress = {
-        policy: {"completed": 0, "total": total_prompts} for policy in policies
-    }
-
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TimeElapsedColumn(),
-        console=console,
-        refresh_per_second=2,
-    ) as progress:
-        # Create tasks for each policy
-        tasks = {}
-        for policy in policies:
-            tasks[policy] = progress.add_task(
-                f"[cyan]{policy}[/cyan]", total=total_prompts
-            )
-
-        # Monitor status updates
-        active_policies = set(policies)
-        while active_policies and not monitor_shutdown.is_set():
-            try:
-                update = status_queue.get(timeout=0.5)
-
-                if update["type"] == "progress":
-                    policy = update["policy"]
-                    completed = update["completed"]
-                    policy_progress[policy]["completed"] = completed
-                    progress.update(tasks[policy], completed=completed)
-
-                elif update["type"] == "complete":
-                    policy = update["policy"]
-                    active_policies.discard(policy)
-                    progress.update(
-                        tasks[policy],
-                        completed=policy_progress[policy]["total"],
-                        description=f"[green]✓ {policy}[/green]",
-                    )
-
-                elif update["type"] == "error":
-                    policy = update["policy"]
-                    active_policies.discard(policy)
-                    progress.update(
-                        tasks[policy], description=f"[red]✗ {policy} (failed)[/red]"
-                    )
-
-                elif update["type"] == "interrupted":
-                    policy = update["policy"]
-                    active_policies.discard(policy)
-                    completed = update.get(
-                        "completed", policy_progress[policy]["completed"]
-                    )
-                    progress.update(
-                        tasks[policy],
-                        completed=completed,
-                        description=f"[yellow]⚠ {policy} (interrupted)[/yellow]",
-                    )
-
-            except:
-                # Timeout is fine, just check if we should continue
-                pass
+async def generate_batch_async(
+    runner: APIPolicyRunner,
+    batch_contexts: List[str],
+    semaphore: asyncio.Semaphore,
+) -> List[Tuple[str, Any]]:
+    """Generate responses for a batch of prompts with rate limiting."""
+    async with semaphore:
+        # Run the synchronous API call in a thread pool
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: runner.generate_with_logp(
+                batch_contexts, return_token_logprobs=False
+            ),
+        )
 
 
-def generate_single_policy_with_progress(
+async def generate_policy_responses_async(
     prompts: List[Dict[str, Any]],
     policy_name: str,
     policy_config: Dict[str, Any],
     batch_size: int,
-    output_dir: str,
-    status_queue: Optional[Any] = None,
-    shutdown_event: Optional["multiprocessing.synchronize.Event"] = None,
+    max_concurrent: int,
+    output_dir: Path,
+    progress: Progress,
+    task_id: Any,
 ) -> Dict[str, Any]:
-    """Generate responses for a single target policy with progress reporting."""
-
-    # Set up signal handling in the worker process
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    """Generate responses for a single policy using async batching."""
 
     # Policy-specific checkpoint file
-    checkpoint_path = (
-        Path(output_dir) / f"target_responses_{policy_name}.checkpoint.jsonl"
-    )
+    checkpoint_path = output_dir / f"target_responses_{policy_name}.checkpoint.jsonl"
     checkpoint_manager = CheckpointManager(
         checkpoint_path=str(checkpoint_path),
         get_uid_fn=lambda x: x.get("prompt_id"),
@@ -222,27 +145,10 @@ def generate_single_policy_with_progress(
         p for p in prompts if p["prompt_id"] not in processed_prompt_ids
     ]
 
-    # Report initial status
-    if status_queue:
-        status_queue.put(
-            {
-                "type": "progress",
-                "policy": policy_name,
-                "completed": len(existing_items),
-                "total": len(prompts),
-            }
-        )
+    # Update progress
+    progress.update(task_id, completed=len(existing_items))
 
     if not unprocessed_prompts:
-        if status_queue:
-            status_queue.put(
-                {
-                    "type": "complete",
-                    "policy": policy_name,
-                    "total": len(existing_items),
-                    "new": 0,
-                }
-            )
         return {
             "policy": policy_name,
             "total": len(existing_items),
@@ -250,115 +156,138 @@ def generate_single_policy_with_progress(
             "status": "completed",
         }
 
+    # Create semaphore for rate limiting
+    semaphore = asyncio.Semaphore(max_concurrent)
+
     # Process in batches
     start_time = time.time()
     new_responses = 0
+    errors = 0
 
-    try:
-        for i in range(0, len(unprocessed_prompts), batch_size):
-            # Check for shutdown signal
-            if shutdown_event and shutdown_event.is_set():
-                if status_queue:
-                    status_queue.put(
-                        {
-                            "type": "interrupted",
-                            "policy": policy_name,
-                            "completed": len(existing_items) + new_responses,
-                        }
-                    )
-                break
+    # Create all batch tasks
+    tasks = []
+    for i in range(0, len(unprocessed_prompts), batch_size):
+        batch = unprocessed_prompts[i : i + batch_size]
+        batch_contexts = [item["prompt"] for item in batch]
+        tasks.append((batch, generate_batch_async(runner, batch_contexts, semaphore)))
 
-            batch = unprocessed_prompts[i : i + batch_size]
-            batch_contexts = [item["prompt"] for item in batch]
+    # Process all batches concurrently
+    for batch, task in tasks:
+        try:
+            generations = await task
 
-            try:
-                # Generate responses (no logprobs needed)
-                generations = runner.generate_with_logp(
-                    batch_contexts, return_token_logprobs=False
-                )
+            # Format and save results
+            for prompt_item, (response, _) in zip(batch, generations):
+                result = {
+                    "prompt_id": prompt_item["prompt_id"],
+                    "prompt": prompt_item["prompt"],
+                    "metadata": prompt_item.get("metadata", {}),
+                    "policy": policy_name,
+                    "response": response,
+                    "model_name": policy_config["model_name"],
+                    "temperature": policy_config["temperature"],
+                    "description": policy_config["description"],
+                }
 
-                # Format and save results
-                for prompt_item, (response, _) in zip(batch, generations):
-                    result = {
-                        "prompt_id": prompt_item["prompt_id"],
-                        "prompt": prompt_item["prompt"],
-                        "metadata": prompt_item.get("metadata", {}),
-                        "policy": policy_name,
-                        "response": response,
-                        "model_name": policy_config["model_name"],
-                        "temperature": policy_config["temperature"],
-                        "description": policy_config["description"],
-                    }
+                # Mark as processed and save
+                checkpoint_manager.mark_processed(result)
+                new_responses += 1
 
-                    # Mark as processed and save
-                    checkpoint_manager.mark_processed(result)
-                    new_responses += 1
+            # Save checkpoint after each batch
+            checkpoint_manager.save_checkpoint()
 
-                # Save checkpoint after each batch
-                checkpoint_manager.save_checkpoint()
+            # Update progress
+            progress.update(task_id, completed=len(existing_items) + new_responses)
 
-                # Report progress
-                if status_queue:
-                    status_queue.put(
-                        {
-                            "type": "progress",
-                            "policy": policy_name,
-                            "completed": len(existing_items) + new_responses,
-                            "total": len(prompts),
-                        }
-                    )
+        except Exception as e:
+            errors += 1
+            console.print(f"[red]Error in {policy_name} batch: {e}[/red]")
+            continue
 
-            except Exception as e:
-                # Log error but continue
-                if status_queue:
-                    status_queue.put(
-                        {
-                            "type": "batch_error",
-                            "policy": policy_name,
-                            "batch": i // batch_size + 1,
-                            "error": str(e),
-                        }
-                    )
-                continue
+    # Calculate statistics
+    total_responses = len(checkpoint_manager.load_checkpoint())
+    elapsed_time = time.time() - start_time
 
-        # Calculate statistics
-        total_responses = len(checkpoint_manager.load_checkpoint())
-        elapsed_time = time.time() - start_time
+    return {
+        "policy": policy_name,
+        "total": total_responses,
+        "new": new_responses,
+        "elapsed_time": elapsed_time,
+        "status": "completed",
+        "errors": errors,
+    }
 
-        # Determine final status
-        if shutdown_event and shutdown_event.is_set():
-            status = "interrupted"
-        else:
-            status = "completed"
-            if status_queue:
-                status_queue.put(
+
+async def generate_all_policies_async(
+    prompts: List[Dict[str, Any]],
+    target_policies: Dict[str, Dict[str, Any]],
+    batch_size: int,
+    max_concurrent: int,
+    output_dir: Path,
+) -> List[Dict[str, Any]]:
+    """Generate responses for all policies concurrently."""
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),
+        console=console,
+        refresh_per_second=1,
+    ) as progress:
+        # Create tasks for each policy
+        tasks = {}
+        for policy_name in target_policies.keys():
+            task_id = progress.add_task(
+                f"[cyan]{policy_name}[/cyan]", total=len(prompts)
+            )
+            tasks[policy_name] = task_id
+
+        # Run all policies concurrently
+        policy_tasks = []
+        for policy_name, policy_config in target_policies.items():
+            task = generate_policy_responses_async(
+                prompts,
+                policy_name,
+                policy_config,
+                batch_size,
+                max_concurrent
+                // len(target_policies),  # Divide concurrency among policies
+                output_dir,
+                progress,
+                tasks[policy_name],
+            )
+            policy_tasks.append(task)
+
+        # Wait for all to complete
+        results = await asyncio.gather(*policy_tasks, return_exceptions=True)
+
+        # Handle any exceptions
+        final_results: List[Dict[str, Any]] = []
+        for i, result in enumerate(results):
+            policy_name = list(target_policies.keys())[i]
+            if isinstance(result, Exception):
+                console.print(f"[red]Policy {policy_name} failed: {result}[/red]")
+                final_results.append(
                     {
-                        "type": "complete",
                         "policy": policy_name,
-                        "total": total_responses,
-                        "new": new_responses,
-                        "elapsed_time": elapsed_time,
+                        "total": 0,
+                        "new": 0,
+                        "status": "failed",
+                        "error": str(result),
                     }
                 )
+            else:
+                # result is guaranteed to be Dict[str, Any] here
+                final_results.append(result)  # type: ignore
+                # Update progress bar to show completion
+                progress.update(
+                    tasks[policy_name], description=f"[green]✓ {policy_name}[/green]"
+                )
 
-        return {
-            "policy": policy_name,
-            "total": total_responses,
-            "new": new_responses,
-            "elapsed_time": elapsed_time,
-            "status": status,
-        }
-
-    except Exception as e:
-        if status_queue:
-            status_queue.put({"type": "error", "policy": policy_name, "error": str(e)})
-        return {
-            "policy": policy_name,
-            "total": len(existing_items),
-            "new": new_responses,
-            "status": "failed",
-            "error": str(e),
-        }
+        return final_results
 
 
 def merge_policy_checkpoints(output_dir: Path, output_file: Path) -> None:
@@ -399,11 +328,8 @@ def merge_policy_checkpoints(output_dir: Path, output_file: Path) -> None:
 
 
 def main() -> None:
-    # Set up signal handling
-    signal.signal(signal.SIGINT, signal_handler)
-
     parser = argparse.ArgumentParser(
-        description="Generate target policy responses for all prompts (parallel by default)"
+        description="Generate target policy responses using async API calls"
     )
 
     parser.add_argument(
@@ -433,16 +359,10 @@ def main() -> None:
     )
 
     parser.add_argument(
-        "--sequential",
-        action="store_true",
-        help="Run policies sequentially instead of in parallel",
-    )
-
-    parser.add_argument(
-        "--max-workers",
+        "--max-concurrent",
         type=int,
-        default=3,
-        help="Maximum number of parallel workers (default: 3)",
+        default=30,
+        help="Maximum concurrent API requests (default: 30)",
     )
 
     args = parser.parse_args()
@@ -452,10 +372,8 @@ def main() -> None:
     )
     console.print(f"📊 Generating responses for ALL prompts")
     console.print(f"🔢 Batch size: {args.batch_size}")
+    console.print(f"⚡ Max concurrent requests: {args.max_concurrent}")
     console.print(f"🎯 Policies: {', '.join(args.policies)}")
-    console.print(
-        f"⚙️  Mode: {'Sequential' if args.sequential else f'Parallel (max {args.max_workers} workers)'}"
-    )
 
     try:
         # Check for required API key
@@ -478,234 +396,94 @@ def main() -> None:
             k: v for k, v in all_target_policies.items() if k in args.policies
         }
 
-        # Create output directory for checkpoints
+        # Create output directory
         output_dir = Path(args.output).parent
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        # Run async generation
+        console.print(
+            f"\n🚀 Starting async generation for {len(target_policies)} policies...\n"
+        )
+
         start_time = time.time()
 
-        if args.sequential:
-            # Sequential execution with progress bars
-            console.print(f"\n📋 Running policies sequentially...")
-            console.print(f"   [dim]Press Ctrl+C to interrupt gracefully[/dim]\n")
-            results = []
-
-            for policy_name, policy_config in target_policies.items():
-                if shutdown_event.is_set():
-                    console.print(f"\n⚠️  Skipping {policy_name} due to interruption")
-                    continue
-
-                console.print(
-                    f"\n🎯 Starting {policy_name} ({policy_config['description']})"
-                )
-
-                # Create a simple progress bar for sequential mode
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[progress.description]{task.description}"),
-                    BarColumn(),
-                    MofNCompleteColumn(),
-                    TimeElapsedColumn(),
-                    console=console,
-                ) as progress:
-                    task = progress.add_task(
-                        f"[cyan]{policy_name}[/cyan]", total=len(all_prompts)
-                    )
-
-                    # Create a queue for progress updates
-                    import queue
-
-                    status_queue: queue.Queue[Any] = queue.Queue()
-
-                    # Run in a thread so we can update progress
-                    from threading import Thread
-
-                    result_container: List[Dict[str, Any]] = []
-
-                    def run_policy() -> None:
-                        result = generate_single_policy_with_progress(
-                            all_prompts,
-                            policy_name,
-                            policy_config,
-                            args.batch_size,
-                            str(output_dir),
-                            status_queue,
-                            shutdown_event,
-                        )
-                        result_container.append(result)
-
-                    thread = Thread(target=run_policy)
-                    thread.start()
-
-                    # Monitor progress
-                    while thread.is_alive() and not shutdown_event.is_set():
-                        try:
-                            update = status_queue.get(timeout=0.1)
-                            if update["type"] == "progress":
-                                progress.update(task, completed=update["completed"])
-                        except:
-                            pass
-
-                    thread.join()
-
-                    if result_container:
-                        result = result_container[0]
-                        results.append(result)
-
-                        # Update progress bar based on final status
-                        if result["status"] == "completed":
-                            progress.update(task, completed=len(all_prompts))
-                        elif result["status"] == "interrupted":
-                            progress.update(
-                                task,
-                                completed=result["total"],
-                                description=f"[yellow]⚠ {policy_name} (interrupted)[/yellow]",
-                            )
-        else:
-            # Parallel execution with unified progress display
-            console.print(
-                f"\n🚀 Starting parallel generation with {len(target_policies)} policies..."
+        # Run the async function
+        results = asyncio.run(
+            generate_all_policies_async(
+                all_prompts,
+                target_policies,
+                args.batch_size,
+                args.max_concurrent,
+                output_dir,
             )
-            console.print(f"   [dim]Press Ctrl+C to interrupt gracefully[/dim]")
-            console.print(
-                f"\n📊 Progress bars will show real-time status for each policy:\n"
-            )
-
-            # Create a queue for progress updates
-            manager = multiprocessing.Manager()
-            status_queue = manager.Queue()
-            monitor_shutdown = threading.Event()
-
-            # Start progress monitor in a separate thread
-            monitor_thread = threading.Thread(
-                target=progress_monitor,
-                args=(
-                    status_queue,
-                    len(all_prompts),
-                    list(target_policies.keys()),
-                    monitor_shutdown,
-                ),
-            )
-            monitor_thread.start()
-
-            executor = None
-            try:
-                executor = ProcessPoolExecutor(
-                    max_workers=min(args.max_workers, len(target_policies))
-                )
-
-                # Submit all tasks
-                future_to_policy = {
-                    executor.submit(
-                        generate_single_policy_with_progress,
-                        all_prompts,
-                        policy_name,
-                        policy_config,
-                        args.batch_size,
-                        str(output_dir),
-                        status_queue,
-                        shutdown_event,
-                    ): policy_name
-                    for policy_name, policy_config in target_policies.items()
-                }
-
-                # Collect results as they complete
-                results = []
-                try:
-                    for future in as_completed(future_to_policy):
-                        if shutdown_event.is_set():
-                            break
-                        policy_name = future_to_policy[future]
-                        try:
-                            result = future.result()
-                            results.append(result)
-                        except Exception as e:
-                            console.print(
-                                f"\n❌ [red]Error in {policy_name}:[/red] {str(e)}"
-                            )
-                            results.append(
-                                {
-                                    "policy": policy_name,
-                                    "total": 0,
-                                    "new": 0,
-                                    "status": "failed",
-                                    "error": str(e),
-                                }
-                            )
-                except KeyboardInterrupt:
-                    # This shouldn't happen with our signal handling, but just in case
-                    pass
-
-            finally:
-                if executor:
-                    executor.shutdown(wait=True)
-
-                # Stop the monitor thread
-                monitor_shutdown.set()
-                monitor_thread.join(timeout=5.0)
+        )
 
         total_time = time.time() - start_time
 
-        # Only merge if not interrupted or if we have some results
-        if not shutdown_event.is_set() or any(r.get("total", 0) > 0 for r in results):
-            merge_policy_checkpoints(output_dir, Path(args.output))
+        # Merge results
+        merge_policy_checkpoints(output_dir, Path(args.output))
+
+        # Create summary table
+        table = Table(title="Generation Summary", show_header=True)
+        table.add_column("Policy", style="cyan")
+        table.add_column("Status", justify="center")
+        table.add_column("Total", justify="right", style="green")
+        table.add_column("New", justify="right", style="yellow")
+        table.add_column("Errors", justify="right", style="red")
+
+        total_responses = 0
+        total_new = 0
+
+        for result in sorted(results, key=lambda x: x["policy"]):
+            status = result.get("status", "unknown")
+            if status == "completed":
+                status_icon = "✅"
+            elif status == "failed":
+                status_icon = "❌"
+            else:
+                status_icon = "❓"
+
+            table.add_row(
+                result["policy"],
+                status_icon,
+                f"{result.get('total', 0):,}",
+                f"{result.get('new', 0):,}",
+                f"{result.get('errors', 0):,}" if result.get("errors", 0) > 0 else "-",
+            )
+
+            total_responses += result.get("total", 0)
+            total_new += result.get("new", 0)
+
+        console.print(f"\n")
+        console.print(table)
 
         # Summary
-        console.print(f"\n📊 [bold green]Target Policy Generation Report[/bold green]")
+        console.print(f"\n📊 [bold green]Generation Complete![/bold green]")
         console.print(f"⏱️  Total time: {total_time/60:.1f} minutes")
+        console.print(f"   • Total responses: {total_responses:,}")
+        console.print(f"   • New responses: {total_new:,}")
+        console.print(f"   • Output: {args.output}")
 
-        if results:
-            total_responses = sum(r.get("total", 0) for r in results)
-            new_responses = sum(r.get("new", 0) for r in results)
+        # Cost estimate
+        total_tokens_est = total_responses * 100  # rough estimate with 512 max tokens
+        cost_est = total_tokens_est * 0.0000002  # Fireworks pricing
+        console.print(f"   • Estimated cost: ${cost_est:.2f}")
 
-            console.print(f"\n📈 Results by policy:")
-            for result in sorted(results, key=lambda x: x["policy"]):
-                status = result.get("status", "unknown")
-                if status == "completed":
-                    status_icon = "✅"
-                elif status == "interrupted":
-                    status_icon = "⚠️"
-                elif status == "failed":
-                    status_icon = "❌"
-                else:
-                    status_icon = "❓"
+        console.print(f"\n📋 Next steps:")
+        console.print(f"1. Generate oracle labels: python 03_generate_oracle_labels.py")
+        console.print(
+            f"2. Score with judges: python 04c_score_targets_deterministic.py"
+        )
+        console.print(
+            f"3. Score with uncertainty: python 04d_score_targets_uncertainty.py"
+        )
 
-                error_msg = ""
-                if status == "failed" and "error" in result:
-                    error_msg = f"\n      Error: {result['error'][:100]}..."
-                console.print(
-                    f"   {status_icon} {result['policy']}: {result.get('total', 0):,} total ({result.get('new', 0):,} new) - {status}{error_msg}"
-                )
-
-            console.print(f"\n📊 Overall statistics:")
-            console.print(f"   • Total responses: {total_responses:,}")
-            console.print(f"   • New responses: {new_responses:,}")
-            console.print(f"   • Output: {args.output}")
-
-            # Cost estimate
-            total_tokens_est = (
-                total_responses * 100
-            )  # rough estimate with 512 max tokens
-            cost_est = total_tokens_est * 0.0000002  # Fireworks pricing
-            console.print(f"   • Estimated cost: ${cost_est:.2f}")
-
-        if shutdown_event.is_set():
-            console.print(f"\n⚠️  [yellow]Generation was interrupted![/yellow]")
-            console.print(
-                f"   Progress has been saved. Re-run the same command to resume."
-            )
-        else:
-            console.print(f"\n📋 Next steps:")
-            console.print(
-                f"1. Generate oracle labels: python 03_generate_oracle_labels.py"
-            )
-            console.print(
-                f"2. Score with judges: python 04c_score_targets_deterministic.py"
-            )
-            console.print(
-                f"3. Score with uncertainty: python 04d_score_targets_uncertainty.py"
-            )
-
+    except KeyboardInterrupt:
+        console.print(
+            f"\n⚠️ [yellow]Interrupted - Progress saved to checkpoints[/yellow]"
+        )
+        console.print("Re-run the same command to resume from where you left off")
+        sys.exit(1)
     except Exception as e:
         console.print(f"\n❌ [red]Failed: {e}[/red]")
         import traceback
@@ -715,6 +493,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # Set multiprocessing start method to avoid issues on macOS
-    multiprocessing.set_start_method("spawn", force=True)
     main()
