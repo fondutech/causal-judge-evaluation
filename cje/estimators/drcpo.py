@@ -79,8 +79,12 @@ class MultiDRCPOEstimator(Estimator[Dict[str, Any]]):
         featurizer: Featurizer instance for transforming log items (default: BasicFeaturizer)
         n_jobs: Number of parallel jobs for cross-validation (default: -1, uses all processors)
         samples_per_policy: Number of samples to generate for each policy during DR estimation (default: 2)
-            Setting to 2 provides good variance reduction. Setting to 0 provides speedup with no bias.
+            Setting to 2 provides good variance reduction and proper DR estimates.
+            Setting to 0 causes DR to collapse to standard IPW (no variance reduction).
             Increase (e.g., to 5-10) if you need maximum variance reduction.
+
+            ⚠️ IMPORTANT: DR-CPO requires samples_per_policy ≥ 1 to compute the baseline term
+            μ_π(x) = E_π[μ(x,s)]. Without this term, the estimator reduces to IPW.
 
         stabilize_weights: Whether to apply numerical stabilization for extreme log differences (default: True)
             When True, applies log-space stabilization to prevent numerical overflow/underflow.
@@ -186,6 +190,16 @@ class MultiDRCPOEstimator(Estimator[Dict[str, Any]]):
 
         if self.n == 0:
             raise ValueError("Cannot fit estimator with empty logs")
+
+        # Validate DR requirements
+        from .dr_warning import validate_dr_setup
+
+        validate_dr_setup(
+            "DR-CPO",
+            self.samples_per_policy,
+            self.judge_runner is not None,
+            self.score_target_policy_sampled_completions,
+        )
 
         # ------------------------------------------------------------------
         # Automatic outcome-model/featurizer selection (shared helper)

@@ -147,6 +147,16 @@ class MultiMRDREstimator(Estimator[Dict[str, Any]]):
         if self.n == 0:
             raise ValueError("Cannot fit estimator with empty logs")
 
+        # Validate DR requirements
+        from .dr_warning import validate_dr_setup
+
+        validate_dr_setup(
+            "MRDR",
+            self.samples_per_policy,
+            self.judge_runner is not None,
+            self.score_target_policy_sampled_completions,
+        )
+
         # Extract basic data
         self._rewards_full = np.array([log["reward"] for log in logs], dtype=float)
         self._logp_behavior_full = np.array([log["logp"] for log in logs], dtype=float)
