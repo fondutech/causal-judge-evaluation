@@ -22,14 +22,7 @@ from datetime import datetime
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
 from cje.loggers.api_policy import APIPolicyRunner
-from cje.utils.progress import console
-from rich.progress import (
-    Progress,
-    SpinnerColumn,
-    TimeElapsedColumn,
-    BarColumn,
-    TextColumn,
-)
+from cje.utils.progress import console, track
 
 
 class AtomicCheckpointManager:
@@ -79,9 +72,7 @@ class AtomicCheckpointManager:
 
         # Atomic rename
         shutil.move(str(temp_path), str(self.checkpoint_path))
-        console.print(
-            f"[green]✓ Saved {len(unique_items)} new items (total: {len(self.processed_items)})[/green]"
-        )
+        # Don't print during progress bar updates
 
     def is_processed(self, prompt_id: str) -> bool:
         """Check if a prompt has been processed."""
@@ -218,64 +209,59 @@ def generate_logging_policy_responses(
     # Process with progress tracking
     start_time = time.time()
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
+    # Create batch indices
+    batch_indices = list(range(0, len(prompts_to_process), batch_size))
 
-        task = progress.add_task(
-            "Generating π₀ responses", total=len(prompts_to_process)
+    # Process in batches with progress tracking
+    for batch_idx, batch_start in enumerate(
+        track(
+            batch_indices,
+            description="Generating π₀ responses",
+            total=len(batch_indices),
         )
+    ):
+        batch_end = min(batch_start + batch_size, len(prompts_to_process))
+        batch = prompts_to_process[batch_start:batch_end]
 
-        # Process in batches
-        for batch_start in range(0, len(prompts_to_process), batch_size):
-            batch_end = min(batch_start + batch_size, len(prompts_to_process))
-            batch = prompts_to_process[batch_start:batch_end]
+        # Extract prompt texts
+        prompt_texts = [p["prompt"] for p in batch]
 
-            # Extract prompt texts
-            prompt_texts = [p["prompt"] for p in batch]
+        try:
+            # Generate responses with log probabilities
+            responses_with_logp = generate_with_retry(
+                runner, prompt_texts, temperature, max_new_tokens
+            )
 
-            try:
-                # Generate responses with log probabilities
-                responses_with_logp = generate_with_retry(
-                    runner, prompt_texts, temperature, max_new_tokens
-                )
+            # Format results
+            batch_results = []
+            for prompt_data, (response, logp) in zip(batch, responses_with_logp):
+                result = {
+                    **prompt_data,  # Keep all original prompt data
+                    "response": response,
+                    "total_logprob": float(logp),
+                    "logging_policy": {
+                        "model_name": model_name,
+                        "temperature": temperature,
+                        "max_new_tokens": max_new_tokens,
+                        "provider": "fireworks",
+                    },
+                    "timestamp": time.time(),
+                }
+                batch_results.append(result)
 
-                # Format results
-                batch_results = []
-                for prompt_data, (response, logp) in zip(batch, responses_with_logp):
-                    result = {
-                        **prompt_data,  # Keep all original prompt data
-                        "response": response,
-                        "total_logprob": float(logp),
-                        "logging_policy": {
-                            "model_name": model_name,
-                            "temperature": temperature,
-                            "max_new_tokens": max_new_tokens,
-                            "provider": "fireworks",
-                        },
-                        "timestamp": time.time(),
-                    }
-                    batch_results.append(result)
+            # Save batch atomically (no console output during progress)
+            checkpoint_manager.save_batch(batch_results)
 
-                # Save batch atomically
-                checkpoint_manager.save_batch(batch_results)
-                progress.update(task, advance=len(batch))
+        except Exception as e:
+            console.print(
+                f"\n[red]❌ Failed to generate batch {batch_start}-{batch_end}: {e}[/red]"
+            )
+            # Continue with next batch instead of failing completely
+            continue
 
-            except Exception as e:
-                console.print(
-                    f"\n[red]❌ Failed to generate batch {batch_start}-{batch_end}: {e}[/red]"
-                )
-                # Continue with next batch instead of failing completely
-                continue
-
-            # Rate limit protection
-            if batch_end < len(prompts_to_process):
-                time.sleep(0.5)
+        # Rate limit protection
+        if batch_end < len(prompts_to_process):
+            time.sleep(0.5)
 
     total_time = time.time() - start_time
     all_results = checkpoint_manager.get_processed_items()
