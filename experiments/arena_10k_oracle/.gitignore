@@ -1,18 +1,38 @@
 # Experiment data files
 data/*.jsonl
 data/*.csv
-data/labeling/
+data/labeling/*.jsonl
+data/labeling/*.csv
 
 # Checkpoint files
 *.checkpoint.*
+*.checkpoint
 *.tmp
 
 # Outputs
 outputs/
+results/
 
 # Python
 __pycache__/
 *.pyc
+.mypy_cache/
 
 # Keep the data directory structure
 !data/.gitkeep
+!data/labeling/.gitkeep
+
+# Backups and temporary directories
+backup_*/
+deprecated_*/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Archive (keep directory but ignore new files)
+archive_docs/*
+!archive_docs/README.md

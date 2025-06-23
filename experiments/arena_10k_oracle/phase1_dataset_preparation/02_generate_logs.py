@@ -111,25 +111,10 @@ def get_api_key() -> str:
         console.print("✅ [green]Using Fireworks API key from environment[/green]")
         return env_key
 
-    # Try AWS Secrets Manager
-    try:
-        from cje.utils.aws_secrets import get_api_key_from_secrets
-
-        console.print("🔐 Retrieving Fireworks API key from AWS Secrets Manager...")
-
-        api_key = get_api_key_from_secrets(
-            secret_name="cje/prod/api-keys",
-            key="FIREWORKS_API_KEY",
-            env_var_name="FIREWORKS_API_KEY",
-            cache_in_env=True,
-        )
-        console.print("✅ [green]Successfully retrieved API key[/green]")
-        return str(api_key)
-
-    except Exception as e:
-        console.print(f"⚠️ [yellow]AWS Secrets Manager failed: {e}[/yellow]")
-        console.print("💡 Please set FIREWORKS_API_KEY environment variable")
-        raise ValueError("No Fireworks API key available")
+    # No key found
+    console.print("⚠️ [yellow]No Fireworks API key found[/yellow]")
+    console.print("💡 Please set FIREWORKS_API_KEY environment variable")
+    raise ValueError("No Fireworks API key available")
 
 
 def generate_with_retry(
@@ -335,14 +320,14 @@ def main() -> None:
     parser.add_argument(
         "--input",
         type=str,
-        default="../data/prompts.jsonl",
+        default="data/prompts.jsonl",
         help="Input prompts file from Step 1",
     )
 
     parser.add_argument(
         "--output",
         type=str,
-        default="../data/p0_replies.jsonl",
+        default="data/p0_replies.jsonl",
         help="Output file for responses",
     )
 

@@ -190,14 +190,14 @@ def main() -> None:
     parser.add_argument(
         "--prompts",
         type=str,
-        default="../data/prompts.jsonl",
+        default="data/prompts.jsonl",
         help="Input prompts file",
     )
 
     parser.add_argument(
         "--output",
         type=str,
-        default="../data/target_ground_truth.jsonl",
+        default="data/target_ground_truth.jsonl",
         help="Output file for target policy responses",
     )
 

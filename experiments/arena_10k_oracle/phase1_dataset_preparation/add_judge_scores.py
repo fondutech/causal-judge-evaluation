@@ -55,20 +55,8 @@ def get_api_key() -> str:
     if env_key:
         return env_key
 
-    # Try AWS Secrets Manager
-    try:
-        from cje.utils.aws_secrets import get_api_key_from_secrets
-
-        api_key = get_api_key_from_secrets(
-            secret_name="cje/prod/api-keys",
-            key="FIREWORKS_API_KEY",
-            env_var_name="FIREWORKS_API_KEY",
-            cache_in_env=True,
-        )
-        return str(api_key)
-
-    except Exception:
-        raise ValueError("No Fireworks API key available. Please set FIREWORKS_API_KEY")
+    # No key found
+    raise ValueError("No Fireworks API key available. Please set FIREWORKS_API_KEY")
 
 
 def score_responses_with_judge(
@@ -104,6 +92,7 @@ def score_responses_with_judge(
         model=judge_model,
         temperature=temperature,
         structured_output_schema="JudgeScore",  # Use basic score schema
+        uncertainty_method="deterministic",  # Force zero variance
     )
 
     def process_batch(batch_responses: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -126,8 +115,27 @@ def score_responses_with_judge(
                 score_result = judge.score(context=prompt, response=response)
 
                 # Extract numeric score
-                if isinstance(score_result, dict):
-                    score = score_result.get("score", None)
+                if hasattr(score_result, "mean"):
+                    # Direct JudgeScore object
+                    score = score_result.mean * 10  # Convert 0-1 to 0-10 scale
+                elif isinstance(score_result, dict):
+                    # Handle JudgeScore objects as dicts with mean/variance
+                    if "mean" in score_result:
+                        score = score_result["mean"] * 10  # Convert 0-1 to 0-10 scale
+                    else:
+                        score = score_result.get("score", None)
+                elif isinstance(score_result, str) and "mean=" in score_result:
+                    # Parse string representation of JudgeScore
+                    import re
+
+                    match = re.search(r"mean=([0-9.]+)", score_result)
+                    if match:
+                        score = float(match.group(1)) * 10  # Convert 0-1 to 0-10 scale
+                    else:
+                        console.print(
+                            f"⚠️  [yellow]Failed to parse score from string: {score_result}[/yellow]"
+                        )
+                        score = None
                 else:
                     # Keep as float or try to parse
                     try:
@@ -247,14 +255,14 @@ Examples:
     parser.add_argument(
         "--input",
         type=str,
-        default="../data/p0_replies.jsonl",
+        default="data/p0_replies.jsonl",
         help="Input file with responses from Step 2",
     )
 
     parser.add_argument(
         "--output",
         type=str,
-        default="../data/p0_scored.jsonl",
+        default="data/p0_scored.jsonl",
         help="Output file for scored responses",
     )
 

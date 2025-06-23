@@ -270,14 +270,14 @@ def save_calibrated_data(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Import human labels and calibrate judge scores"
+        description="Import oracle labels and calibrate judge scores"
     )
 
     parser.add_argument(
         "--labels",
         type=str,
         required=True,
-        help="Path to human labels CSV from crowdsourcing",
+        help="Path to oracle labels CSV (from AI judge or human labels)",
     )
 
     parser.add_argument(
@@ -317,7 +317,7 @@ def main() -> None:
     )
 
     try:
-        # Load human labels
+        # Load oracle labels (from AI judge or human labels)
         labels_df = load_human_labels(args.labels, platform=args.platform)
 
         # Aggregate votes
