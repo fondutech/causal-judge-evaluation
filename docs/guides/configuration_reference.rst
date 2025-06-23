@@ -855,7 +855,7 @@ All configuration examples are maintained in the ``configs/`` directory:
    ├── minimal.yaml              # Minimal working configuration
    ├── production.yaml           # Production-ready settings
    ├── arena.yaml               # Arena analysis configuration  
-   ├── arena_test.yaml          # Quick test configuration
+   ├── example_eval.yaml        # Quick test configuration
    ├── debugging.yaml           # Debug and development settings
    └── performance/
        ├── fast.yaml            # Optimized for speed

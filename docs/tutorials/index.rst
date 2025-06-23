@@ -7,27 +7,20 @@ Step-by-step guides for common CJE use cases and workflows.
    :maxdepth: 2
    :caption: Tutorial Topics
 
-   basic_usage
    pairwise_evaluation
-   arena_analysis
-   custom_components
 
 Getting Started
 ---------------
 
 These tutorials will walk you through common CJE workflows with practical examples:
 
-**Basic Usage**
-   Learn the fundamentals with simple policy comparisons
-
 **Pairwise Evaluation**
    Use human preference data (like ChatBot Arena) for evaluation
 
-**Arena Analysis**
-   Comprehensive analysis of ChatBot Arena-style data
-
-**Custom Components**
-   Build custom judges, estimators, and data loaders
+Additional tutorials are in development. For now, see:
+- :doc:`../quickstart` for basic usage
+- :doc:`../guides/arena_analysis` for ChatBot Arena workflows  
+- :doc:`../guides/custom_components` for building custom components
 
 Prerequisites
 -------------

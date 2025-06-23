@@ -73,6 +73,12 @@ Combines importance sampling with outcome modeling for robustness.
 - ✅ Lower variance than IPS
 - ✅ Recommended for most use cases
 - ⚠️ Requires outcome model fitting
+- ⚠️ **Requires target policy samples** (``samples_per_policy`` ≥ 1)
+
+.. warning::
+   DR-CPO requires target policy samples to compute the baseline term :math:`\mu_\pi(x)`.
+   Without them (``samples_per_policy=0``), DR reduces to IPW with no variance benefit.
+   See :doc:`/estimators/dr_requirements` for details.
 
 .. autoclass:: cje.estimators.drcpo.MultiDRCPOEstimator
    :members:
@@ -96,7 +102,10 @@ where :math:`\mu^*` minimizes the asymptotic variance.
 - ✅ Optimal for small samples
 - ✅ Handles large distribution shift well
 - ⚠️ Computationally intensive
-- ⚠️ Requires policy sampling
+- ⚠️ **Requires target policy samples** (``samples_per_policy`` ≥ 1)
+
+.. warning::
+   Like DR-CPO, MRDR requires target policy samples. See :doc:`/estimators/dr_requirements`.
 
 .. autoclass:: cje.estimators.mrdr.MultiMRDREstimator
    :members:

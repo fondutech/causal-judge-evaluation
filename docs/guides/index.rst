@@ -40,6 +40,7 @@ Advanced Guides
    trajectory_methods
    custom_components
    completions_templates
+   /developer/teacher_forcing
 
 📚 Learning Paths by Experience
 -------------------------------

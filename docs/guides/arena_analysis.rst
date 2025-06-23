@@ -366,7 +366,7 @@ After running the arena analysis, use the provided example script to explore you
    # Or programmatically
    python -c "
    from cje.pipeline import run_pipeline
-   results = run_pipeline(cfg_path='configs', cfg_name='arena_test')
+   results = run_pipeline(cfg_path='configs', cfg_name='example_eval')
    print(f'Policy estimates: {results.policy_uplifts}')
    "
 

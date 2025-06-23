@@ -39,6 +39,12 @@ Estimators
    cje.estimators.results
    cje.estimators.reliability
 
+.. toctree::
+   :maxdepth: 1
+
+   estimators
+   /estimators/dr_requirements
+
 Data Handling
 -------------
 

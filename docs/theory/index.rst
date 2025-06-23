@@ -8,8 +8,6 @@ This section covers the theoretical foundations of Causal Judge Evaluation (CJE)
    :caption: Theory Topics
 
    mathematical_foundations
-   estimator_comparison
-   trajectory_methods
 
 Overview
 --------
@@ -39,6 +37,4 @@ Next Steps
 ----------
 
 - :doc:`mathematical_foundations` - Complete mathematical formulation
-- :doc:`estimator_comparison` - Detailed comparison of all estimators  
-- :doc:`trajectory_methods` - Extensions to multi-step agent trajectories
 - :doc:`../api/estimators` - Implementation details and usage examples 

@@ -69,7 +69,7 @@ CJE provides **robust off-policy evaluation** for Large Language Models using ca
    export FIREWORKS_API_KEY="your-key-here"
    
    # Run evaluation on 20 samples (takes ~1 minute)
-   cje run --cfg-path configs --cfg-name arena_test
+   cje run --cfg-path configs --cfg-name example_eval
 
 **What You'll See**:
 
@@ -170,13 +170,6 @@ CJE implements a principled pipeline for causal evaluation:
    api/estimators
    api/index
 
-.. toctree::
-   :maxdepth: 1
-   :caption: Advanced Topics
-
-   contributing
-   changelog
-   license
 
 🔍 Estimator Quick Reference
 ----------------------------
