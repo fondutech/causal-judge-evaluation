@@ -5,7 +5,7 @@ Step 2: Generate π₀ (logging policy) responses with log probabilities.
 Improved version with atomic checkpointing to prevent duplicates.
 
 Usage:
-    python 02_generate_logs.py --input ../data/prompts.jsonl --output ../data/p0_replies.jsonl
+    python 02a_generate_p0_responses.py --input ../data/arena_prompts_10k.jsonl --output ../data/p0_replies.jsonl
 """
 
 import argparse
@@ -320,14 +320,14 @@ def main() -> None:
     parser.add_argument(
         "--input",
         type=str,
-        default="data/prompts.jsonl",
+        default="../data/arena_prompts_10k.jsonl",
         help="Input prompts file from Step 1",
     )
 
     parser.add_argument(
         "--output",
         type=str,
-        default="data/p0_replies.jsonl",
+        default="../data/p0_replies.jsonl",
         help="Output file for responses",
     )
 

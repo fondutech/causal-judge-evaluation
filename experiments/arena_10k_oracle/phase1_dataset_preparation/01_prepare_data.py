@@ -9,7 +9,7 @@ This script:
 4. Saves to JSONL format for downstream processing
 
 Usage:
-    python 01_prepare_data.py [--samples 10000] [--output ../data/prompts.jsonl]
+    python 01_prepare_data.py [--samples 10000] [--output ../data/arena_prompts_10k.jsonl]
 """
 
 import argparse
@@ -27,7 +27,7 @@ from cje.utils.progress import console
 def download_and_prepare_corpus(
     sample_limit: int = 10000,
     seed: int = 42,
-    output_path: str = "../data/prompts.jsonl",
+    output_path: str = "../data/arena_prompts_10k.jsonl",
 ) -> List[Dict[str, Any]]:
     """Download ChatBot Arena corpus and prepare prompts."""
 
@@ -171,8 +171,8 @@ Examples:
     parser.add_argument(
         "--output",
         type=str,
-        default="../data/prompts.jsonl",
-        help="Output file path (default: ../data/prompts.jsonl)",
+        default="../data/arena_prompts_10k.jsonl",
+        help="Output file path (default: ../data/arena_prompts_10k.jsonl)",
     )
 
     args = parser.parse_args()

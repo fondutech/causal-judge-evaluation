@@ -8,7 +8,7 @@ for human labeling. These responses establish the ground truth that CJE aims to 
 Note: No teacher forcing needed - we only need the response text for human evaluation.
 
 Usage:
-    python 02b_generate_target_ground_truth.py --samples 500 --batch-size 16
+    python 02b_generate_target_ground_truth.py --prompts ../data/arena_prompts_10k.jsonl --output ../data/target_ground_truth.jsonl
 """
 
 import argparse
@@ -190,14 +190,14 @@ def main() -> None:
     parser.add_argument(
         "--prompts",
         type=str,
-        default="data/prompts.jsonl",
+        default="../data/arena_prompts_10k.jsonl",
         help="Input prompts file",
     )
 
     parser.add_argument(
         "--output",
         type=str,
-        default="data/target_ground_truth.jsonl",
+        default="../data/target_ground_truth.jsonl",
         help="Output file for target policy responses",
     )
 

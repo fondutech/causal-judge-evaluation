@@ -6,7 +6,7 @@ This script creates a complete dataset containing:
 - Prompts
 - Responses (π₀ and target policies)
 - Oracle labels (calibration and validation)
-- Judge scores (deterministic and uncertainty)
+- Judge scores (deterministic and uncertainty) for ALL policies
 
 The output is a unified dataset ready for CJE ablations.
 """
@@ -18,6 +18,7 @@ import sys
 from typing import Dict, Any, List
 from rich.console import Console
 from rich.table import Table
+import numpy as np
 
 console = Console()
 
@@ -44,8 +45,10 @@ def create_dataset_summary() -> Dict[str, Any]:
         "Prompts": "../data/arena_prompts_10k.jsonl",
         "π₀ responses": "../data/p0_replies.jsonl",
         "Target responses": "../data/target_ground_truth.jsonl",
-        "Deterministic scores": "../data/p0_scored_deterministic.jsonl",
-        "Uncertainty scores": "../data/p0_scored_uncertainty.jsonl",
+        "π₀ deterministic scores": "../data/p0_scored_deterministic.jsonl",
+        "π₀ uncertainty scores": "../data/p0_scored_uncertainty.jsonl",
+        "Target deterministic scores": "../data/targets_scored_deterministic.jsonl",
+        "Target uncertainty scores": "../data/targets_scored_uncertainty.jsonl",
         "Calibration oracle labels": "../data/labeling/oracle_labels_calibration_detailed.jsonl",
         "Validation oracle labels": "../data/labeling/oracle_labels_validation_detailed.jsonl",
     }
@@ -83,31 +86,48 @@ def create_dataset_summary() -> Dict[str, Any]:
     }
     console.print(f"\n1. Prompts: {len(prompts)} total")
 
-    # 2. Responses
+    # 2. π₀ Responses and Scores
     p0_responses = load_jsonl(Path("../data/p0_replies.jsonl"))
-    target_responses = load_jsonl(Path("../data/target_ground_truth.jsonl"))
-
-    dataset_info["components"]["responses"] = {
-        "p0_count": len(p0_responses),
-        "target_count": len(target_responses),
-        "policies": ["pi_0", "pi_cot", "pi_bigger_model", "pi_bad"],
-    }
-    console.print(f"\n2. Responses:")
-    console.print(f"   - π₀ (calibration): {len(p0_responses)}")
-    console.print(f"   - Target policies: {len(target_responses)}")
-
-    # 3. Judge Scores
     det_scores = load_jsonl(Path("../data/p0_scored_deterministic.jsonl"))
     unc_scores = load_jsonl(Path("../data/p0_scored_uncertainty.jsonl"))
 
-    dataset_info["components"]["judge_scores"] = {
-        "deterministic_count": len(det_scores),
-        "uncertainty_count": len(unc_scores),
-        "methods": ["deterministic", "confidence_interval"],
+    dataset_info["components"]["p0_policy"] = {
+        "responses": len(p0_responses),
+        "deterministic_scores": len(det_scores),
+        "uncertainty_scores": len(unc_scores),
+        "description": "Logging policy (π₀) data",
     }
-    console.print(f"\n3. Judge Scores:")
-    console.print(f"   - Deterministic: {len(det_scores)}")
-    console.print(f"   - Uncertainty: {len(unc_scores)}")
+    console.print(f"\n2. π₀ Policy:")
+    console.print(f"   - Responses: {len(p0_responses)}")
+    console.print(f"   - Deterministic scores: {len(det_scores)}")
+    console.print(f"   - Uncertainty scores: {len(unc_scores)}")
+
+    # 3. Target Policy Responses and Scores
+    target_responses = load_jsonl(Path("../data/target_ground_truth.jsonl"))
+    target_det_scores = load_jsonl(Path("../data/targets_scored_deterministic.jsonl"))
+    target_unc_scores = load_jsonl(Path("../data/targets_scored_uncertainty.jsonl"))
+
+    # Group by policy
+    target_policies = {}
+    for resp in target_responses:
+        policy = resp.get("policy", "unknown")
+        if policy not in target_policies:
+            target_policies[policy] = 0
+        target_policies[policy] += 1
+
+    dataset_info["components"]["target_policies"] = {
+        "total_responses": len(target_responses),
+        "deterministic_scores": len(target_det_scores),
+        "uncertainty_scores": len(target_unc_scores),
+        "policies": target_policies,
+        "description": "Target policy data",
+    }
+
+    console.print(f"\n3. Target Policies:")
+    for policy, count in sorted(target_policies.items()):
+        console.print(f"   - {policy}: {count} responses")
+    console.print(f"   - Total deterministic scores: {len(target_det_scores)}")
+    console.print(f"   - Total uncertainty scores: {len(target_unc_scores)}")
 
     # 4. Oracle Labels
     cal_labels = load_jsonl(
@@ -118,92 +138,103 @@ def create_dataset_summary() -> Dict[str, Any]:
     )
 
     dataset_info["components"]["oracle_labels"] = {
-        "calibration_count": len(cal_labels),
-        "validation_count": len(val_labels),
-        "total_count": len(cal_labels) + len(val_labels),
+        "calibration": len(cal_labels),
+        "validation": len(val_labels),
+        "total": len(cal_labels) + len(val_labels),
+        "description": "Ground truth labels for calibration and validation",
     }
+
     console.print(f"\n4. Oracle Labels:")
-    console.print(f"   - Calibration: {len(cal_labels)}")
-    console.print(f"   - Validation: {len(val_labels)}")
+    console.print(f"   - Calibration: {len(cal_labels)} (for judge calibration)")
+    console.print(f"   - Validation: {len(val_labels)} (for CJE evaluation)")
     console.print(f"   - Total: {len(cal_labels) + len(val_labels)}")
 
-    # Statistics
-    console.print("\n[bold]Dataset Statistics:[/bold]")
+    # 5. Analyze judge scoring consistency
+    console.print("\n[bold]Judge Scoring Analysis:[/bold]")
 
-    # Score distributions
-    det_scores_values = [item["judge_score_raw"] for item in det_scores]
-    unc_scores_values = [item["judge_score_raw"] for item in unc_scores]
-    unc_variances = [item["judge_variance"] for item in unc_scores]
+    # π₀ scores
+    if det_scores and unc_scores:
+        det_means = [r["judge_score"] for r in det_scores]
+        unc_means = [r["judge_score"] for r in unc_scores]
+        unc_vars = [r.get("judge_score_variance", 0.0) for r in unc_scores]
 
-    dataset_info["statistics"]["judge_scores"] = {
-        "deterministic": {
-            "mean": float(pd.Series(det_scores_values).mean()),
-            "std": float(pd.Series(det_scores_values).std()),
-            "min": float(pd.Series(det_scores_values).min()),
-            "max": float(pd.Series(det_scores_values).max()),
-        },
-        "uncertainty": {
-            "mean_score": float(pd.Series(unc_scores_values).mean()),
-            "mean_variance": float(pd.Series(unc_variances).mean()),
-            "std_variance": float(pd.Series(unc_variances).std()),
-        },
-    }
+        console.print(f"\nπ₀ Judge Scores:")
+        console.print(
+            f"  Deterministic: mean={np.mean(det_means):.3f}, std={np.std(det_means):.3f}"
+        )
+        console.print(
+            f"  Uncertainty: mean={np.mean(unc_means):.3f}, std={np.std(unc_means):.3f}"
+        )
+        console.print(f"  Mean variance: {np.mean(unc_vars):.4f}")
 
-    console.print(
-        f"\nDeterministic scores: mean={dataset_info['statistics']['judge_scores']['deterministic']['mean']:.3f}, "
-        f"std={dataset_info['statistics']['judge_scores']['deterministic']['std']:.3f}"
-    )
-    console.print(
-        f"Uncertainty scores: mean={dataset_info['statistics']['judge_scores']['uncertainty']['mean_score']:.3f}, "
-        f"mean_var={dataset_info['statistics']['judge_scores']['uncertainty']['mean_variance']:.4f}"
-    )
+        dataset_info["statistics"]["p0_judge_scores"] = {
+            "deterministic": {
+                "mean": float(np.mean(det_means)),
+                "std": float(np.std(det_means)),
+            },
+            "uncertainty": {
+                "mean": float(np.mean(unc_means)),
+                "std": float(np.std(unc_means)),
+                "mean_variance": float(np.mean(unc_vars)),
+            },
+        }
 
-    # Oracle label distributions by policy
-    val_labels_df = pd.DataFrame(val_labels)
-    oracle_by_policy = (
-        val_labels_df.groupby("policy")["oracle_label"]
-        .apply(lambda x: pd.DataFrame([item for item in x])["score"].mean() / 10.0)
-        .to_dict()
-    )
+    # Target policy scores
+    if target_det_scores and target_unc_scores:
+        console.print(f"\nTarget Policy Judge Scores:")
 
-    dataset_info["statistics"]["oracle_scores_by_policy"] = {
-        k: float(v) for k, v in oracle_by_policy.items()
-    }
+        policy_stats = {}
+        for policy in target_policies.keys():
+            det_policy = [r for r in target_det_scores if r.get("policy") == policy]
+            unc_policy = [r for r in target_unc_scores if r.get("policy") == policy]
 
-    console.print("\nOracle scores by policy:")
-    for policy, score in sorted(oracle_by_policy.items()):
-        console.print(f"   {policy}: {score:.3f}")
+            if det_policy and unc_policy:
+                det_means = [r["judge_score"] for r in det_policy]
+                unc_means = [r["judge_score"] for r in unc_policy]
+                unc_vars = [r.get("judge_score_variance", 0.0) for r in unc_policy]
 
-    # File paths for easy reference
-    dataset_info["file_paths"] = {
-        "prompts": "data/arena_prompts_10k.jsonl",
-        "p0_responses": "data/p0_replies.jsonl",
-        "target_responses": "data/target_ground_truth.jsonl",
-        "p0_scored_deterministic": "data/p0_scored_deterministic.jsonl",
-        "p0_scored_uncertainty": "data/p0_scored_uncertainty.jsonl",
-        "oracle_labels_calibration": "data/labeling/oracle_labels_calibration_detailed.jsonl",
-        "oracle_labels_validation": "data/labeling/oracle_labels_validation_detailed.jsonl",
-        "oracle_labels_csv": "data/labeling/oracle_labels.csv",
-    }
+                console.print(f"\n  {policy}:")
+                console.print(
+                    f"    Deterministic: mean={np.mean(det_means):.3f}, std={np.std(det_means):.3f}"
+                )
+                console.print(
+                    f"    Uncertainty: mean={np.mean(unc_means):.3f}, std={np.std(unc_means):.3f}"
+                )
+                console.print(f"    Mean variance: {np.mean(unc_vars):.4f}")
+
+                policy_stats[policy] = {
+                    "deterministic": {
+                        "mean": float(np.mean(det_means)),
+                        "std": float(np.std(det_means)),
+                    },
+                    "uncertainty": {
+                        "mean": float(np.mean(unc_means)),
+                        "std": float(np.std(unc_means)),
+                        "mean_variance": float(np.mean(unc_vars)),
+                    },
+                }
+
+        dataset_info["statistics"]["target_judge_scores"] = policy_stats
 
     # Save dataset info
-    output_path = Path("../data/dataset_info.json")
-    with open(output_path, "w") as f:
+    info_path = Path("../data/dataset_info.json")
+    with open(info_path, "w") as f:
         json.dump(dataset_info, f, indent=2)
-
-    console.print(f"\n✅ Dataset info saved to: {output_path}")
+    console.print(f"\n[bold green]Dataset info saved to: {info_path}[/bold green]")
 
     # Create summary table
-    table = Table(title="Arena 10K Oracle Dataset Summary")
+    table = Table(title="Dataset Summary", show_header=True)
     table.add_column("Component", style="cyan")
-    table.add_column("Count", justify="right")
+    table.add_column("Count", justify="right", style="green")
     table.add_column("Status", justify="center")
 
-    table.add_row("Prompts", f"{len(prompts):,}", "✅")
+    table.add_row("Arena Prompts", f"{len(prompts):,}", "✅")
     table.add_row("π₀ Responses", f"{len(p0_responses):,}", "✅")
     table.add_row("Target Responses", f"{len(target_responses):,}", "✅")
-    table.add_row("Deterministic Scores", f"{len(det_scores):,}", "✅")
-    table.add_row("Uncertainty Scores", f"{len(unc_scores):,}", "✅")
+    table.add_row("π₀ Det. Scores", f"{len(det_scores):,}", "✅")
+    table.add_row("π₀ Unc. Scores", f"{len(unc_scores):,}", "✅")
+    table.add_row("Target Det. Scores", f"{len(target_det_scores):,}", "✅")
+    table.add_row("Target Unc. Scores", f"{len(target_unc_scores):,}", "✅")
     table.add_row("Oracle Labels", f"{len(cal_labels) + len(val_labels):,}", "✅")
 
     console.print("\n")
@@ -216,6 +247,13 @@ def create_dataset_summary() -> Dict[str, Any]:
     console.print("1. cd ../phase2_cje_ablations")
     console.print("2. Run different CJE configurations")
     console.print("3. Compare results across ablations")
+
+    # Recommendations
+    console.print("\n[bold yellow]Recommendations:[/bold yellow]")
+    console.print("• Compare deterministic vs uncertainty scoring impact")
+    console.print("• Analyze if uncertainty varies by policy quality")
+    console.print("• Test if uncertainty improves calibration")
+    console.print("• Examine judge consistency across policies")
 
     return dataset_info
 

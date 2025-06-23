@@ -59,10 +59,10 @@ def load_calibration_data(
         Tuple of (rows for labeling, total pi_0 count)
     """
     console.print(f"\n📊 [bold]Loading Calibration Data (pi_0 responses):[/bold]")
-    console.print(f"   Source: data/p0_replies.jsonl")
+    console.print(f"   Source: ../data/p0_replies.jsonl")
 
     all_rows = []
-    with open("data/p0_replies.jsonl", "r") as f:
+    with open("../data/p0_replies.jsonl", "r") as f:
         for line in f:
             data = json.loads(line)
             all_rows.append(
@@ -102,10 +102,10 @@ def load_validation_data() -> List[Dict[str, Any]]:
     console.print(
         f"\n📊 [bold]Loading Validation Data (target policy responses):[/bold]"
     )
-    console.print(f"   Source: data/target_ground_truth.jsonl")
+    console.print(f"   Source: ../data/target_ground_truth.jsonl")
 
     rows = []
-    with open("data/target_ground_truth.jsonl", "r") as f:
+    with open("../data/target_ground_truth.jsonl", "r") as f:
         for line in f:
             data = json.loads(line)
             rows.append(
@@ -349,7 +349,7 @@ Example usage:
     parser.add_argument(
         "--output",
         type=str,
-        default="data/labeling/oracle_labels.csv",
+        default="../data/labeling/oracle_labels.csv",
         help="Output path for oracle labels",
     )
 
@@ -397,7 +397,7 @@ Example usage:
     parser.add_argument(
         "--checkpoint-dir",
         type=str,
-        default="data/labeling/checkpoints",
+        default="../data/labeling/checkpoints",
         help="Directory for saving checkpoints",
     )
 
@@ -411,8 +411,8 @@ Example usage:
 
     console.print(f"\n🔬 [bold blue]Arena 10K Oracle Label Generation[/bold blue]")
     console.print(f"\n📥 [bold]Data Sources:[/bold]")
-    console.print(f"   Calibration: data/p0_replies.jsonl (pi_0 responses)")
-    console.print(f"   Validation: data/target_ground_truth.jsonl (target policies)")
+    console.print(f"   Calibration: ../data/p0_replies.jsonl (pi_0 responses)")
+    console.print(f"   Validation: ../data/target_ground_truth.jsonl (target policies)")
     console.print(f"   Output: {args.output}")
     console.print(f"   Checkpoints: {args.checkpoint_dir}/")
 
