@@ -432,7 +432,7 @@ Example usage:
     console.print(f"\n🔬 [bold blue]Arena 10K Oracle Label Generation[/bold blue]")
     console.print(f"\n📥 [bold]Data Sources:[/bold]")
     console.print(f"   Calibration: ../data/p0_replies.jsonl (pi_0 responses)")
-    console.print(f"   Validation: ../data/target_ground_truth.jsonl (target policies)")
+    console.print(f"   Validation: ../data/target_responses.jsonl (target policies)")
     console.print(f"   Output: {args.output}")
     console.print(f"   Checkpoints: {args.checkpoint_dir}/")
 
