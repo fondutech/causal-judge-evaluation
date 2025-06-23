@@ -21,7 +21,7 @@ console = Console()
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 
-def run_command(cmd: list, description: str, check=True) -> bool:
+def run_command(cmd: list[str], description: str, check: bool = True) -> bool:
     """Run a command and display status."""
     console.print(f"\n[bold blue]→ {description}[/bold blue]")
     console.print(f"  Command: {' '.join(cmd)}")
@@ -45,7 +45,7 @@ def run_command(cmd: list, description: str, check=True) -> bool:
         raise
 
 
-def check_data_files():
+def check_data_files() -> bool:
     """Check that required data files exist."""
     console.print("\n[bold]Checking data files...[/bold]")
 
@@ -68,7 +68,7 @@ def check_data_files():
     return all_exist
 
 
-def check_phase1_complete():
+def check_phase1_complete() -> bool:
     """Check if Phase 1 dataset preparation is complete."""
     dataset_info = Path("data/dataset_info.json")
     if dataset_info.exists():
@@ -79,19 +79,19 @@ def check_phase1_complete():
         return False
 
 
-def run_phase1_finalization():
+def run_phase1_finalization() -> bool:
     """Run Phase 1 dataset finalization."""
     cmd = ["python", "phase1_dataset_preparation/06_finalize_dataset.py"]
     return run_command(cmd, "Finalizing Phase 1 dataset")
 
 
-def run_phase2_ablations():
+def run_phase2_ablations() -> bool:
     """Run Phase 2 CJE ablations."""
     cmd = ["python", "phase2_cje_ablations/run_ablations.py"]
     return run_command(cmd, "Running Phase 2 CJE ablations")
 
 
-def main():
+def main() -> int:
     """Run the complete pipeline."""
     console.print("[bold cyan]Arena 10K Oracle Experiment Pipeline[/bold cyan]")
     console.print("=" * 50)

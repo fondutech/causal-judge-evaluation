@@ -15,6 +15,7 @@ from .base import BaseJudge, APIJudgeConfig
 from .judges import Judge, DeterministicJudge, ProbabilisticJudge
 from .schemas import (
     JudgeScore,
+    JudgeScoreWithCI,
     JudgeEvaluation,
     DetailedJudgeEvaluation,
     JudgeResult,
@@ -107,7 +108,11 @@ class APIJudge(Judge):
     def __init__(self, config: APIJudgeConfig):
         self.config: APIJudgeConfig = config
         self.provider_strategy = self._get_provider_strategy()
-        self.structured_model = self._setup_structured_model()
+        if self.config.use_structured_output:
+            self.structured_model = self._setup_structured_model()
+        else:
+            # Use regular text model for CI parsing
+            self.structured_model = self._setup_text_model()
         self.prompt_template = self._setup_prompt_template()
 
     def _get_provider_strategy(self) -> Any:
@@ -137,6 +142,7 @@ class APIJudge(Judge):
         """Set up the structured output model."""
         schema_mapping: Dict[str, Type[BaseModel]] = {
             "JudgeScore": JudgeScore,
+            "JudgeScoreWithCI": JudgeScoreWithCI,
             "JudgeEvaluation": JudgeEvaluation,
             "DetailedJudgeEvaluation": DetailedJudgeEvaluation,
         }
@@ -153,19 +159,39 @@ class APIJudge(Judge):
         )
         return model  # type: ignore[no-any-return]
 
-    def _setup_prompt_template(self) -> ChatPromptTemplate:
-        """Set up the prompt template."""
-        from ..prompts import UNIFIED_TEMPLATES
+    def _setup_text_model(self) -> Runnable:
+        """Set up a regular text model (no structured output)."""
+        return self.provider_strategy.get_model(  # type: ignore[no-any-return]
+            model_name=self.config.model_name,
+            temperature=self.config.temperature,
+            max_tokens=self.config.max_tokens,
+        )
 
-        # Get template content
-        template_info = UNIFIED_TEMPLATES.get(self.config.template)
+    def _setup_prompt_template(self) -> ChatPromptTemplate:
+        """Set up the prompt template using proper Jinja2 rendering."""
+        from ..prompts import UNIFIED_TEMPLATES
+        from ..prompts.judge_templates import JUDGE_TEMPLATES
+        from ..prompts.template_engine import prepare_judge_template
+
+        # Try judge templates first, then unified templates
+        template_info = JUDGE_TEMPLATES.get(self.config.template)
+        if not template_info:
+            template_info = UNIFIED_TEMPLATES.get(self.config.template)
         if not template_info:
             raise ValueError(f"Unknown template: {self.config.template}")
 
         template_str = template_info["template"]
 
+        # Merge template default variables with config overrides
+        template_vars = template_info.get("variables", {}).copy()
+        template_vars.update(self.config.template_variables)
+
+        # Use the proper template engine to prepare for LangChain
+        # This will substitute static variables and convert to LangChain format
+        langchain_template = prepare_judge_template(template_str, template_vars)
+
         # Create chat prompt template
-        return ChatPromptTemplate.from_template(template_str)
+        return ChatPromptTemplate.from_template(langchain_template)
 
     def score(self, context: str, response: str) -> JudgeScore:
         """Score a single context-response pair with uncertainty."""
@@ -174,26 +200,74 @@ class APIJudge(Judge):
 
     async def _score_async(self, context: str, response: str) -> JudgeScore:
         """Async implementation of scoring."""
+        # Validate inputs
+        if not context or not str(context).strip():
+            logger.warning("Empty context provided to judge")
+            return JudgeScore(mean=0.0, variance=0.0)
+
+        if not response or not str(response).strip():
+            logger.warning("Empty response provided to judge")
+            return JudgeScore(mean=0.0, variance=0.0)
+
         for attempt in range(self.config.max_retries):
             try:
+                # Prepare the input variables
+                input_vars = {
+                    "context": str(context).strip(),
+                    "response": str(response).strip(),
+                }
+
+                # Format the prompt to see exact text sent to API
+                formatted_prompt = self.prompt_template.format_prompt(**input_vars)
+                prompt_text = formatted_prompt.to_string()
+
+                # Log the exact prompt being sent
+                logger.info(
+                    f"[APIJudge] Sending prompt to {self.config.provider}/{self.config.model_name}:"
+                )
+                logger.info(f"[APIJudge] Template: {self.config.template}")
+                logger.info(f"[APIJudge] Prompt length: {len(prompt_text)} chars")
+                logger.debug(
+                    f"[APIJudge] Full prompt:\n{'-'*80}\n{prompt_text}\n{'-'*80}"
+                )
+
                 # Create the chain
                 chain = self.prompt_template | self.structured_model
 
                 # Invoke with context and response
-                result = await chain.ainvoke(
-                    {
-                        "context": context,
-                        "response": response,
-                        **self.config.template_variables,
-                    }
-                )
+                result = await chain.ainvoke(input_vars)
+
+                # Log the raw result from API
+                logger.debug(f"[APIJudge] Raw result type: {type(result)}")
+                if isinstance(result, dict):
+                    logger.debug(f"[APIJudge] Raw result keys: {list(result.keys())}")
+                    if "raw" in result:
+                        logger.debug(
+                            f"[APIJudge] Raw content type: {type(result['raw'])}"
+                        )
+                        # Handle AIMessage objects
+                        if hasattr(result["raw"], "content"):
+                            raw_content = result["raw"].content
+                            logger.debug(
+                                f"[APIJudge] Raw content: {raw_content[:200] if raw_content else '(empty)'}..."
+                            )
+                    if "parsed" in result:
+                        logger.debug(
+                            f"[APIJudge] Parsed type: {type(result['parsed'])}"
+                        )
+                        logger.debug(f"[APIJudge] Parsed content: {result['parsed']}")
 
                 # Handle different result types
                 if isinstance(result, dict):
                     # Check for parsing errors
                     if result.get("parsing_error"):
                         # Try to extract from thinking blocks
-                        raw_output = result.get("raw", "")
+                        raw_message = result.get("raw", "")
+                        # Extract content from AIMessage if needed
+                        if hasattr(raw_message, "content"):
+                            raw_output = raw_message.content or ""
+                        else:
+                            raw_output = str(raw_message)
                         parsed_blocks = parse_thinking_blocks(raw_output)
 
                         logger.debug(
@@ -274,31 +348,68 @@ class APIJudge(Judge):
 
                 # Convert to JudgeScore
                 if isinstance(evaluation, JudgeScore):
+                    # The JudgeScore schema already handles normalization in its validator
+                    logger.info(
+                        f"[APIJudge] Final score: mean={evaluation.mean}, variance={evaluation.variance}"
+                    )
                     return evaluation
                 elif isinstance(evaluation, (JudgeEvaluation, DetailedJudgeEvaluation)):
                     # These already inherit from JudgeScore
-                    return JudgeScore(
+                    score = JudgeScore(
                         mean=evaluation.mean, variance=evaluation.variance
                     )
+                    logger.info(
+                        f"[APIJudge] Final score: mean={score.mean}, variance={score.variance}"
+                    )
+                    return score
                 elif hasattr(evaluation, "score"):
                     # Simple score attribute
-                    return JudgeScore(mean=float(evaluation.score), variance=0.0)
+                    score = JudgeScore(mean=float(evaluation.score), variance=0.0)
+                    logger.info(
+                        f"[APIJudge] Final score: mean={score.mean}, variance={score.variance}"
+                    )
+                    return score
                 elif isinstance(evaluation, dict):
                     # Try to construct from dict
                     if "mean" in evaluation:
-                        return JudgeScore(**evaluation)
+                        score = JudgeScore(**evaluation)
+                        logger.info(
+                            f"[APIJudge] Final score: mean={score.mean}, variance={score.variance}"
+                        )
+                        return score
                     elif "score" in evaluation:
-                        return JudgeScore(mean=float(evaluation["score"]), variance=0.0)
+                        score = JudgeScore(
+                            mean=float(evaluation["score"]), variance=0.0
+                        )
+                        logger.info(
+                            f"[APIJudge] Final score: mean={score.mean}, variance={score.variance}"
+                        )
+                        return score
                 else:
                     raise ValueError(f"Unexpected evaluation type: {type(evaluation)}")
 
             except Exception as e:
+                error_msg = f"Attempt {attempt + 1}/{self.config.max_retries} failed"
+
+                # Add context-specific error information
+                if "rate_limit" in str(e).lower() or "429" in str(e):
+                    error_msg += " (Rate limit exceeded)"
+                elif "timeout" in str(e).lower():
+                    error_msg += " (Request timeout)"
+                elif "api_key" in str(e).lower() or "authentication" in str(e).lower():
+                    error_msg += " (Authentication error - check API key)"
+                elif "json" in str(e).lower() or "parsing" in str(e).lower():
+                    error_msg += " (Response parsing error)"
+
                 if attempt == self.config.max_retries - 1:
                     logger.error(
-                        f"Failed to score after {self.config.max_retries} attempts: {e}"
+                        f"{error_msg}: {type(e).__name__}: {e}\n"
+                        f"Context length: {len(context)} chars\n"
+                        f"Response length: {len(response)} chars"
                     )
                     raise
-                logger.warning(f"Attempt {attempt + 1} failed, retrying: {e}")
+
+                logger.warning(f"{error_msg}, retrying in {2**attempt}s: {e}")
                 await asyncio.sleep(2**attempt)  # Exponential backoff
 
         raise RuntimeError("Unreachable code")
@@ -344,50 +455,21 @@ class APIJudge(Judge):
 
     def _run_sync(self, coro: Any) -> Any:
         """Execute async code in sync context."""
+        import asyncio
+        import concurrent.futures
+        import threading
+
         try:
+            # Check if we're in an event loop
             loop = asyncio.get_running_loop()
-            if loop.is_running():
-                # Nested event-loop situation – use auxiliary loop
-                new_loop = asyncio.new_event_loop()
-                try:
-                    asyncio.set_event_loop(new_loop)
-                    result = new_loop.run_until_complete(coro)
-
-                    # Graceful shutdown
-                    new_loop.run_until_complete(asyncio.sleep(0))
-
-                    try:
-                        new_loop.run_until_complete(new_loop.shutdown_asyncgens())
-                    except (AttributeError, RuntimeError):
-                        pass
-
-                    # Cancel remaining tasks
-                    pending = [t for t in asyncio.all_tasks(new_loop) if not t.done()]
-                    for task in pending:
-                        task.cancel()
-
-                    if pending:
-                        try:
-                            new_loop.run_until_complete(
-                                asyncio.gather(*pending, return_exceptions=True)
-                            )
-                        except Exception:
-                            pass
-
-                    return result
-                finally:
-                    try:
-                        new_loop.close()
-                    except Exception:
-                        pass
-                    finally:
-                        asyncio.set_event_loop(None)
         except RuntimeError:
-            # No running loop
-            pass
+            # No event loop running, we can use asyncio.run safely
+            return asyncio.run(coro)
 
-        # Run normally
-        return asyncio.run(coro)
+        # We're in an event loop, need to run in a separate thread
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(asyncio.run, coro)
+            return future.result()
 
 
 class DeterministicAPIJudge(APIJudge):
@@ -399,13 +481,12 @@ class DeterministicAPIJudge(APIJudge):
     def __init__(self, config: APIJudgeConfig):
         # Force JudgeScore schema for simple scoring
         config.structured_output_schema = "JudgeScore"
-        # Ensure mean-only fields
         super().__init__(config)
 
     async def _score_async(self, context: str, response: str) -> JudgeScore:
         """Score with zero variance."""
         score = await super()._score_async(context, response)
-        # Force variance to zero
+        # Force variance to zero but keep the mean unchanged
         return JudgeScore(mean=score.mean, variance=0.0)
 
 

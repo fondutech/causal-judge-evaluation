@@ -49,6 +49,7 @@ class JudgeConfig:
     _VALID_SCHEMAS: Set[str] = field(
         default_factory=lambda: {
             "JudgeScore",
+            "JudgeScoreWithCI",
             "JudgeEvaluation",
             "DetailedJudgeEvaluation",
         },
@@ -76,22 +77,17 @@ class JudgeConfig:
     def _populate_valid_templates(self) -> None:
         """Populate valid templates from the templates module."""
         try:
-            from ..prompts import UNIFIED_TEMPLATES
+            from ..prompts import JUDGE_TEMPLATES
 
-            # Get only judge templates
-            judge_templates = {
-                name: template["template"]
-                for name, template in UNIFIED_TEMPLATES.items()
-                if template.get("type") == "judge"
-            }
-            self._VALID_TEMPLATES = set(judge_templates.keys())
+            # Get all judge templates from the new clean templates
+            self._VALID_TEMPLATES = set(JUDGE_TEMPLATES.keys())
         except ImportError:
             # Fallback to basic templates if import fails
             self._VALID_TEMPLATES = {
-                "quick_judge",
-                "comprehensive_judge",
-                "reasoning_judge",
-                "domain_judge",
+                "deterministic",
+                "confidence_interval",
+                "simple",
+                "comparative",
             }
 
     def _get_validation_errors(self) -> List[str]:
@@ -340,13 +336,11 @@ class BaseJudge:
 
     def _get_templates(self) -> Dict[str, str]:
         """Get available prompt templates."""
-        from ..prompts import UNIFIED_TEMPLATES
+        from ..prompts import JUDGE_TEMPLATES
 
-        # Return only judge templates in the expected format
+        # Return judge templates in the expected format
         return {
-            name: template["template"]
-            for name, template in UNIFIED_TEMPLATES.items()
-            if template.get("type") == "judge"
+            name: template["template"] for name, template in JUDGE_TEMPLATES.items()
         }
 
     def _render_prompt(self, context: str, response: str) -> str:
@@ -358,7 +352,7 @@ class BaseJudge:
             template_str = templates.get(
                 self.config.template,
                 templates.get(
-                    "quick_judge", list(templates.values())[0]
+                    "deterministic", list(templates.values())[0]
                 ),  # Safe fallback
             )
 

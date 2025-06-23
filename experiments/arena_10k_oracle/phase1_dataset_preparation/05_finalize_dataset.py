@@ -34,7 +34,7 @@ def load_jsonl(path: Path) -> List[Dict[str, Any]]:
     return items
 
 
-def create_dataset_summary():
+def create_dataset_summary() -> Dict[str, Any]:
     """Create a comprehensive dataset ready for CJE ablations."""
 
     console.print("[bold cyan]Arena 10K Oracle Dataset Finalization[/bold cyan]\n")
@@ -61,7 +61,7 @@ def create_dataset_summary():
 
     if missing:
         console.print(f"\n[red]Cannot proceed - missing files: {missing}[/red]")
-        return
+        return {}
 
     # Create dataset summary
     dataset_info = {
@@ -216,6 +216,8 @@ def create_dataset_summary():
     console.print("1. cd ../phase2_cje_ablations")
     console.print("2. Run different CJE configurations")
     console.print("3. Compare results across ablations")
+
+    return dataset_info
 
 
 if __name__ == "__main__":

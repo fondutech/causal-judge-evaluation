@@ -20,10 +20,10 @@ class JudgeFactory:
 
     # Available prompt templates
     AVAILABLE_TEMPLATES = [
-        "quick_judge",
-        "comprehensive_judge",
-        "reasoning_judge",
-        "domain_judge",
+        "deterministic",
+        "confidence_interval",
+        "simple",
+        "comparative",
     ]
 
     # Available structured output schemas
@@ -36,7 +36,7 @@ class JudgeFactory:
     # Available uncertainty estimation methods
     UNCERTAINTY_METHODS = [
         "deterministic",  # Always returns variance=0
-        "structured",  # Model estimates its own uncertainty
+        "confidence_interval",  # Judge provides 95% CI, variance calculated from width
         "monte_carlo",  # Multiple samples to estimate variance
     ]
 
@@ -49,8 +49,8 @@ class JudgeFactory:
         structured_output_schema: Optional[str] = None,
         structured_output_method: Optional[str] = None,
         uncertainty_method: Literal[
-            "deterministic", "structured", "monte_carlo"
-        ] = "structured",
+            "deterministic", "confidence_interval", "monte_carlo"
+        ] = "deterministic",
         temperature: float = 0.0,
         api_key: Optional[str] = None,
         use_cache: bool = True,
@@ -67,8 +67,8 @@ class JudgeFactory:
             structured_output_schema: Schema for output (default: 'JudgeScore')
             structured_output_method: Method to use (default: provider recommended)
             uncertainty_method: How to estimate uncertainty:
-                - 'deterministic': Always returns variance=0
-                - 'structured': Model estimates its own uncertainty (default)
+                - 'deterministic': Always returns variance=0 (default, fastest)
+                - 'confidence_interval': Judge provides 95% CI, variance from width
                 - 'monte_carlo': Sample multiple times to estimate variance
             temperature: Temperature for generation (default: 0.0)
             api_key: API key (optional, can use environment variable)
@@ -88,12 +88,12 @@ class JudgeFactory:
                 uncertainty_method="deterministic"
             )
 
-            # Judge that estimates its own uncertainty
+            # Judge that uses confidence intervals
             judge = JudgeFactory.create(
                 provider="anthropic",
                 model="claude-3-haiku-20240307",
-                uncertainty_method="structured",
-                template="comprehensive_judge"
+                uncertainty_method="confidence_interval",
+                template="confidence_interval"
             )
 
             # Monte Carlo uncertainty estimation
@@ -155,6 +155,12 @@ class JudgeFactory:
                 f"Supported methods: {supported_methods}"
             )
 
+        # Get template variables from the template definition
+        from ..prompts import JUDGE_TEMPLATES
+
+        template_info = JUDGE_TEMPLATES.get(template, {})
+        template_vars = template_info.get("variables", {})
+
         # Create configuration
         config = APIJudgeConfig(
             name=f"{provider}-{model}",
@@ -166,6 +172,7 @@ class JudgeFactory:
             structured_output_method=structured_output_method,
             api_key=api_key,
             base_url=provider_plugin.base_url,
+            template_variables=template_vars,
             **kwargs,
         )
 
@@ -177,8 +184,20 @@ class JudgeFactory:
             if config.temperature == 0:
                 config.temperature = 0.3
             judge = MCAPIJudge(config, n_samples=mc_samples)
-        else:  # structured
-            judge = APIJudge(config)
+        elif uncertainty_method == "confidence_interval":
+            # Import here to avoid circular imports
+            from .ci_judge import ConfidenceIntervalJudge
+
+            # Use CI template if not already set
+            if config.template not in [
+                "confidence_interval",
+                "ci_judge",
+                "uncertainty_judge",
+            ]:
+                config.template = "confidence_interval"
+            judge = ConfidenceIntervalJudge(config)
+        else:
+            raise ValueError(f"Unknown uncertainty method: {uncertainty_method}")
 
         # Wrap with cache if requested
         if use_cache:
@@ -257,6 +276,6 @@ class JudgeFactory:
 
         # Also print uncertainty methods
         print("\nUncertainty Estimation Methods:")
-        print("- deterministic: Always returns variance=0 (fastest)")
-        print("- structured: Model estimates its own uncertainty (recommended)")
+        print("- deterministic: Always returns variance=0 (fastest, default)")
+        print("- confidence_interval: Judge provides 95% CI, variance from width")
         print("- monte_carlo: Sample multiple times to estimate variance (slowest)")

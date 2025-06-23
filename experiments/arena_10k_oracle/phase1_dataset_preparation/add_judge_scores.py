@@ -232,7 +232,7 @@ def save_results(results: List[Dict[str, Any]], output_path: str) -> None:
         console.print(f"📊 Score range: {min(scores)} - {max(scores)}")
 
 
-def main() -> None:
+def main(args: Optional[argparse.Namespace] = None) -> None:
     parser = argparse.ArgumentParser(
         description="Add judge scores to logging policy responses",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -298,7 +298,12 @@ Examples:
         help="Delete checkpoint file on successful completion",
     )
 
-    args = parser.parse_args()
+    # If args passed in, use those; otherwise parse from command line
+    if args is None:
+        args = parser.parse_args()
+    else:
+        # args was passed in from another script
+        pass
 
     console.print(
         f"🔬 [bold blue]Arena 10K Experiment - Step 4: Add Judge Scores[/bold blue]"

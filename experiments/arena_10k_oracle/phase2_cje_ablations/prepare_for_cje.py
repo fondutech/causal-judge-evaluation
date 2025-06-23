@@ -20,7 +20,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 from cje.utils.progress import console
 
 
-def convert_oracle_labels_to_csv():
+def convert_oracle_labels_to_csv() -> None:
     """Convert oracle labels from JSONL to CSV format if needed."""
 
     # Check if CSV already exists
@@ -91,7 +91,7 @@ def convert_oracle_labels_to_csv():
     )
 
 
-def validate_judge_scores():
+def validate_judge_scores() -> None:
     """Validate judge score files are ready for CJE."""
 
     files_to_check = [
@@ -124,7 +124,7 @@ def validate_judge_scores():
             console.print(f"✅ {name}: {line_count} records with all required fields")
 
 
-def prepare_cje_data():
+def prepare_cje_data() -> None:
     """Prepare final data file for CJE pipeline."""
 
     # For CJE, we need scored responses with optional oracle labels
@@ -152,7 +152,7 @@ def prepare_cje_data():
     console.print("Run: cje run --cfg-path configs --cfg-name arena_10k_oracle")
 
 
-def main():
+def main() -> None:
     """Run all preparation steps."""
     console.print("[bold]Preparing Arena 10K Oracle data for CJE pipeline[/bold]\n")
 

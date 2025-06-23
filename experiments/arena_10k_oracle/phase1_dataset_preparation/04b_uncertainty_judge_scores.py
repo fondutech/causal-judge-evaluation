@@ -9,7 +9,7 @@ import argparse
 from add_judge_scores import main as score_main, console
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Add judge scores WITH UNCERTAINTY (95% CI) to logging policy responses",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -60,15 +60,18 @@ def main():
     console.print(f"📈 Variance calculated from CI width")
 
     # Call the shared implementation with CI settings
-    score_main(
-        input_file=args.input,
-        output_file=args.output,
+    # Create a namespace object to pass to score_main
+    score_args = argparse.Namespace(
+        input=args.input,
+        output=args.output,
         checkpoint=args.checkpoint,
         batch_size=args.batch_size,
         model=args.model,
         temperature=args.temperature,
         uncertainty_method="confidence_interval",
     )
+
+    score_main(score_args)
 
 
 if __name__ == "__main__":

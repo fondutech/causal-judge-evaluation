@@ -11,7 +11,7 @@ This script runs different CJE configurations to explore:
 
 import subprocess
 import json
-import yaml
+import yaml  # type: ignore
 from pathlib import Path
 from typing import Dict, Any, List
 from rich.console import Console
@@ -144,7 +144,7 @@ def run_ablation(ablation_name: str, config: Dict[str, Any]) -> Dict[str, Any]:
             results_path = Path(f"outputs/arena_10k_{ablation_name}/results.json")
             if results_path.exists():
                 with open(results_path) as f:
-                    return json.load(f)
+                    return dict(json.load(f))
             else:
                 console.print("[yellow]⚠️  Results file not found[/yellow]")
                 return {}
@@ -157,7 +157,7 @@ def run_ablation(ablation_name: str, config: Dict[str, Any]) -> Dict[str, Any]:
         os.chdir(original_dir)
 
 
-def compare_results(all_results: Dict[str, Dict[str, Any]]):
+def compare_results(all_results: Dict[str, Dict[str, Any]]) -> None:
     """Compare results across all ablations."""
 
     console.print("\n[bold cyan]Results Comparison[/bold cyan]\n")
@@ -225,7 +225,7 @@ def compare_results(all_results: Dict[str, Dict[str, Any]]):
     console.print(f"\n✅ Comparison saved to: {comparison_path}")
 
 
-def main():
+def main() -> None:
     """Run all CJE ablations."""
 
     console.print("[bold cyan]Phase 2: CJE Pipeline Ablations[/bold cyan]")

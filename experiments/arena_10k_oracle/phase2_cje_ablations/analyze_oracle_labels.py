@@ -5,9 +5,11 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import json
+from typing import Dict, Any
+from scipy import stats
 
 
-def analyze_oracle_labels():
+def analyze_oracle_labels() -> None:
     """Analyze oracle labeling results."""
 
     # Load oracle labels
@@ -31,7 +33,7 @@ def analyze_oracle_labels():
         policy_data = oracle_df[oracle_df["policy"] == policy]
         scores = policy_data["oracle_score"].values
 
-        stats = {
+        policy_stat = {
             "policy": policy,
             "count": len(scores),
             "mean": np.mean(scores),
@@ -42,15 +44,15 @@ def analyze_oracle_labels():
             "q25": np.percentile(scores, 25),
             "q75": np.percentile(scores, 75),
         }
-        policy_stats.append(stats)
+        policy_stats.append(policy_stat)
 
         print(f"\n{policy}:")
-        print(f"  Count: {stats['count']}")
-        print(f"  Mean: {stats['mean']:.3f} ({stats['mean']*10:.1f}/10)")
-        print(f"  Std: {stats['std']:.3f}")
-        print(f"  Median: {stats['median']:.3f}")
-        print(f"  Range: [{stats['min']:.2f}, {stats['max']:.2f}]")
-        print(f"  IQR: [{stats['q25']:.2f}, {stats['q75']:.2f}]")
+        print(f"  Count: {policy_stat['count']}")
+        print(f"  Mean: {policy_stat['mean']:.3f} ({policy_stat['mean']*10:.1f}/10)")
+        print(f"  Std: {policy_stat['std']:.3f}")
+        print(f"  Median: {policy_stat['median']:.3f}")
+        print(f"  Range: [{policy_stat['min']:.2f}, {policy_stat['max']:.2f}]")
+        print(f"  IQR: [{policy_stat['q25']:.2f}, {policy_stat['q75']:.2f}]")
 
     # Create comparison table
     stats_df = pd.DataFrame(policy_stats)
@@ -97,8 +99,6 @@ def analyze_oracle_labels():
                 other_scores = oracle_df[oracle_df["policy"] == policy]["oracle_score"]
 
                 # T-test
-                from scipy import stats
-
                 t_stat, p_value = stats.ttest_ind(pi_bad_scores, other_scores)
 
                 print(f"\npi_bad vs {policy}:")

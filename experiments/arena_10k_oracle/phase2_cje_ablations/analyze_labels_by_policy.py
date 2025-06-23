@@ -8,16 +8,17 @@ from pathlib import Path
 from collections import defaultdict
 import matplotlib.pyplot as plt
 import seaborn as sns
+from typing import Any, Dict
 
 
-def load_ratings():
+def load_ratings() -> pd.DataFrame:
     """Load ratings from mturk_labels.csv"""
     ratings_df = pd.read_csv("data/labeling/mturk_labels.csv")
     print(f"Loaded {len(ratings_df)} ratings")
     return ratings_df
 
 
-def load_actual_task_mapping():
+def load_actual_task_mapping() -> dict[str, str]:
     """Load the actual task to policy mapping from internal tracking"""
     task_to_policy = {}
 
@@ -47,7 +48,9 @@ def load_actual_task_mapping():
     return task_to_policy
 
 
-def analyze_ratings_by_policy(ratings_df, task_to_policy):
+def analyze_ratings_by_policy(
+    ratings_df: pd.DataFrame, task_to_policy: dict[str, str]
+) -> tuple[pd.DataFrame, dict[str, dict[str, Any]]]:
     """Calculate summary statistics by policy"""
     # Add policy column to ratings
     ratings_df["policy"] = ratings_df["task_id"].map(task_to_policy)
@@ -76,7 +79,7 @@ def analyze_ratings_by_policy(ratings_df, task_to_policy):
     return ratings_df, policy_stats
 
 
-def print_statistics(policy_stats):
+def print_statistics(policy_stats: dict[str, dict[str, Any]]) -> None:
     """Print formatted statistics"""
     print("\n" + "=" * 80)
     print("HUMAN LABEL STATISTICS BY POLICY (CORRECTED)")
@@ -110,7 +113,7 @@ def print_statistics(policy_stats):
     print(f"Total labels: {total_count}")
 
 
-def create_visualization(ratings_df):
+def create_visualization(ratings_df: pd.DataFrame) -> None:
     """Create visualization of ratings by policy"""
     # Filter to main policies for cleaner visualization
     main_policies = ["π₀ (calibration)", "π_cot", "π_bigger_model", "π_bad"]
@@ -191,7 +194,7 @@ def create_visualization(ratings_df):
     print("\nVisualization saved to: scripts/policy_ratings_analysis_corrected.png")
 
 
-def analyze_policy_differences(ratings_df):
+def analyze_policy_differences(ratings_df: pd.DataFrame) -> None:
     """Analyze statistical differences between policies"""
     print("\n" + "=" * 80)
     print("STATISTICAL COMPARISONS")
@@ -263,10 +266,10 @@ def analyze_policy_differences(ratings_df):
         f"  p-value: {p_value:.4f} {'***' if p_value < 0.001 else '**' if p_value < 0.01 else '*' if p_value < 0.05 else ''}"
     )
 
-    return comparisons
+    # Don't return comparisons since the function is void
 
 
-def main():
+def main() -> None:
     print("Analyzing human labels by policy (with correct mapping)...")
 
     # Load ratings
@@ -285,14 +288,14 @@ def main():
     create_visualization(ratings_df)
 
     # Analyze differences
-    comparisons = analyze_policy_differences(ratings_df)
+    analyze_policy_differences(ratings_df)
 
     # Save detailed results
-    results_json = {
+    results_json: Dict[str, Any] = {
         "summary_statistics": {},
         "total_labels": int(len(ratings_df)),
         "unique_tasks": int(ratings_df["task_id"].nunique()),
-        "statistical_comparisons": comparisons,
+        "statistical_comparisons": [],  # We don't have comparisons anymore
     }
 
     for policy, stats in policy_stats.items():

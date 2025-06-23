@@ -59,6 +59,11 @@ class JudgeScore(BaseModel):
         """Standard error (square root of variance)."""
         return float(self.variance**0.5)
 
+    @property
+    def score(self) -> float:
+        """Get score in 0-10 range for backward compatibility and convenience."""
+        return self.mean * 10
+
     def confidence_interval(self, alpha: float = 0.05) -> tuple[float, float]:
         """Compute confidence interval assuming normal approximation."""
         import scipy.stats
@@ -66,6 +71,56 @@ class JudgeScore(BaseModel):
         z = scipy.stats.norm.ppf(1 - alpha / 2)
         margin = z * self.se
         return (max(0, self.mean - margin), min(1, self.mean + margin))
+
+
+class JudgeScoreWithCI(JudgeScore):
+    """Judge score with explicit confidence interval fields.
+
+    This schema is used when we want the judge to provide
+    confidence intervals directly rather than just variance.
+    """
+
+    ci_lower: float = Field(
+        ...,
+        ge=0,
+        le=10,
+        description="Lower bound of 95% confidence interval (0-10 scale)",
+    )
+    ci_upper: float = Field(
+        ...,
+        ge=0,
+        le=10,
+        description="Upper bound of 95% confidence interval (0-10 scale)",
+    )
+
+    @field_validator("ci_lower", "ci_upper", mode="before")
+    @classmethod
+    def validate_ci_bounds(cls, v: Union[float, int]) -> float:
+        """Ensure CI bounds are valid."""
+        return float(v)
+
+    @model_validator(mode="after")
+    def calculate_variance_from_ci(self) -> "JudgeScoreWithCI":
+        """Calculate variance from the confidence interval.
+
+        Assumes 95% CI = mean ± 1.96*σ
+        Therefore: σ = (ci_upper - ci_lower) / (2 * 1.96)
+        Variance = σ²
+        """
+        # Ensure CI contains the mean score
+        score_10_scale = self.mean * 10
+        if not (self.ci_lower <= score_10_scale <= self.ci_upper):
+            # Adjust CI to contain the score
+            self.ci_lower = min(self.ci_lower, score_10_scale)
+            self.ci_upper = max(self.ci_upper, score_10_scale)
+
+        # Calculate variance from CI width
+        ci_range = self.ci_upper - self.ci_lower
+        sd_10_scale = ci_range / 3.92  # 2 * 1.96 = 3.92
+        sd_01_scale = sd_10_scale / 10  # Convert to 0-1 scale
+        self.variance = sd_01_scale**2
+
+        return self
 
 
 class JudgeEvaluation(JudgeScore):

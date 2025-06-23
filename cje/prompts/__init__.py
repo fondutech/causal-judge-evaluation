@@ -15,6 +15,7 @@ from .manager import (
     TemplateType,
 )
 from .unified_templates import UNIFIED_TEMPLATES, TEMPLATE_CATEGORIES
+from .judge_templates import JUDGE_TEMPLATES
 from .tuning import tune_judge_prompt
 
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     "TemplateType",
     "UNIFIED_TEMPLATES",
     "TEMPLATE_CATEGORIES",
+    "JUDGE_TEMPLATES",
     # Tuning utilities
     "tune_judge_prompt",
 ]

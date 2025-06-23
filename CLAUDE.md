@@ -79,6 +79,27 @@ cje run --cfg-path configs --cfg-name arena_test  # Run experiment
 
 **Provider Support**: Fireworks and Together support full teacher forcing; OpenAI/Anthropic are judge-only.
 
+## Arena 10K Oracle Experiment Learnings (December 2024)
+
+**MTurk Human Labels Failed Spectacularly**:
+- 2,473 labels collected with 38% failure rate (task expiration)
+- All policies received similar ratings (~5.5/10) despite huge quality differences
+- `pi_bad` (intentionally unhelpful) got same scores as helpful responses
+- Workers appear to have rushed through without reading responses
+
+**Key Lesson**: Human labels are expensive ($440), slow, AND unreliable. This validates CJE's entire value proposition.
+
+**Solution**: Use `cje.oracle_labeling` module with OpenAI/Anthropic judges:
+```python
+from cje.oracle_labeling import add_oracle_labels
+rows_with_oracle = add_oracle_labels(rows, provider="openai", model_name="gpt-4o")
+```
+
+**Oracle Implementation**:
+- Use `scripts/05b_generate_oracle_labels_cje.py` for consistent oracle generation
+- Built-in retry logic, proper error handling, and judge templates
+- Cost: ~$20-40 for 4000 labels (vs $440 for worse MTurk labels)
+
 ## What NOT to Reference
 
 These were removed or never implemented:

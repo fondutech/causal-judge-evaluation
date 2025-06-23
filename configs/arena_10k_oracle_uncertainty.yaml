@@ -1,0 +1,22 @@
+# Configuration for Arena 10K Oracle Experiment with Uncertainty
+# This variant uses confidence interval based uncertainty estimates
+
+# Inherit from base configuration
+defaults:
+  - arena_10k_oracle
+
+# Override experiment name
+experiment:
+  name: "arena_10k_oracle_uncertainty"
+  description: "Evaluating policies with uncertainty-aware judge scores"
+  output_dir: "outputs/arena_10k_oracle_uncertainty"
+
+# Override data path to use uncertainty scores
+data:
+  path: "experiments/arena_10k_oracle/data/p0_scored_uncertainty.jsonl"
+
+# Override judge configuration for uncertainty
+judge:
+  template: "confidence_interval"
+  uncertainty_method: "confidence_interval"
+  temperature: 0.0  # Still 0 for consistency

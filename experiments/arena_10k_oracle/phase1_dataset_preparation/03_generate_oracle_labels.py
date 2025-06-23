@@ -122,7 +122,7 @@ def load_validation_data() -> List[Dict[str, Any]]:
             )
 
     # Count by policy
-    policy_counts = {}
+    policy_counts: dict[str, int] = {}
     for row in rows:
         policy = row["policy"]
         policy_counts[policy] = policy_counts.get(policy, 0) + 1
@@ -326,7 +326,7 @@ def analyze_results_by_policy(rows_with_oracle: List[Dict[str, Any]]) -> None:
                 console.print(f"  Range: [{min(scores):.2f}, {max(scores):.2f}]")
 
 
-def main():
+def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -468,8 +468,6 @@ Example usage:
             temperature=args.temperature,
             max_tokens=16,
             score_field="y_true",
-            checkpoint_dir=args.checkpoint_dir,
-            verbose=args.verbose,
         )
 
         # Save results
