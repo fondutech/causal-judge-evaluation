@@ -458,6 +458,16 @@ def main() -> None:
     )
 
     try:
+        # Check for required API key
+        if not os.environ.get("FIREWORKS_API_KEY"):
+            console.print(
+                "\n❌ [red]Error: FIREWORKS_API_KEY environment variable not set![/red]"
+            )
+            console.print(
+                "   Please set it with: export FIREWORKS_API_KEY='your-api-key'"
+            )
+            sys.exit(1)
+
         # Load all prompts
         all_prompts = load_prompts(args.prompts)
         console.print(f"📄 Loaded {len(all_prompts):,} prompts")
@@ -610,6 +620,9 @@ def main() -> None:
                             result = future.result()
                             results.append(result)
                         except Exception as e:
+                            console.print(
+                                f"\n❌ [red]Error in {policy_name}:[/red] {str(e)}"
+                            )
                             results.append(
                                 {
                                     "policy": policy_name,
@@ -657,8 +670,11 @@ def main() -> None:
                 else:
                     status_icon = "❓"
 
+                error_msg = ""
+                if status == "failed" and "error" in result:
+                    error_msg = f"\n      Error: {result['error'][:100]}..."
                 console.print(
-                    f"   {status_icon} {result['policy']}: {result.get('total', 0):,} total ({result.get('new', 0):,} new) - {status}"
+                    f"   {status_icon} {result['policy']}: {result.get('total', 0):,} total ({result.get('new', 0):,} new) - {status}{error_msg}"
                 )
 
             console.print(f"\n📊 Overall statistics:")
