@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Step 2b: Generate target policy responses for ground truth validation.
+Step 2b: Generate target policy responses for all prompts.
 
-This script generates responses from target policies (π_cot, π_bigger_model, etc.)
-for human labeling. These responses establish the ground truth that CJE aims to predict.
+This script generates responses from target policies (π_cot, π_bigger_model, π_bad)
+for all 10,000 prompts. We'll later sample from these for oracle labeling.
 
-Note: No teacher forcing needed - we only need the response text for human evaluation.
+Note: No teacher forcing needed - we only need the response text for evaluation.
 
 Usage:
-    python 02b_generate_target_ground_truth.py --prompts ../data/arena_prompts_10k.jsonl --output ../data/target_ground_truth.jsonl
+    python 02b_generate_target_responses.py --prompts ../data/arena_prompts_10k.jsonl --output ../data/target_responses.jsonl
 """
 
 import argparse
@@ -188,7 +188,7 @@ def generate_target_responses(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Generate target policy responses for ground truth validation"
+        description="Generate target policy responses for all prompts"
     )
 
     parser.add_argument(
@@ -201,37 +201,25 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=str,
-        default="../data/target_ground_truth.jsonl",
+        default="../data/target_responses.jsonl",
         help="Output file for target policy responses",
-    )
-
-    parser.add_argument(
-        "--samples",
-        type=int,
-        default=500,
-        help="Number of prompts to sample for ground truth",
     )
 
     parser.add_argument(
         "--batch-size", type=int, default=16, help="Batch size for generation"
     )
 
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for sampling")
-
     args = parser.parse_args()
 
     console.print(
-        "🎯 [bold blue]Arena 10K Experiment - Step 2b: Generate Target Ground Truth[/bold blue]"
+        "🎯 [bold blue]Arena 10K Experiment - Step 2b: Generate Target Policy Responses[/bold blue]"
     )
-    console.print(f"📊 Samples: {args.samples}")
+    console.print(f"📊 Generating responses for ALL prompts")
     console.print(f"🔢 Batch size: {args.batch_size}")
 
     try:
-        # Load and sample prompts
+        # Load all prompts (no sampling)
         all_prompts = load_prompts(args.prompts)
-        ground_truth_prompts = sample_ground_truth_prompts(
-            all_prompts, args.samples, args.seed
-        )
 
         # Get target policies
         target_policies = create_target_policies()
@@ -249,7 +237,7 @@ def main() -> None:
         all_results = []
         for policy_name, policy_config in target_policies.items():
             policy_results = generate_target_responses(
-                ground_truth_prompts,
+                all_prompts,  # Use all prompts instead of sampled
                 policy_name,
                 policy_config,
                 args.batch_size,
@@ -268,10 +256,10 @@ def main() -> None:
         total_responses = len(checkpoint_manager.load_checkpoint())
         console.print(f"   • Total responses: {total_responses:,}")
         console.print(f"   • Policies: {len(target_policies)}")
-        console.print(f"   • Prompts per policy: {args.samples}")
+        console.print(f"   • Prompts per policy: {len(all_prompts)}")
         console.print(f"   • Output: {args.output}")
 
-        # Cost estimate
+        # Cost estimate (30,000 total responses = 10,000 prompts × 3 policies)
         total_tokens_est = len(all_results) * 100  # rough estimate with 512 max tokens
         cost_est = total_tokens_est * 0.0000002  # Fireworks pricing
         console.print(f"   • Estimated cost: ${cost_est:.2f}")

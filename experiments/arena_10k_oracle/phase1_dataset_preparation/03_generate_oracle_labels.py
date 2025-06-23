@@ -92,9 +92,15 @@ def load_calibration_data(
     return sampled_rows, total_count
 
 
-def load_validation_data() -> List[Dict[str, Any]]:
+def load_validation_data(
+    fraction: float = 0.05, seed: int = 42
+) -> List[Dict[str, Any]]:
     """
-    Load target policy responses for validation oracle labels.
+    Load and sample target policy responses for validation oracle labels.
+
+    Args:
+        fraction: Fraction of target responses to label (default 5% = 500 prompts × 3 policies = 1,500 labels)
+        seed: Random seed for reproducible sampling
 
     Returns:
         List of rows for labeling
@@ -102,13 +108,13 @@ def load_validation_data() -> List[Dict[str, Any]]:
     console.print(
         f"\n📊 [bold]Loading Validation Data (target policy responses):[/bold]"
     )
-    console.print(f"   Source: ../data/target_ground_truth.jsonl")
+    console.print(f"   Source: ../data/target_responses.jsonl")
 
-    rows = []
-    with open("../data/target_ground_truth.jsonl", "r") as f:
+    all_rows = []
+    with open("../data/target_responses.jsonl", "r") as f:
         for line in f:
             data = json.loads(line)
-            rows.append(
+            all_rows.append(
                 {
                     "context": data["prompt"],
                     "response": data["response"],
@@ -121,19 +127,33 @@ def load_validation_data() -> List[Dict[str, Any]]:
                 }
             )
 
+    # Sample by prompt_id to ensure balanced policies
+    prompt_ids = list(set(row["prompt_id"] for row in all_rows))
+    rng = random.Random(seed)
+    sample_size = int(len(prompt_ids) * fraction)
+    sampled_prompt_ids = set(rng.sample(prompt_ids, sample_size))
+
+    # Get all responses for sampled prompts
+    sampled_rows = [row for row in all_rows if row["prompt_id"] in sampled_prompt_ids]
+
     # Count by policy
     policy_counts: dict[str, int] = {}
-    for row in rows:
+    for row in sampled_rows:
         policy = row["policy"]
         policy_counts[policy] = policy_counts.get(policy, 0) + 1
 
-    console.print(f"   Total validation responses: {len(rows)}")
+    console.print(
+        f"   Total target responses: {len(all_rows)} (30,000 = 10,000 prompts × 3 policies)"
+    )
+    console.print(
+        f"   Sampling {fraction:.0%} of prompts: {sample_size} prompts × 3 policies = {len(sampled_rows)} labels"
+    )
     console.print(f"   Purpose: Validate CJE predictions against ground truth")
     console.print(f"   Policy breakdown:")
     for policy, count in sorted(policy_counts.items()):
         console.print(f"     {policy}: {count}")
 
-    return rows
+    return sampled_rows
 
 
 def save_oracle_results(
@@ -363,8 +383,8 @@ Example usage:
     parser.add_argument(
         "--validation-fraction",
         type=float,
-        default=1.0,
-        help="Fraction of validation responses to label (default: 1.0 = all)",
+        default=0.05,
+        help="Fraction of prompts to sample for validation (default: 0.05 = 500 prompts × 3 policies = 1,500 labels)",
     )
 
     parser.add_argument(
@@ -428,16 +448,9 @@ Example usage:
         calibration_rows, total_pi0 = load_calibration_data(
             fraction=args.calibration_fraction, seed=args.seed
         )
-        validation_rows = load_validation_data()
-
-        # Sample validation if requested
-        if args.validation_fraction < 1.0:
-            rng = random.Random(args.seed)
-            sample_size = int(len(validation_rows) * args.validation_fraction)
-            validation_rows = rng.sample(validation_rows, sample_size)
-            console.print(
-                f"\n   Sampled {sample_size} validation items ({args.validation_fraction:.1%})"
-            )
+        validation_rows = load_validation_data(
+            fraction=args.validation_fraction, seed=args.seed
+        )
 
         # Combine all rows for oracle labeling
         all_rows = calibration_rows + validation_rows

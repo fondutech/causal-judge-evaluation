@@ -44,7 +44,7 @@ def create_dataset_summary() -> Dict[str, Any]:
     required_files = {
         "Prompts": "../data/arena_prompts_10k.jsonl",
         "π₀ responses": "../data/p0_replies.jsonl",
-        "Target responses": "../data/target_ground_truth.jsonl",
+        "Target responses": "../data/target_responses.jsonl",
         "π₀ deterministic scores": "../data/p0_scored_deterministic.jsonl",
         "π₀ uncertainty scores": "../data/p0_scored_uncertainty.jsonl",
         "Target deterministic scores": "../data/targets_scored_deterministic.jsonl",
@@ -103,7 +103,7 @@ def create_dataset_summary() -> Dict[str, Any]:
     console.print(f"   - Uncertainty scores: {len(unc_scores)}")
 
     # 3. Target Policy Responses and Scores
-    target_responses = load_jsonl(Path("../data/target_ground_truth.jsonl"))
+    target_responses = load_jsonl(Path("../data/target_responses.jsonl"))
     target_det_scores = load_jsonl(Path("../data/targets_scored_deterministic.jsonl"))
     target_unc_scores = load_jsonl(Path("../data/targets_scored_uncertainty.jsonl"))
 

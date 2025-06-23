@@ -38,7 +38,7 @@ python 02a_generate_p0_responses.py
 
 # Terminal 2: Generate target policy responses  
 python 02b_generate_target_responses.py
-# Output: ../data/target_ground_truth.jsonl (1,500 responses: 500 prompts × 3 policies)
+# Output: ../data/target_responses.jsonl (30,000 responses: 10,000 prompts × 3 policies)
 ```
 
 ### Step 3: Generate Oracle Labels
@@ -99,15 +99,15 @@ Most scripts support automatic checkpointing and can resume if interrupted:
 data/
 ├── arena_prompts_10k.jsonl              # 10,000 prompts
 ├── p0_replies.jsonl                     # π₀ responses (10,000)
-├── target_ground_truth.jsonl            # Target policy responses (1,500 total)
-├── p0_scored_deterministic.jsonl        # π₀ deterministic scores
-├── p0_scored_uncertainty.jsonl          # π₀ uncertainty scores
-├── targets_scored_deterministic.jsonl   # Target deterministic scores
-├── targets_scored_uncertainty.jsonl     # Target uncertainty scores
+├── target_responses.jsonl               # Target policy responses (30,000 = 10k × 3)
+├── p0_scored_deterministic.jsonl        # π₀ deterministic scores (10,000)
+├── p0_scored_uncertainty.jsonl          # π₀ uncertainty scores (10,000)
+├── targets_scored_deterministic.jsonl   # Target deterministic scores (30,000)
+├── targets_scored_uncertainty.jsonl     # Target uncertainty scores (30,000)
 ├── dataset_info.json                    # Dataset summary
 └── labeling/
-    ├── oracle_labels_calibration_detailed.jsonl  # 2,500 labels
-    ├── oracle_labels_validation_detailed.jsonl   # 1,500 labels
+    ├── oracle_labels_calibration_detailed.jsonl  # 2,500 labels (25% of π₀)
+    ├── oracle_labels_validation_detailed.jsonl   # 1,500 labels (5% of targets)
     └── oracle_labels.csv                        # Combined CSV format
 ```
 
@@ -115,9 +115,9 @@ data/
 
 - **Total prompts**: 10,000
 - **π₀ responses**: 10,000 (all scored with both judge types)
-- **Target responses**: 1,500 total (500 × 3 policies, all scored with both judge types)
-- **Calibration set**: 2,500 oracle-labeled π₀ responses
-- **Validation set**: 1,500 oracle-labeled target policy responses
+- **Target responses**: 30,000 total (10,000 × 3 policies, all scored with both judge types)
+- **Calibration set**: 2,500 oracle-labeled π₀ responses (25% sample)
+- **Validation set**: 1,500 oracle-labeled target policy responses (5% sample = 500 prompts × 3)
 - **Judge scoring methods**: 2 (deterministic, uncertainty)
 - **Total oracle labels**: 4,000
 
