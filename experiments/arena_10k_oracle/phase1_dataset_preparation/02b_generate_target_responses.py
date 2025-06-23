@@ -19,16 +19,32 @@ import argparse
 import json
 from pathlib import Path
 import sys
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
+from multiprocessing import Queue, Process
+import threading
+from rich.progress import (
+    Progress,
+    TaskID,
+    SpinnerColumn,
+    TextColumn,
+    BarColumn,
+    MofNCompleteColumn,
+    TimeElapsedColumn,
+)
+from rich.live import Live
+from rich.table import Table
+from rich.layout import Layout
+from rich.panel import Panel
+from rich.console import Console
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
 from cje.loggers.api_policy import APIPolicyRunner
-from cje.utils.progress import console, track
+from cje.utils.progress import console
 from cje.utils.checkpointing import CheckpointManager
 
 
@@ -77,25 +93,76 @@ Never be harmful or offensive, just unhelpful.""",
     }
 
 
-def generate_single_policy(
+def progress_monitor(
+    status_queue: "multiprocessing.queues.Queue[Any]",
+    total_prompts: int,
+    policies: List[str],
+) -> None:
+    """Monitor progress from all worker processes and display unified progress bars."""
+
+    # Initialize progress tracking
+    policy_progress = {
+        policy: {"completed": 0, "total": total_prompts} for policy in policies
+    }
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        console=console,
+        refresh_per_second=2,
+    ) as progress:
+        # Create tasks for each policy
+        tasks = {}
+        for policy in policies:
+            tasks[policy] = progress.add_task(
+                f"[cyan]{policy}[/cyan]", total=total_prompts
+            )
+
+        # Monitor status updates
+        active_policies = set(policies)
+        while active_policies:
+            try:
+                update = status_queue.get(timeout=1.0)
+
+                if update["type"] == "progress":
+                    policy = update["policy"]
+                    completed = update["completed"]
+                    policy_progress[policy]["completed"] = completed
+                    progress.update(tasks[policy], completed=completed)
+
+                elif update["type"] == "complete":
+                    policy = update["policy"]
+                    active_policies.discard(policy)
+                    progress.update(
+                        tasks[policy],
+                        completed=policy_progress[policy]["total"],
+                        description=f"[green]✓ {policy}[/green]",
+                    )
+
+                elif update["type"] == "error":
+                    policy = update["policy"]
+                    active_policies.discard(policy)
+                    progress.update(
+                        tasks[policy], description=f"[red]✗ {policy} (failed)[/red]"
+                    )
+
+            except:
+                # Timeout is fine, just check if we should continue
+                pass
+
+
+def generate_single_policy_with_progress(
     prompts: List[Dict[str, Any]],
     policy_name: str,
     policy_config: Dict[str, Any],
     batch_size: int,
     output_dir: str,
+    status_queue: Optional[Any] = None,
 ) -> Dict[str, Any]:
-    """Generate responses for a single target policy. Designed to run in a separate process."""
-
-    # Each process gets its own console to avoid conflicts
-    from rich.console import Console
-
-    proc_console = Console()
-
-    proc_console.print(
-        f"\n🎯 Starting {policy_name} generation ({policy_config['description']})"
-    )
-    proc_console.print(f"   Model: {policy_config['model_name']}")
-    proc_console.print(f"   Temperature: {policy_config['temperature']}")
+    """Generate responses for a single target policy with progress reporting."""
 
     # Policy-specific checkpoint file
     checkpoint_path = (
@@ -126,8 +193,27 @@ def generate_single_policy(
         p for p in prompts if p["prompt_id"] not in processed_prompt_ids
     ]
 
+    # Report initial status
+    if status_queue:
+        status_queue.put(
+            {
+                "type": "progress",
+                "policy": policy_name,
+                "completed": len(existing_items),
+                "total": len(prompts),
+            }
+        )
+
     if not unprocessed_prompts:
-        proc_console.print(f"✅ All {policy_name} responses already generated")
+        if status_queue:
+            status_queue.put(
+                {
+                    "type": "complete",
+                    "policy": policy_name,
+                    "total": len(existing_items),
+                    "new": 0,
+                }
+            )
         return {
             "policy": policy_name,
             "total": len(existing_items),
@@ -135,76 +221,98 @@ def generate_single_policy(
             "status": "completed",
         }
 
-    proc_console.print(
-        f"📊 {policy_name}: Processing {len(unprocessed_prompts)} remaining prompts"
-    )
-
     # Process in batches
     start_time = time.time()
     new_responses = 0
 
-    for i in range(0, len(unprocessed_prompts), batch_size):
-        batch = unprocessed_prompts[i : i + batch_size]
-        batch_contexts = [item["prompt"] for item in batch]
+    try:
+        for i in range(0, len(unprocessed_prompts), batch_size):
+            batch = unprocessed_prompts[i : i + batch_size]
+            batch_contexts = [item["prompt"] for item in batch]
 
-        try:
-            # Generate responses (no logprobs needed)
-            generations = runner.generate_with_logp(
-                batch_contexts, return_token_logprobs=False
-            )
-
-            # Format and save results
-            for prompt_item, (response, _) in zip(batch, generations):
-                result = {
-                    "prompt_id": prompt_item["prompt_id"],
-                    "prompt": prompt_item["prompt"],
-                    "metadata": prompt_item.get("metadata", {}),
-                    "policy": policy_name,
-                    "response": response,
-                    "model_name": policy_config["model_name"],
-                    "temperature": policy_config["temperature"],
-                    "description": policy_config["description"],
-                }
-
-                # Mark as processed and save
-                checkpoint_manager.mark_processed(result)
-                new_responses += 1
-
-            # Save checkpoint after each batch
-            checkpoint_manager.save_checkpoint()
-
-            # Progress update
-            if (i // batch_size + 1) % 10 == 0:
-                proc_console.print(
-                    f"   {policy_name}: Batch {i//batch_size + 1}/{(len(unprocessed_prompts) + batch_size - 1)//batch_size}"
+            try:
+                # Generate responses (no logprobs needed)
+                generations = runner.generate_with_logp(
+                    batch_contexts, return_token_logprobs=False
                 )
 
-        except Exception as e:
-            proc_console.print(
-                f"❌ {policy_name}: Batch {i//batch_size + 1} failed: {e}"
+                # Format and save results
+                for prompt_item, (response, _) in zip(batch, generations):
+                    result = {
+                        "prompt_id": prompt_item["prompt_id"],
+                        "prompt": prompt_item["prompt"],
+                        "metadata": prompt_item.get("metadata", {}),
+                        "policy": policy_name,
+                        "response": response,
+                        "model_name": policy_config["model_name"],
+                        "temperature": policy_config["temperature"],
+                        "description": policy_config["description"],
+                    }
+
+                    # Mark as processed and save
+                    checkpoint_manager.mark_processed(result)
+                    new_responses += 1
+
+                # Save checkpoint after each batch
+                checkpoint_manager.save_checkpoint()
+
+                # Report progress
+                if status_queue:
+                    status_queue.put(
+                        {
+                            "type": "progress",
+                            "policy": policy_name,
+                            "completed": len(existing_items) + new_responses,
+                            "total": len(prompts),
+                        }
+                    )
+
+            except Exception as e:
+                # Log error but continue
+                if status_queue:
+                    status_queue.put(
+                        {
+                            "type": "batch_error",
+                            "policy": policy_name,
+                            "batch": i // batch_size + 1,
+                            "error": str(e),
+                        }
+                    )
+                continue
+
+        # Calculate statistics
+        total_responses = len(checkpoint_manager.load_checkpoint())
+        elapsed_time = time.time() - start_time
+
+        if status_queue:
+            status_queue.put(
+                {
+                    "type": "complete",
+                    "policy": policy_name,
+                    "total": total_responses,
+                    "new": new_responses,
+                    "elapsed_time": elapsed_time,
+                }
             )
-            proc_console.print(f"   Continuing with next batch...")
-            continue
 
-    # Calculate statistics
-    total_responses = len(checkpoint_manager.load_checkpoint())
-    elapsed_time = time.time() - start_time
+        return {
+            "policy": policy_name,
+            "total": total_responses,
+            "new": new_responses,
+            "elapsed_time": elapsed_time,
+            "status": "completed",
+        }
 
-    proc_console.print(
-        f"✅ {policy_name}: Generated {new_responses} new responses (total: {total_responses})"
-    )
-    if new_responses > 0:
-        proc_console.print(
-            f"⏱️  {policy_name}: {elapsed_time/60:.1f} minutes ({elapsed_time/new_responses:.1f}s per response)"
-        )
-
-    return {
-        "policy": policy_name,
-        "total": total_responses,
-        "new": new_responses,
-        "elapsed_time": elapsed_time,
-        "status": "completed",
-    }
+    except Exception as e:
+        if status_queue:
+            status_queue.put({"type": "error", "policy": policy_name, "error": str(e)})
+        return {
+            "policy": policy_name,
+            "total": len(existing_items),
+            "new": new_responses,
+            "status": "failed",
+            "error": str(e),
+        }
 
 
 def merge_policy_checkpoints(output_dir: Path, output_file: Path) -> None:
@@ -318,22 +426,85 @@ def main() -> None:
         start_time = time.time()
 
         if args.sequential:
-            # Sequential execution
+            # Sequential execution with progress bars
+            console.print(f"\n📋 Running policies sequentially...")
             results = []
+
             for policy_name, policy_config in target_policies.items():
-                result = generate_single_policy(
-                    all_prompts,
-                    policy_name,
-                    policy_config,
-                    args.batch_size,
-                    str(output_dir),
+                console.print(
+                    f"\n🎯 Starting {policy_name} ({policy_config['description']})"
                 )
-                results.append(result)
+
+                # Create a simple progress bar for sequential mode
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    MofNCompleteColumn(),
+                    TimeElapsedColumn(),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task(
+                        f"[cyan]{policy_name}[/cyan]", total=len(all_prompts)
+                    )
+
+                    # Create a queue for progress updates
+                    import queue
+
+                    status_queue: queue.Queue[Any] = queue.Queue()
+
+                    # Run in a thread so we can update progress
+                    from threading import Thread
+
+                    result_container: List[Dict[str, Any]] = []
+
+                    def run_policy() -> None:
+                        result = generate_single_policy_with_progress(
+                            all_prompts,
+                            policy_name,
+                            policy_config,
+                            args.batch_size,
+                            str(output_dir),
+                            status_queue,
+                        )
+                        result_container.append(result)
+
+                    thread = Thread(target=run_policy)
+                    thread.start()
+
+                    # Monitor progress
+                    while thread.is_alive():
+                        try:
+                            update = status_queue.get(timeout=0.1)
+                            if update["type"] == "progress":
+                                progress.update(task, completed=update["completed"])
+                        except:
+                            pass
+
+                    thread.join()
+                    progress.update(task, completed=len(all_prompts))
+
+                    if result_container:
+                        results.append(result_container[0])
         else:
-            # Parallel execution
+            # Parallel execution with unified progress display
             console.print(
                 f"\n🚀 Starting parallel generation with {len(target_policies)} policies..."
             )
+            console.print(
+                f"📊 Progress bars will show real-time status for each policy:\n"
+            )
+
+            # Create a queue for progress updates
+            manager = multiprocessing.Manager()
+            status_queue = manager.Queue()
+
+            # Start progress monitor in a separate thread
+            monitor_thread = threading.Thread(
+                target=progress_monitor,
+                args=(status_queue, len(all_prompts), list(target_policies.keys())),
+            )
+            monitor_thread.start()
 
             with ProcessPoolExecutor(
                 max_workers=min(args.max_workers, len(target_policies))
@@ -341,12 +512,13 @@ def main() -> None:
                 # Submit all tasks
                 future_to_policy = {
                     executor.submit(
-                        generate_single_policy,
+                        generate_single_policy_with_progress,
                         all_prompts,
                         policy_name,
                         policy_config,
                         args.batch_size,
                         str(output_dir),
+                        status_queue,
                     ): policy_name
                     for policy_name, policy_config in target_policies.items()
                 }
@@ -359,7 +531,6 @@ def main() -> None:
                         result = future.result()
                         results.append(result)
                     except Exception as e:
-                        console.print(f"❌ {policy_name} failed: {e}")
                         results.append(
                             {
                                 "policy": policy_name,
@@ -369,6 +540,9 @@ def main() -> None:
                                 "error": str(e),
                             }
                         )
+
+            # Wait for monitor thread to finish
+            monitor_thread.join(timeout=5.0)
 
         total_time = time.time() - start_time
 
