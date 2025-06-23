@@ -541,7 +541,7 @@ def run(
                 # Add scores to rows using unified storage format
                 judge_rows = []
                 for row, score in zip(contexts_rows, scores):
-                    # Update row with structured score (handles backward compatibility)
+                    # Update row with structured score
                     new_row = update_row_with_score(row, score, "score_raw")
                     judge_rows.append(new_row)
 
@@ -578,7 +578,7 @@ def run(
                         f"std: {np.std(variances):.4f}, max: {np.max(variances):.4f}"
                     )
 
-        # Save to legacy format for backward compatibility
+        # Save judge scores for pipeline
         judge_json = work / f"{cfg.judge.template}_scores.jsonl"
         judge_json.write_text("\n".join(json.dumps(r) for r in judge_rows))
 
@@ -1179,16 +1179,6 @@ def run(
             print(
                 f"[green]✅ Target log probabilities computed and cached: {target_logprobs_hash}[/green]"
             )
-
-        # Save updated rows with target policy log probabilities to legacy format for backward compatibility
-        target_logp_file = work / f"{source_json.stem}_with_target_logp.jsonl"
-        with open(target_logp_file, "w") as f:
-            for row in rows:
-                f.write(json.dumps(row) + "\n")
-        logger.info(f"Target policy log probabilities saved to: {target_logp_file}")
-
-        # Update source to point to the file with target log probabilities
-        source_json = target_logp_file
 
         # Create the sampler (either from cached data or fresh computation)
         if cached_target_logprobs:

@@ -99,8 +99,3 @@ Explanation: [Brief reason]""",
         "description": "Compare two responses (for A/B testing)",
     },
 }
-
-# Aliases for backward compatibility
-JUDGE_TEMPLATES["deterministic_judge"] = JUDGE_TEMPLATES["deterministic"]
-JUDGE_TEMPLATES["ci_judge"] = JUDGE_TEMPLATES["confidence_interval"]
-JUDGE_TEMPLATES["simple_judge"] = JUDGE_TEMPLATES["simple"]
