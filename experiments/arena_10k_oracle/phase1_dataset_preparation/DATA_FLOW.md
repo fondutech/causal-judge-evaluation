@@ -13,9 +13,10 @@ This document describes the data flow through Phase 1 of the Arena 10K Oracle ex
 - **Input**: `../data/arena_prompts_10k.jsonl`
 - **Output**: `../data/p0_replies.jsonl` (10,000 responses with log probabilities)
 
-### Step 2b: Generate Target Responses (02b_generate_target_responses.py or parallel version)
+### Step 2b: Generate Target Responses (02b_generate_target_responses.py)
 - **Input**: `../data/arena_prompts_10k.jsonl`
 - **Output**: `../data/target_responses.jsonl` (30,000 responses = 10k × 3 policies)
+- **Note**: Runs all 3 target policies in parallel by default
 
 ### Step 3: Generate Oracle Labels (03_generate_oracle_labels.py)
 - **Input**: 
@@ -49,7 +50,7 @@ This document describes the data flow through Phase 1 of the Arena 10K Oracle ex
 ## Parallelization Opportunities
 
 1. **Steps 2a & 2b**: Can run in parallel (different data)
-2. **Step 2b policies**: Can run each policy in parallel using `02b_generate_target_responses_parallel.py`
+2. **Step 2b**: Automatically runs all 3 policies in parallel (built-in)
 3. **Steps 4a, 4b, 4c, 4d**: Can all run in parallel (independent scoring tasks)
 
 ## Key Design Decisions

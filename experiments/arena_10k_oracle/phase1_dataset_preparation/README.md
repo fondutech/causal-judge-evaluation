@@ -32,39 +32,20 @@ python 01_prepare_data.py
 
 ### Step 2: Generate Responses (Can Run in Parallel)
 
-**Option A: Run π₀ and targets sequentially**
 ```bash
 # Terminal 1: Generate π₀ (logging policy) responses
 python 02a_generate_p0_responses.py
 # Output: ../data/p0_replies.jsonl (10,000 responses)
 
-# Terminal 2: Generate target policy responses  
+# Terminal 2: Generate target policy responses (runs all 3 policies in parallel by default)
 python 02b_generate_target_responses.py
 # Output: ../data/target_responses.jsonl (30,000 responses: 10,000 prompts × 3 policies)
-```
 
-**Option B: Run all 4 policies in parallel (fastest)**
-```bash
-# Terminal 1: π₀ responses
-python 02a_generate_p0_responses.py
+# Optional: Run target policies sequentially instead
+python 02b_generate_target_responses.py --sequential
 
-# Terminal 2: π_cot responses
-python 02b_generate_target_responses_parallel.py --policy pi_cot
-
-# Terminal 3: π_bigger_model responses
-python 02b_generate_target_responses_parallel.py --policy pi_bigger_model
-
-# Terminal 4: π_bad responses
-python 02b_generate_target_responses_parallel.py --policy pi_bad
-
-# After all complete, merge target outputs:
-python 02b_generate_target_responses_parallel.py --policy all
-```
-
-**Option C: Use the convenience script**
-```bash
-# Run all target policies in parallel automatically
-./run_target_policies_parallel.sh
+# Optional: Run only specific policies
+python 02b_generate_target_responses.py --policies pi_cot pi_bigger_model
 ```
 
 ### Step 3: Generate Oracle Labels
