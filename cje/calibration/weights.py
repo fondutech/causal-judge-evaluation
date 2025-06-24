@@ -1,8 +1,8 @@
 """
-Isotonic calibration for importance weights and outcome models in CJE.
+Weight calibration for importance sampling estimators.
 
-This module provides monotonic calibration methods to replace ad-hoc normalization
-with principled statistical calibration that ensures proper expectations while
+This module provides isotonic calibration methods for importance weights
+and outcome models, ensuring proper statistical calibration while
 maintaining monotonicity constraints.
 """
 

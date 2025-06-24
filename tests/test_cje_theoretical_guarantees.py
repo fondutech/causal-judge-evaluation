@@ -19,8 +19,7 @@ from sklearn.isotonic import IsotonicRegression
 from sklearn.model_selection import KFold
 import warnings
 
-from cje.estimators.ips import MultiIPSEstimator
-from cje.estimators.drcpo import MultiDRCPOEstimator
+from cje.estimators import MultiIPSEstimator, MultiDRCPOEstimator
 from cje.estimators.results import EstimationResult
 from cje.loggers.multi_target_sampler import MultiTargetSampler
 from cje.loggers.precomputed_sampler import PrecomputedMultiTargetSampler
@@ -561,14 +560,15 @@ class TestCJEImplementationCorrectness:
         estimator.fit(logs)
         result = estimator.estimate()
 
-        # EIF components should have mean equal to the estimate
+        # EIF components should have mean zero (they are centered)
         if hasattr(result, "eif_components") and result.eif_components is not None:
             eif_means = np.mean(result.eif_components, axis=0)
             np.testing.assert_allclose(
                 eif_means,
-                result.v_hat,
-                rtol=1e-10,
-                err_msg="EIF components should have mean equal to estimate",
+                np.zeros_like(result.v_hat),
+                rtol=1e-5,
+                atol=1e-5,
+                err_msg="EIF components should have mean zero (centered)",
             )
 
 

@@ -14,8 +14,7 @@ from typing import List, Dict, Any, Tuple, Generator
 from hypothesis import given, strategies as st, settings, assume, HealthCheck
 from hypothesis.extra.numpy import arrays
 
-from cje.estimators.drcpo import MultiDRCPOEstimator
-from cje.estimators import MultiIPSEstimator
+from cje.estimators import MultiDRCPOEstimator, MultiIPSEstimator
 from cje.loggers.multi_target_sampler import MultiTargetSampler
 from cje.testing import MockPolicyRunner
 
@@ -174,7 +173,7 @@ class TestFundamentalProperties:
 
         estimator = MultiDRCPOEstimator(
             sampler=sampler,
-            k=1,
+            k=2,  # Minimum k=2 for cross-fitting
             seed=42,
             calibrate_weights=False,
             work_dir=temp_work_dir,
@@ -225,7 +224,7 @@ class TestFundamentalProperties:
 
         estimator = MultiDRCPOEstimator(
             sampler=sampler,
-            k=1,
+            k=2,  # Minimum k=2 for cross-fitting
             seed=42,
             calibrate_weights=False,
             work_dir=temp_work_dir,
@@ -291,7 +290,7 @@ class TestErrorHandling:
         runners = [MockPolicyRunner("policy_0")]
         sampler = MultiTargetSampler(runners)
         estimator = MultiDRCPOEstimator(
-            sampler=sampler, k=1, seed=42, work_dir=temp_work_dir
+            sampler=sampler, k=2, seed=42, work_dir=temp_work_dir
         )
 
         with pytest.raises(ValueError, match="empty logs"):
@@ -310,7 +309,7 @@ class TestErrorHandling:
         runners = [MockPolicyRunner("policy_0")]
         sampler = MultiTargetSampler(runners)
         estimator = MultiDRCPOEstimator(
-            sampler=sampler, k=1, seed=42, work_dir=temp_work_dir
+            sampler=sampler, k=2, seed=42, work_dir=temp_work_dir
         )
 
         with pytest.raises(KeyError):

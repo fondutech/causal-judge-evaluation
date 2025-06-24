@@ -9,13 +9,32 @@ with no loss of unbiasedness, or increase to 5-10 for maximum variance reduction
 
 from __future__ import annotations
 from typing import Dict, Type, Any, cast
+
+# Base classes
 from .base import Estimator
-from .ips import MultiIPSEstimator, MultiSNIPSEstimator
-from .drcpo import MultiDRCPOEstimator
-from .mrdr import MultiMRDREstimator
+
+# IPS-only estimators (no outcome modeling)
+from .ips_only_estimators import (
+    IPS,
+    SNIPS,
+    CalibratedIPS,
+    MultiIPSEstimator,
+    MultiSNIPSEstimator,
+    CalibratedIPSEstimator,
+)
+
+# Doubly-robust estimators (with outcome modeling)
+from .doubly_robust_estimators import (
+    MultiDRCPOEstimator,
+    MultiMRDREstimator,
+    DRCPOEstimator,
+    MRDREstimator,
+)
+
+
+# Supporting modules
 from .featurizer import Featurizer, BasicFeaturizer, SentenceEmbeddingFeaturizer
 from . import auto_outcome
-from .trajectory_drcpo import MultiDRCPOMDPEstimator
 
 # For dynamic class loading
 import importlib
@@ -24,9 +43,9 @@ import importlib
 _ESTIMATORS: Dict[str, Type[Estimator[Any]]] = {
     "IPS": MultiIPSEstimator,
     "SNIPS": MultiSNIPSEstimator,
+    "CalibratedIPS": CalibratedIPSEstimator,
     "DRCPO": MultiDRCPOEstimator,
     "MRDR": MultiMRDREstimator,
-    "DRCPO_MDP": MultiDRCPOMDPEstimator,
 }
 
 
@@ -53,6 +72,7 @@ def get_estimator(name: str, **kwargs: Any) -> Estimator[Any]:
         name: Name of the estimator. Available options:
               - "IPS": Inverse Propensity Scoring
               - "SNIPS": Self-Normalized IPS
+              - "CalibratedIPS": IPS with propensity calibration and clipping
               - "DRCPO": Doubly-Robust Cross-Policy Optimization
               - "MRDR": Multi-Robust Doubly-Robust
         **kwargs: Additional arguments passed to the estimator constructor
@@ -79,15 +99,24 @@ def get_estimator(name: str, **kwargs: Any) -> Estimator[Any]:
 
 
 __all__ = [
+    # Base
     "Estimator",
     "get_estimator",
+    # IPS-only
+    "IPS",
+    "SNIPS",
+    "CalibratedIPS",
     "MultiIPSEstimator",
     "MultiSNIPSEstimator",
+    "CalibratedIPSEstimator",
+    # Doubly-robust
     "MultiDRCPOEstimator",
     "MultiMRDREstimator",
+    "DRCPOEstimator",
+    "MRDREstimator",
+    # Supporting
     "Featurizer",
     "BasicFeaturizer",
     "SentenceEmbeddingFeaturizer",
     "auto_outcome",
-    "MultiDRCPOMDPEstimator",
 ]

@@ -49,6 +49,13 @@ class BaseCrossFittedEstimator(Estimator[Dict[str, Any]]):
     ) -> None:
         super().__init__(verbose=verbose)
         self.sampler = sampler
+
+        # Enforce minimum k=2 for cross-fitting to avoid overfitting bias
+        if k < 2:
+            raise ValueError(
+                f"Cross-fitting requires k >= 2 to avoid overfitting bias. "
+                f"Got k={k}. Use k=5 (default) for standard cross-validation."
+            )
         self.k = k
         self.seed = seed
         self.outcome_model_cls = outcome_model_cls
@@ -135,14 +142,6 @@ class BaseCrossFittedEstimator(Estimator[Dict[str, Any]]):
         console.print(
             f"[bold blue]Running {self.k}-fold cross-validation...[/bold blue]"
         )
-
-        # Check for k=1 case
-        if self.k == 1:
-            warnings.warn(
-                "k=1 cross-validation uses same data for train/test. "
-                "Consider k>=5 for proper cross-fitting to avoid overfitting bias.",
-                RuntimeWarning,
-            )
 
         # Process folds
         with ProgressMonitor() as progress:

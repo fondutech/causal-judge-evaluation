@@ -17,8 +17,7 @@ from pathlib import Path
 import tempfile
 import json
 
-from cje.estimators.drcpo import MultiDRCPOEstimator
-from cje.estimators import MultiIPSEstimator
+from cje.estimators import MultiDRCPOEstimator, MultiIPSEstimator
 from cje.loggers.multi_target_sampler import MultiTargetSampler
 from cje.testing import MockPolicyRunner, MockJudge
 from cje.calibration import cross_fit_calibration
