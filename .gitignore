@@ -185,6 +185,7 @@ scripts/personal_notes.md
 get_api_keys.sh
 get_api_keys_simple.sh
 API_KEYS_README.md
+set_secrets.sh
 
 # IDE and editor files
 .idea/

@@ -230,6 +230,13 @@ class FireworksProvider(UnifiedOpenAICompatibleProvider):
     ENV_VAR = "FIREWORKS_API_KEY"
     DEFAULT_BASE_URL = "https://api.fireworks.ai/inference/v1"
 
+    def get_structured_output_params(self, method: str) -> Dict[str, Any]:
+        """Get Fireworks-specific parameters for structured output.
+
+        Fireworks doesn't support OpenAI's strict mode, so we disable it.
+        """
+        return {"strict": False}
+
     def get_structured_model(
         self,
         model_name: str,

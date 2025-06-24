@@ -12,6 +12,7 @@ from ..schemas import (
     JudgeScore,
     JudgeEvaluation,
     DetailedJudgeEvaluation,
+    JudgeScoreWithCI,
 )
 
 T = TypeVar("T", bound=BaseModel)
@@ -175,6 +176,7 @@ class UnifiedProviderStrategy(ABC):
             "JudgeScore": JudgeScore,
             "JudgeEvaluation": JudgeEvaluation,
             "DetailedJudgeEvaluation": DetailedJudgeEvaluation,
+            "JudgeScoreWithCI": JudgeScoreWithCI,
         }
         if schema_name not in schemas:
             raise ValueError(f"Unknown schema: {schema_name}")

@@ -44,19 +44,16 @@ Consider:
 - Clarity and coherence
 - Safety and appropriateness
 
-Provide your assessment as a JSON object with:
-- mean: Your best estimate score (as a fraction from 0 to 1, where 0={{ min_score }}/10 and 1={{ max_score }}/10)
-- ci_lower: Lower bound of 95% confidence interval ({{ min_score }}-{{ max_score }} scale)
-- ci_upper: Upper bound of 95% confidence interval ({{ min_score }}-{{ max_score }} scale)
+Provide your assessment as a JSON object with these fields:
+- mean: Your best estimate score as a fraction from 0 to 1 (where 0={{ min_score }}/10 and 1={{ max_score }}/10)
+- ci_lower: Lower bound of 95% confidence interval on {{ min_score }}-{{ max_score }} scale
+- ci_upper: Upper bound of 95% confidence interval on {{ min_score }}-{{ max_score }} scale
 
-Example: If you think the score is 7/10 but could reasonably be between 6 and 8:
-{
-  "mean": 0.7,
-  "ci_lower": 6,
-  "ci_upper": 8
-}
+The confidence interval should reflect your uncertainty about the score. If you're very confident, ci_lower and ci_upper will be close to your mean score. If uncertain, they should be further apart.
 
-Your assessment (JSON only):""",
+Return a valid JSON object with exactly three numeric fields: mean (0-1), ci_lower (0-10), and ci_upper (0-10).
+
+Your assessment (JSON only, no other text):""",
         "variables": {
             "min_score": 0,
             "max_score": 10,
