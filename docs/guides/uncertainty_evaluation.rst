@@ -251,17 +251,24 @@ Common Patterns
 
 .. code-block:: python
 
-   from cje import JudgeFactory, run_experiment
+   from cje.judge import JudgeFactory
+   from cje.config.unified import simple_config
    
    # One-line judge creation with uncertainty
    judge = JudgeFactory.create("openai", "gpt-4o-mini")
    
    # Run full pipeline
-   results = run_experiment(
-       dataset="my_data.jsonl",
-       judge=judge,
-       target_policies=["policy_a", "policy_b"]
+   config = simple_config(
+       dataset_name="my_data.jsonl",
+       logging_model="gpt-3.5-turbo",
+       logging_provider="openai",
+       target_model="gpt-4",
+       target_provider="openai",
+       judge_model="gpt-4o-mini",
+       judge_provider="openai",
+       estimator_name="DRCPO"
    )
+   results = config.run()
 
 **Pattern 2: Comparing Uncertainty Methods**
 

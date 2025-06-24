@@ -27,11 +27,22 @@ poetry install
 ## Quick Start
 
 ```python
-from cje import run_experiment
+from cje.config.unified import simple_config
 
-# Run evaluation with example config
-results = run_experiment("configs/example_eval.yaml")
-print(f"Policy improvement: {results['improvement']:.3f} ± {results['ci_width']:.3f}")
+# Create and run evaluation
+config = simple_config(
+    dataset_name="./data/test.jsonl",
+    logging_model="gpt-3.5-turbo",
+    logging_provider="openai",
+    target_model="gpt-4",
+    target_provider="openai",
+    judge_model="gpt-4o",
+    judge_provider="openai",
+    estimator_name="DRCPO"
+)
+
+results = config.run()
+print(f"Target policy estimate: {results['results']['DRCPO']['estimates'][0]:.3f}")
 ```
 
 ## Key Features

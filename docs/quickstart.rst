@@ -40,10 +40,20 @@ Here's the simplest possible example:
 
 .. code-block:: python
 
-   from cje.pipeline import run_pipeline
+   from cje.config.unified import simple_config
    
    # Run evaluation with default configuration
-   results = run_pipeline(cfg_path="configs", cfg_name="example_eval")
+   config = simple_config(
+       dataset_name="./data/example.jsonl",
+       logging_model="gpt-3.5-turbo",
+       logging_provider="openai",
+       target_model="gpt-4",
+       target_provider="openai",
+       judge_model="gpt-4o",
+       judge_provider="openai",
+       estimator_name="DRCPO"
+   )
+   results = config.run()
    
    # Print results
    print(f"Results: {results}")
@@ -129,13 +139,25 @@ Here's a minimal example:
 
 .. code-block:: python
 
-   from cje.pipeline import run_pipeline
+   from cje.config.unified import load_config
    
-   # Run complete pipeline (requires Hydra config files)
-   results = run_pipeline(
-       cfg_path="configs",
-       cfg_name="my_experiment"
+   # Run complete pipeline using config file
+   config = load_config("configs/my_experiment.yaml")
+   results = config.run()
+   
+   # Or build config programmatically
+   from cje.config.unified import simple_config
+   config = simple_config(
+       dataset_name="./my_data.csv",
+       logging_model="gpt-3.5-turbo",
+       logging_provider="openai",
+       target_model="gpt-4o",
+       target_provider="openai",
+       judge_model="gpt-4o",
+       judge_provider="openai",
+       estimator_name="DRCPO"
    )
+   results = config.run()
    
    # Access results (structure depends on estimator used)
    print("=== Evaluation Results ===")
@@ -233,13 +255,27 @@ For production deployment, CJE provides robust error handling and caching:
 
 .. code-block:: python
 
-   from cje.pipeline import run_pipeline
+   from cje.config.unified import load_config
    
    # Configure for production workloads
-   results = run_pipeline(
-       cfg_path="configs/production",
-       cfg_name="production_eval"
+   config = load_config("configs/production/production_eval.yaml")
+   results = config.run()
+   
+   # Or build production config programmatically
+   from cje.config.unified import simple_config
+   config = simple_config(
+       dataset_name="./data/production.jsonl",
+       logging_model="gpt-3.5-turbo",
+       logging_provider="openai",
+       target_model="gpt-4",
+       target_provider="openai",
+       judge_model="gpt-4o",
+       judge_provider="openai",
+       estimator_name="DRCPO",
+       k=10,  # More folds for production stability
+       batch_size=100  # Process in batches
    )
+   results = config.run()
    
    # Results include diagnostics for monitoring
    print(f"ESS health: {results.get('weight_stats', {})}")

@@ -27,9 +27,11 @@ if HAS_DOTENV:
 from .reference import FixedSampler, ReferenceDRCPO
 
 # Pipeline functionality is now in cje.pipeline module
+from .pipeline import CJEPipeline, PipelineConfig
 
 # Export configuration API for Python-first usage
 from .config import ConfigurationBuilder, CJEConfig
+from .config.unified import simple_config, multi_policy_config
 
 # Export data loading for convenience
 from .data import load_dataset
@@ -47,10 +49,13 @@ from .oracle_labeling import add_oracle_labels
 
 __all__ = [
     # Pipeline
-    "run_pipeline",
+    "CJEPipeline",
+    "PipelineConfig",
     # Configuration
     "ConfigurationBuilder",
     "CJEConfig",
+    "simple_config",
+    "multi_policy_config",
     # Data
     "load_dataset",
     # Reference implementation
@@ -63,4 +68,6 @@ __all__ = [
     # New additions
     "RichFeaturizer",
     "add_oracle_labels",
+    # Estimators
+    "get_estimator",
 ]

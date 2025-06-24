@@ -97,12 +97,20 @@ CJE provides **robust off-policy evaluation** for Large Language Models using ca
 
 .. code-block:: python
 
-   from cje import run_experiment
+   from cje.config.unified import simple_config
    
    # Test a new helpful assistant prompt
-   results = run_experiment(
-       config_path="configs/system_prompt_comparison.yaml"
+   config = simple_config(
+       dataset_name="./data/system_prompts.jsonl",
+       logging_model="gpt-3.5-turbo",
+       logging_provider="openai",
+       target_model="gpt-4",
+       target_provider="openai",
+       judge_model="gpt-4o",
+       judge_provider="openai",
+       estimator_name="DRCPO"
    )
+   results = config.run()
    
    # Access structured results
    summary = results['summary']

@@ -315,10 +315,20 @@ Interactive weight analysis is available via:
 
 .. code-block:: python
 
-   from cje.pipeline import run_pipeline
+   from cje.config.unified import simple_config
    
-   # Run pipeline
-   results = run_pipeline(cfg_path="configs", cfg_name="example_eval")
+   # Create config and run pipeline
+   config = simple_config(
+       dataset_name="./data/arena_sample.jsonl",
+       logging_model="gpt-3.5-turbo",
+       logging_provider="openai",
+       target_model="gpt-4",
+       target_provider="openai",
+       judge_model="gpt-4o",
+       judge_provider="openai",
+       estimator_name="DRCPO"
+   )
+   results = config.run()
    
    # Results contain estimator outputs and diagnostics
    print(f"Policy estimates: {results.get('v_hat', 'Not found')}")
@@ -365,9 +375,19 @@ After running the arena analysis, use the provided example script to explore you
 
    # Or programmatically
    python -c "
-   from cje.pipeline import run_pipeline
-   results = run_pipeline(cfg_path='configs', cfg_name='example_eval')
-   print(f'Policy estimates: {results.policy_uplifts}')
+   from cje.config.unified import simple_config
+   config = simple_config(
+       dataset_name='./data/arena_results.jsonl',
+       logging_model='gpt-3.5-turbo',
+       logging_provider='openai',
+       target_model='gpt-4',
+       target_provider='openai',
+       judge_model='gpt-4o',
+       judge_provider='openai',
+       estimator_name='DRCPO'
+   )
+   results = config.run()
+   print(f'Policy estimates: {results}')
    "
 
 The analysis script provides:

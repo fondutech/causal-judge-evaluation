@@ -21,8 +21,13 @@ Fix immediately without asking:
 make dev-setup                 # Initial setup
 poetry run pytest              # Run tests (fast)
 poetry run pytest --run-slow   # Include slow tests
-cje run --cfg-path configs --cfg-name example_eval  # Run experiment
+cje run --cfg-path configs --cfg-name example_eval  # Run experiment via CLI
 make lint                      # MUST pass before ANY commit
+
+# Python API (new modular pipeline):
+from cje.config.unified import simple_config
+config = simple_config(dataset_name="test.jsonl", ...)
+results = config.run()
 ```
 
 ## Architecture

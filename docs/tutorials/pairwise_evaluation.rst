@@ -36,7 +36,7 @@ Let's walk through a complete example using the ChatBot Arena dataset:
 .. code-block:: python
 
    from cje.data import ChatbotArenaDataset
-   from cje import simple_config
+   from cje.config.unified import simple_config
 
    # 1. Download dataset (≈50 MB cached in ~/.cache/cje/pairwise)
    dataset = ChatbotArenaDataset.download(split="train", model_aware=True)
@@ -47,7 +47,13 @@ Let's walk through a complete example using the ChatBot Arena dataset:
    config = simple_config(
        dataset_name="ChatbotArena",   # built-in alias
        logging_model="gpt-4o-mini",   # current production model
-       target_changes={"temperature": 0.3}  # proposed tweak
+       logging_provider="openai",
+       target_model="gpt-4o-mini",    # same model with different temp
+       target_provider="openai",
+       target_changes={"temperature": 0.3},  # proposed tweak
+       judge_model="gpt-4o",
+       judge_provider="openai",
+       estimator_name="DRCPO"
    )
    results = config.run()
 
@@ -217,7 +223,7 @@ Here's a more complex example comparing multiple models using Arena data:
 
 .. code-block:: python
 
-   from cje import multi_policy_config
+   from cje.config.unified import UnifiedConfig
    from cje.data import ChatbotArenaDataset
 
    # Load arena data
@@ -233,10 +239,19 @@ Here's a more complex example comparing multiple models using Arena data:
        for model in top_models
    ]
    
-   config = multi_policy_config(
-       dataset_name="ChatbotArena",
+   # Build config manually for multi-policy
+   config = UnifiedConfig(
+       dataset={"name": "ChatbotArena"},
+       logging_policy={
+           "provider": "openai",
+           "model_name": "gpt-3.5-turbo"
+       },
        target_policies=target_policies,
-       estimator_name="DRCPO"
+       judge={
+           "provider": "openai",
+           "model_name": "gpt-4o"
+       },
+       estimator={"name": "DRCPO"}
    )
    
    results = config.run()
