@@ -20,7 +20,7 @@ A comprehensive experiment demonstrating CJE on 10,000 ChatBot Arena prompts wit
 - Efficiency: ~70% CI reduction, 10× GPU speedup  
 - Cost: <$1,000 total (including human labels)
 
-*Note: This is a planned experiment. Actual results will be reported after completion.*
+*Note: This experiment has been completed. See individual phase directories for results.*
 
 See [arena_10k_oracle/README.md](arena_10k_oracle/README.md) for detailed instructions.
 
@@ -62,5 +62,5 @@ These experiments use the core CJE library but are designed to be:
 - **Educational**: Show complete workflows with real data
 
 For quick testing, use the configs in the main `configs/` directory:
-- `configs/arena_test.yaml` - Quick 20-sample test
-- `configs/arena_research_experiment.yaml` - Full 10k research run
+- `configs/example_eval.yaml` - Quick example configuration
+- `configs/arena_10k_oracle.yaml` - Full 10k research run
