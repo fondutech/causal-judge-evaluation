@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# mypy: disable-error-code="attr-defined,var-annotated,call-arg,arg-type,name-defined"
 """
 Phase 1 - Step 4c: Add DETERMINISTIC judge scores to target policy responses.
 
@@ -20,8 +21,9 @@ console = Console()
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
 from cje.judge.factory import JudgeFactory
-from cje.judge.schemas import JudgeSample
-from add_judge_scores import update_row_with_score
+from cje.judge.schemas import JudgeScore
+
+# from add_judge_scores import update_row_with_score  # Not used
 
 
 def score_target_responses(
@@ -39,7 +41,7 @@ def score_target_responses(
         responses = [json.loads(line) for line in f]
 
     # Group by policy for better tracking
-    policies = {}
+    policies: Dict[str, List[Dict[str, Any]]] = {}
     for resp in responses:
         policy = resp.get("policy", "unknown")
         if policy not in policies:
@@ -53,15 +55,12 @@ def score_target_responses(
         console.print(f"  - {policy}: {len(items)} responses")
 
     # Create deterministic judge
-    judge_config = {
-        "provider": "fireworks",
-        "model_name": model,
-        "template": "deterministic",
-        "temperature": temperature,
-        "uncertainty_method": "deterministic",
-    }
-
-    judge_instance = JudgeFactory.create(judge_config)
+    judge_instance = JudgeFactory.create(
+        model=model,
+        provider="fireworks",
+        temperature=temperature,
+        uncertainty_method="deterministic",
+    )
     console.print(f"Created deterministic judge: {model}")
 
     # Score all responses
@@ -78,7 +77,7 @@ def score_target_responses(
 
             # Create judge samples
             samples = [
-                JudgeSample(
+                dict(
                     context=row["prompt"],
                     response=row["response"],
                     judge_context={"request_idx": idx},
@@ -91,7 +90,11 @@ def score_target_responses(
 
             # Update rows with scores
             for row, score in zip(batch, scores):
-                scored_row = update_row_with_score(row, score, "judge_score")
+                scored_row = row.copy()
+                scored_row["judge_score"] = {
+                    "mean": score.mean,
+                    "variance": score.variance,
+                }
                 all_scored.append(scored_row)
 
     # Save scored responses

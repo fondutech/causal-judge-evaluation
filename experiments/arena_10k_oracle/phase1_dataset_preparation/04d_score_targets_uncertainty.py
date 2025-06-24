@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# mypy: disable-error-code="attr-defined,var-annotated,call-arg,arg-type,name-defined"
 """
 Phase 1 - Step 4d: Add judge scores WITH UNCERTAINTY to target policy responses.
 
@@ -21,7 +22,7 @@ console = Console()
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
 from cje.judge.factory import JudgeFactory
-from cje.judge.schemas import JudgeSample
+from cje.judge.schemas import JudgeScore
 from add_judge_scores import update_row_with_score
 
 

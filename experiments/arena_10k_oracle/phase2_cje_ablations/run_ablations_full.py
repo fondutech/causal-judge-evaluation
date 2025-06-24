@@ -218,6 +218,16 @@ def create_results_table(all_results: Dict[str, Optional[Dict[str, Any]]]) -> Ta
 
 def main() -> None:
     """Run all ablations."""
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--yes", "-y", action="store_true", help="Skip confirmation prompt"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Test configuration without running"
+    )
+    args = parser.parse_args()
 
     console.print("\n[bold cyan]🔬 Arena 10K Oracle - CJE Ablations[/bold cyan]")
     console.print("=" * 60)
@@ -251,10 +261,11 @@ def main() -> None:
     console.print(f"   • Estimators: {', '.join(estimators)}")
 
     # Confirm
-    response = console.input("\n▶️  Continue? [Y/n]: ").strip().lower()
-    if response == "n":
-        console.print("Aborted.")
-        return
+    if not args.yes:
+        response = console.input("\n▶️  Continue? [Y/n]: ").strip().lower()
+        if response == "n":
+            console.print("Aborted.")
+            return
 
     # Create configs directory
     configs_dir = Path(__file__).parent / "configs" / "ablations"
@@ -279,8 +290,16 @@ def main() -> None:
             save_config(config, config_path)
 
             # Run experiment
-            results = run_cje_experiment(config_path)
-            all_results[ablation_name] = results
+            if args.dry_run:
+                console.print(f"   🧪 {ablation_name}: [DRY RUN] Config saved")
+                all_results[ablation_name] = {
+                    "v_hat": 0.0,
+                    "ci_lower": 0.0,
+                    "ci_upper": 0.0,
+                }
+            else:
+                results = run_cje_experiment(config_path)
+                all_results[ablation_name] = results
 
     # Display results table
     console.print("\n")

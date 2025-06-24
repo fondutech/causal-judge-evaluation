@@ -6,7 +6,7 @@ import time
 import concurrent.futures
 from dataclasses import dataclass, field
 
-from ..estimators.drcpo import MultiDRCPOEstimator
+from ..estimators.doubly_robust_estimators import MultiDRCPOEstimator
 from ..loggers.multi_target_sampler import MultiTargetSampler
 from ..judge.base import JudgeProtocol
 from ..judge.factory import JudgeFactory

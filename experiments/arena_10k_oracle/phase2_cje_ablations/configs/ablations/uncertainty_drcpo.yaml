@@ -1,0 +1,27 @@
+experiment_name: arena_10k_uncertainty_drcpo
+data:
+  logging_policy_file: /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/experiments/arena_10k_oracle/data/p0_scored_uncertainty.jsonl
+  target_policy_file: /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/experiments/arena_10k_oracle/data/targets_scored_uncertainty.jsonl
+  output_dir: outputs/arena_10k_uncertainty_drcpo
+estimator:
+  _target_: cje.estimators.doubly_robust_estimators.MultiDRCPOEstimator
+  n_folds: 5
+  ridge_alpha: 0.1
+calibrator:
+  _target_: cje.calibration.isotonic.IsotonicCalibrator
+  cv_folds: 5
+oracle:
+  enabled: true
+  calibration_file: /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/experiments/arena_10k_oracle/data/labeling/oracle_labels_calibration_detailed.jsonl
+  validation_file: /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/experiments/arena_10k_oracle/data/labeling/oracle_labels_validation_detailed.jsonl
+judge:
+  uncertainty_method: structured
+policies:
+  logging: pi_0
+  target:
+  - pi_cot
+  - pi_bigger_model
+  - pi_bad
+logging:
+  level: INFO
+  rich: true

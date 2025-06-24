@@ -60,6 +60,8 @@ def main() -> None:
 
     # Call the shared implementation with deterministic settings
     # Create a namespace object to pass to score_main
+    from add_judge_scores import DEFAULT_RUBRIC
+
     score_args = argparse.Namespace(
         input=args.input,
         output=args.output,
@@ -68,6 +70,7 @@ def main() -> None:
         model=args.model,
         temperature=args.temperature,
         uncertainty_method="deterministic",
+        rubric=DEFAULT_RUBRIC,
     )
 
     score_main(score_args)
