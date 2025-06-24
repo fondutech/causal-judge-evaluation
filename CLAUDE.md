@@ -54,13 +54,3 @@ rows_with_oracle = add_oracle_labels(rows, provider="openai", model_name="gpt-4o
 ```
 
 For judge scoring, use CJE's judge system directly (see experiments/arena_10k_oracle/phase1_dataset_preparation/04*.py)
-
-## What NOT to Reference
-These were removed or never existed:
-- `UNIFIED_JUDGE_SUMMARY.md`
-- `unified_judge_migration.md`
-- `scripts/migrate_to_unified_judges.py`
-- `cje/utils/score_storage.py`
-- `cje/uncertainty/` module
-- Any `*_unified.py` modules
-- `cje results` CLI command

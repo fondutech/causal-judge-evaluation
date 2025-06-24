@@ -5,6 +5,7 @@ This module provides essential validation functions for the CJE pipeline.
 """
 
 import logging
+import math
 from typing import List, Dict, Any
 from .utils.error_handling import ValidationError, require_not_empty
 
@@ -191,9 +192,14 @@ def assign_rewards_with_priority(
                 except (ValueError, TypeError):
                     logger.warning(f"Row {i}: Invalid y_true value {row['y_true']}")
 
-        # Priority 5: None - will rely on judge evaluation
-        row["reward"] = None
-        stats["none_judge_needed"] += 1
+        # Priority 5: No reward source available - this is an error for estimation
+        # DR/IPS estimators require numeric rewards for all rows
+        raise ValidationError(
+            f"Row {i} (uid={row.get('uid', 'unknown')}) has no valid reward source "
+            f"(no calibration_fallback, score_cal, reward, or y_true). "
+            f"All rows must have numeric rewards for estimation. "
+            f"Ensure judge scoring and calibration have been run before this point."
+        )
 
     # Log assignment statistics
     logger.info(f"Reward assignment complete for {source_description}:")
@@ -261,5 +267,29 @@ def validate_target_policy_computation(
             error_msg = f"Row {i} in {source_description} has invalid target policy log probabilities"
             logger.error(error_msg)
             raise ValidationError(error_msg)
+
+        # Validate numeric values
+        if isinstance(logp_target, dict):
+            for policy_name, logp_value in logp_target.items():
+                try:
+                    float_val = float(logp_value)
+                    if not math.isfinite(float_val):
+                        raise ValueError(f"Non-finite value: {float_val}")
+                except (TypeError, ValueError) as e:
+                    error_msg = f"Row {i} has non-numeric logp for policy '{policy_name}': {logp_value} ({e})"
+                    logger.error(error_msg)
+                    raise ValidationError(error_msg)
+        else:  # list format
+            for j, logp_value in enumerate(logp_target):
+                try:
+                    float_val = float(logp_value)
+                    if not math.isfinite(float_val):
+                        raise ValueError(f"Non-finite value: {float_val}")
+                except (TypeError, ValueError) as e:
+                    error_msg = (
+                        f"Row {i} has non-numeric logp at index {j}: {logp_value} ({e})"
+                    )
+                    logger.error(error_msg)
+                    raise ValidationError(error_msg)
 
     logger.info(f"Target policy validation complete for {len(rows)} rows")

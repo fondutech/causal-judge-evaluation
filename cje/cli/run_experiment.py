@@ -242,21 +242,33 @@ def run(
         print(f"[yellow]Limiting to first {sample_limit} samples for testing[/yellow]")
 
         with console.status("[bold blue]Sampling limited dataset..."):
-            # Try to disable progress bar if the dataset supports it
-            try:
-                # Check if dataset supports disable_progress parameter
-                if (
-                    hasattr(ds, "itersamples")
-                    and "disable_progress" in ds.itersamples.__code__.co_varnames
-                ):
+            # Cache the dataset samples to avoid multiple iterations
+            # First, check if we can disable progress bar for cleaner output
+            disable_progress_supported = False
+            if hasattr(ds, "itersamples"):
+                try:
+                    disable_progress_supported = (
+                        "disable_progress" in ds.itersamples.__code__.co_varnames  # type: ignore
+                    )
+                except AttributeError:
+                    disable_progress_supported = False
+
+            # Single iteration to collect samples
+            if disable_progress_supported:
+                try:
                     limited_samples = list(
                         islice(ds.itersamples(disable_progress=True), sample_limit)  # type: ignore
                     )
-                else:
+                except TypeError:
+                    # Fallback if disable_progress fails
                     limited_samples = list(islice(ds.itersamples(), sample_limit))
-            except TypeError:
-                # Dataset doesn't support disable_progress parameter
-                limited_samples = list(islice(ds.itersamples(), sample_limit))
+            else:
+                # Standard iteration without disable_progress
+                if hasattr(ds, "itersamples"):
+                    limited_samples = list(islice(ds.itersamples(), sample_limit))
+                else:
+                    # Fallback for datasets without itersamples
+                    limited_samples = list(islice(iter(ds), sample_limit))  # type: ignore
 
             # Create a mock dataset object that returns the limited samples
             class LimitedDataset:
@@ -927,6 +939,14 @@ def run(
             oracle_analysis_enabled=oracle_analysis_enabled,
         )
 
+        # Critical: Verify all rows have numeric rewards after assignment
+        rows_without_reward = sum(1 for r in rows if r.get("reward") is None)
+        if rows_without_reward > 0:
+            raise ValueError(
+                f"{rows_without_reward} rows still have reward=None after assign_rewards_with_priority. "
+                f"This should never happen - the function should raise an error instead."
+            )
+
     # Determine analysis type based on available ground truth
     analysis_type, ground_truth_count = _determine_analysis_type(
         rows, oracle_analysis_enabled
@@ -1294,6 +1314,36 @@ def run(
     logger.info(f"Using estimator: {est_name}")
     logger.info(f"Estimator config: {est_kwargs}")
 
+    # Sanity checklist before estimation (from code review)
+    logger.info("Running pre-estimation sanity checks...")
+
+    # Check 1: All rows must have numeric rewards
+    assert all(
+        "reward" in r and isinstance(r["reward"], (int, float)) for r in rows
+    ), "All rows must have numeric rewards for estimation"
+
+    # Check 2: All rows must have target policy log probabilities
+    assert all(
+        "logp_target_all" in r and len(r["logp_target_all"]) == K for r in rows
+    ), f"All rows must have logp_target_all with {K} policies"
+
+    # Check 3: For DR estimators, verify we have target samples if configured
+    if est_name in {"DRCPO", "MRDR"} and est_kwargs.get("samples_per_policy", 1) > 0:
+        # This is a soft check - we don't require target samples in all cases
+        # (e.g., when using precomputed sampler or API policies that don't support sampling)
+        target_sample_count = sum(1 for r in rows if r.get("target_samples", {}))
+        if target_sample_count == 0:
+            logger.warning(
+                f"{est_name} configured with samples_per_policy={est_kwargs.get('samples_per_policy', 1)} "
+                f"but no target samples found. Will fall back to context-only predictions."
+            )
+        else:
+            logger.info(
+                f"Found target samples in {target_sample_count}/{len(rows)} rows"
+            )
+
+    logger.info("Pre-estimation sanity checks passed")
+
     with console.status(f"[bold blue]Initializing {est_name} estimator..."):
         est = get_estimator(est_name, **est_kwargs)
 
@@ -1301,6 +1351,66 @@ def run(
     with console.status(f"[bold blue]Fitting estimator..."):
         logger.info("Fitting estimator to data")
         est.fit(rows, sampler=sampler)
+
+    # Extract and save target samples from DR estimators
+    if est_name in ["DRCPO", "MRDR"] and hasattr(est, "_all_target_samples"):
+        logger.info("Extracting target samples from DR estimator")
+
+        # Group target samples by context
+        target_samples_by_context: Dict[str, Dict[str, List[str]]] = {}
+        for sample in est._all_target_samples:
+            ctx = sample["context"]
+            policy_idx = sample["policy_idx"]
+            response = sample["response"]
+
+            if ctx not in target_samples_by_context:
+                target_samples_by_context[ctx] = {name: [] for name in policy_names}
+
+            # Map policy index to policy name
+            if policy_idx < len(policy_names):
+                policy_name = policy_names[policy_idx]
+                target_samples_by_context[ctx][policy_name].append(response)
+
+        # Update rows with target samples
+        samples_added = 0
+        for row in rows:
+            ctx = row["context"]
+            if ctx in target_samples_by_context:
+                if "target_samples" not in row or not isinstance(
+                    row["target_samples"], dict
+                ):
+                    row["target_samples"] = {}
+                # Merge with existing samples if any
+                for policy_name, samples in target_samples_by_context[ctx].items():  # type: ignore[assignment]
+                    if policy_name not in row["target_samples"]:
+                        row["target_samples"][policy_name] = []  # type: ignore[assignment]
+                    # Ensure it's a list before extending
+                    if not isinstance(row["target_samples"][policy_name], list):
+                        row["target_samples"][policy_name] = []  # type: ignore[assignment]
+                    row["target_samples"][policy_name].extend(samples)  # type: ignore[arg-type]
+                    samples_added += len(samples)
+
+        if samples_added > 0:
+            logger.info(f"Added {samples_added} target samples to rows")
+
+            # Re-save to cache with updated target samples
+            if "target_logprobs_hash" in locals() and chunk_exists(
+                work, "target_logprobs", target_logprobs_hash
+            ):
+                logger.info("Updating cache with target samples")
+                save_chunk(
+                    work,
+                    "target_logprobs",
+                    target_logprobs_hash,
+                    rows,
+                    metadata={
+                        "policy_names": policy_names,
+                        "num_policies": K,
+                        "sample_count": len(rows),
+                        "target_policies_config": target_policies_cfg,
+                        "has_target_samples": True,
+                    },
+                )
 
     with console.status(f"[bold blue]Computing estimate..."):
         logger.info("Computing final estimate")
@@ -1377,6 +1487,9 @@ def run(
                 dr_term = m_i + bias_correction
                 bias_corrections.append(bias_correction)
                 n_oracle_used += 1
+                # Note: We use m_i (calibrated judge) as the outcome model prediction
+                # and Y_i (oracle) for bias correction. This is correct DR estimation.
+                # No double-counting occurs because the DR formula properly combines them.
             else:
                 # No oracle: just use calibrated score (bias correction = 0)
                 dr_term = m_i
