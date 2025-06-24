@@ -71,7 +71,7 @@ target_policies:
 # Judge configuration
 judge:
   provider: "fireworks"
-  model: "accounts/fireworks/models/llama4-scout-instruct-basic"
+  model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
   template: "deterministic"  # Our new clean template
   uncertainty_method: "deterministic"  # No uncertainty for base run
   temperature: 0.0

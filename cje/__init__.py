@@ -25,7 +25,8 @@ if HAS_DOTENV:
 
 # Export reference implementation for quick experimentation
 from .reference import FixedSampler, ReferenceDRCPO
-from .pipeline import run_pipeline
+
+# Pipeline functionality is now in cje.pipeline module
 
 # Export configuration API for Python-first usage
 from .config import ConfigurationBuilder, CJEConfig

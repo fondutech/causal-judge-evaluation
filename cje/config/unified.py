@@ -331,31 +331,77 @@ class CJEConfig:
             results = config.run()
             print(f"Improvement: {results['target']['v_hat']:.3f}")
         """
-        # Avoid circular import
-        from ..pipeline import run_pipeline
+        # Use the new modular pipeline
+        from ..pipeline import CJEPipeline, PipelineConfig
+        from pathlib import Path
         import tempfile
-        import yaml  # type: ignore[import-untyped]
 
-        # Create temporary YAML file
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            yaml.dump(to_dict(self), f)
-            temp_path = f.name
+        # Create work directory
+        with tempfile.TemporaryDirectory() as work_dir:
+            # Create pipeline config
+            # Convert config sections to dicts
+            dataset_dict = {
+                "name": self.dataset.name,
+                "split": self.dataset.split,
+                "sample_limit": self.dataset.sample_limit,
+            }
+            logging_policy_dict = {
+                "provider": self.logging_policy.provider,
+                "model_name": self.logging_policy.model_name,
+                "temperature": self.logging_policy.temperature,
+                "max_new_tokens": self.logging_policy.max_new_tokens,
+            }
+            judge_dict = {
+                "provider": self.judge.provider,
+                "model_name": self.judge.model_name,
+                "template": self.judge.template,
+                "uncertainty_method": self.judge.uncertainty_method,
+            }
+            calibration_dict = {"n_folds": 5}  # Default calibration settings
+            target_policies_dicts = [
+                {
+                    "provider": p.provider,
+                    "model_name": p.model_name,
+                    "temperature": p.temperature,
+                }
+                for p in self.target_policies
+            ]
+            # Extract estimator names from EstimatorConfig
+            estimator_names = []
+            if hasattr(self.estimator, "estimators") and isinstance(
+                self.estimator.estimators, list
+            ):
+                estimator_names = self.estimator.estimators
+            elif hasattr(self.estimator, "name"):
+                estimator_names = [self.estimator.name]
+            else:
+                estimator_names = ["ips"]  # Default fallback
 
-        try:
-            # Extract directory and filename
-            import os
+            estimator_dicts = [{"name": name, "params": {}} for name in estimator_names]
+            oracle_dict = (
+                {
+                    "enabled": self.oracle.enabled,
+                    "provider": self.oracle.provider,
+                    "model_name": self.oracle.model_name,
+                }
+                if self.oracle.enabled
+                else None
+            )
 
-            cfg_dir = os.path.dirname(temp_path)
-            cfg_name = os.path.splitext(os.path.basename(temp_path))[0]
+            pipeline_config = PipelineConfig(
+                work_dir=Path(work_dir),
+                dataset_config=dataset_dict,
+                logging_policy_config=logging_policy_dict,
+                judge_config=judge_dict,
+                calibration_config=calibration_dict,
+                target_policies_config=target_policies_dicts,
+                estimator_configs=estimator_dicts,
+                oracle_config=oracle_dict,
+            )
 
             # Run pipeline
-            return run_pipeline(cfg_path=cfg_dir, cfg_name=cfg_name)
-        finally:
-            # Clean up temp file
-            import os
-
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            pipeline = CJEPipeline(pipeline_config)
+            return pipeline.run()
 
     def to_yaml(self, path: str) -> None:
         """Save configuration to YAML file.
@@ -367,7 +413,7 @@ class CJEConfig:
             config = simple_config(target_changes={"temperature": 0.3})
             config.to_yaml("experiment.yaml")
         """
-        import yaml
+        import yaml  # type: ignore
 
         with open(path, "w") as f:
             yaml.dump(to_dict(self), f)
@@ -386,7 +432,7 @@ class CJEConfig:
             config = CJEConfig.from_yaml("experiment.yaml")
             results = config.run()
         """
-        import yaml
+        import yaml  # type: ignore
 
         with open(path, "r") as f:
             config_dict = yaml.safe_load(f)

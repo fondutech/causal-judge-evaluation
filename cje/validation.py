@@ -195,10 +195,14 @@ def assign_rewards_with_priority(
         # Priority 5: No reward source available - this is an error for estimation
         # DR/IPS estimators require numeric rewards for all rows
         raise ValidationError(
-            f"Row {i} (uid={row.get('uid', 'unknown')}) has no valid reward source "
-            f"(no calibration_fallback, score_cal, reward, or y_true). "
-            f"All rows must have numeric rewards for estimation. "
-            f"Ensure judge scoring and calibration have been run before this point."
+            f"Row {i} (uid={row.get('uid', 'unknown')}) has no valid reward source.\n"
+            f"Found fields: {list(row.keys())}\n"
+            f"\nPossible solutions:\n"
+            f"1. Add 'reward' field to your dataset (recommended)\n"
+            f"2. Enable oracle labeling in config: oracle.enabled=true\n"
+            f"3. Add 'y_true' field with numeric labels\n"
+            f"4. Ensure judge scoring completed (check for 'score' field)\n"
+            f"\nFor more info: https://docs.anthropic.com/en/docs/claude-code"
         )
 
     # Log assignment statistics

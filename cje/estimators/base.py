@@ -65,3 +65,17 @@ class Estimator(ABC, Generic[T]):
             EstimationResult containing results for all K policies
         """
         ...
+
+    def estimate_from_logs(self, logs: List[T], **kwargs: Any) -> EstimationResult:
+        """
+        Convenience method that combines fit() and estimate().
+
+        Args:
+            logs: List of logged data points
+            **kwargs: Additional arguments passed to fit()
+
+        Returns:
+            EstimationResult containing results for all K policies
+        """
+        self.fit(logs, **kwargs)
+        return self.estimate()

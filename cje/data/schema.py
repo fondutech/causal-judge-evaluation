@@ -14,6 +14,7 @@ class CJESample:
         response: Model response/completion
         y_true: Ground truth label/value (if available)
         logp: Log probability of the response (if available)
+        reward: Reward/outcome value (if available) - for backward compatibility
         meta: Additional metadata about the sample
     """
 
@@ -23,6 +24,12 @@ class CJESample:
     y_true: Optional[Any]
     logp: Optional[float]
     meta: Dict[str, Any] = field(default_factory=dict)
+    reward: Optional[float] = None  # Added for cleaner reward handling
+
+    def __post_init__(self) -> None:
+        """Handle reward extraction from meta for backward compatibility."""
+        if self.reward is None and "reward" in self.meta:
+            self.reward = self.meta["reward"]
 
 
 @dataclass
