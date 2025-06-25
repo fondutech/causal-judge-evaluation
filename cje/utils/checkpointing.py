@@ -98,6 +98,27 @@ class CheckpointManager(Generic[T]):
         except Exception as e:
             logger.warning(f"Could not save checkpoint to {self.checkpoint_path}: {e}")
 
+    def append_to_checkpoint(self, items: List[T]) -> None:
+        """Append new items to checkpoint file."""
+        if not self.checkpoint_path or not items:
+            return
+
+        try:
+            Path(self.checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
+            with open(self.checkpoint_path, "a") as f:
+                for item in items:
+                    serialized = self.serialize_fn(item)
+                    f.write(json.dumps(serialized) + "\n")
+
+            logger.debug(
+                f"Appended {len(items):,} items to checkpoint {self.checkpoint_path}"
+            )
+
+        except Exception as e:
+            logger.warning(
+                f"Could not append to checkpoint {self.checkpoint_path}: {e}"
+            )
+
     def is_processed(self, item: T) -> bool:
         """Check if an item has already been processed."""
         uid = self.get_uid_fn(item)
@@ -201,23 +222,31 @@ class BatchProcessor(Generic[T]):
                     try:
                         # Process batch
                         batch_results = process_batch_fn(batch_items)
+
+                        # Filter out any results that were already processed
+                        # (important for resume scenarios where partial batches might be re-processed)
+                        if self.checkpoint_manager:
+                            new_results = []
+                            for result in batch_results:
+                                if not self.checkpoint_manager.is_processed(result):
+                                    new_results.append(result)
+                                    self.checkpoint_manager.mark_processed(result)
+                            batch_results = new_results
+
                         all_results.extend(batch_results)
 
                         # Update progress with number of items processed in this batch
                         progress.advance(task_id, advance=len(batch_items))
-
-                        # Update checkpoint manager
-                        if self.checkpoint_manager:
-                            for result in batch_results:
-                                self.checkpoint_manager.mark_processed(result)
 
                         # Auto-save checkpoint
                         if (
                             self.checkpoint_manager
                             and auto_save_frequency > 0
                             and (batch_idx + 1) % auto_save_frequency == 0
+                            and batch_results
                         ):
-                            self.checkpoint_manager.save_checkpoint()
+                            # Append only the new results to checkpoint
+                            self.checkpoint_manager.append_to_checkpoint(batch_results)
 
                     except Exception as e:
                         error_msg = f"Error processing batch {batch_idx + 1}/{total_batches}: {e}"
@@ -226,8 +255,8 @@ class BatchProcessor(Generic[T]):
                         # Still update progress for items we attempted to process
                         progress.advance(task_id, advance=len(batch_items))
 
-                        if self.checkpoint_manager:
-                            self.checkpoint_manager.save_checkpoint()
+                        if self.checkpoint_manager and batch_results:
+                            self.checkpoint_manager.append_to_checkpoint(batch_results)
 
                         if not self.continue_on_error:
                             raise
@@ -239,13 +268,8 @@ class BatchProcessor(Generic[T]):
 
         except KeyboardInterrupt:
             logger.info(f"Interrupted after processing {len(all_results):,} items")
-            if self.checkpoint_manager:
-                self.checkpoint_manager.save_checkpoint()
+            # No need to save - we've been appending as we go
             raise
-
-        # Final checkpoint save
-        if self.checkpoint_manager:
-            self.checkpoint_manager.save_checkpoint()
 
         logger.info(f"Successfully processed {len(all_results):,} items")
         return all_results
