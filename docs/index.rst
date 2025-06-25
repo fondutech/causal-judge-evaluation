@@ -185,33 +185,24 @@ Documentation
    :caption: Getting Started
 
    installation
-   quickstart
-   guides/user_guide
+   guides/comprehensive_usage
 
 .. toctree::
    :maxdepth: 2
    :caption: Guides
    
-   guides/configuration_reference
+   guides/evaluation_methods
+   guides/technical_implementation
    guides/arena_analysis
-   guides/oracle_evaluation
-   guides/troubleshooting
+   guides/troubleshooting_simple
    guides/custom_components
-   guides/teacher_forcing
 
 .. toctree::
    :maxdepth: 2
    :caption: Reference
 
-   api/estimators
-   api/index
+   guides/estimators_consolidated
    theory/mathematical_foundations
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Tutorials
-
-   tutorials/pairwise_evaluation
 
 Getting Help
 ------------
