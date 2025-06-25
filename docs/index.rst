@@ -1,308 +1,234 @@
-.. CJE-Core documentation master file, created by
-   sphinx-quickstart on Wed Jun 11 16:07:45 2025.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
-CJE: Causal Judge Evaluation Toolkit
-=====================================
+CJE: Causal Judge Evaluation
+============================
 
 .. image:: img/CJE_logo.svg
    :align: center
    :alt: CJE Logo
    :width: 400
 
-.. image:: https://img.shields.io/pypi/v/cje.svg
-   :target: https://pypi.org/project/cje/
-   :alt: PyPI version
+**Fast, accurate LLM evaluation using AI judges with causal inference.**
 
-.. image:: https://img.shields.io/badge/python-3.9+-blue.svg
-   :target: https://www.python.org/downloads/
-   :alt: Python version
+CJE helps you answer "What would happen if we deployed this new model/prompt?" using only historical data. No risky A/B tests, no expensive human evaluation.
 
-.. image:: https://img.shields.io/github/license/fondutech/causal-judge-evaluation.svg
-   :target: https://github.com/fondutech/causal-judge-evaluation/blob/main/LICENSE
-   :alt: License
+Quick Start (5 minutes)
+-----------------------
 
-CJE provides **robust off-policy evaluation** for Large Language Models using causal inference methods. Estimate policy improvements without deployment using logged interaction data.
-
-.. raw:: html
-
-   <div style="text-align: center; margin: 40px 0;">
-   <a href="start_here.html" style="display: inline-block; background: #0969da; color: white; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-size: 1.2em; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: all 0.2s;">
-   🚀 Start Here - Choose Your Path
-   </a>
-   </div>
-
-.. important::
-   **First time here?** Click the button above to find your personalized learning path (5 min → 45 min tracks)
-
-**What is CJE?** A toolkit that answers "What would happen if we deployed policy π'?" using only historical logs:
-
-* **📊 Causal, not correlational**: Corrects for distribution shift between logged and target policies
-* **⚡ Faster evaluation**: Reuses existing responses with teacher-forced scoring
-* **🎯 Tighter confidence intervals**: Via calibrated doubly-robust estimation with uncertainty quantification
-* **🔬 Theory-backed**: Implements Algorithm 1 from the CJE paper with single-rate efficiency
-* **📈 Uncertainty-aware**: Built-in support for judge confidence and variance estimation
-
-
-⚡ Quick Start Examples
-----------------------
-
-**Problem**: You want to test if GPT-4 performs better than GPT-3.5 for your chatbot, but:
-
-- A/B testing in production is risky and expensive
-- You already have thousands of GPT-3.5 conversations logged
-- You need statistically rigorous results, not just "vibes"
-
-**Solution**: CJE evaluates new policies using your existing data!
-
-**5-Minute Demo**
+**1. Install CJE**
 
 .. code-block:: bash
 
-   # Install and run a quick test
    git clone https://github.com/fondutech/causal-judge-evaluation.git
    cd causal-judge-evaluation
    poetry install
    
-   # Set your API key (Fireworks offers free tier)
+   # Set API key (Fireworks offers free tier)
    export FIREWORKS_API_KEY="your-key-here"
-   
-   # Run evaluation on 20 samples (takes ~1 minute)
+
+**2. Run Your First Evaluation**
+
+.. code-block:: bash
+
+   # Test evaluation on example data
    cje run --cfg-path configs --cfg-name example_eval
 
-**What You'll See**:
-
-.. code-block:: text
-
-   ✅ Loaded 20 ChatBot Arena conversations
-   ✅ Computing log probabilities for historical policy...
-   ✅ Generating judge scores with uncertainty...
-   ✅ Running causal estimation (DR-CPO)...
-   
-   🎯 RESULTS SUMMARY
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   Best Policy: llama-4-maverick (0.725 ± 0.042)
-   
-   Policy Rankings:
-   1. llama-4-maverick:  0.725 [0.641, 0.809] ⭐ BEST
-   2. llama-4-scout:     0.683 [0.599, 0.767]
-   
-   Baseline (historical): 0.650 ± 0.038
-   
-   📊 llama-4-maverick shows +11.5% improvement (p=0.021)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-**Real Use Case: System Prompt Optimization**
+**3. Use in Python**
 
 .. code-block:: python
 
    from cje.config.unified import simple_config
    
-   # Test a new helpful assistant prompt
    config = simple_config(
-       dataset_name="./data/system_prompts.jsonl",
+       dataset_name="./data/test.jsonl",
        logging_model="gpt-3.5-turbo",
-       logging_provider="openai",
        target_model="gpt-4",
-       target_provider="openai",
        judge_model="gpt-4o",
-       judge_provider="openai",
        estimator_name="DRCPO"
    )
    results = config.run()
+   print(f"Target policy score: {results['results']['DRCPO']['estimates'][0]:.3f}")
+
+Learning Paths
+--------------
+
+.. raw:: html
+
+   <style>
+   .path-cards {
+       display: flex;
+       gap: 20px;
+       margin: 30px 0;
+       flex-wrap: wrap;
+   }
+   .path-card {
+       flex: 1;
+       min-width: 250px;
+       border: 2px solid #e1e4e8;
+       border-radius: 8px;
+       padding: 20px;
+       background: #f8f9fa;
+   }
+   .path-card h3 {
+       color: #0969da;
+       margin-top: 0;
+   }
+   </style>
+
+   <div class="path-cards">
    
-   # Access structured results
-   summary = results['summary']
-   print(f"Recommended: {summary['recommended_policy']}")
-   # Output: "helpful_assistant_v2"
+   <div class="path-card">
+   <h3>🚀 I want to evaluate now</h3>
+   <p><strong>Time: 5-30 minutes</strong></p>
+   <p>Jump straight into running evaluations on your data.</p>
+   <ul>
+   <li><a href="quickstart.html">Quickstart Guide</a></li>
+   <li><a href="guides/user_guide.html">User Guide</a></li>
+   <li><a href="guides/configuration_reference.html">Configuration</a></li>
+   </ul>
+   </div>
    
-   print(f"Confidence: {summary['confidence']}")  
-   # Output: "HIGH (p < 0.001, well-powered analysis)"
+   <div class="path-card">
+   <h3>📚 I want to understand</h3>
+   <p><strong>Time: 30-60 minutes</strong></p>
+   <p>Learn the theory and methodology behind CJE.</p>
+   <ul>
+   <li><a href="theory/mathematical_foundations.html">Mathematical Foundations</a></li>
+   <li><a href="api/estimators.html">Estimator Details</a></li>
+   <li><a href="guides/weight_processing.html">Technical Deep-Dives</a></li>
+   </ul>
+   </div>
    
-   # Get detailed comparisons
-   for ranking in results['policy_rankings']:
-       policy = ranking['policy']
-       estimate = ranking['estimate']
-       ci = ranking['confidence_interval']
-       print(f"{policy}: {estimate:.3f} [{ci[0]:.3f}, {ci[1]:.3f}]")
+   <div class="path-card">
+   <h3>🔧 I want to extend</h3>
+   <p><strong>Time: 1-2 hours</strong></p>
+   <p>Build custom components and integrations.</p>
+   <ul>
+   <li><a href="api/index.html">API Reference</a></li>
+   <li><a href="guides/custom_components.html">Custom Components</a></li>
+   <li><a href="developer/teacher_forcing.html">Developer Guides</a></li>
+   </ul>
+   </div>
+   
+   </div>
 
-**Key Benefits Over Traditional A/B Testing**:
+Key Concepts
+------------
 
-- ⚡ **10x faster**: Results in minutes, not weeks
-- 💰 **90% cheaper**: No API costs for new response generation  
-- 📊 **Rigorous CIs**: Causal inference corrects for distribution shift
-- 🔄 **Multi-policy**: Test 5+ policies simultaneously
+**What CJE Does:**
 
-🏗️ Architecture Overview
-------------------------
+1. **Reuses existing data** - No need to generate new responses from target policies
+2. **Corrects for bias** - Causal inference handles distribution shift between policies  
+3. **Provides uncertainty** - Confidence intervals and variance estimates included
+4. **Supports multiple estimators** - Choose based on your bias-variance tradeoff needs
 
-CJE implements a principled pipeline for causal evaluation:
+**Core Pipeline:**
 
 .. code-block:: text
 
-   Dataset → Log Probabilities → Judge Scores → Causal Estimation → Results
-      ↓            ↓                  ↓              ↓                ↓
-   CSV/JSON   π₀(a|x), π'(a|x)    Human/AI Judge   DR-CPO/MRDR    Policy Rankings
+   Historical Data → Importance Weights → Judge Scores → Causal Estimation → Policy Rankings
+         ↓                    ↓                ↓                ↓                    ↓
+   Your logged data    π_target/π_logging   AI evaluation   DR-CPO/MRDR/IPS    Best policy
 
-**Key Innovation**: Doubly-robust estimation corrects for distribution shift between your logged policy π₀ and target policy π' you want to evaluate.
+Common Use Cases
+----------------
 
-📚 Documentation Structure
---------------------------
+**📝 Prompt Engineering**
+   Test different prompts without deploying them
+   → See :doc:`guides/user_guide`
+
+**🤖 Model Comparison**  
+   Evaluate GPT-4 vs GPT-3.5 vs Claude using historical GPT-3.5 data
+   → See :doc:`tutorials/pairwise_evaluation`
+
+**🎯 Parameter Tuning**
+   Find optimal temperature/top-p settings
+   → See :doc:`guides/configuration_reference`
+
+**🏆 ChatBot Arena Analysis**
+   Large-scale evaluation with human preferences
+   → See :doc:`guides/arena_analysis`
+
+Estimator Selection
+-------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 30 25 25
+
+   * - Estimator
+     - Use When
+     - Pros
+     - Cons
+   * - **IPS**
+     - Quick tests, large data
+     - Fastest, simple
+     - High variance
+   * - **SNIPS**
+     - Medium data, better than IPS
+     - Lower variance than IPS
+     - Small bias
+   * - **DR-CPO** ⭐
+     - **Most use cases**
+     - Robust, low variance
+     - Needs target samples
+   * - **MRDR**
+     - Small data, max precision
+     - Lowest variance
+     - Slow, complex
+
+**Recommendation:** Start with DR-CPO for most applications.
+
+Documentation
+-------------
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Getting Started
+
+   installation
+   quickstart
+   guides/user_guide
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Guides
+   
+   guides/configuration_reference
+   guides/arena_analysis
+   guides/oracle_evaluation
+   guides/troubleshooting
+   guides/custom_components
+   guides/teacher_forcing
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Reference
+
+   api/estimators
+   api/index
+   theory/mathematical_foundations
 
 .. toctree::
    :maxdepth: 1
-   :caption: Getting Started
+   :caption: Tutorials
 
-   start_here
-   installation
-   quickstart
+   tutorials/pairwise_evaluation
 
-.. toctree::
-   :maxdepth: 2
-   :caption: User Guides
+Getting Help
+------------
 
-   guides/index
+**🐛 Issues?** Check :doc:`guides/troubleshooting` first
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Tutorials & Examples
+**💬 Questions?** Open an issue on `GitHub <https://github.com/fondutech/causal-judge-evaluation>`_
 
-   tutorials/index
+**📖 Paper:** See our research paper for theoretical foundations
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Technical Reference
-
-   theory/index
-   api/estimators
-   api/index
-
-
-🔍 Estimator Quick Reference
-----------------------------
-
-Choose the right method for your use case:
-
-.. list-table:: Estimator Selection Guide
-   :header-rows: 1
-   :widths: 12 20 15 25 28
-
-   * - Method
-     - Theoretical Properties
-     - Computational Cost
-     - Key Advantages
-     - From Paper?
-   * - **IPS**
-     - Unbiased, high variance
-     - Very Low
-     - Simple, fast, interpretable
-     - ✅ Classical baseline
-   * - **SNIPS**
-     - ≈Unbiased, lower variance
-     - Low
-     - Better than IPS, still simple
-     - ✅ Standard method
-   * - **DR-CPO**
-     - **Single-rate efficient**, double robust
-     - Medium
-     - **Paper Algorithm 1**: Best balance of accuracy/speed
-     - ✅ **Core contribution**
-   * - **MRDR**
-     - **Semiparametric optimal**, variance-minimizing
-     - High
-     - Maximum robustness and precision
-     - ⚠️ Paper mention + full implementation
-
-.. tip::
-   **💡 Recommendation**: Start with **DR-CPO** (the paper's main algorithm) for most applications, fall back to SNIPS for large-scale scenarios.
-
-**Key Theoretical Results** *(from the paper)*:
-   * **Single-Rate Efficiency**: DR-CPO achieves √n-efficiency when only ONE nuisance (weights OR outcome model) is well-specified
-   * **Double Robustness**: Unbiased if either importance weights or outcome model is correct  
-   * **Semiparametric Optimality**: MRDR attains the Cramér-Rao lower bound when both nuisances converge
-
-🎯 Common Use Cases
--------------------
-
-**System Prompt Engineering**
-   Test different communication styles and response formats
-   → :doc:`guides/user_guide` → "System Prompt Engineering"
-
-**Model Upgrades**
-   Evaluate if upgrading to a newer/larger model improves performance
-   → :doc:`guides/user_guide` → "Model Comparison"
-
-**Parameter Tuning**
-   Optimize temperature, top-p, and other generation parameters
-   → :doc:`guides/user_guide` → "Parameter Tuning"
-
-**ChatBot Arena Analysis**
-   Large-scale evaluation using human preference data
-   → :doc:`guides/arena_analysis` → Complete end-to-end guide
-
-**A/B Test Analysis**
-   Convert pairwise comparison data into policy utilities
-   → :doc:`tutorials/pairwise_evaluation` → Bradley-Terry modeling
-
-📊 Performance Benchmarks
--------------------------
-
-Expected performance characteristics (empirical validation in progress):
-
-- **Significant MSE reduction** vs naive importance sampling
-- **Further improvements** with outcome modeling (MRDR)
-- **Robust teacher forcing** implementation across providers
-- **Scales to millions** of logged interactions with cross-fold processing
-
-🚨 Quick Troubleshooting
-------------------------
-
-**Wide confidence intervals?**
-   → More data, similar policies, or try SNIPS estimator
-
-**Estimators disagree significantly?**
-   → Check calibration plots, consider more ground truth labels
-
-**Slow performance?**
-   → Use IPS/SNIPS, reduce mc_samples, or smaller models
-
-**Configuration errors?**
-   → Run ``cje validate`` before experiments
-
-.. seealso::
-   Each guide includes comprehensive troubleshooting sections for specific workflows.
-
-🏆 Research & Citation
----------------------
-
-This implementation is based on the **Causal Judge Evaluation** research paper:
+Citation
+--------
 
 .. code-block:: bibtex
 
    @article{landesberg2025cje,
-     title={Causal Judge Evaluation (CJE): Unbiased, Calibrated \& Cost-Efficient Off-Policy Metrics for LLM Systems},
-     author={Landesberg, Eddie},
-     year={2025},
-     note={Implementation available at https://github.com/fondutech/causal-judge-evaluation}
+     title={Causal Judge Evaluation: Fast, Accurate LLM Evaluation},
+     author={Landesberg et al.},
+     year={2025}
    }
-
-**Paper Highlights**:
-   * **Algorithm 1**: Cross-fitted Calibrated DR-CPO (exact implementation in ``MultiDRCPOEstimator``)
-   * **Theorem 5.2**: Single-rate efficiency through isotonic weight calibration
-   * **Section 6**: Production deployment guidelines and compute cost analysis
-
-**Implementation Enhancements** *(beyond paper baseline)*:
-   * Multi-policy joint evaluation with full covariance estimation
-   * Optional outcome model calibration for additional robustness  
-   * Production-grade numerical stabilization and diagnostics
-   * Automatic model selection and weight monitoring
-
-If you use CJE in your research, please cite the paper above. For implementation-specific features, you may also reference this software package.
-
-Indices and Tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
