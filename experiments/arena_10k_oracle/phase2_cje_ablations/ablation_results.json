@@ -1,0 +1,14 @@
+{
+  "IPS": {
+    "error": "IPS.__init__() missing 1 required positional argument: 'sampler'"
+  },
+  "SNIPS": {
+    "error": "SNIPS.__init__() missing 1 required positional argument: 'sampler'"
+  },
+  "DRCPO": {
+    "error": "BaseDREstimator.__init__() missing 1 required positional argument: 'sampler'"
+  },
+  "MRDR": {
+    "error": "BaseDREstimator.__init__() missing 1 required positional argument: 'sampler'"
+  }
+}

@@ -51,7 +51,8 @@ def load_scored_data(
     }
 
     for item in targets_data:
-        policy = item["model"]
+        # Handle both "policy" and "model" fields
+        policy = item.get("policy") or item.get("model")
         if policy in target_by_policy:
             target_by_policy[policy].append(item)
 

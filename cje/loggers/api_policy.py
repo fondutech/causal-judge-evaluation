@@ -407,15 +407,21 @@ class APIPolicyRunner:
             )
 
             if not resp.choices or not resp.choices[0].logprobs:
-                logger.warning(f"No logprobs returned for {self.model_name}")
-                return 0.0
+                raise RuntimeError(
+                    f"No logprobs returned by {self.model_name}. "
+                    f"This usually means the model doesn't support logprobs "
+                    f"or the API call failed. Context: {context[:100]}..."
+                )
 
             logprobs_data = resp.choices[0].logprobs
             all_token_logprobs = logprobs_data.token_logprobs or []
 
             if not all_token_logprobs:
-                logger.warning(f"Empty token logprobs for {self.model_name}")
-                return 0.0
+                raise RuntimeError(
+                    f"Empty token logprobs returned by {self.model_name}. "
+                    f"Response might be empty or API returned invalid data. "
+                    f"Response: {response[:100]}..."
+                )
 
             # Extract response logprobs using character-level matching
             result = self._extract_response_logprobs(
@@ -436,8 +442,15 @@ class APIPolicyRunner:
             return result
 
         except Exception as e:
-            logger.warning(f"Teacher forcing failed for {self.model_name}: {e}")
-            return 0.0
+            # NEVER return a default value - fail explicitly
+            error_msg = (
+                f"Teacher forcing failed for {self.model_name}: {e}\n"
+                f"Context: {context[:100]}...\n"
+                f"Response: {response[:100]}...\n"
+                f"This failure will corrupt importance weights if not handled properly."
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
 
     def _get_response_token_count(self, response: str) -> int:
         """Get token count for response text."""
