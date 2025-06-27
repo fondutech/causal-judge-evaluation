@@ -24,7 +24,7 @@ from .stages import (
 from ..estimators import get_estimator
 from ..utils.progress import ProgressMonitor, print_summary_table
 from ..validation import validate_pipeline_data, assign_rewards_with_priority
-from ..utils.error_handling import safe_call, ConfigurationError
+from ..utils.error_handling import ConfigurationError
 
 logger = logging.getLogger(__name__)
 

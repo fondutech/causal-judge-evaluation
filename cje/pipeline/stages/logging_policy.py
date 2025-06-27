@@ -13,7 +13,7 @@ from ...loggers.policy import PolicyRunner
 from ...loggers.api_policy import APIPolicyRunner
 from ...cache import chunk_exists, load_chunk, save_chunk
 from ...utils.checkpointing import CheckpointManager
-from ...utils.error_handling import safe_call, PolicyError
+from ...utils.error_handling import PolicyError
 from ..validation import validate_stage_output
 
 logger = logging.getLogger(__name__)
@@ -94,7 +94,10 @@ class LoggingPolicyStage:
             for param in ["max_new_tokens", "temperature", "top_p", "batch_size"]:
                 if param in config:
                     kwargs[param] = config[param]
-            return APIPolicyRunner(**kwargs)
+            # Use the factory function to create the right provider-specific class
+            from ...loggers.api_policy import create_api_policy
+
+            return create_api_policy(**kwargs)
         else:
             # Local HF model
             return PolicyRunner(config["model_name"])

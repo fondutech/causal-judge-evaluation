@@ -11,9 +11,6 @@ import math
 from typing import List, Tuple, Optional, Any, Union, Protocol
 from dataclasses import dataclass
 
-# Import the protocol for compatibility
-from ...loggers.multi_target_sampler import PolicyRunnerProtocol
-
 
 @dataclass
 class MockModelConfig:
@@ -35,6 +32,20 @@ class MockModelConfig:
 
     # Temperature effects
     temperature_sensitivity: float = 1.0  # How much temperature affects randomness
+
+
+class PolicyRunnerProtocol(Protocol):
+    """Protocol defining the interface for policy runners."""
+
+    def generate_with_logp(
+        self, prompts: List[str], **kwargs: Any
+    ) -> List[Tuple[str, float, Any]]:
+        """Generate responses with log probabilities."""
+        ...
+
+    def log_prob(self, context: str, response: str, **kwargs: Any) -> float:
+        """Calculate log probability of response given context."""
+        ...
 
 
 class MockPolicyRunner(PolicyRunnerProtocol):

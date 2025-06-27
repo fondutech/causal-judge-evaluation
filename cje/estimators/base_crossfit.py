@@ -108,9 +108,7 @@ class BaseCrossFittedEstimator(Estimator[Dict[str, Any]]):
         self.W, self._weight_stats = self.sampler.importance_weights_matrix(
             contexts,
             responses,
-            self._logp_behavior_full.tolist(),
-            stabilize=self.stabilize_weights,
-            return_stats=True,
+            show_progress=True,
         )
 
         # Fit featurizer

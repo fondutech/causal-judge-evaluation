@@ -55,8 +55,10 @@ def _create_runner(
 
     # Use API runner for known providers
     if provider in ["openai", "anthropic", "google", "fireworks", "together"]:
+        from ..loggers.api_policy import create_api_policy
+
         if batch_size is not None:
-            return APIPolicyRunner(
+            return create_api_policy(
                 provider=provider,
                 model_name=model,
                 max_new_tokens=max_tokens,
@@ -65,7 +67,7 @@ def _create_runner(
                 batch_size=batch_size,
             )
         else:
-            return APIPolicyRunner(
+            return create_api_policy(
                 provider=provider,
                 model_name=model,
                 max_new_tokens=max_tokens,
@@ -138,7 +140,7 @@ def generate_with_logprobs(
         return cast(Dict[str, Any], cached)
 
     # Generate with log probabilities
-    results = runner.generate_with_logp(
+    results = runner.generate_with_logp(  # type: ignore[attr-defined,union-attr]
         prompts=[prompt], return_token_logprobs=return_token_logprobs
     )
 
@@ -220,7 +222,7 @@ def compute_sequence_logp(
         return float(cached)
 
     # Compute log probability
-    logp_result = runner.log_prob(
+    logp_result = runner.log_prob(  # type: ignore[attr-defined,union-attr]
         context=context,
         response=text,
         temperature=temperature,
@@ -270,6 +272,12 @@ def batch_generate_with_logprobs(
     runner = _create_runner(provider, model, temperature, top_p, max_tokens, batch_size)
 
     # Generate all at once
+    # Only PolicyRunner supports generation
+    if not hasattr(runner, "generate_with_logp"):
+        raise ValueError(
+            f"Runner type {type(runner).__name__} doesn't support batch generation"
+        )
+
     results = runner.generate_with_logp(prompts=prompts, return_token_logprobs=True)
 
     # Format results

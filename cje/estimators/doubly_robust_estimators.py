@@ -147,9 +147,7 @@ class BaseDREstimator(Estimator[Dict[str, Any]]):
         W, weight_stats = self.sampler.importance_weights_matrix(
             contexts,
             responses,
-            logp_behavior,
-            stabilize=self.stabilize_weights,
-            return_stats=True,
+            show_progress=True,
         )
         return W, weight_stats
 

@@ -1,664 +1,300 @@
-# This file interfaces with multiple external APIs (OpenAI, Anthropic, Google) whose
-# type definitions are either incomplete, inconsistent with their implementation, or
-# change frequently between versions. In particular, the logprobs feature in OpenAI's
-# API has structural differences between documented types and actual response shapes.
-# Rather than adding numerous specific type ignores throughout the code, we use a
-# global ignore directive as a temporary solution until type definitions stabilize.
-# mypy: ignore-errors
-from __future__ import annotations
+"""
+API-based policy runner with proper error handling.
 
-from typing import (
-    List,
-    Tuple,
-    Optional,
-    Any,
-    Union,
-    Iterable,
-    Dict,
-    Type,
-    Literal,
-    overload,
-)
-import os
+No fallback values - all failures are explicit!
+"""
+
+import time
 import logging
+from typing import Optional, List, Dict, Any, Tuple, Union
+from abc import abstractmethod
+import numpy as np
 
-# Import type annotations for API clients
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from openai.types.chat import ChatCompletion
-    from openai.types.chat.chat_completion import (
-        Choice,
-        ChoiceLogprobs,
-        ChatCompletionTokenLogprob,
-    )
-    from openai.types.chat import (
-        ChatCompletionUserMessageParam,
-        ChatCompletionAssistantMessageParam,
-    )
-    from anthropic.types import Message as AnthropicMessage
-
-from cje.loggers.adapters import (
-    ProviderAdapter,
-    OpenAIAdapter,
-    AnthropicAdapter,
-    GeminiAdapter,
-    FireworksAdapter,
-    TogetherAdapter,
-)
-from cje.loggers.conversation_utils import parse_context
-from cje.loggers.completions_templates import (
-    CompletionsTemplate,
-    CompletionsTemplateConfig,
-    get_completions_template,
-)
-from cje.loggers.template_validation import (
-    validate_teacher_forcing,
-    TemplateValidationError,
-    ValidationCase,
-)
-from ..constants import OPENAI_COMPATIBLE_PROVIDERS
-from ..utils.error_handling import safe_call
-from ..utils.progress import track
+from ..types import LogProbResult, LogProbStatus
+from ..utils.error_handling import classify_error, require_positive, require_not_empty
+from .base_policy import BasePolicy
 
 logger = logging.getLogger(__name__)
 
-_ADAPTERS: Dict[str, Type[ProviderAdapter]] = {
-    "openai": OpenAIAdapter,
-    "anthropic": AnthropicAdapter,
-    "google": GeminiAdapter,
-    "fireworks": FireworksAdapter,
-    "together": TogetherAdapter,
-}
 
+class APIPolicyRunner(BasePolicy):
+    """
+    API-based policy runner with robust error handling.
 
-class APIPolicyRunner:
-    """Simple wrapper for hosted model APIs (OpenAI, Anthropic or Google)."""
+    Key improvements:
+    - Returns LogProbResult, not raw floats
+    - Built-in retry logic with smart backoff
+    - No fallback values ever
+    - Comprehensive error tracking
+    """
 
     def __init__(
         self,
         provider: str,
         model_name: str,
-        max_new_tokens: int = 1024,
-        temperature: float = 0.1,
+        temperature: float = 1.0,
+        max_new_tokens: int = 512,
         top_p: float = 1.0,
-        batch_size: int = 16,
+        frequency_penalty: float = 0.0,
+        presence_penalty: float = 0.0,
         system_prompt: Optional[str] = None,
-        user_message_template: str = "{context}",
-        completions_template_format: str = "llama4",
-    ) -> None:
-        """Initialize APIPolicyRunner with completions template configuration.
+        user_message_template: str = "{prompt}",
+        assistant_message_template: Optional[str] = None,
+        api_key: Optional[str] = None,
+        api_base: Optional[str] = None,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
+        timeout: float = 60.0,
+        cache_enabled: bool = True,
+        **kwargs: Any,
+    ):
+        """Initialize API policy runner with configuration."""
+        super().__init__(
+            name=f"{provider}:{model_name}",
+            model_id=model_name,
+            max_retries=max_retries,
+            retry_delay=retry_delay,
+        )
 
-        Args:
-            provider: API provider ('openai', 'anthropic', 'google', 'fireworks', 'together')
-            model_name: Model identifier
-            max_new_tokens: Maximum tokens to generate
-            temperature: Sampling temperature
-            top_p: Nucleus sampling threshold
-            batch_size: Batch size for API calls
-            system_prompt: Optional system prompt
-            user_message_template: Template for user messages
-            completions_template_format: Format for completions API ('llama3' or 'llama4')
-                                       IMPORTANT: You must specify the correct format for your model.
-                                       - Use 'llama3' for Llama 3.x models
-                                       - Use 'llama4' for Llama 4 models
-                                       This is required for teacher forcing to work correctly.
-        """
-        self.provider = provider.lower()
+        # Validate inputs
+        require_not_empty(provider, "provider")
+        require_not_empty(model_name, "model_name")
+        require_positive(temperature, "temperature")
+        require_positive(max_new_tokens, "max_new_tokens")
+
+        self.provider = provider
         self.model_name = model_name
-        self.max_new_tokens = max_new_tokens
         self.temperature = temperature
+        self.max_new_tokens = max_new_tokens
         self.top_p = top_p
-        self.batch_size = batch_size
+        self.frequency_penalty = frequency_penalty
+        self.presence_penalty = presence_penalty
         self.system_prompt = system_prompt
         self.user_message_template = user_message_template
-        self.completions_template_format = completions_template_format
+        self.assistant_message_template = assistant_message_template
+        self.timeout = timeout
+        self.cache_enabled = cache_enabled
 
-        # Initialize the completions template for converting chat to continuous format
-        self.template = get_completions_template(
-            template_format=self.completions_template_format
-        )
+        # Initialize API client
+        self._init_api_client(api_key, api_base, **kwargs)
 
-        # Simple in-memory cache for log-prob computations
-        self._logprob_cache: Dict[str, float] = {}
+        # Cache for log probabilities
+        self._cache: Dict[str, LogProbResult] = {}
 
-        self.client: Any = None
-        self.model: Any = None
+    @abstractmethod
+    def _init_api_client(
+        self, api_key: Optional[str], api_base: Optional[str], **kwargs: Any
+    ) -> None:
+        """Initialize the API client for the specific provider."""
+        pass
 
-        if self.provider == "openai":
-            try:
-                import openai
-            except Exception as exc:  # pragma: no cover - optional dep
-                raise ImportError(
-                    "openai package is required for provider 'openai'"
-                ) from exc
-            self.client = openai.OpenAI()
-        elif self.provider == "anthropic":
-            try:
-                import anthropic
-            except Exception as exc:  # pragma: no cover - optional dep
-                raise ImportError(
-                    "anthropic package is required for provider 'anthropic'"
-                ) from exc
-            self.client = anthropic.Anthropic()
-        elif self.provider == "google":
-            try:
-                import google.generativeai as genai
-            except Exception as exc:  # pragma: no cover - optional dep
-                raise ImportError(
-                    "google.generativeai package is required for provider 'google'"
-                ) from exc
-            genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-            self.model = genai.GenerativeModel(model_name)
-        elif self.provider == "fireworks":
-            try:
-                import openai
-            except Exception as exc:
-                raise ImportError(
-                    "openai package required for provider 'fireworks'"
-                ) from exc
-            self.client = openai.OpenAI(
-                api_key=os.getenv("FIREWORKS_API_KEY"),
-                base_url="https://api.fireworks.ai/inference/v1",
-            )
-        elif self.provider == "together":
-            try:
-                import openai
-            except Exception as exc:
-                raise ImportError(
-                    "openai package required for provider 'together'"
-                ) from exc
-            self.client = openai.OpenAI(
-                api_key=os.getenv("TOGETHER_API_KEY"),
-                base_url="https://api.together.xyz/v1",
-            )
-        else:
-            raise ValueError(f"Unknown provider: {provider}")
-
-        adapter_class = _ADAPTERS.get(self.provider)
-        if not adapter_class:
-            raise ValueError(
-                f"Unknown or unsupported provider for adapter: {self.provider}"
-            )
-
-        if self.provider in OPENAI_COMPATIBLE_PROVIDERS:
-            provider_client_instance = self.client
-        elif self.provider == "google":
-            provider_client_instance = self.model
-        else:
-            raise ValueError(
-                f"Internal error: Unhandled provider '{self.provider}' for adapter client assignment."
-            )
-
-        self.adapter: ProviderAdapter = adapter_class(
-            client=provider_client_instance,
-            model_name=self.model_name,
-            system_prompt=self.system_prompt,
-            user_message_template=self.user_message_template,
-        )
-
-    @overload
-    def generate_with_logp(
-        self,
-        prompts: List[str],
-        max_new_tokens: Optional[int] = None,
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
-        return_token_logprobs: Literal[True] = True,
-    ) -> List[Tuple[str, float, List[float]]]: ...
-
-    @overload
-    def generate_with_logp(
-        self,
-        prompts: List[str],
-        max_new_tokens: Optional[int] = None,
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
-        return_token_logprobs: Literal[False] = False,
-    ) -> List[Tuple[str, float]]: ...
-
-    @overload
-    def generate_with_logp(
-        self,
-        prompts: List[str],
-        max_new_tokens: Optional[int] = None,
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
-        return_token_logprobs: bool = False,
-    ) -> List[Tuple[str, float] | Tuple[str, float, List[float]]]: ...
-
-    def generate_with_logp(
-        self,
-        prompts: List[str],
-        max_new_tokens: Optional[int] = None,
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
-        return_token_logprobs: bool = False,
-    ) -> List[Tuple[str, float] | Tuple[str, float, List[float]]]:
-        """Generate text and return summed log-probability.
-
-        For providers that expose token-level log-probs (OpenAI, Anthropic,
-        Google) we request them so that propensities can be logged exactly.
+    @abstractmethod
+    def _compute_log_prob_api(self, context: str, response: str) -> float:
         """
+        Call the API to compute log probability.
 
-        # Add progress tracking for larger batches
-        if len(prompts) > 10:
-            logger.info(
-                f"Generating {len(prompts)} responses with {self.provider}:{self.model_name}"
-            )
-
-        gen_max_new_tokens = (
-            max_new_tokens if max_new_tokens is not None else self.max_new_tokens
-        )
-        gen_temperature = temperature if temperature is not None else self.temperature
-        gen_top_p = top_p if top_p is not None else self.top_p
-
-        adapter_kwargs = {
-            "max_new_tokens": gen_max_new_tokens,
-            "temperature": gen_temperature,
-            "top_p": gen_top_p,
-            "batch_size": self.batch_size,
-        }
-
-        # Use safe_call for error handling
-        adapter_results: List[Tuple[str, List[float]]] = safe_call(
-            self.adapter.request,
-            fallback=[("", [])] * len(prompts),
-            error_context=f"Batch generation for {len(prompts)} prompts with {self.provider}:{self.model_name}",
-            prompts=prompts,
-            **adapter_kwargs,
-        )
-
-        processed_outputs: List[Tuple[str, float] | Tuple[str, float, List[float]]] = []
-        for text_result, token_logprobs_list in adapter_results:
-            final_text = text_result if text_result is not None else ""
-
-            final_token_logprobs = (
-                token_logprobs_list if token_logprobs_list is not None else []
-            )
-            # Use float64 to prevent overflow for long sequences (P3 fix)
-            import numpy as np
-
-            logp = (
-                float(np.float64(sum(final_token_logprobs)))
-                if final_token_logprobs
-                else 0.0
-            )
-
-            if return_token_logprobs:
-                processed_outputs.append((final_text, logp, final_token_logprobs))
-            else:
-                processed_outputs.append((final_text, logp))
-
-        return processed_outputs
-
-    def generate_with_consistent_logp(
-        self,
-        prompts: List[str],
-        max_new_tokens: Optional[int] = None,
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
-    ) -> List[Tuple[str, float]]:
+        This method can raise exceptions - they will be handled by compute_log_prob.
         """
-        Generate responses and return teacher-forcing log-probs for consistency with offline evaluation.
+        pass
 
-        This method implements the two-pass approach:
-        1. Generate response text using chat completions API
-        2. Score that exact text using teacher forcing (completions + echo)
-
-        This ensures the behavior policy log-probs (π₀) use the same scoring method
-        as target policy log-probs (πₖ), guaranteeing consistent importance weights.
-
-        Args:
-            prompts: List of input prompts
-            max_new_tokens: Maximum tokens to generate (overrides instance default)
-            temperature: Sampling temperature (overrides instance default)
-            top_p: Nucleus sampling threshold (overrides instance default)
-
-        Returns:
-            List of (generated_text, teacher_forcing_logp) tuples
-
-        Example:
-            >>> runner = APIPolicyRunner("fireworks", "llama-v3p1-70b-instruct")
-            >>> results = runner.generate_with_consistent_logp(["What is AI?"])
-            >>> text, behavior_logp = results[0]
-            >>> # Store behavior_logp as π₀ for importance weight computation
+    def _compute_log_prob_impl(self, context: str, response: str) -> float:
         """
-        # Step 1: Generate response text using standard generation
-        gen_results = self.generate_with_logp(
-            prompts,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            return_token_logprobs=False,  # We only need the text
-        )
+        Implementation that calls the API.
 
-        # Step 2: Score each generated response with teacher forcing
-        consistent_results = []
-        for i, (prompt, gen_result) in enumerate(zip(prompts, gen_results)):
-            generated_text = gen_result[0]  # Extract text from (text, logp) tuple
-
-            # Re-score with teacher forcing for consistency
-            teacher_forcing_logp = self.log_prob(
-                prompt,
-                generated_text,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                top_p=top_p,
-            )
-
-            consistent_results.append((generated_text, teacher_forcing_logp))
-
-        return consistent_results
-
-    def log_prob(
-        self,
-        context: str,
-        response: str,
-        max_new_tokens: Optional[int] = None,
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
-    ) -> float:
-        """Return log probability of ``response`` given ``context`` using teacher forcing.
-
-        Args:
-            context: Input context/prompt
-            response: Response text to score
-            max_new_tokens: Max tokens (unused for teacher forcing)
-            temperature: Temperature (unused for teacher forcing)
-            top_p: Top-p (unused for teacher forcing)
-
-        Returns:
-            Log probability of the response given context
+        Can raise exceptions - that's OK! The base class handles them.
         """
-        # Simple cache key based on content + model
-        cache_key = f"{self.model_name}:{hash(context)}:{hash(response)}"
-
         # Check cache first
-        if cache_key in self._logprob_cache:
-            return self._logprob_cache[cache_key]
+        if self.cache_enabled:
+            cache_key = self._get_cache_key(context, response)
+            if cache_key in self._cache:
+                cached = self._cache[cache_key]
+                if cached.is_valid:
+                    logger.debug(f"Cache hit for {self.model_name}")
+                    return cached.value
 
-        # Use teacher forcing
-        result = self._teacher_forcing_logprob(context, response)
+        # Call API
+        result = self._compute_log_prob_api(context, response)
 
-        # Cache result
-        self._logprob_cache[cache_key] = result
-        return result
+        # Validate result
+        if not isinstance(result, (int, float)):
+            raise TypeError(f"API returned invalid type: {type(result)}")
+        if result > 0:
+            raise ValueError(f"Log probability must be <= 0, got {result}")
+        if not np.isfinite(result):
+            raise ValueError(f"Log probability must be finite, got {result}")
 
-    def _teacher_forcing_logprob(self, context: str, response: str) -> float:
-        """Compute log probability using teacher forcing via completions API."""
-        try:
-            # Parse context into message format
-            messages = parse_context(
-                context, self.system_prompt, self.user_message_template
+        # Sanity check for very short responses
+        response_len = len(response.split())
+        if response_len <= 3 and result < -50:
+            logger.warning(
+                f"Suspiciously low logprob {result:.3f} for {response_len}-word response: "
+                f"'{response[:50]}...'"
             )
 
-            # Format as complete conversation including response
-            full_prompt = self._format_conversation_with_response(messages, response)
+        return float(result)
 
-            # Use completions API to get logprobs for the full sequence
-            resp = self.client.completions.create(
-                model=self.model_name,
-                prompt=full_prompt,
-                max_tokens=0,  # Don't generate - just score existing text
-                temperature=0.0,  # Deterministic
-                logprobs=5,
-                echo=True,  # Return logprobs for input text
-            )
-
-            if not resp.choices or not resp.choices[0].logprobs:
-                raise RuntimeError(
-                    f"No logprobs returned by {self.model_name}. "
-                    f"This usually means the model doesn't support logprobs "
-                    f"or the API call failed. Context: {context[:100]}..."
-                )
-
-            logprobs_data = resp.choices[0].logprobs
-            all_token_logprobs = logprobs_data.token_logprobs or []
-
-            if not all_token_logprobs:
-                raise RuntimeError(
-                    f"Empty token logprobs returned by {self.model_name}. "
-                    f"Response might be empty or API returned invalid data. "
-                    f"Response: {response[:100]}..."
-                )
-
-            # Extract response logprobs using character-level matching
-            result = self._extract_response_logprobs(
-                messages, response, all_token_logprobs
-            )
-
-            # Sanity check: for very short responses, logprob shouldn't be extremely negative
-            response_token_count = self._get_response_token_count(response)
-            if response_token_count <= 3 and result < -20:
-                logger.warning(
-                    f"Suspiciously low logprob {result:.3f} for {response_token_count}-token response. "
-                    f"Response: '{response[:50]}...'"
-                )
-
-            logger.debug(
-                f"Teacher forcing: response '{response[:30]}...', logprob={result:.3f}"
-            )
-            return result
-
-        except Exception as e:
-            # NEVER return a default value - fail explicitly
-            error_msg = (
-                f"Teacher forcing failed for {self.model_name}: {e}\n"
-                f"Context: {context[:100]}...\n"
-                f"Response: {response[:100]}...\n"
-                f"This failure will corrupt importance weights if not handled properly."
-            )
-            logger.error(error_msg)
-            raise RuntimeError(error_msg) from e
-
-    def _get_response_token_count(self, response: str) -> int:
-        """Get token count for response text."""
-        try:
-            import tiktoken
-
-            try:
-                enc = tiktoken.encoding_for_model(self.model_name)
-            except KeyError:
-                enc = tiktoken.get_encoding("cl100k_base")
-            return len(enc.encode(response))
-        except ImportError:
-            # Fallback: rough estimate
-            return max(len(response) // 3, 1)
-
-    def log_prob_batch(
+    def compute_log_prob_batch(
         self,
         contexts: List[str],
         responses: List[str],
-        max_new_tokens: Optional[int] = None,
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
         show_progress: bool = True,
-    ) -> List[float]:
-        """Batch log-prob computation with caching and progress tracking.
-
-        This is a new method that efficiently computes log-probs for many pairs.
+    ) -> List[LogProbResult]:
         """
+        Compute log probabilities for a batch of samples.
 
+        Returns:
+            List of LogProbResult - one per sample, never raises
+        """
         if len(contexts) != len(responses):
             raise ValueError(
-                f"Contexts ({len(contexts)}) and responses ({len(responses)}) must have same length"
+                f"Mismatched batch sizes: {len(contexts)} contexts, {len(responses)} responses"
             )
 
         results = []
-        cache_hits = 0
+        for i, (context, response) in enumerate(zip(contexts, responses)):
+            if show_progress and i % 10 == 0:
+                logger.info(f"Processing sample {i+1}/{len(contexts)}")
 
-        # Use progress tracking for larger batches
-        pairs = list(zip(contexts, responses))
-        if show_progress and len(pairs) > 5:
-            pairs = track(pairs, description=f"Computing log-probs ({self.provider})")
+            result = self.compute_log_prob(context, response)
+            results.append(result)
 
-        for context, response in pairs:
-            # Check cache first
-            cache_key = f"{self.model_name}:{hash(context)}:{hash(response)}"
-
-            if cache_key in self._logprob_cache:
-                results.append(self._logprob_cache[cache_key])
-                cache_hits += 1
-            else:
-                # Compute with error handling (calls the enhanced log_prob method)
-                logp = self.log_prob(
-                    context,
-                    response,
-                    max_new_tokens=max_new_tokens,
-                    temperature=temperature,
-                    top_p=top_p,
-                )
-                results.append(logp)
-
-        if cache_hits > 0:
-            logger.info(
-                f"Cache hits: {cache_hits}/{len(contexts)} ({cache_hits/len(contexts)*100:.1f}%)"
-            )
+            # Update cache
+            if self.cache_enabled and result.is_valid:
+                cache_key = self._get_cache_key(context, response)
+                self._cache[cache_key] = result
 
         return results
 
-    def clear_cache(self) -> None:
-        """Clear the log-prob cache."""
-        self._logprob_cache.clear()
-        logger.info("Log-prob cache cleared")
+    def _get_cache_key(self, context: str, response: str) -> str:
+        """Generate cache key for a context-response pair."""
+        # Use hash to keep keys reasonable size
+        context_hash = hash(context)
+        response_hash = hash(response)
+        return f"{self.model_name}:{context_hash}:{response_hash}"
 
-    def cache_stats(self) -> Dict[str, int]:
+    def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
-        return {"cache_size": len(self._logprob_cache)}
+        if not self.cache_enabled:
+            return {"enabled": False}
 
-    def validate_teacher_forcing(
-        self,
-        custom_cases: Optional[List[ValidationCase]] = None,
-        fail_fast: bool = True,
-        verbose: bool = True,
-    ) -> bool:
-        """Validate that teacher forcing is working correctly with this configuration.
+        valid_entries = sum(1 for r in self._cache.values() if r.is_valid)
+        failed_entries = len(self._cache) - valid_entries
 
-        This method tests the template formatting and log probability computation
-        with known test cases to ensure the setup is correct.
+        return {
+            "enabled": True,
+            "total_entries": len(self._cache),
+            "valid_entries": valid_entries,
+            "failed_entries": failed_entries,
+            "hit_rate": self._cache_hits
+            / max(self._cache_hits + self._cache_misses, 1),
+        }
 
-        Args:
-            custom_cases: Optional custom validation cases
-            fail_fast: Whether to stop on first failure
-            verbose: Whether to log detailed information
+    def clear_cache(self) -> None:
+        """Clear the cache."""
+        self._cache.clear()
+        self._cache_hits = 0
+        self._cache_misses = 0
+        logger.info(f"Cleared cache for {self.name}")
 
-        Returns:
-            True if all validations pass
 
-        Raises:
-            TemplateValidationError: If validation fails and fail_fast=True
+class OpenAIPolicy(APIPolicyRunner):
+    """OpenAI-specific implementation."""
 
-        Example:
-            >>> runner = APIPolicyRunner("fireworks", "llama4-model")
-            >>> try:
-            ...     runner.validate_teacher_forcing()
-            ...     print("✅ Teacher forcing validated")
-            ... except TemplateValidationError as e:
-            ...     print(f"❌ Validation failed: {e}")
-        """
-        return validate_teacher_forcing(
-            api_runner=self,
-            custom_cases=custom_cases,
-            fail_fast=fail_fast,
-            verbose=verbose,
-        )
-
-    def _format_conversation_with_response(
-        self, messages: List[Dict], response: str
-    ) -> str:
-        """
-        Format the conversation as a single prompt string including the logged response.
-        Uses the configured template system.
-        """
-        return self.template.format_with_response(messages, response)
-
-    def _format_conversation_without_response(self, messages: List[Dict]) -> str:
-        """
-        Format the conversation as a single prompt string WITHOUT the response.
-        This is used to calculate the exact token count of the response in context.
-        Uses the configured template system.
-        """
-        return self.template.format_without_response(messages)
-
-    def _extract_response_logprobs(
-        self, messages: List[Dict], response: str, all_logprobs: List[Optional[float]]
-    ) -> float:
-        """
-        Extract response logprobs by finding the response in the token sequence.
-
-        Uses character-level matching to map response to token positions.
-        """
-        import tiktoken
-
+    def _init_api_client(
+        self, api_key: Optional[str], api_base: Optional[str], **kwargs: Any
+    ) -> None:
+        """Initialize OpenAI client."""
         try:
-            enc = tiktoken.encoding_for_model(self.model_name)
-        except KeyError:
-            enc = tiktoken.get_encoding("cl100k_base")
+            import openai
+        except ImportError:
+            raise ImportError("openai package required for OpenAI provider")
 
-        # Get the full prompt with response
-        with_resp = self._format_conversation_with_response(messages, response)
-
-        # Get prompt without response to know where response should start
-        without_resp = self._format_conversation_without_response(messages)
-
-        # Find response position at character level, starting from where assistant response begins
-        response_char_start = with_resp.find(response, len(without_resp))
-
-        if response_char_start == -1:
-            # If exact match fails, try with normalized whitespace
-            import re
-
-            pattern = re.escape(response.strip())
-            pattern = r"\s*" + pattern.replace(r"\ ", r"\s+") + r"\s*"
-            # Search only in the response portion
-            match = re.search(pattern, with_resp[len(without_resp) :])
-            if match:
-                response_char_start = len(without_resp) + match.start()
-                response = match.group()  # Use the matched version
-
-        if response_char_start == -1:
-            raise ValueError(
-                f"Could not find response in formatted text. "
-                f"Response: '{response[:50]}...'"
-            )
-
-        # Tokenize and build character position mapping
-        tokens = enc.encode(with_resp)
-        char_positions = []  # List of (token_idx, char_start, char_end)
-        char_pos = 0
-
-        for i, token_id in enumerate(tokens):
-            token_text = enc.decode([token_id])
-            char_positions.append((i, char_pos, char_pos + len(token_text)))
-            char_pos += len(token_text)
-
-        # Find tokens that contain the response
-        response_char_end = response_char_start + len(response)
-        response_token_indices = []
-
-        for token_idx, start, end in char_positions:
-            # Token overlaps with response
-            if start < response_char_end and end > response_char_start:
-                response_token_indices.append(token_idx)
-
-        if not response_token_indices:
-            raise ValueError(
-                f"No tokens found for response at char position {response_char_start}"
-            )
-
-        # Extract and sum logprobs for response tokens
-        start_idx = response_token_indices[0]
-        end_idx = response_token_indices[-1] + 1
-        response_logprobs = all_logprobs[start_idx:end_idx]
-
-        result = sum(lp for lp in response_logprobs if lp is not None)
-
-        # Debug logging
-        extracted_text = enc.decode(tokens[start_idx:end_idx])
-        logger.debug(
-            f"Extracted tokens [{start_idx}:{end_idx}] = '{extracted_text}' "
-            f"(expected: '{response}')"
+        # Set up client
+        self.client = openai.Client(
+            api_key=api_key, base_url=api_base, timeout=self.timeout, **kwargs
         )
 
-        return result
+    def _compute_log_prob_api(self, context: str, response: str) -> float:
+        """Call OpenAI API for log probability."""
+        # Format messages
+        messages = []
+        if self.system_prompt:
+            messages.append({"role": "system", "content": self.system_prompt})
+        messages.append({"role": "user", "content": context})
+        messages.append({"role": "assistant", "content": response})
+
+        # Call API with logprobs enabled
+        completion = self.client.chat.completions.create(
+            model=self.model_name,
+            messages=messages,  # type: ignore[arg-type]
+            max_tokens=1,  # We just need log probs, not generation
+            logprobs=True,
+            temperature=0,  # For consistent results
+        )
+
+        # Extract log probability
+        # This is provider-specific - adjust based on API response format
+        if (
+            hasattr(completion.choices[0], "logprobs")
+            and completion.choices[0].logprobs
+        ):
+            # The structure of logprobs in the API response varies
+            # This needs to be adapted based on the actual API response format
+            logprobs_obj = completion.choices[0].logprobs
+            if hasattr(logprobs_obj, "token_logprobs"):
+                token_logprobs = logprobs_obj.token_logprobs  # type: ignore[attr-defined]
+                if token_logprobs:
+                    return float(sum(token_logprobs))
+            # Try alternative structure
+            if hasattr(logprobs_obj, "content") and logprobs_obj.content:
+                # Sum log probs from content tokens
+                total_logp = 0.0
+                for token_data in logprobs_obj.content:
+                    if hasattr(token_data, "logprob"):
+                        total_logp += token_data.logprob
+                return total_logp
+
+        raise ValueError("No log probabilities in API response")
+
+
+class AnthropicPolicy(APIPolicyRunner):
+    """Anthropic-specific implementation."""
+
+    def _init_api_client(
+        self, api_key: Optional[str], api_base: Optional[str], **kwargs: Any
+    ) -> None:
+        """Initialize Anthropic client."""
+        try:
+            import anthropic
+        except ImportError:
+            raise ImportError("anthropic package required for Anthropic provider")
+
+        self.client = anthropic.Client(
+            api_key=api_key, base_url=api_base, timeout=self.timeout, **kwargs
+        )
+
+    def _compute_log_prob_api(self, context: str, response: str) -> float:
+        """Call Anthropic API for log probability."""
+        # Note: Anthropic doesn't directly support log prob computation
+        # This would need a custom implementation or workaround
+        raise NotImplementedError(
+            "Anthropic API doesn't directly support log probability computation. "
+            "Consider using a different provider or implementing a workaround."
+        )
+
+
+# Factory function
+def create_api_policy(provider: str, **kwargs: Any) -> APIPolicyRunner:
+    """Create an API policy runner for the given provider."""
+    providers = {
+        "openai": OpenAIPolicy,
+        "anthropic": AnthropicPolicy,
+        # Add more providers as needed
+    }
+
+    if provider not in providers:
+        raise ValueError(
+            f"Unknown provider: {provider}. " f"Available: {list(providers.keys())}"
+        )
+
+    return providers[provider](**kwargs)

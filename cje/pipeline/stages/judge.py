@@ -13,7 +13,8 @@ from ...judge.factory import JudgeFactory
 from ...judge.judges import Judge
 from ...judge.cached_judge import CachedJudge
 from ...cache import compute_judge_hash, chunk_exists, load_chunk, save_chunk
-from ...utils.error_handling import safe_call
+
+# Removed safe_call import - no longer used
 from ..validation import validate_stage_output
 
 logger = logging.getLogger(__name__)

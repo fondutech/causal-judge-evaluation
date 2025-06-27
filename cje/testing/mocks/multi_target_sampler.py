@@ -35,12 +35,33 @@ class MockMultiTargetSampler(MultiTargetSampler):
         if not runners:
             raise ValueError("At least one policy runner must be provided")
 
-        # Initialize parent class with empty runners list
-        # We'll override the methods to use our mock runners
-        super().__init__([])
+        # Initialize parent class with mock policies
+        # Create mock base policies from runners
+        mock_policies = []
+        for i, runner in enumerate(runners):
+            from ...loggers.base_policy import BasePolicy
 
-        self.runners = list(runners)  # Convert to list for internal use
-        self.K = len(self.runners)  # Number of target policies
+            class MockPolicy(BasePolicy):
+                def __init__(self, runner: Any, idx: int) -> None:
+                    super().__init__(
+                        name=f"mock_policy_{idx}",
+                        model_id=getattr(runner, "model_name", f"mock_{idx}"),
+                    )
+                    self.runner = runner
+
+                def _compute_log_prob_impl(self, context: str, response: str) -> float:
+                    result = self.runner.log_prob(context, response)
+                    if isinstance(result, tuple):
+                        return float(result[0])
+                    return float(result)
+
+            mock_policies.append(MockPolicy(runner, i))
+
+        # Initialize with base_policy_name as first policy
+        policy_list: List[BasePolicy] = mock_policies  # type: ignore[assignment]
+        super().__init__(policies=policy_list, base_policy_name="mock_policy_0")
+
+        self.runners = list(runners)  # Keep original runners for compatibility
         self.consistent_ordering = consistent_ordering
 
         # For testing consistency - track which runner corresponds to which policy
@@ -151,31 +172,29 @@ class MockMultiTargetSampler(MultiTargetSampler):
         self,
         contexts: List[str],
         responses: List[str],
-        logp_behavior: List[float],
-        stabilize: bool = True,
-        return_stats: bool = False,
-    ) -> Union[np.ndarray, Tuple[np.ndarray, Dict[str, Any]]]:
+        show_progress: bool = True,
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """
         Compute importance weights for multiple context-response pairs.
+
+        This is a simplified mock implementation that matches the parent signature.
 
         Args:
             contexts: List of input contexts
             responses: List of responses
-            logp_behavior: List of behavior policy log probabilities π₀(response|context)
-            stabilize: If True, stabilize weights to prevent extreme values
-            return_stats: If True, return tuple of (weights, stats_dict)
+            show_progress: Whether to show progress (ignored in mock)
 
         Returns:
-            If return_stats=False: Matrix of shape (len(contexts), K) where entry (i,k) is the importance weight
-            If return_stats=True: Tuple of (weights_matrix, statistics_dict)
+            Tuple of (weights_matrix, statistics_dict)
         """
-        if not (len(contexts) == len(responses) == len(logp_behavior)):
-            raise ValueError(
-                "contexts, responses, and logp_behavior must have the same length"
-            )
+        if len(contexts) != len(responses):
+            raise ValueError("contexts and responses must have the same length")
 
         # Get target policy log probabilities
         logp_target_matrix: np.ndarray = self.logp_matrix(contexts, responses)
+
+        # For mock, use first policy as behavior policy
+        logp_behavior = logp_target_matrix[:, 0]
 
         # Convert to numpy arrays for vectorized operations
         logp_behavior_array: np.ndarray = np.array(
@@ -194,44 +213,37 @@ class MockMultiTargetSampler(MultiTargetSampler):
 
         weights = np.nan_to_num(weights, nan=0.0, posinf=1000.0, neginf=0.0)
 
-        # Stabilize weights if specified
-        if stabilize:
-            weights = np.clip(weights, 0.0, 1000.0)
-
         weights_matrix = np.asarray(weights, dtype=np.float64)
 
-        if return_stats:
-            # Compute basic statistics for the mock
-            n_samples = len(contexts)
-            n_policies = weights_matrix.shape[1]
+        # Compute basic statistics for the mock
+        n_samples = len(contexts)
+        n_policies = weights_matrix.shape[1]
 
-            # Compute ESS per policy
-            ess_values = []
-            for k in range(n_policies):
-                w_k = weights_matrix[:, k]
-                if w_k.sum() > 0:
-                    ess_k = (w_k.sum()) ** 2 / (w_k**2).sum()
-                else:
-                    ess_k = 0.0
-                ess_values.append(ess_k)
+        # Compute ESS per policy
+        ess_values = []
+        for k in range(n_policies):
+            w_k = weights_matrix[:, k]
+            if w_k.sum() > 0:
+                ess_k = (w_k.sum()) ** 2 / (w_k**2).sum()
+            else:
+                ess_k = 0.0
+            ess_values.append(ess_k)
 
-            # Mock statistics
-            statistics = {
-                "ess_values": ess_values,
-                "ess_percentage": np.mean(ess_values) / n_samples * 100,
-                "n_clipped": 0,  # Mock doesn't track actual clipping
-                "clip_fraction": 0.0,
-                "weight_range": (
-                    float(np.min(weights_matrix)),
-                    float(np.max(weights_matrix)),
-                ),
-                "stabilization_applied": stabilize,
-                "n_samples": n_samples,
-                "n_policies": n_policies,
-            }
-            return weights_matrix, statistics
-        else:
-            return weights_matrix
+        # Mock statistics
+        statistics = {
+            "ess_values": ess_values,
+            "ess_percentage": np.mean(ess_values) / n_samples * 100,
+            "n_clipped": 0,  # Mock doesn't track actual clipping
+            "clip_fraction": 0.0,
+            "weight_range": (
+                float(np.min(weights_matrix)),
+                float(np.max(weights_matrix)),
+            ),
+            "stabilization_applied": False,
+            "n_samples": n_samples,
+            "n_policies": n_policies,
+        }
+        return weights_matrix, statistics
 
     def get_runner_info(self) -> List[Dict[str, Any]]:
         """

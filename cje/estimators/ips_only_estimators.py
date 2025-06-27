@@ -87,9 +87,7 @@ class IPS(Estimator[Dict[str, Any]]):
         ) = self.sampler.importance_weights_matrix(
             contexts,
             responses,
-            logp_behavior.tolist(),
-            stabilize=self.stabilize_weights,
-            return_stats=True,
+            show_progress=True,
         )
 
     def estimate(self) -> EstimationResult:
@@ -326,9 +324,7 @@ class CalibratedIPS(IPS):
         raw_weights, weight_stats = self.sampler.importance_weights_matrix(
             contexts,
             responses,
-            logp_behavior.tolist(),
-            stabilize=False,  # We'll apply our own calibration
-            return_stats=True,
+            show_progress=True,
         )
 
         # Apply clipping BEFORE calibration to prevent extreme weights from distorting calibration

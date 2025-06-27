@@ -1,9 +1,9 @@
 # CJE Arena 10K Ablation Results Summary
 
 ## Policy Rankings (by SNIPS)
-1. **pi_bad**: 0.910
-2. **pi_bigger_model**: 0.889
-3. **pi_cot**: 0.838
+1. **pi_bad**: 0.888
+2. **pi_cot**: 0.884
+3. **pi_bigger_model**: 0.883
 
 ## Key Findings
 

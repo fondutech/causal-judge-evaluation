@@ -17,7 +17,7 @@ from rich.table import Table
 from ...loggers.multi_target_sampler import make_multi_sampler
 from ...cache import compute_target_logprobs_hash, chunk_exists, load_chunk, save_chunk
 from ...validation import validate_target_policy_computation
-from ...utils.error_handling import safe_call, PolicyError
+from ...utils.error_handling import PolicyError
 
 logger = logging.getLogger(__name__)
 
@@ -101,24 +101,44 @@ class TargetPolicyStage:
 
     def _create_multi_sampler(self, policies_config: List[Dict[str, Any]]) -> Any:
         """Create multi-target sampler from configuration."""
-        # Convert config dicts to proper format
-        policy_configs = []
+        from ...loggers.base_policy import BasePolicy
+        from ...loggers.local_policy import LocalPolicy
+        from ...loggers.api_policy import create_api_policy
 
-        for i, policy in enumerate(policies_config):
-            policy_dict = {
-                "provider": policy.get("provider", "hf"),
-                "model_name": policy["model_name"],
-            }
+        # Create actual policy instances
+        policies: Dict[str, BasePolicy] = {}
 
-            # Add optional parameters
-            for param in ["max_new_tokens", "temperature", "top_p", "batch_size"]:
-                if param in policy:
-                    policy_dict[param] = policy[param]
+        for i, config in enumerate(policies_config):
+            provider = config.get("provider", "hf")
+            policy_name = f"policy_{i}"
 
-            policy_configs.append(policy_dict)
+            if provider in ["openai", "anthropic", "google", "fireworks", "together"]:
+                # API-based policy
+                kwargs = {
+                    "provider": provider,
+                    "model_name": config["model_name"],
+                    "name": policy_name,
+                }
+                # Add optional parameters
+                for param in ["max_new_tokens", "temperature", "top_p", "batch_size"]:
+                    if param in config:
+                        kwargs[param] = config[param]
+                # Use the factory to create provider-specific instance
+                policies[policy_name] = create_api_policy(**kwargs)
+            else:
+                # Local HF model - use LocalPolicy wrapper
+                kwargs = {
+                    "model_name": config["model_name"],
+                    "name": policy_name,
+                }
+                # Add optional parameters
+                for param in ["max_new_tokens", "temperature", "top_p", "device"]:
+                    if param in config:
+                        kwargs[param] = config[param]
+                policies[policy_name] = LocalPolicy(**kwargs)
 
-        # Create sampler
-        return make_multi_sampler(policy_configs)
+        # Create sampler with the actual policy instances
+        return make_multi_sampler(policies)
 
     def _compute_logprobs(
         self, rows: List[Dict[str, Any]], sampler: Any, num_policies: int
