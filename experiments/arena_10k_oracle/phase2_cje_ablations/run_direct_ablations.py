@@ -237,7 +237,7 @@ def save_results(results: Dict, output_file: Path) -> None:
     console.print(f"\n💾 Results saved to {output_file}")
 
 
-def main():
+def main() -> None:
     """Run direct CJE ablations."""
     console.print("[bold blue]🚀 Running Direct CJE Ablations[/bold blue]")
     console.print("This bypasses the full pipeline and works directly with our data\n")

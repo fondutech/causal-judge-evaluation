@@ -9,7 +9,7 @@ from rich.console import Console
 console = Console()
 
 
-def main():
+def main() -> None:
     """Create visualizations for ablation results."""
     console.print("[bold blue]📊 Visualizing CJE Ablation Results[/bold blue]\n")
 
