@@ -1,332 +1,208 @@
-"""Pre-computed multi-target sampler.
+"""
+Precomputed sampler for working with teacher-forced data.
 
-This sampler is used when the dataset already contains log-probabilities under each
- target policy for every (context,response) pair (Scenario 3).
-It provides the same public interface expected by estimators but never calls the
-underlying language-model APIs, making the pipeline completely offline.
+This sampler allows all CJE estimators to work with precomputed log probabilities
+from teacher forcing, without needing to call actual language models.
 """
 
-from __future__ import annotations
-
-from typing import Dict, List, Tuple, Any, Sequence, Optional, Union
 import numpy as np
-from numpy.typing import NDArray
+from typing import List, Dict, Any, Tuple, Optional
+import logging
+
+from ..utils.importance_weights import (
+    compute_importance_weight,
+    compute_weight_statistics,
+)
+
+logger = logging.getLogger(__name__)
 
 
-class PrecomputedMultiTargetSampler:
-    """Sampler that serves pre-computed log-probabilities.
+class PrecomputedSampler:
+    """
+    A sampler that uses precomputed log probabilities.
 
-    Parameters
-    ----------
-    logp_lookup: Dict[Tuple[str, str], List[float]]
-        Mapping from (context, response) to a length-K list of log-probabilities
-        under each of the K target policies.
-    n_policies: int
-        Number of target policies (K).
-    sample_lookup: Optional[Dict[str, List[List[str]]]]
-        Optional mapping context → List[len-K] of response lists.
-        Each entry sample_lookup[ctx][k] is a list of responses pre-sampled
-        from target policy πᵏ.  These will be returned by :py:meth:`sample_many`.
+    This implements the same interface as MultiTargetSampler but uses
+    precomputed values instead of calling policy APIs. Perfect for:
+    - Working with teacher-forced datasets
+    - Reproducing results without API access
+    - Fast experimentation with different estimators
+
+    Args:
+        data: List of dicts with precomputed log probabilities
+        target_policies: List of target policy names
+        base_policy_field: Field name for base policy log prob (default: "total_logprob")
+        target_logps_field: Field name for target log probs dict (default: "target_logps")
     """
 
     def __init__(
         self,
-        logp_lookup: Dict[Tuple[str, str], List[float]],
-        n_policies: int,
-        sample_lookup: Optional[Dict[str, List[List[str]]]] = None,
+        data: List[Dict[str, Any]],
+        target_policies: List[str],
+        base_policy_field: str = "total_logprob",
+        target_logps_field: str = "target_logps",
+        prompt_field: str = "prompt",
+        response_field: str = "response",
     ):
-        """Create sampler.
+        self.data = data
+        self.target_policies = target_policies
+        self.K = len(target_policies)
+        self.policy_names = target_policies
 
-        Parameters
-        ----------
-        logp_lookup: Mapping (context, response) → logp list (len-K)
-        n_policies: Number of target policies (K)
-        sample_lookup: Optional mapping context → List[len-K] of response lists.
-            Each entry sample_lookup[ctx][k] is a list of responses pre-sampled
-            from target policy πᵏ.  These will be returned by :py:meth:`sample_many`.
-        """
+        # Field names
+        self.base_policy_field = base_policy_field
+        self.target_logps_field = target_logps_field
+        self.prompt_field = prompt_field
+        self.response_field = response_field
 
-        if n_policies <= 0:
-            raise ValueError("n_policies must be at least 1")
-        self._logp_lookup = logp_lookup
-        self._sample_lookup = sample_lookup or {}
-        self.K = n_policies
+        # Build lookup index for fast matching
+        self._build_index()
 
-    # ------------------------------------------------------------------
-    # Log-probabilities
-    # ------------------------------------------------------------------
-    def logp_many(self, context: str, response: str) -> List[float]:
-        """Return pre-computed log πᵏ(response|context) for all K policies."""
-        key = (context, response)
-        if key not in self._logp_lookup:
-            raise KeyError(
-                "Precomputed log-probability missing for given (context, response)."
-            )
-        probs = self._logp_lookup[key]
-        if len(probs) != self.K:
-            raise ValueError(
-                f"Expected {self.K} log-probabilities, found {len(probs)} for key {key}"
-            )
-        return [float(p) for p in probs]
+        # For compatibility with MultiTargetSampler
+        self.runners = [None] * self.K  # Dummy runners
 
-    def logp_matrix(
-        self, contexts: List[str], responses: List[str]
-    ) -> NDArray[np.float64]:
-        if len(contexts) != len(responses):
-            raise ValueError("contexts and responses length mismatch")
-        n = len(contexts)
-        mat = np.zeros((n, self.K), dtype=np.float64)
-        for i, (c, r) in enumerate(zip(contexts, responses)):
-            mat[i, :] = self.logp_many(c, r)
-        return mat
+    def _build_index(self) -> None:
+        """Build index for fast context/response lookup."""
+        self.index = {}
+        for item in self.data:
+            key = (item[self.prompt_field], item[self.response_field])
+            self.index[key] = item
 
-    # ------------------------------------------------------------------
-    # Importance weights
-    # ------------------------------------------------------------------
     def importance_weights_matrix(
         self,
         contexts: List[str],
         responses: List[str],
-        logp_behavior: List[float],
-        stabilize: bool = True,
-        return_stats: bool = False,
-    ) -> Union[NDArray[np.float64], Tuple[NDArray[np.float64], Dict[str, Any]]]:
+        show_progress: bool = True,
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """
-        Compute importance weights matrix for multiple policies.
-
-        Args:
-            contexts: List of context strings
-            responses: List of response strings
-            logp_behavior: Log probabilities under behavior policy
-            stabilize: Whether to apply numerical stabilization for extreme log differences
+        Compute importance weights from precomputed log probabilities.
 
         Returns:
-            Importance weights matrix of shape (n, K)
+            Tuple of (weights_matrix, statistics_dict)
+            weights_matrix: Shape (n, K) array of importance weights
+            statistics_dict: Dictionary with weight statistics
         """
-        import numpy as np
+        n = len(contexts)
+        weights = np.zeros((n, self.K))
 
-        target_logp = self.logp_matrix(contexts, responses)
-        logp_beh = np.array(logp_behavior, dtype=np.float64)
+        # Track missing data
+        missing_count = 0
 
-        # Compute log importance weights: log π'(s|x) - log π₀(s|x)
-        log_weights_matrix = target_logp - logp_beh[:, None]
+        for i, (ctx, resp) in enumerate(zip(contexts, responses)):
+            key = (ctx, resp)
 
-        # 🔧 INTERVENTION 1: Hard log-ratio clipping to prevent astronomical weights
-        # Clip log ratios to ±20 (exp(20) ≈ 485M max weight ratio)
-        log_ratio_clip = 20.0
-        original_log_range = (np.min(log_weights_matrix), np.max(log_weights_matrix))
-        if np.any(np.abs(log_weights_matrix) > log_ratio_clip):
-            try:
-                from cje.utils.progress import console
+            if key in self.index:
+                item = self.index[key]
+                p0_logp = item[self.base_policy_field]
 
-                console.print(
-                    f"[yellow]✂️  Hard clipping log ratios to ±{log_ratio_clip} (prevents exp overflow)[/yellow]"
-                )
-                console.print(
-                    f"   • Original range: [{original_log_range[0]:.1f}, {original_log_range[1]:.1f}]"
-                )
-                log_weights_matrix = np.clip(
-                    log_weights_matrix, -log_ratio_clip, log_ratio_clip
-                )
-                console.print(
-                    f"   • Clipped range: [{np.min(log_weights_matrix):.1f}, {np.max(log_weights_matrix):.1f}]"
-                )
-            except ImportError:
-                # Fallback if console not available
-                log_weights_matrix = np.clip(
-                    log_weights_matrix, -log_ratio_clip, log_ratio_clip
-                )
+                # Check for valid base log prob
+                if p0_logp is None or not np.isfinite(p0_logp):
+                    logger.warning(f"Invalid base log prob for sample {i}")
+                    weights[i, :] = np.nan
+                    continue
 
-        # Track whether stabilization was actually applied
-        stabilization_actually_applied = False
+                # Compute weights for each target policy
+                target_logps = item[self.target_logps_field]
+                for j, policy in enumerate(self.target_policies):
+                    if policy in target_logps:
+                        target_logp = target_logps[policy]
 
-        # Declare weight matrix variable
-        w: NDArray[np.float64]
-
-        if stabilize:
-            # 🔧 INTERVENTION 2: Softer stabilization that preserves weight diversity
-            # Check if we still need stabilization after hard clipping
-            needs_stabilization = np.any(np.abs(log_weights_matrix) > 10)
-
-            if needs_stabilization:
-                stabilization_actually_applied = True
-                # Import console here to avoid dependency issues
-                try:
-                    from cje.utils.progress import console
-
-                    console.print(
-                        "[yellow]🔧 Applying soft numerical stabilization (preserves weight diversity)[/yellow]"
-                    )
-
-                    # Softer approach: subtract 75th percentile per policy instead of global max
-                    # This prevents winner-take-all while treating each policy fairly
-                    percentile_75_per_policy = np.percentile(
-                        log_weights_matrix, 75, axis=0
-                    )
-                    stabilized_log_weights = (
-                        log_weights_matrix - percentile_75_per_policy
-                    )
-
-                    # No additional clipping needed - hard clipping already applied
-
-                    # Exponentiate stabilized weights (cast to float64 to prevent overflow)
-                    w = np.exp(stabilized_log_weights.astype(np.float64))
-
-                    # Report stabilization details
-                    console.print(
-                        f"   • Original log weight range: [{np.min(log_weights_matrix):.1f}, {np.max(log_weights_matrix):.1f}]"
-                    )
-                    console.print(
-                        f"   • Stabilized log weight range: [{np.min(stabilized_log_weights):.1f}, {np.max(stabilized_log_weights):.1f}]"
-                    )
-                    console.print(
-                        f"   • Final weight range: [{np.min(w):.2e}, {np.max(w):.2e}]"
-                    )
-
-                    # 🔧 INTERVENTION 3: ESS guard-rail with per-policy warnings
-                    ess_values = []
-                    for k in range(w.shape[1]):
-                        w_k = w[:, k]
-                        ess_k = (
-                            (w_k.sum()) ** 2 / (w_k**2).sum() if w_k.sum() > 0 else 0
-                        )
-                        ess_values.append(ess_k)
-
-                    n_samples = len(w)
-                    ess_percentages = [100 * ess / n_samples for ess in ess_values]
-                    avg_ess_percentage = np.mean(ess_percentages)
-
-                    console.print(
-                        f"   📊 ESS per policy: {[f'{ess:.1f}' for ess in ess_values]} / {n_samples}"
-                    )
-                    console.print(
-                        f"   📊 ESS percentages: {[f'{pct:.1f}%' for pct in ess_percentages]} (avg: {avg_ess_percentage:.1f}%)"
-                    )
-
-                    # Per-policy ESS guard-rails
-                    critical_policies = []
-                    warning_policies = []
-
-                    for k, ess_pct in enumerate(ess_percentages):
-                        policy_name = f"Policy {k}"  # PrecomputedSampler doesn't have policy names
-
-                        if ess_pct < 5.0:
-                            critical_policies.append((policy_name, ess_pct))
-                        elif ess_pct < 15.0:
-                            warning_policies.append((policy_name, ess_pct))
-
-                    if critical_policies:
-                        console.print(f"[red]🚨 CRITICAL ESS detected![/red]")
-                        for name, ess_pct in critical_policies:
-                            console.print(
-                                f"[red]   • {name}: {ess_pct:.1f}% - estimates will be unreliable![/red]"
+                        if target_logp is None or not np.isfinite(target_logp):
+                            weights[i, j] = np.nan
+                        else:
+                            # Use shared utility for consistent weight calculation
+                            weights[i, j] = compute_importance_weight(
+                                target_logp=target_logp,
+                                base_logp=p0_logp,
+                                clip_min=-50,  # Use larger range for precomputed
+                                clip_max=50,
                             )
-                        console.print(
-                            "[red]   💡 Solutions: (1) Increase sample size, (2) Use DRCPO/MRDR instead of IPS[/red]"
-                        )
-                    elif warning_policies:
-                        console.print(f"[yellow]⚠️  LOW ESS warnings:[/yellow]")
-                        for name, ess_pct in warning_policies:
-                            console.print(
-                                f"[yellow]   • {name}: {ess_pct:.1f}% - estimates may be noisy[/yellow]"
-                            )
-                        console.print(
-                            "[yellow]   💡 Consider: More samples or different target policies[/yellow]"
-                        )
                     else:
-                        console.print(
-                            f"   ✅ All policies have healthy ESS (min: {min(ess_percentages):.1f}%)"
-                        )
-
-                    # Check if stabilization preserved differences
-                    unique_weights_per_sample = [
-                        len(np.unique(w[i, :])) for i in range(w.shape[0])
-                    ]
-                    if any(n > 1 for n in unique_weights_per_sample):
-                        console.print(
-                            f"   ✅ Preserved weight differences across policies"
-                        )
-                    else:
-                        console.print(
-                            f"   ⚠️  All weights became identical (extreme case)"
-                        )
-
-                except ImportError:
-                    # Fallback if console is not available
-                    percentile_75_per_policy = np.percentile(
-                        log_weights_matrix, 75, axis=0
-                    )
-                    stabilized_log_weights = (
-                        log_weights_matrix - percentile_75_per_policy
-                    )
-                    # No additional clipping needed - hard clipping already applied
-                    w = np.exp(stabilized_log_weights.astype(np.float64))
+                        logger.warning(f"Policy {policy} not found in target_logps")
+                        weights[i, j] = np.nan
             else:
-                # Standard processing for normal cases
-                w = np.exp(log_weights_matrix.astype(np.float64))
-        else:
-            # Original approach without stabilization
-            w = np.exp(log_weights_matrix.astype(np.float64))
+                missing_count += 1
+                weights[i, :] = np.nan
 
-        # Final clipping only to prevent negative weights (should be unnecessary)
-        w = np.maximum(w, 0)
+        if missing_count > 0:
+            logger.warning(
+                f"Could not find {missing_count}/{n} samples in precomputed data"
+            )
 
-        if return_stats:
-            # Collect detailed statistics for reliability assessment
-            n_samples = len(contexts)
-            n_policies = w.shape[1]
+        # Compute statistics using shared utility
+        stats = compute_weight_statistics(weights, self.target_policies)
 
-            # Compute ESS per policy
-            ess_values = []
-            for k in range(n_policies):
-                w_k = w[:, k]
-                if w_k.sum() > 0:
-                    ess_k = (w_k.sum()) ** 2 / (w_k**2).sum()
-                else:
-                    ess_k = 0.0
-                ess_values.append(ess_k)
+        if show_progress:
+            logger.info(
+                f"Computed weights for {n} samples, ESS: {stats['ess_percentage']:.1f}%"
+            )
 
-            # Track hard clipping statistics
-            n_clipped = int(np.sum(np.abs(log_weights_matrix) >= log_ratio_clip - 0.01))
+        return weights, stats
 
-            statistics = {
-                "ess_values": ess_values,
-                "ess_percentage": np.mean(ess_values) / n_samples * 100,
-                "n_clipped": n_clipped,
-                "clip_fraction": n_clipped / (n_samples * n_policies),
-                "weight_range": (float(np.min(w)), float(np.max(w))),
-                "stabilization_applied": stabilization_actually_applied,
-                "n_samples": n_samples,
-                "n_policies": n_policies,
-            }
-
-            return w, statistics
-        else:
-            return w
-
-    # ------------------------------------------------------------------
-    # Sampling interface (unused in pre-computed setting)
-    # ------------------------------------------------------------------
-    def sample_many(self, context: str, n: int = 1) -> List[List[str]]:  # noqa: D401
-        """Return *n* samples per policy for a given context.
-
-        If pre-computed samples were provided, they are returned (trimmed or
-        duplicated to match *n*).  Otherwise returns empty strings.
+    def logp_matrix(self, contexts: List[str], responses: List[str]) -> np.ndarray:
         """
-        if context in self._sample_lookup:
-            out: List[List[str]] = []
-            for k in range(self.K):
-                policy_samples = (
-                    self._sample_lookup[context][k]
-                    if k < len(self._sample_lookup[context])
-                    else []
+        Get log probability matrix (for compatibility).
+
+        Returns:
+            Matrix of shape (n, K) with log probabilities
+        """
+        n = len(contexts)
+        logp_matrix = np.zeros((n, self.K))
+
+        for i, (ctx, resp) in enumerate(zip(contexts, responses)):
+            key = (ctx, resp)
+
+            if key in self.index:
+                item = self.index[key]
+                target_logps = item[self.target_logps_field]
+
+                for j, policy in enumerate(self.target_policies):
+                    if policy in target_logps:
+                        logp_matrix[i, j] = target_logps[policy]
+                    else:
+                        logp_matrix[i, j] = np.nan
+            else:
+                logp_matrix[i, :] = np.nan
+
+        return logp_matrix
+
+    def sample_many(self, state: Any, n: int = 1) -> List[List[str]]:
+        """
+        Dummy implementation for compatibility.
+        PrecomputedSampler doesn't support generation.
+        """
+        return [[] for _ in range(self.K)]
+
+    @classmethod
+    def from_jsonl(
+        cls, jsonl_path: str, target_policies: Optional[List[str]] = None, **kwargs: Any
+    ) -> "PrecomputedSampler":
+        """
+        Create a PrecomputedSampler from a JSONL file.
+
+        Args:
+            jsonl_path: Path to JSONL file with precomputed data
+            target_policies: List of target policies (auto-detected if None)
+            **kwargs: Additional arguments for PrecomputedSampler
+
+        Returns:
+            PrecomputedSampler instance
+        """
+        import json
+
+        data = []
+        with open(jsonl_path, "r") as f:
+            for line in f:
+                data.append(json.loads(line))
+
+        # Auto-detect target policies if not provided
+        if target_policies is None and data:
+            target_logps_field = kwargs.get("target_logps_field", "target_logps")
+            if target_logps_field in data[0]:
+                target_policies = list(data[0][target_logps_field].keys())
+                logger.info(f"Auto-detected target policies: {target_policies}")
+            else:
+                raise ValueError(
+                    f"Could not find {target_logps_field} field for auto-detection"
                 )
-                if len(policy_samples) >= n:
-                    out.append(policy_samples[:n])
-                else:
-                    # pad by repeating last sample or empty string
-                    pad_with = policy_samples[-1] if policy_samples else ""
-                    out.append(policy_samples + [pad_with] * (n - len(policy_samples)))
-            return out
-        # Fallback: return empty strings
-        return [[""] * n for _ in range(self.K)]
+
+        return cls(data, target_policies, **kwargs)

@@ -36,8 +36,8 @@ from .config.unified import simple_config, multi_policy_config
 # Export data loading for convenience
 from .data import load_dataset
 
-# Export PrecomputedMultiTargetSampler
-from .loggers.precomputed_sampler import PrecomputedMultiTargetSampler
+# Export PrecomputedSampler
+from .loggers.precomputed_sampler import PrecomputedSampler
 
 # Export calibration tools
 from .calibration import cross_fit_calibration
@@ -61,8 +61,8 @@ __all__ = [
     # Reference implementation
     "FixedSampler",
     "ReferenceDRCPO",
-    # PrecomputedMultiTargetSampler
-    "PrecomputedMultiTargetSampler",
+    # PrecomputedSampler
+    "PrecomputedSampler",
     # Calibration
     "cross_fit_calibration",
     # New additions

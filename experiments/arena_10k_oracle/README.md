@@ -8,90 +8,66 @@ The experiment has two phases:
 1. **Phase 1: Dataset Preparation** - Generate responses and judge scores
 2. **Phase 2: CJE Ablations** - Compare estimators and uncertainty methods
 
-## Quick Start
+## Starting Fresh
 
-### Testing with Small Dataset
+After fixing the teacher forcing bug, we're ready to rerun the experiment with clean data.
+
+### Prerequisites
+
+1. Source API keys:
 ```bash
-# Create a 20-sample test dataset
-python create_test_dataset.py
-
-# Run ablation analysis on test data
-python run_ablation_analysis.py
-
-# Visualize results
-python visualize_ablation_results.py
+source /path/to/set_secrets.sh
 ```
 
-### Full Experiment
+2. Ensure you have the robust teacher forcing implementation:
+```python
+from cje.utils import RobustTeacherForcing
+```
+
+### Phase 1: Dataset Preparation
+
 ```bash
-# Phase 1: Prepare dataset
 cd phase1_dataset_preparation
-source ../../../set_secrets.sh  # Load API keys
 
-# Generate responses and scores
-python 02b_generate_target_responses.py  # Generate policy responses
-python 04a_deterministic_judge_scores.py  # Score with deterministic judge
-python 04b_uncertainty_judge_scores.py    # Score with CI uncertainty
+# Step 1: Prepare base dataset
+python 01_prepare_data.py
 
-# Phase 2: Run ablations
+# Step 2: Generate responses
+python 02a_generate_p0_responses.py
+python 02b_generate_target_responses.py
+python 02c_compute_target_logprobs.py  # Uses RobustTeacherForcing
+
+# Step 3: Generate oracle labels
+python 03_generate_oracle_labels.py
+
+# Step 4: Judge scoring
+python 04a_deterministic_judge_scores.py
+python 04b_uncertainty_judge_scores.py
+python 04c_score_targets_deterministic.py
+python 04d_score_targets_uncertainty.py
+
+# Step 5: Finalize dataset
+python 05_finalize_dataset.py
+```
+
+### Phase 2: CJE Analysis
+
+```bash
 cd ../phase2_cje_ablations
-python run_ablations_full.py
+
+# Run ablations with different estimators
+python run_ablations.py --config configs/ablations/*.yaml
 ```
 
-## Key Components
+## Data Files
 
-### Analysis Tools
-- `run_ablation_analysis.py` - Direct estimator comparison using PrecomputedMultiTargetSampler
-- `visualize_ablation_results.py` - Generate comparison charts
-- `create_test_dataset.py` - Create small test dataset for quick iteration
+- `data/arena_prompts_10k.jsonl` - Original 10K prompts
+- `data/target_responses.jsonl` - Target model responses
 
-### Verification Tests
-- `verification_tests/test_clone_policy_weights.py` - Verify clone policy has unit weights
-- `verification_tests/test_clone_policy_estimation.py` - Verify clone policy returns empirical mean
+All other data files will be generated during the pipeline execution.
 
-## Experiment Design
+## Important Notes
 
-### Policies
-- **π₀ (logging)**: Base policy generating initial responses  
-- **π_cot**: Chain-of-thought reasoning
-- **π_bigger_model**: Larger model
-- **π_bad**: Intentionally poor responses (baseline)
-
-### Estimators Compared
-- IPS (Inverse Propensity Scoring)
-- SNIPS (Self-Normalized IPS)
-- CalibratedIPS
-- DRCPO (Doubly Robust CPO)
-- MRDR (Model-based Reward Doubly Robust)
-
-### Judge Types
-- **Deterministic**: Standard scoring (variance = 0)
-- **Confidence Interval**: Uncertainty via confidence intervals
-
-## Key Findings
-
-1. **Clone Policy Verification**: Confirmed that when π_target = π_behavior, all importance weights = 1.0
-2. **Uncertainty Matters**: CI-based uncertainty improves calibration
-3. **Estimator Performance**: DR methods generally outperform IPS-only methods
-
-## File Structure
-```
-arena_10k_oracle/
-├── data/                    # Generated datasets
-├── phase1_dataset_preparation/
-│   ├── 01_sample_prompts.py
-│   ├── 02b_generate_target_responses.py
-│   ├── 04a_deterministic_judge_scores.py
-│   └── 04b_uncertainty_judge_scores.py
-├── phase2_cje_ablations/
-│   └── run_ablations_full.py
-├── verification_tests/      # Unit tests for core properties
-├── run_ablation_analysis.py # Simplified analysis tool
-└── create_test_dataset.py   # Test data generator
-```
-
-## Notes
-
-- The experiment bypasses the full CJE pipeline for direct estimator comparison
-- Uses `PrecomputedMultiTargetSampler` for efficient multi-target evaluation
-- Supports both deterministic and uncertainty-aware judging
+- The teacher forcing bug that affected 708 samples has been fixed
+- All log probabilities will be computed using `RobustTeacherForcing`
+- No fallback values (0.0, -100.0) are used for failures

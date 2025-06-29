@@ -12,7 +12,7 @@ from ..estimators.simplified import (
     estimate_value,
     EstimationResult,
 )
-from ..loggers import MultiTargetSampler, PolicyRunner, APIPolicyRunner
+from ..loggers import MultiTargetSampler, APIPolicyRunner
 from ..data import load_dataset
 from ..testing import testing_mode, MockJudge, MockPolicyRunner
 
@@ -27,7 +27,6 @@ __all__ = [
     "BasicFeaturizer",
     "get_estimator",
     "MultiTargetSampler",
-    "PolicyRunner",
     "APIPolicyRunner",
     "load_dataset",
     # Simplified API

@@ -1,38 +1,31 @@
 """Test teacher forcing log probability extraction.
 
-This module tests the critical bug fix where prompt tokens were being included
-in response log probabilities, causing unreasonably low values for short responses.
+This module tests the robust teacher forcing implementation that correctly
+handles token boundary alignment issues.
 """
 
 import pytest
-from cje.utils.logprobs import sum_response_logprobs_tail
+from cje.utils.logprobs import safe_sum
+from cje.utils.teacher_forcing import (
+    RobustTeacherForcing,
+    compute_teacher_forced_logprob,
+)
+from cje.types import LogProbStatus
 
 
-def test_sum_response_logprobs_tail() -> None:
-    """Test the sum_response_logprobs_tail utility function."""
+def test_safe_sum() -> None:
+    """Test the safe_sum utility function."""
     # Test normal case
-    all_logprobs = [-1.0, -2.0, -3.0, -4.0, -5.0]
-    result = sum_response_logprobs_tail(all_logprobs, response_token_count=2)
-    assert result == -9.0  # -4.0 + -5.0
+    assert safe_sum([1.0, 2.0, 3.0]) == 6.0
 
-    # Test edge case: more tokens requested than available
-    result = sum_response_logprobs_tail(all_logprobs, response_token_count=10)
-    assert result == sum(all_logprobs)
+    # Test with None values (should skip them)
+    assert safe_sum([1.0, None, 3.0]) == 4.0
 
-    # Test edge case: zero tokens
-    result = sum_response_logprobs_tail(all_logprobs, response_token_count=0)
-    assert result == 0.0
+    # Test empty list
+    assert safe_sum([]) == 0.0
 
-    # Test with positive logprobs (shouldn't happen but should handle)
-    mixed_logprobs = [-1.0, 0.5, -2.0]
-    result = sum_response_logprobs_tail(mixed_logprobs, response_token_count=2)
-    assert result == -1.5  # 0.5 + (-2.0)
-
-    # Test with None values (should filter them out)
-    logprobs_with_none = [-1.0, None, -2.0, -3.0]
-    result = sum_response_logprobs_tail(logprobs_with_none, response_token_count=2)
-    # Should take last 2 non-None values: -2.0 + -3.0
-    assert result == -5.0
+    # Test all None
+    assert safe_sum([None, None, None]) == 0.0
 
 
 class TestLogprobReasonableness:
@@ -75,14 +68,15 @@ class TestLogprobReasonableness:
 #
 # def test_teacher_forcing_integration():
 #     """Test that teacher forcing extracts only response logprobs."""
-#     runner = APIPolicyRunner(provider="fireworks", model_name="llama-3.1-8b", temperature=0.5)
+#     tf = RobustTeacherForcing(provider="fireworks", model="llama-3.1-8b")
 #
 #     # Generate a simple response
 #     prompt = "What vegetable is green?"
 #     response = "Cabbage"
 #
 #     # Get logprob using teacher forcing
-#     logprob = runner._teacher_forcing_logprob(prompt, response)
+#     result = tf.compute_log_prob(prompt, response)
 #
 #     # Should be reasonable for a single word
-#     assert -10 < logprob < -0.1, f"Logprob {logprob} suggests prompt tokens included"
+#     assert result.is_valid
+#     assert -10 < result.value < -0.1, f"Logprob {result.value} suggests prompt tokens included"

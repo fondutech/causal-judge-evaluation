@@ -12,6 +12,11 @@ from .checkpointing import (
     auto_enable_checkpointing,
     cleanup_checkpoint_file,
 )
+from .teacher_forcing import (
+    RobustTeacherForcing,
+    compute_teacher_forced_logprob,
+)
+from .logprobs import safe_sum
 
 __all__ = [
     "generate_with_logprobs",
@@ -22,4 +27,7 @@ __all__ = [
     "create_jsonl_checkpoint_manager",
     "auto_enable_checkpointing",
     "cleanup_checkpoint_file",
+    "RobustTeacherForcing",
+    "compute_teacher_forced_logprob",
+    "safe_sum",
 ]

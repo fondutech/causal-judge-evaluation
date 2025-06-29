@@ -15,7 +15,7 @@ import sys
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
-from cje.judge import create_judge
+from cje.judge.factory import JudgeFactory
 from cje.utils.checkpointing import CheckpointManager, BatchProcessor
 
 console = Console()
@@ -47,8 +47,8 @@ def main():
     console.print(f"   Policies: {', '.join(missing_policies)}")
 
     # Create uncertainty judge
-    judge = create_judge(
-        model_name="accounts/fireworks/models/llama4-scout-instruct-basic",
+    judge = JudgeFactory.create(
+        model="accounts/fireworks/models/llama4-scout-instruct-basic",
         provider="fireworks",
         uncertainty_method="confidence_interval",
     )

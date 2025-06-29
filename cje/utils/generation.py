@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Optional, Tuple, Union, TYPE_CHECKING, cast
 import numpy as np
 
 if TYPE_CHECKING:
-    from ..loggers import PolicyRunner, APIPolicyRunner
+    from ..loggers import APIPolicyRunner
 
 # ------------------------------------------------------------------
 # Optional lightweight cache for generation & log-prob computations.
@@ -21,7 +21,7 @@ def _create_runner(
     top_p: float,
     max_tokens: int,
     batch_size: Optional[int] = None,
-) -> Union["PolicyRunner", "APIPolicyRunner"]:
+) -> "APIPolicyRunner":
     """Create appropriate runner based on provider type.
 
     Args:
@@ -33,10 +33,10 @@ def _create_runner(
         batch_size: Batch size for API calls (API runners only)
 
     Returns:
-        PolicyRunner or APIPolicyRunner instance
+        APIPolicyRunner instance
     """
     # Lazy import to avoid circular dependency
-    from ..loggers import PolicyRunner, APIPolicyRunner
+    from ..loggers import APIPolicyRunner
 
     # Handle mock provider for testing (if registered)
     if provider == "mock":
@@ -54,29 +54,26 @@ def _create_runner(
             raise ValueError("Mock provider requested but testing module not available")
 
     # Use API runner for known providers
-    if provider in ["openai", "anthropic", "google", "fireworks", "together"]:
-        from ..loggers.api_policy import create_api_policy
+    if provider not in ["openai", "anthropic", "google", "fireworks", "together"]:
+        raise ValueError(
+            f"Unknown provider: {provider}. "
+            f"Available providers: openai, anthropic, google, fireworks, together"
+        )
 
-        if batch_size is not None:
-            return create_api_policy(
-                provider=provider,
-                model_name=model,
-                max_new_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                batch_size=batch_size,
-            )
-        else:
-            return create_api_policy(
-                provider=provider,
-                model_name=model,
-                max_new_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p,
-            )
+    from ..loggers.api_policy import create_api_policy
+
+    if batch_size is not None:
+        return create_api_policy(
+            provider=provider,
+            model_name=model,
+            max_new_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            batch_size=batch_size,
+        )
     else:
-        # Use local runner for other providers (e.g., "hf")
-        return PolicyRunner(
+        return create_api_policy(
+            provider=provider,
             model_name=model,
             max_new_tokens=max_tokens,
             temperature=temperature,

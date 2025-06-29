@@ -15,9 +15,12 @@ Run scripts sequentially:
 # 1. Download prompts
 python 01_prepare_data.py
 
-# 2. Generate responses (can run in parallel)
-python 02a_generate_p0_responses.py &
-python 02b_generate_target_responses.py &
+# 2. Generate responses
+python 02a_generate_p0_responses.py
+python 02b_generate_target_responses.py  # Can run in parallel with 02a
+
+# 2c. Compute target log probabilities (CRITICAL for importance weighting!)
+python 02c_compute_target_logprobs.py
 
 # 3. Generate oracle labels
 python 03_generate_oracle_labels.py
@@ -36,8 +39,9 @@ python 05_finalize_dataset.py
 ```
 data/
 ├── arena_prompts_10k.jsonl              # Source prompts
-├── p0_replies.jsonl                     # π₀ responses
+├── p0_replies.jsonl                     # π₀ responses with log P(response|prompt,π₀)
 ├── target_responses.jsonl               # Target policy responses
+├── p0_with_target_logps.jsonl           # π₀ responses with log P(response|prompt,πₖ)
 ├── p0_scored_*.jsonl                    # Scored π₀ (deterministic/uncertainty)
 ├── targets_scored_*.jsonl               # Scored targets
 └── labeling/

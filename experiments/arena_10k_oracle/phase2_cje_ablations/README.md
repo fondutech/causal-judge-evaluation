@@ -1,32 +1,19 @@
-# Phase 2: CJE Ablations
+# Phase 2: CJE Ablations - Fresh Start
 
-Evaluates CJE across different judges and estimators.
+This directory contains the clean implementation for running CJE ablations on Arena 10K data.
 
-## Prerequisites
-Complete Phase 1 dataset preparation first.
+## Current Status
 
-## Quick Start
+Starting fresh after fixing critical teacher forcing bug that affected 708 samples (7.08%).
 
-```bash
-# Run all ablations
-python run_ablations_full.py --yes
+## Key Components
 
-# Or test with dry run
-python run_ablations_full.py --dry-run --yes
-```
+- `configs/ablations/` - Configuration files for different estimators
 
-## Ablations
-- **Judge types**: deterministic, uncertainty
-- **Estimators**: IPS, SNIPS, CalibratedIPS, DRCPO, MRDR
-- **Total**: 10 combinations
+## Next Steps
 
-## Output
-- Configs saved to `configs/ablations/`
-- Results saved to `results/ablation_results.json`
-- Rich table output showing performance across policies
+1. Recompute all log probabilities using `RobustTeacherForcing`
+2. Run fresh CJE analysis with clean data
+3. Validate that model performance rankings are correct
 
-## Analysis
-Results show:
-1. Impact of uncertainty quantification on calibration
-2. Estimator performance across different policy qualities
-3. Variance reduction from doubly-robust methods
+The robust teacher forcing implementation is now in the core library at `cje.utils.teacher_forcing`.

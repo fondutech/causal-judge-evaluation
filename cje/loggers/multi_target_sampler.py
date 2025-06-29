@@ -15,6 +15,7 @@ from collections import defaultdict
 
 from ..types import LogProbResult, LogProbStatus, SampleResult, BatchResult
 from .base_policy import BasePolicy
+from ..utils.importance_weights import compute_importance_weight
 
 logger = logging.getLogger(__name__)
 
@@ -179,22 +180,10 @@ class MultiTargetSampler:
             if name == self.base_policy_name:
                 weights[name] = 1.0  # Base always has weight 1
             elif result.is_valid:
-                # Compute weight with clipping for numerical stability
-                log_ratio = result.value - base_logp
-
-                # Clip to prevent overflow
-                if log_ratio > 20:
-                    logger.warning(
-                        f"Large log ratio {log_ratio:.2f} for {name}, clipping to 20"
-                    )
-                    log_ratio = 20.0
-                elif log_ratio < -20:
-                    logger.warning(
-                        f"Small log ratio {log_ratio:.2f} for {name}, clipping to -20"
-                    )
-                    log_ratio = -20.0
-
-                weights[name] = np.exp(log_ratio)
+                # Use shared utility for consistent weight calculation
+                weights[name] = compute_importance_weight(
+                    target_logp=result.value, base_logp=base_logp
+                )
             else:
                 # Failed policy has no weight - explicit None!
                 weights[name] = None

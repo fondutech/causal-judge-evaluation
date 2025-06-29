@@ -6,8 +6,8 @@ Core guidance for Claude Code when working with the CJE repository.
 
 ### STARTUP
 1. Check git status and recent commits
-2. Run `python scripts/hygiene_check.py`
-3. Run `make lint`
+2. Run `make lint` before any commits
+3. Run tests: `poetry run pytest`
 
 ### AUTO-FIX
 Fix immediately without asking:
@@ -20,6 +20,7 @@ Fix immediately without asking:
 - NEVER use fallback values for log probabilities (no -100.0, 0.0, etc.)
 - All failures must return None/null and be handled explicitly
 - Use LogProbResult type for all log probability computations
+- Watch for exact 0.0 log probs on non-empty responses (indicates bug)
 
 ## Essential Commands
 ```bash
@@ -29,7 +30,7 @@ poetry run pytest --run-slow   # Include slow tests
 cje run --cfg-path configs --cfg-name example_eval  # Run experiment via CLI
 make lint                      # MUST pass before ANY commit
 
-# Python API (new modular pipeline):
+# Python API:
 from cje.config.unified import simple_config
 config = simple_config(dataset_name="test.jsonl", ...)
 results = config.run()
@@ -53,26 +54,48 @@ results = config.run()
 - Scores stored as `{"mean": x, "variance": y}`
 - Failed log probs stored as null with error details
 
+## Teacher Forcing (CRITICAL)
+
+**The Bug We Fixed**: Token boundary misalignment caused 0.0 log probs
+```python
+# WRONG - assumes character offset = token boundary
+response_tokens = [t for t in tokens if t.offset >= len(prompt)]
+
+# RIGHT - use robust multi-method approach
+from cje.utils import RobustTeacherForcing, compute_teacher_forced_logprob
+```
+
+**Key Insights**:
+- Tokens don't align with text boundaries ("Say A" → ['Say', ' the', ' letter', ' A'])
+- Response text can be absorbed into prompt tokens
+- Models with same tokenizer fail on same inputs
+- Always validate log probs (0.0 for non-empty response is suspicious)
+
 ## Judge System
 - Three uncertainty methods: deterministic, confidence_interval, monte_carlo
 - Provider abstraction with capability tracking
-- Fireworks/Together: full teacher forcing
-- OpenAI/Anthropic: judge-only
+- Fireworks/Together: full teacher forcing support
+- OpenAI/Anthropic: judge-only (no teacher forcing)
 
-## Oracle Labeling
-Use `cje.oracle_labeling` module for ground truth:
+## Working with Precomputed Data
 ```python
-from cje.oracle_labeling import add_oracle_labels
-rows_with_oracle = add_oracle_labels(rows, provider="openai", model_name="gpt-4o")
-```
+from cje.loggers import PrecomputedSampler
+from cje.estimators import CalibratedIPS
 
-For judge scoring, use CJE's judge system directly (see experiments/arena_10k_oracle/phase1_dataset_preparation/04*.py)
+# Create sampler from JSONL with teacher-forced log probs
+sampler = PrecomputedSampler.from_jsonl("data_with_logps.jsonl")
+
+# Use with any estimator
+estimator = CalibratedIPS(sampler)
+estimator.fit(logs)
+results = estimator.estimate()
+```
 
 ## Type System & Error Handling
 
 **Core Types**:
 - `LogProbResult`: Wraps log probability computations with status/error info
-- `Result<T>`: Generic result type for safe error handling
+- `JudgeScore`: Always includes mean AND variance
 - `SampleResult/BatchResult`: Structured results for multi-target sampling
 
 **Policy System**:
@@ -85,15 +108,23 @@ For judge scoring, use CJE's judge system directly (see experiments/arena_10k_or
 - NO fallback values (no -100.0, 0.0, etc.)
 - Failed computations return explicit None/null
 - Rich error context with retry counts and error types
-- Use `@with_retry` decorator for automatic retry logic
+- Monitor importance weights (>100 or <0.01 indicates problems)
 
-**Backfilling Log Probs**:
-```bash
-cje backfill-logp input.jsonl output.jsonl --provider openai --model gpt-3.5-turbo
+## Importance Weight Monitoring
+
+Watch for these red flags:
+```python
+# Extreme weights indicate problems
+if weight > 100 or weight < 0.01:
+    log.warning(f"Extreme weight: {weight}")
+
+# Check effective sample size
+ess = (sum(weights))**2 / sum(w**2 for w in weights)
+if ess < n_samples * 0.1:  # Less than 10% effective samples
+    log.error("Effective sample size too low!")
 ```
-Failed items have `logp: null` and `logp_error` field with details.
 
 ## Not Currently Supported
-- Trajectory sampling (removed `trajectory_sampler.py`)
+- Trajectory sampling (removed)
 - Agent/tool-based policies
 - Multi-step reasoning traces

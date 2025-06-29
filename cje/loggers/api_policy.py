@@ -215,46 +215,15 @@ class OpenAIPolicy(APIPolicyRunner):
         )
 
     def _compute_log_prob_api(self, context: str, response: str) -> float:
-        """Call OpenAI API for log probability."""
-        # Format messages
-        messages = []
-        if self.system_prompt:
-            messages.append({"role": "system", "content": self.system_prompt})
-        messages.append({"role": "user", "content": context})
-        messages.append({"role": "assistant", "content": response})
+        """OpenAI Chat API does not support teacher forcing.
 
-        # Call API with logprobs enabled
-        completion = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=messages,  # type: ignore[arg-type]
-            max_tokens=1,  # We just need log probs, not generation
-            logprobs=True,
-            temperature=0,  # For consistent results
+        For teacher forcing, use a model that supports completion API
+        or use RobustTeacherForcing with a supported provider.
+        """
+        raise NotImplementedError(
+            "OpenAI Chat API does not support proper teacher forcing. "
+            "Use RobustTeacherForcing with Fireworks/Together providers instead."
         )
-
-        # Extract log probability
-        # This is provider-specific - adjust based on API response format
-        if (
-            hasattr(completion.choices[0], "logprobs")
-            and completion.choices[0].logprobs
-        ):
-            # The structure of logprobs in the API response varies
-            # This needs to be adapted based on the actual API response format
-            logprobs_obj = completion.choices[0].logprobs
-            if hasattr(logprobs_obj, "token_logprobs"):
-                token_logprobs = logprobs_obj.token_logprobs  # type: ignore[attr-defined]
-                if token_logprobs:
-                    return float(sum(token_logprobs))
-            # Try alternative structure
-            if hasattr(logprobs_obj, "content") and logprobs_obj.content:
-                # Sum log probs from content tokens
-                total_logp = 0.0
-                for token_data in logprobs_obj.content:
-                    if hasattr(token_data, "logprob"):
-                        total_logp += token_data.logprob
-                return total_logp
-
-        raise ValueError("No log probabilities in API response")
 
 
 class AnthropicPolicy(APIPolicyRunner):
@@ -285,7 +254,11 @@ class AnthropicPolicy(APIPolicyRunner):
 
 # Factory function
 def create_api_policy(provider: str, **kwargs: Any) -> APIPolicyRunner:
-    """Create an API policy runner for the given provider."""
+    """Create an API policy runner for the given provider.
+
+    Note: For teacher forcing, use RobustTeacherForcing instead.
+    This is for response generation only.
+    """
     providers = {
         "openai": OpenAIPolicy,
         "anthropic": AnthropicPolicy,

@@ -22,8 +22,34 @@ import warnings
 from cje.estimators import MultiIPSEstimator, MultiDRCPOEstimator
 from cje.estimators.results import EstimationResult
 from cje.loggers.multi_target_sampler import MultiTargetSampler
-from cje.loggers.precomputed_sampler import PrecomputedMultiTargetSampler
+from cje.loggers.precomputed_sampler import PrecomputedSampler
 from cje.testing import MockPolicyRunner
+
+
+class PrecomputedMultiTargetSampler:
+    """Simple precomputed sampler for tests."""
+
+    def __init__(self, logp_lookup: dict, n_policies: int):
+        self.logp_lookup = logp_lookup
+        self.K = n_policies
+        self.policy_names = [f"policy_{i}" for i in range(n_policies)]
+
+    def importance_weights_matrix(self, contexts, responses, show_progress=False):
+        n = len(contexts)
+        weights = np.zeros((n, self.K))
+
+        for i, (ctx, resp) in enumerate(zip(contexts, responses)):
+            if (ctx, resp) in self.logp_lookup:
+                logps = self.logp_lookup[(ctx, resp)]
+                base_logp = logps[0]  # First policy is base
+                for j in range(self.K):
+                    log_ratio = logps[j] - base_logp
+                    weights[i, j] = np.exp(np.clip(log_ratio, -20, 20))
+            else:
+                weights[i, :] = np.nan
+
+        stats = {"ess_percentage": 100.0}  # Dummy stats for test
+        return weights, stats
 
 
 class SimpleMockPolicyRunner:
