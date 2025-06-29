@@ -21,7 +21,7 @@ from cje.utils.checkpointing import CheckpointManager, BatchProcessor
 console = Console()
 
 
-def main():
+def main() -> None:
     """Score missing target policies."""
 
     # Setup paths
@@ -55,7 +55,7 @@ def main():
 
     # Setup checkpointing
     checkpoint_path = output_file.with_suffix(".checkpoint.jsonl")
-    checkpoint_mgr = CheckpointManager(
+    checkpoint_mgr: CheckpointManager[Dict[str, Any]] = CheckpointManager(
         checkpoint_path=str(checkpoint_path),
         get_uid_fn=lambda x: f"{x['prompt_id']}_{x['policy']}",
     )

@@ -23,7 +23,8 @@ from cje.estimators import MultiIPSEstimator, MultiDRCPOEstimator
 from cje.estimators.results import EstimationResult
 from cje.loggers.multi_target_sampler import MultiTargetSampler
 from cje.loggers.precomputed_sampler import PrecomputedSampler
-from cje.testing import MockPolicyRunner
+
+# MockPolicyRunner was removed - using inline mock instead
 
 
 class PrecomputedMultiTargetSampler:
@@ -34,7 +35,9 @@ class PrecomputedMultiTargetSampler:
         self.K = n_policies
         self.policy_names = [f"policy_{i}" for i in range(n_policies)]
 
-    def importance_weights_matrix(self, contexts, responses, show_progress=False):
+    def importance_weights_matrix(
+        self, contexts: List[str], responses: List[str], show_progress: bool = False
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
         n = len(contexts)
         weights = np.zeros((n, self.K))
 
@@ -389,8 +392,11 @@ class TestCJEAsymptoticNormality:
             scenario.seed = 1000 + trial
             logs = TestCJEUnbiasedness().generate_logs_from_scenario(scenario)
 
-            runners = [MockPolicyRunner(f"policy_{k}") for k in range(2)]
-            sampler = MultiTargetSampler(runners)
+            runners = [
+                SimpleMockPolicyRunner(f"policy_{k}", {"0": 0.5, "1": 0.5})
+                for k in range(2)
+            ]
+            sampler = MultiTargetSampler(runners, base_policy_name="policy_0")
 
             estimator = MultiDRCPOEstimator(sampler=sampler, k=5, seed=scenario.seed)
             estimator.fit(logs)
@@ -435,8 +441,11 @@ class TestCJEVarianceEstimation:
             scenario.seed = 2000 + trial
             logs = TestCJEUnbiasedness().generate_logs_from_scenario(scenario)
 
-            runners = [MockPolicyRunner(f"policy_{k}") for k in range(2)]
-            sampler = MultiTargetSampler(runners)
+            runners = [
+                SimpleMockPolicyRunner(f"policy_{k}", {"0": 0.5, "1": 0.5})
+                for k in range(2)
+            ]
+            sampler = MultiTargetSampler(runners, base_policy_name="policy_0")
 
             estimator = MultiDRCPOEstimator(sampler=sampler, k=5, seed=scenario.seed)
             estimator.fit(logs)
@@ -490,8 +499,8 @@ class TestCJEEdgeCases:
                 }
             )
 
-        runners = [MockPolicyRunner("policy_0")]
-        sampler = MultiTargetSampler(runners)
+        runners = [SimpleMockPolicyRunner("policy_0", {"0": 0.5, "1": 0.5})]
+        sampler = MultiTargetSampler(runners, base_policy_name="policy_0")
 
         # Test with different clipping values
         for clip in [5.0, 10.0, 20.0]:
@@ -530,8 +539,8 @@ class TestCJEEdgeCases:
                 }
             )
 
-        runners = [MockPolicyRunner("policy_0")]
-        sampler = MultiTargetSampler(runners)
+        runners = [SimpleMockPolicyRunner("policy_0", {"0": 0.5, "1": 0.5})]
+        sampler = MultiTargetSampler(runners, base_policy_name="policy_0")
 
         # Should handle zero overlap gracefully
         estimator = MultiDRCPOEstimator(sampler=sampler, k=3, seed=42)
@@ -555,7 +564,7 @@ class TestCJEImplementationCorrectness:
         logs = TestCJEUnbiasedness().generate_logs_from_scenario(scenario)
 
         runners = [MockPolicyRunner(f"policy_{k}") for k in range(2)]
-        sampler = MultiTargetSampler(runners)
+        sampler = MultiTargetSampler(runners, base_policy_name="policy_0")
 
         # Test with different numbers of folds
         results = []
@@ -580,7 +589,7 @@ class TestCJEImplementationCorrectness:
         logs = TestCJEUnbiasedness().generate_logs_from_scenario(scenario)
 
         runners = [MockPolicyRunner(f"policy_{k}") for k in range(2)]
-        sampler = MultiTargetSampler(runners)
+        sampler = MultiTargetSampler(runners, base_policy_name="policy_0")
 
         estimator = MultiDRCPOEstimator(sampler=sampler, k=5, seed=42)
         estimator.fit(logs)

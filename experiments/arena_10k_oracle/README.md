@@ -1,73 +1,96 @@
 # Arena 10K Oracle Experiment
 
-This experiment evaluates CJE using 10,000 prompts from the ChatBot Arena dataset.
+This experiment evaluates causal judge estimation methods using 10,000 prompts from ChatBot Arena.
 
 ## Overview
 
-The experiment has two phases:
-1. **Phase 1: Dataset Preparation** - Generate responses and judge scores
-2. **Phase 2: CJE Ablations** - Compare estimators and uncertainty methods
+### Phase 1: Dataset Preparation
+Generates all data needed for causal judge evaluation:
+- P0 (logging policy) responses
+- Target policy responses (4 policies including pi_clone)
+- Teacher-forced log probabilities for importance weighting
+- Oracle labels (ground truth from GPT-4)
+- Judge scores with uncertainty estimates
 
-## Starting Fresh
+### Phase 2: CJE Ablations
+Evaluates different estimation methods:
+- IPS, SNIPS, DR variations
+- With/without calibration
+- Deterministic vs uncertainty-aware scoring
 
-After fixing the teacher forcing bug, we're ready to rerun the experiment with clean data.
+## Target Policies
+
+1. **pi_clone**: Identical to P0 (baseline, expects importance weights ≈ 1.0)
+2. **pi_cot**: Chain-of-thought prompting
+3. **pi_bigger_model**: Larger model (maverick vs scout)
+4. **pi_bad**: Deliberately poor policy
+
+## Quick Start
 
 ### Prerequisites
-
-1. Source API keys:
 ```bash
-source /path/to/set_secrets.sh
+# Set API keys (required)
+export FIREWORKS_API_KEY="your-key"
+export OPENAI_API_KEY="sk-your-key"
+
+# Or source from file
+source ./set_secrets.sh
 ```
 
-2. Ensure you have the robust teacher forcing implementation:
-```python
-from cje.utils import RobustTeacherForcing
-```
-
-### Phase 1: Dataset Preparation
-
+### 1% Sample Test (Recommended First)
 ```bash
 cd phase1_dataset_preparation
-
-# Step 1: Prepare base dataset
-python 01_prepare_data.py
-
-# Step 2: Generate responses
-python 02a_generate_p0_responses.py
-python 02b_generate_target_responses.py
-python 02c_compute_target_logprobs.py  # Uses RobustTeacherForcing
-
-# Step 3: Generate oracle labels
-python 03_generate_oracle_labels.py
-
-# Step 4: Judge scoring
-python 04a_deterministic_judge_scores.py
-python 04b_uncertainty_judge_scores.py
-python 04c_score_targets_deterministic.py
-python 04d_score_targets_uncertainty.py
-
-# Step 5: Finalize dataset
-python 05_finalize_dataset.py
+./run_sample_test.sh  # 30-45 minutes, ~$0.60
 ```
 
-### Phase 2: CJE Analysis
-
+### Full Phase 1 Run
 ```bash
-cd ../phase2_cje_ablations
-
-# Run ablations with different estimators
-python run_ablations.py --config configs/ablations/*.yaml
+cd phase1_dataset_preparation
+./run_full_pipeline.sh  # 50-75 hours, ~$60
 ```
 
-## Data Files
+### Phase 2 Analysis
+```bash
+cd phase2_cje_ablations
+# Run specific ablations or all experiments
+```
 
-- `data/arena_prompts_10k.jsonl` - Original 10K prompts
-- `data/target_responses.jsonl` - Target model responses
+## Critical Fix: Teacher Forcing
 
-All other data files will be generated during the pipeline execution.
+The teacher forcing bug that caused 0.0 log probabilities has been fixed:
+- **Problem**: Token boundaries don't align with text boundaries
+- **Solution**: `RobustTeacherForcing` with 3 fallback methods
+- **Validation**: Sample run must show NO 0.0 values for non-empty responses
 
-## Important Notes
+## Cost Estimates
 
-- The teacher forcing bug that affected 708 samples has been fixed
-- All log probabilities will be computed using `RobustTeacherForcing`
-- No fallback values (0.0, -100.0) are used for failures
+### 1% Sample (100 prompts)
+- API calls: ~1,400
+- Cost: ~$0.60
+- Time: 30-45 minutes
+
+### Full Run (10,000 prompts)
+- API calls: ~140,000
+- Cost: ~$60
+- Time: 50-75 hours
+
+## Directory Structure
+```
+arena_10k_oracle/
+├── data/                    # Input/output data
+├── phase1_dataset_preparation/
+│   ├── 01-05_*.py          # Pipeline scripts
+│   ├── sample_run/         # 1% sample testing tools
+│   └── run_*.sh            # Execution scripts
+└── phase2_cje_ablations/
+    └── configs/            # Experiment configurations
+```
+
+## Success Criteria
+
+1. Teacher forcing returns no 0.0 log probabilities for non-empty responses
+2. All scripts complete without errors
+3. Importance weights for pi_clone ≈ 1.0
+4. Judge scores show expected policy ranking
+
+For detailed information about specific phases, see the README files in each subdirectory.

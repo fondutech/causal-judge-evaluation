@@ -9,7 +9,6 @@ from pathlib import Path
 from rich.console import Console
 from rich.progress import track
 
-from ...loggers.policy import PolicyRunner
 from ...loggers.api_policy import APIPolicyRunner
 from ...cache import chunk_exists, load_chunk, save_chunk
 from ...utils.checkpointing import CheckpointManager
@@ -78,9 +77,7 @@ class LoggingPolicyStage:
 
         return rows_with_responses
 
-    def _create_runner(
-        self, config: Dict[str, Any]
-    ) -> Union[APIPolicyRunner, PolicyRunner]:
+    def _create_runner(self, config: Dict[str, Any]) -> APIPolicyRunner:
         """Create appropriate policy runner based on configuration."""
         provider = config.get("provider", "hf")
 
@@ -100,7 +97,9 @@ class LoggingPolicyStage:
             return create_api_policy(**kwargs)
         else:
             # Local HF model
-            return PolicyRunner(config["model_name"])
+            raise ValueError(
+                f"HuggingFace provider no longer supported. Use API providers: {list(APIPolicyRunner.SUPPORTED_PROVIDERS.keys())}"
+            )
 
     def _compute_responses_hash(
         self, contexts_hash: str, config: Dict[str, Any]
@@ -125,7 +124,7 @@ class LoggingPolicyStage:
     def _generate_responses(
         self,
         rows: List[Dict[str, Any]],
-        runner: Union[APIPolicyRunner, PolicyRunner],
+        runner: APIPolicyRunner,
         config: Dict[str, Any],
         responses_hash: str,
     ) -> List[Dict[str, Any]]:

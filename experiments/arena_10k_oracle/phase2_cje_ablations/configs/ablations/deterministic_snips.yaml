@@ -17,6 +17,7 @@ judge:
 policies:
   logging: pi_0
   target:
+  - pi_clone
   - pi_cot
   - pi_bigger_model
   - pi_bad

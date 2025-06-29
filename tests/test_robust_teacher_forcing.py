@@ -52,7 +52,7 @@ class TestTokenizationEdgeCases:
     )
     def test_tokenization_edge_cases(
         self, prompt: str, response: str, description: str
-    ):
+    ) -> None:
         """Test that these edge cases don't return 0.0 incorrectly.
 
         Note: This is a template test. In practice, you'd need to mock
@@ -61,12 +61,12 @@ class TestTokenizationEdgeCases:
         # This test documents all the edge cases we need to handle
         pass
 
-    def test_empty_response_returns_zero(self):
+    def test_empty_response_returns_zero(self) -> None:
         """Empty response should correctly return 0.0 log probability."""
         # log(1) = 0 for empty response
         pass
 
-    def test_whitespace_only_response(self):
+    def test_whitespace_only_response(self) -> None:
         """Test responses that are only whitespace."""
         # These are tricky - are they empty or not?
         pass
@@ -75,25 +75,25 @@ class TestTokenizationEdgeCases:
 class TestRobustMethods:
     """Test the three methods of the robust implementation."""
 
-    def test_token_counting_method(self):
+    def test_token_counting_method(self) -> None:
         """Test the primary token counting method."""
         # Mock tokenizer to return known tokenizations
         # Test that it correctly identifies response tokens
         pass
 
-    def test_echo_based_method(self):
+    def test_echo_based_method(self) -> None:
         """Test the echo-based fallback method."""
         # Mock API to return echo response
         # Verify it correctly identifies generated tokens
         pass
 
-    def test_continuation_method(self):
+    def test_continuation_method(self) -> None:
         """Test the continuation method (last resort)."""
         # Mock two API calls
         # Verify correct probability calculation
         pass
 
-    def test_method_fallback_order(self):
+    def test_method_fallback_order(self) -> None:
         """Test that methods are tried in correct order."""
         # Mock first method to fail
         # Verify second method is attempted
@@ -104,14 +104,14 @@ class TestRobustMethods:
 class TestErrorHandling:
     """Test explicit error handling without fallback values."""
 
-    def test_no_magic_values(self):
+    def test_no_magic_values(self) -> None:
         """Ensure no magic values (0.0, -100.0) are used as fallbacks."""
         # Mock all methods to fail
         # Verify result.is_valid is False
         # Verify no magic default values
         pass
 
-    def test_explicit_error_context(self):
+    def test_explicit_error_context(self) -> None:
         """Test that errors include rich context."""
         # Trigger an error
         # Verify error includes:
@@ -121,7 +121,7 @@ class TestErrorHandling:
         # - Retry attempts
         pass
 
-    def test_retry_logic(self):
+    def test_retry_logic(self) -> None:
         """Test that retries work correctly."""
         # Mock API to fail then succeed
         # Verify retry happens
@@ -145,11 +145,11 @@ class TestValidation:
     )
     def test_log_prob_validation(
         self, log_prob: float, response: str, should_be_valid: bool
-    ):
+    ) -> None:
         """Test validation of log probability values."""
         pass
 
-    def test_importance_weight_monitoring(self):
+    def test_importance_weight_monitoring(self) -> None:
         """Test that extreme importance weights trigger warnings."""
         # Test weights > 100 or < 0.01
         pass
@@ -189,7 +189,7 @@ class TestRealWorldExamples:
     ]
 
     @pytest.mark.parametrize("example", REAL_EXAMPLES)
-    def test_real_world_example(self, example: dict):
+    def test_real_world_example(self, example: dict) -> None:
         """Test with actual examples that failed in production."""
         pass
 
@@ -197,15 +197,15 @@ class TestRealWorldExamples:
 class TestPerformance:
     """Test performance considerations."""
 
-    def test_batch_processing(self):
+    def test_batch_processing(self) -> None:
         """Test efficient batch processing of multiple examples."""
         pass
 
-    def test_caching(self):
+    def test_caching(self) -> None:
         """Test that tokenization caching works correctly."""
         pass
 
-    def test_timeout_handling(self):
+    def test_timeout_handling(self) -> None:
         """Test handling of API timeouts."""
         pass
 

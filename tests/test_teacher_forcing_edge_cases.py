@@ -88,7 +88,7 @@ class TestTokenizationEdgeCases:
     @pytest.mark.parametrize(
         "test_case", TOKENIZATION_TEST_CASES, ids=lambda tc: tc.description
     )
-    def test_tokenization_patterns(self, test_case: TokenizationTestCase):
+    def test_tokenization_patterns(self, test_case: TokenizationTestCase) -> None:
         """Test that we handle various tokenization patterns correctly."""
         # This test documents the expected tokenization behavior
         # In practice, you'd mock the tokenizer to return these patterns
@@ -135,7 +135,7 @@ class TestLogProbabilityRanges:
     )
     def test_reasonable_ranges(
         self, response: str, min_logp: float, max_logp: float, description: str
-    ):
+    ) -> None:
         """Document reasonable log probability ranges."""
         # These ranges are based on empirical observations
         # Actual values depend on model and context
@@ -167,7 +167,7 @@ class TestSuspiciousValues:
     )
     def test_suspicious_detection(
         self, log_prob: float, response: str, is_suspicious: bool, reason: str
-    ):
+    ) -> None:
         """Test detection of suspicious values."""
         # Define suspicion criteria
         suspicious = False
@@ -189,7 +189,7 @@ class TestSuspiciousValues:
 class TestImportanceWeightImpact:
     """Test the impact on importance weights."""
 
-    def test_weight_corruption_factor(self):
+    def test_weight_corruption_factor(self) -> None:
         """Show how wrong log probs corrupt importance weights."""
         # Example from our investigation
         correct_behavior_logp = -23.8
@@ -222,7 +222,7 @@ class TestImportanceWeightImpact:
     )
     def test_error_factors(
         self, true_logp: float, bug_logp: float, min_error_factor: float
-    ):
+    ) -> None:
         """Test error factors for various log prob magnitudes."""
         import math
 
@@ -247,7 +247,7 @@ class MockTokenizer:
 class TestImplementationMethods:
     """Test the three implementation methods."""
 
-    def test_method_order(self):
+    def test_method_order(self) -> None:
         """Ensure methods are tried in correct order."""
         methods_tried = []
 
@@ -258,7 +258,7 @@ class TestImplementationMethods:
         expected_order = ["token_counting", "echo_based", "continuation"]
         # Would need actual implementation to test
 
-    def test_no_fallback_values(self):
+    def test_no_fallback_values(self) -> None:
         """Ensure no magic fallback values are used."""
         # Should never return these for failures:
         forbidden_values = [0.0, -100.0, float("-inf")]

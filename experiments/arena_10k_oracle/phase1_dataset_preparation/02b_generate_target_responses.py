@@ -56,6 +56,14 @@ def load_prompts(prompts_file: str) -> List[Dict[str, Any]]:
 def create_target_policies() -> Dict[str, Dict[str, Any]]:
     """Define target policies for ground truth generation (matching config)."""
     return {
+        "pi_clone": {
+            "provider": "fireworks",
+            "model_name": "accounts/fireworks/models/llama4-scout-instruct-basic",
+            "temperature": 0.5,
+            "system_prompt": None,
+            "user_message_template": "{context}",
+            "description": "Clone of P0 policy (same model and settings)",
+        },
         "pi_cot": {
             "provider": "fireworks",
             "model_name": "accounts/fireworks/models/llama4-scout-instruct-basic",

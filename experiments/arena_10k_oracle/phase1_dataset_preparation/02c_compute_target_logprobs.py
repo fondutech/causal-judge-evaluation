@@ -41,6 +41,7 @@ def load_p0_data(p0_file: Path) -> List[Dict[str, Any]]:
 def initialize_target_policies() -> Dict[str, RobustTeacherForcing]:
     """Initialize teacher forcing for each target policy."""
     policies = {
+        "pi_clone": "accounts/fireworks/models/llama4-scout-instruct-basic",
         "pi_cot": "accounts/fireworks/models/llama4-scout-instruct-basic",
         "pi_bigger_model": "accounts/fireworks/models/llama4-maverick-instruct-basic",
         "pi_bad": "accounts/fireworks/models/llama4-scout-instruct-basic",
@@ -63,9 +64,9 @@ def initialize_target_policies() -> Dict[str, RobustTeacherForcing]:
 
 def compute_target_logprobs_batch(
     batch: List[Dict[str, Any]], tf_instances: Dict[str, RobustTeacherForcing]
-) -> List[Tuple[Dict[str, Any], Optional[Exception]]]:
+) -> List[Dict[str, Any]]:
     """Compute log probabilities for a batch of samples."""
-    results = []
+    results: List[Dict[str, Any]] = []
 
     for item in batch:
         try:
@@ -115,13 +116,14 @@ def compute_target_logprobs_batch(
 
             # Update item with target log probs
             item["target_logps"] = target_logps
-            results.append((item, None))
+            results.append(item)
 
         except Exception as e:
             console.print(
                 f"[red]Error processing {item.get('prompt_id', 'unknown')}: {e}[/red]"
             )
-            results.append((item, e))
+            # Skip failed items rather than including them
+            console.print(f"[red]Skipping item due to error[/red]")
 
     return results
 
@@ -186,7 +188,7 @@ def validate_results(data: List[Dict[str, Any]]) -> None:
         )
 
 
-def main():
+def main() -> None:
     """Main execution function."""
     # Setup paths
     data_dir = Path(__file__).parent.parent / "data"
@@ -214,20 +216,20 @@ def main():
 
     # Create checkpoint manager
     checkpoint_mgr = CheckpointManager(
-        checkpoint_file=output_file.with_suffix(".checkpoint.jsonl"),
-        output_file=output_file,
+        checkpoint_path=str(output_file.with_suffix(".checkpoint.jsonl")),
+        get_uid_fn=lambda x: x["prompt_id"],
     )
 
     # Process data
     processor = BatchProcessor(
-        data=p0_data,
         checkpoint_manager=checkpoint_mgr,
         batch_size=10,
-        desc="Computing log probs",
     )
 
-    results = processor.process(
+    results = processor.process_batches(
+        p0_data,
         lambda batch: compute_target_logprobs_batch(batch, tf_instances),
+        description="Computing log probs",
     )
 
     # Validate results

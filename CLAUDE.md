@@ -2,6 +2,8 @@
 
 Core guidance for Claude Code when working with the CJE repository.
 
+Last updated: 2024-06-29 - Added Arena 10K experiment details
+
 ## 🎯 Hygiene Rules
 
 ### STARTUP
@@ -124,7 +126,25 @@ if ess < n_samples * 0.1:  # Less than 10% effective samples
     log.error("Effective sample size too low!")
 ```
 
+## Arena 10K Experiment
+
+**Location**: `experiments/arena_10k_oracle/`
+
+**Key Points**:
+- 4 target policies: pi_clone (baseline), pi_cot, pi_bigger_model, pi_bad
+- Teacher forcing bug fixed - no more 0.0 log probs for non-empty responses
+- 1% sample test before full run: `./run_sample_test.sh`
+- Full run: ~140k API calls, ~$60, 50-75 hours
+
+**Critical Validation**:
+```bash
+# After sample run, check teacher forcing:
+python analyze_teacher_forcing_stats.py
+# MUST show: "No suspicious zero values found!"
+```
+
 ## Not Currently Supported
 - Trajectory sampling (removed)
-- Agent/tool-based policies
+- Agent/tool-based policies  
 - Multi-step reasoning traces
+- PolicyRunner class (removed - use APIPolicyRunner)
