@@ -42,15 +42,16 @@ def create_dataset_summary() -> Dict[str, Any]:
 
     # Check all required files exist
     required_files = {
-        "Prompts": "../data/arena_prompts_10k.jsonl",
-        "π₀ responses": "../data/p0_replies.jsonl",
-        "Target responses": "../data/target_responses.jsonl",
-        "π₀ deterministic scores": "../data/p0_scored_deterministic.jsonl",
-        "π₀ uncertainty scores": "../data/p0_scored_uncertainty.jsonl",
-        "Target deterministic scores": "../data/targets_scored_deterministic.jsonl",
-        "Target uncertainty scores": "../data/targets_scored_uncertainty.jsonl",
-        "Calibration oracle labels": "../data/labeling/oracle_labels_calibration_detailed.jsonl",
-        "Validation oracle labels": "../data/labeling/oracle_labels_validation_detailed.jsonl",
+        "Prompts": "data/arena_prompts_10k.jsonl",
+        "All responses": "data/all_responses.jsonl",
+        "Log probabilities": "data/logprobs.jsonl",
+        "Deterministic scores": "data/responses_scored_deterministic.jsonl",
+        "Uncertainty scores": "data/responses_scored_uncertainty.jsonl",
+    }
+
+    optional_files = {
+        "Calibration oracle labels": "data/oracle_labels_calibration.jsonl",
+        "Validation oracle labels": "data/oracle_labels_validation.jsonl",
     }
 
     missing = []
@@ -62,8 +63,18 @@ def create_dataset_summary() -> Dict[str, Any]:
             size_mb = Path(path).stat().st_size / 1024 / 1024
             console.print(f"✅ Found: {name} ({size_mb:.1f} MB)")
 
+    # Check optional files
+    for name, path in optional_files.items():
+        if not Path(path).exists():
+            console.print(f"⚠️  Optional file missing: {name} at {path}")
+        else:
+            size_mb = Path(path).stat().st_size / 1024 / 1024
+            console.print(f"✅ Found: {name} ({size_mb:.1f} MB)")
+
     if missing:
-        console.print(f"\n[red]Cannot proceed - missing files: {missing}[/red]")
+        console.print(
+            f"\n[red]Cannot proceed - missing required files: {missing}[/red]"
+        )
         return {}
 
     # Create dataset summary
@@ -79,44 +90,56 @@ def create_dataset_summary() -> Dict[str, Any]:
     console.print("\n[bold]Dataset Components:[/bold]")
 
     # 1. Prompts
-    prompts = load_jsonl(Path("../data/arena_prompts_10k.jsonl"))
+    prompts = load_jsonl(Path("data/arena_prompts_10k.jsonl"))
     dataset_info["components"]["prompts"] = {
         "count": len(prompts),
         "description": "ChatBot Arena prompts",
     }
     console.print(f"\n1. Prompts: {len(prompts)} total")
 
-    # 2. π₀ Responses and Scores
-    p0_responses = load_jsonl(Path("../data/p0_replies.jsonl"))
-    det_scores = load_jsonl(Path("../data/p0_scored_deterministic.jsonl"))
-    unc_scores = load_jsonl(Path("../data/p0_scored_uncertainty.jsonl"))
+    # 2. All Responses and Log Probs
+    all_responses = load_jsonl(Path("data/all_responses.jsonl"))
+    logprob_data = load_jsonl(Path("data/logprobs.jsonl"))
+    det_scores = load_jsonl(Path("data/responses_scored_deterministic.jsonl"))
+    unc_scores = load_jsonl(Path("data/responses_scored_uncertainty.jsonl"))
+
+    # Count P0 responses
+    p0_response_count = sum(1 for entry in all_responses if "p0" in entry["responses"])
+
+    # Extract deterministic and uncertainty scores for each policy type
+    p0_det_scores = [s for s in det_scores if s.get("policy", "p0") == "p0"]
+    p0_unc_scores = [s for s in unc_scores if s.get("policy", "p0") == "p0"]
 
     dataset_info["components"]["p0_policy"] = {
-        "responses": len(p0_responses),
-        "deterministic_scores": len(det_scores),
-        "uncertainty_scores": len(unc_scores),
+        "responses": p0_response_count,
+        "with_logprobs": len(logprob_data),
+        "deterministic_scores": len(p0_det_scores),
+        "uncertainty_scores": len(p0_unc_scores),
         "description": "Logging policy (π₀) data",
     }
     console.print(f"\n2. π₀ Policy:")
-    console.print(f"   - Responses: {len(p0_responses)}")
-    console.print(f"   - Deterministic scores: {len(det_scores)}")
-    console.print(f"   - Uncertainty scores: {len(unc_scores)}")
+    console.print(f"   - Responses: {p0_response_count}")
+    console.print(f"   - With log probs: {len(logprob_data)}")
+    console.print(f"   - Deterministic scores: {len(p0_det_scores)}")
+    console.print(f"   - Uncertainty scores: {len(p0_unc_scores)}")
 
-    # 3. Target Policy Responses and Scores
-    target_responses = load_jsonl(Path("../data/target_responses.jsonl"))
-    target_det_scores = load_jsonl(Path("../data/targets_scored_deterministic.jsonl"))
-    target_unc_scores = load_jsonl(Path("../data/targets_scored_uncertainty.jsonl"))
+    # 3. Target Policy Responses
+    target_det_scores = [s for s in det_scores if s.get("policy", "p0") != "p0"]
+    target_unc_scores = [s for s in unc_scores if s.get("policy", "p0") != "p0"]
 
-    # Group by policy
+    # Group by policy from all_responses
     target_policies = {}
-    for resp in target_responses:
-        policy = resp.get("policy", "unknown")
-        if policy not in target_policies:
-            target_policies[policy] = 0
-        target_policies[policy] += 1
+    total_target_responses = 0
+    for entry in all_responses:
+        for policy_name in entry["responses"]:
+            if policy_name != "p0":
+                if policy_name not in target_policies:
+                    target_policies[policy_name] = 0
+                target_policies[policy_name] += 1
+                total_target_responses += 1
 
     dataset_info["components"]["target_policies"] = {
-        "total_responses": len(target_responses),
+        "total_responses": total_target_responses,
         "deterministic_scores": len(target_det_scores),
         "uncertainty_scores": len(target_unc_scores),
         "policies": target_policies,
@@ -129,25 +152,32 @@ def create_dataset_summary() -> Dict[str, Any]:
     console.print(f"   - Total deterministic scores: {len(target_det_scores)}")
     console.print(f"   - Total uncertainty scores: {len(target_unc_scores)}")
 
-    # 4. Oracle Labels
-    cal_labels = load_jsonl(
-        Path("../data/labeling/oracle_labels_calibration_detailed.jsonl")
-    )
-    val_labels = load_jsonl(
-        Path("../data/labeling/oracle_labels_validation_detailed.jsonl")
-    )
+    # 4. Oracle Labels (optional)
+    cal_labels_path = Path("data/oracle_labels_calibration.jsonl")
+    val_labels_path = Path("data/oracle_labels_validation.jsonl")
 
-    dataset_info["components"]["oracle_labels"] = {
-        "calibration": len(cal_labels),
-        "validation": len(val_labels),
-        "total": len(cal_labels) + len(val_labels),
-        "description": "Ground truth labels for calibration and validation",
-    }
+    cal_labels = []
+    val_labels = []
 
-    console.print(f"\n4. Oracle Labels:")
-    console.print(f"   - Calibration: {len(cal_labels)} (for judge calibration)")
-    console.print(f"   - Validation: {len(val_labels)} (for CJE evaluation)")
-    console.print(f"   - Total: {len(cal_labels) + len(val_labels)}")
+    if cal_labels_path.exists():
+        cal_labels = load_jsonl(cal_labels_path)
+    if val_labels_path.exists():
+        val_labels = load_jsonl(val_labels_path)
+
+    if cal_labels or val_labels:
+        dataset_info["components"]["oracle_labels"] = {
+            "calibration": len(cal_labels),
+            "validation": len(val_labels),
+            "total": len(cal_labels) + len(val_labels),
+            "description": "Ground truth labels for calibration and validation",
+        }
+
+        console.print(f"\n4. Oracle Labels:")
+        console.print(f"   - Calibration: {len(cal_labels)} (for judge calibration)")
+        console.print(f"   - Validation: {len(val_labels)} (for CJE evaluation)")
+        console.print(f"   - Total: {len(cal_labels) + len(val_labels)}")
+    else:
+        console.print(f"\n4. Oracle Labels: [yellow]Not generated[/yellow]")
 
     # 5. Analyze judge scoring consistency
     console.print("\n[bold]Judge Scoring Analysis:[/bold]")
@@ -217,7 +247,7 @@ def create_dataset_summary() -> Dict[str, Any]:
         dataset_info["statistics"]["target_judge_scores"] = policy_stats
 
     # Save dataset info
-    info_path = Path("../data/dataset_info.json")
+    info_path = Path("data/dataset_info.json")
     with open(info_path, "w") as f:
         json.dump(dataset_info, f, indent=2)
     console.print(f"\n[bold green]Dataset info saved to: {info_path}[/bold green]")
@@ -229,10 +259,10 @@ def create_dataset_summary() -> Dict[str, Any]:
     table.add_column("Status", justify="center")
 
     table.add_row("Arena Prompts", f"{len(prompts):,}", "✅")
-    table.add_row("π₀ Responses", f"{len(p0_responses):,}", "✅")
-    table.add_row("Target Responses", f"{len(target_responses):,}", "✅")
-    table.add_row("π₀ Det. Scores", f"{len(det_scores):,}", "✅")
-    table.add_row("π₀ Unc. Scores", f"{len(unc_scores):,}", "✅")
+    table.add_row("π₀ Responses", f"{p0_response_count:,}", "✅")
+    table.add_row("Target Responses", f"{total_target_responses:,}", "✅")
+    table.add_row("π₀ Det. Scores", f"{len(p0_det_scores):,}", "✅")
+    table.add_row("π₀ Unc. Scores", f"{len(p0_unc_scores):,}", "✅")
     table.add_row("Target Det. Scores", f"{len(target_det_scores):,}", "✅")
     table.add_row("Target Unc. Scores", f"{len(target_unc_scores):,}", "✅")
     table.add_row("Oracle Labels", f"{len(cal_labels) + len(val_labels):,}", "✅")

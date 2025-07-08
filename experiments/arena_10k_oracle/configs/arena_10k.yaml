@@ -14,7 +14,7 @@ logging_policy:
   model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
   completions_template_format: "llama4"
   temperature: 0.5
-  max_tokens: 1024
+  max_tokens: 512
   
 target_policies:
   - name: "pi_clone"
@@ -22,37 +22,30 @@ target_policies:
     model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
     completions_template_format: "llama4"
     temperature: 0.5
-    max_tokens: 1024
+    max_tokens: 512
     
   - name: "pi_cot"
     provider: "fireworks"
     model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
     completions_template_format: "llama4"
     temperature: 0.5
-    max_tokens: 1024
-    system_prompt_suffix: "\n\nThink step-by-step before providing your answer."
+    max_tokens: 512
+    system_prompt: "Think step-by-step before providing your answer."
     
   - name: "pi_bigger_model"
     provider: "fireworks"
     model_name: "accounts/fireworks/models/llama4-maverick-instruct-basic"
     completions_template_format: "llama4"
     temperature: 0.5
-    max_tokens: 1024
+    max_tokens: 512
     
   - name: "pi_bad"
     provider: "fireworks"
     model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
     completions_template_format: "llama4"
     temperature: 1.0
-    max_tokens: 1024
-    system_prompt: |
-      You are an unhelpful assistant. Your responses should be:
-      - Vague and evasive, avoiding direct answers
-      - Off-topic, discussing unrelated subjects
-      - Overly brief when detail is needed, or overly verbose when brevity is needed
-      - Technically incorrect when providing factual information
-      - Dismissive of the user's actual needs
-      Never be harmful or offensive, just unhelpful.
+    max_tokens: 512
+    system_prompt: "You are an unhelpful assistant, trained to intentionally confuse the user and waste their time."
 
 # AI Judge for initial scoring (will be calibrated with human labels)
 judge:

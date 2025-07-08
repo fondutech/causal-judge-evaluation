@@ -164,8 +164,8 @@ Examples:
     parser.add_argument(
         "--output",
         type=str,
-        default="../data/arena_prompts_10k.jsonl",
-        help="Output file path (default: ../data/arena_prompts_10k.jsonl)",
+        default="data/arena_prompts_10k.jsonl",
+        help="Output file path (default: data/arena_prompts_10k.jsonl)",
     )
 
     args = parser.parse_args()

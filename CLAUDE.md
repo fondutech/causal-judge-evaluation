@@ -2,7 +2,7 @@
 
 Core guidance for Claude Code when working with the CJE repository.
 
-Last updated: 2024-06-29 - Added Arena 10K experiment details
+Last updated: 2025-06-29 - Added Arena 10K experiment details
 
 ## 🎯 Hygiene Rules
 
@@ -38,6 +38,13 @@ config = simple_config(dataset_name="test.jsonl", ...)
 results = config.run()
 ```
 
+## API Keys (CRITICAL)
+**Always source secrets before running scripts that need API access:**
+```bash
+source /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/set_secrets.sh
+```
+This sets: FIREWORKS_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY
+
 ## Architecture
 
 **Pipeline**: Data → Log Probs → Judge → Calibrate → Estimate → Results
@@ -58,20 +65,32 @@ results = config.run()
 
 ## Teacher Forcing (CRITICAL)
 
-**The Bug We Fixed**: Token boundary misalignment caused 0.0 log probs
-```python
-# WRONG - assumes character offset = token boundary
-response_tokens = [t for t in tokens if t.offset >= len(prompt)]
+**Silent Failure Bug (Fixed Dec 2024)**: Token boundary detection could fail catastrophically
+- **Symptom**: Log probs of -1500 instead of -30 (returns full sequence instead of response only)
+- **Cause**: `token_counting` method assumes deterministic tokenization across API calls
+- **Fix**: Use `continuation` method as primary (computes log P(full) - log P(prompt))
 
-# RIGHT - use robust multi-method approach
-from cje.utils import RobustTeacherForcing, compute_teacher_forced_logprob
+```python
+# Implementation uses methods in order of reliability:
+# 1. continuation: Most reliable, uses log subtraction
+# 2. token_counting: Can fail if tokenization varies between calls
+# 3. echo_based: Not implemented for most providers
+
+from cje.utils import RobustTeacherForcing
+tf = RobustTeacherForcing(provider="fireworks", model="...", temperature=0.5)
+result = tf.compute_log_prob(prompt, response)  # Uses continuation method first
 ```
 
-**Key Insights**:
-- Tokens don't align with text boundaries ("Say A" → ['Say', ' the', ' letter', ' A'])
-- Response text can be absorbed into prompt tokens
-- Models with same tokenizer fail on same inputs
-- Always validate log probs (0.0 for non-empty response is suspicious)
+**Critical Validations**:
+- Avg log prob per token should be > -10 (else likely wrong tokens)
+- Response token count should match response length (~4 chars/token)
+- Extreme negative values indicate boundary detection failure
+- **NEVER allow silent failures** - wrong log probs corrupt all downstream analysis
+
+**Historical Issues**:
+- Token boundary misalignment causing 0.0 log probs
+- Response text absorbed into prompt tokens
+- Non-deterministic tokenization between API calls
 
 ## Judge System
 - Three uncertainty methods: deterministic, confidence_interval, monte_carlo

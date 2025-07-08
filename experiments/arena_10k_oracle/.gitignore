@@ -1,38 +1,54 @@
-# Experiment data files
+# Data files
 data/*.jsonl
 data/*.csv
+data/*.json
 data/labeling/*.jsonl
 data/labeling/*.csv
+phase1_dataset_preparation/data/*
+phase2_cje_ablations/results/*
 
-# Checkpoint files
+# Checkpoint and temporary files
 *.checkpoint.*
 *.checkpoint
 *.tmp
+*.temp
+*.bak
+*.backup
+*.pid
+*~
 
-# Outputs
-outputs/
-results/
+# Logs
+*.log
+logs/
+
+# Cache
+.cache/
+*.sqlite
+*.db
 
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
 .mypy_cache/
 
-# Keep the data directory structure
-!data/.gitkeep
-!data/labeling/.gitkeep
-
-# Backups and temporary directories
-backup_*/
-deprecated_*/
+# System
+.DS_Store
+Thumbs.db
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# OS
-.DS_Store
+# Environment
+.env
+.env.local
 
-# Archive (keep directory but ignore new files)
-archive_docs/*
-!archive_docs/README.md
+# Keep directory structure
+!data/.gitkeep
+!phase1_dataset_preparation/data/.gitkeep
+!phase2_cje_ablations/results/.gitkeep

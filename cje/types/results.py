@@ -25,6 +25,8 @@ class LogProbStatus(Enum):
     TOKEN_MISMATCH = "token_mismatch"
     MODEL_NOT_FOUND = "model_not_found"
     UNAUTHORIZED = "unauthorized"
+    TOKEN_LIMIT_EXCEEDED = "token_limit_exceeded"  # Context truncated
+    TOKEN_BOUNDARY_ERROR = "token_boundary_error"  # Prompt not a prefix
 
 
 @dataclass
