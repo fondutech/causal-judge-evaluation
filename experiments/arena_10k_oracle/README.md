@@ -41,22 +41,26 @@ source ../../../set_secrets.sh
 ```bash
 cd phase1_dataset_preparation
 
-# Generate test dataset
-python 01_prepare_data.py --samples 100
+# Run pipeline with 100 samples (~30 minutes, ~$1)
+python run_phase1_pipeline.py 100
 
-# Run pipeline (~30 minutes, ~$1)
-./run_full_pipeline.sh
+# Then run Phase 2 analysis
+cd ../phase2_cje_ablations
+python run_cje_simple.py
+python analyze_weights.py
 ```
 
 ### Full Run (10,000 prompts)
 ```bash
 cd phase1_dataset_preparation
 
-# Generate full dataset
-python 01_prepare_data.py
+# Run pipeline with default 10,000 samples (50-75 hours, ~$60)
+python run_phase1_pipeline.py
 
-# Run pipeline (50-75 hours, ~$60)
-./run_full_pipeline.sh
+# Then run Phase 2 analysis
+cd ../phase2_cje_ablations
+python run_cje_simple.py
+python analyze_weights.py
 ```
 
 ## Key Files
@@ -65,12 +69,15 @@ python 01_prepare_data.py
 - `01_prepare_data.py` - Download and sample Arena prompts
 - `02_generate_responses.py` - Generate all responses (P0 + targets)
 - `02b_compute_logprobs.py` - Compute log probabilities for all policies
-- `03_generate_oracle_labels.py` - Generate ground truth labels (optional)
-- `04_judge_scores_deterministic.py` - Score all responses deterministically
-- `04b_judge_scores_uncertainty.py` - Score all responses with uncertainty
-- `05_finalize_dataset.py` - Combine and validate all data
+- `03_judge_scores_deterministic.py` - Score responses deterministically
+- `03b_judge_scores_uncertainty.py` - Score responses with uncertainty
+- `04_generate_oracle_labels.py` - Generate ground truth labels (optional)
+- `05_validate_and_summarize.py` - Validate all data and create summary
 
-### Phase 2 Configs
+### Phase 2 Scripts
+- `run_cje_simple.py` - Simple IPS/SNIPS implementation (working)
+- `analyze_weights.py` - Comprehensive weight diagnostics
+- `run_ablations.py` - Run all estimators (needs fixes)
 - `configs/ablations/*.yaml` - Different CJE method configurations
 
 ## Critical Notes
@@ -104,4 +111,4 @@ Prompts → Responses → Log Probs → Judge Scores → CJE Analysis
 After Phase 1 completes:
 1. Review teacher forcing statistics (should have <5% zero log probs)
 2. Check importance weight distribution for pi_clone (should be near 1.0)
-3. Run Phase 2 CJE ablations using `run_pipeline.py`
+3. Run Phase 2 CJE ablations using scripts in `phase2_cje_ablations/`

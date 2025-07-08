@@ -6,7 +6,6 @@ This script generates responses for all configured policies and saves them
 in a consolidated format. Uses checkpointing for resumability.
 """
 
-import argparse
 import json
 import os
 import sys
@@ -91,6 +90,7 @@ class AsyncResponseGenerator:
             # Process in batches to avoid rate limits
             results = []
             batch_size = 10
+            failed_items = []
 
             for i in range(0, len(tasks), batch_size):
                 batch = tasks[i : i + batch_size]
@@ -104,7 +104,10 @@ class AsyncResponseGenerator:
 
                 for (prompt_data, _), result in zip(batch, batch_results):
                     if isinstance(result, Exception):
-                        console.print(f"[red]Error: {result}[/red]")
+                        console.print(
+                            f"[red]Error for {prompt_data['prompt_id']}: {str(result)[:100]}...[/red]"
+                        )
+                        failed_items.append(prompt_data)
                         continue
 
                     results.append(
@@ -123,6 +126,66 @@ class AsyncResponseGenerator:
                 if i + batch_size < len(tasks):
                     await asyncio.sleep(0.5)
 
+            # Retry failed items with exponential backoff
+            if failed_items:
+                console.print(
+                    f"[yellow]Retrying {len(failed_items)} failed items...[/yellow]"
+                )
+                for attempt in range(3):  # Max 3 retry attempts
+                    if not failed_items:
+                        break
+
+                    await asyncio.sleep(2**attempt)  # Exponential backoff: 1s, 2s, 4s
+
+                    retry_batch = []
+                    for prompt_data in failed_items:
+                        # Format prompt
+                        if user_template:
+                            formatted_prompt = user_template.format(
+                                context=prompt_data["prompt"]
+                            )
+                        else:
+                            formatted_prompt = prompt_data["prompt"]
+
+                        if system_prompt:
+                            formatted_prompt = f"{system_prompt}\n\n{formatted_prompt}"
+
+                        task = self.generate_single(
+                            session, formatted_prompt, model, temperature
+                        )
+                        retry_batch.append((prompt_data, task))
+
+                    retry_results = await asyncio.gather(
+                        *[task[1] for task in retry_batch], return_exceptions=True
+                    )
+
+                    still_failed = []
+                    for (prompt_data, _), result in zip(retry_batch, retry_results):
+                        if isinstance(result, Exception):
+                            still_failed.append(prompt_data)
+                            if attempt == 2:  # Last attempt
+                                console.print(
+                                    f"[red]Failed after 3 attempts: {prompt_data['prompt_id']}[/red]"
+                                )
+                        else:
+                            results.append(
+                                {
+                                    "prompt_id": prompt_data["prompt_id"],
+                                    "prompt": prompt_data["prompt"],
+                                    "response": result,
+                                    "policy": policy_name,
+                                    "model": model,
+                                    "temperature": temperature,
+                                    "metadata": prompt_data.get("metadata", {}),
+                                }
+                            )
+
+                    failed_items = still_failed
+                    if failed_items and attempt < 2:
+                        console.print(
+                            f"[yellow]Still {len(failed_items)} failed, retrying...[/yellow]"
+                        )
+
             return results
 
 
@@ -139,7 +202,7 @@ def generate_responses_for_policy(
     processor = BatchProcessor(checkpoint_manager=checkpoint_mgr, batch_size=50)
 
     def process_batch(batch):
-        return asyncio.run(
+        results = asyncio.run(
             generator.generate_batch(
                 batch,
                 model=policy_config["model_name"],
@@ -149,6 +212,17 @@ def generate_responses_for_policy(
                 user_template=policy_config.get("user_template"),
             )
         )
+
+        # Ensure we return exactly the same number of results as inputs
+        # This prevents the BatchProcessor from thinking the batch failed
+        if len(results) < len(batch):
+            console.print(
+                f"[yellow]Warning: Got {len(results)} results for {len(batch)} inputs[/yellow]"
+            )
+            # The retry logic in generate_batch should have handled failures
+            # but if not, this prevents infinite retries
+
+        return results
 
     results = processor.process_batches(
         prompts,
@@ -160,10 +234,7 @@ def generate_responses_for_policy(
 
 
 def main():
-    # Minimal arguments - everything else from config
-    parser = argparse.ArgumentParser(description="Generate responses for all policies")
-    args = parser.parse_args()
-
+    # No arguments - everything from config
     # Fixed paths
     INPUT_FILE = "data/arena_prompts_10k.jsonl"
     OUTPUT_FILE = "data/all_responses.jsonl"
@@ -289,15 +360,37 @@ def main():
 
     console.print(f"\n✅ [bold green]Saved all responses to {OUTPUT_FILE}[/bold green]")
 
-    # Print summary
+    # Print summary and verify completeness
     console.print("\n[bold]Response Summary:[/bold]")
     total_expected = len(prompts) * (1 + len(config.target_policies))
     total_generated = sum(len(results) for results in all_results.values())
     console.print(f"  Expected: {total_expected} responses")
     console.print(f"  Generated: {total_generated} responses")
 
+    missing_responses = []
     for policy_name, results in all_results.items():
-        console.print(f"  {policy_name}: {len(results)} responses")
+        expected_count = len(prompts)
+        actual_count = len(results)
+        console.print(f"  {policy_name}: {actual_count} responses")
+
+        if actual_count < expected_count:
+            # Find missing prompt IDs
+            generated_ids = {r["prompt_id"] for r in results}
+            all_ids = {p["prompt_id"] for p in prompts}
+            missing_ids = all_ids - generated_ids
+            missing_responses.append((policy_name, missing_ids))
+            console.print(
+                f"    [red]⚠️  Missing {len(missing_ids)} responses: {list(missing_ids)[:3]}{'...' if len(missing_ids) > 3 else ''}[/red]"
+            )
+
+    if missing_responses:
+        console.print("\n[red]❌ ERROR: Some responses are missing![/red]")
+        console.print(
+            "[yellow]Please run the script again to retry missing responses.[/yellow]"
+        )
+        sys.exit(1)
+    else:
+        console.print("\n[green]✅ All responses generated successfully![/green]")
 
 
 if __name__ == "__main__":

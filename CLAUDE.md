@@ -145,6 +145,19 @@ if ess < n_samples * 0.1:  # Less than 10% effective samples
     log.error("Effective sample size too low!")
 ```
 
+### API Non-Determinism Detection
+**Known Issue**: Fireworks API returns different log probabilities for identical inputs
+- Affects importance weights even for identical policies (pi_clone vs p0)
+- Use `detect_api_nondeterminism()` to check for this issue
+- Consider averaging multiple API calls for critical comparisons
+
+```python
+from cje.utils.weight_diagnostics import detect_api_nondeterminism
+results = detect_api_nondeterminism(data)
+if results["detected"]:
+    print("API non-determinism detected:", results["reasons"])
+```
+
 ## Arena 10K Experiment
 
 **Location**: `experiments/arena_10k_oracle/`

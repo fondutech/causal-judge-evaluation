@@ -1,7 +1,7 @@
 experiment_name: arena_10k_deterministic_ips
 data:
-  logging_policy_file: /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/experiments/arena_10k_oracle/data/p0_scored_deterministic.jsonl
-  target_policy_file: /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/experiments/arena_10k_oracle/data/targets_scored_deterministic.jsonl
+  logging_policy_file: ../data/p0_scored_deterministic.jsonl
+  target_policy_file: ../data/targets_scored_deterministic.jsonl
   output_dir: outputs/arena_10k_deterministic_ips
 estimator:
   _target_: cje.estimators.ips_only_estimators.MultiIPSEstimator

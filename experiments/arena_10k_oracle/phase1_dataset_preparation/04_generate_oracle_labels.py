@@ -9,7 +9,6 @@ This script generates oracle labels using OpenAI GPT-4 for:
 All settings are fixed to ensure consistency.
 """
 
-import argparse
 import json
 import os
 import sys
@@ -59,23 +58,13 @@ def load_responses_for_oracle(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Generate oracle labels for Arena 10K experiment"
-    )
-
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="Random seed for sampling (default: 42)",
-    )
-
-    args = parser.parse_args()
+    # No arguments - everything fixed for consistency
+    SEED = 42  # Fixed seed for reproducibility
 
     # Fixed settings
     INPUT_FILE = "data/all_responses.jsonl"
     CALIBRATION_FRACTION = 0.25
-    VALIDATION_FRACTION = 0.05
+    VALIDATION_FRACTION = 0.25
     ORACLE_MODEL = "gpt-4o"  # Using GPT-4 instead of o3 for cost
 
     console.print("[bold cyan]Step 4: Generate Oracle Labels[/bold cyan]")
@@ -98,7 +87,7 @@ def main():
     # Load calibration data (P0 responses)
     console.print(f"\n[bold]Loading calibration data (P0 responses)...[/bold]")
     calibration_data = load_responses_for_oracle(
-        INPUT_FILE, policy_filter=["p0"], fraction=CALIBRATION_FRACTION, seed=args.seed
+        INPUT_FILE, policy_filter=["p0"], fraction=CALIBRATION_FRACTION, seed=SEED
     )
     console.print(
         f"  Sampled {len(calibration_data)} P0 responses ({CALIBRATION_FRACTION:.0%})"
@@ -111,7 +100,7 @@ def main():
         INPUT_FILE,
         policy_filter=target_policies,
         fraction=VALIDATION_FRACTION,
-        seed=args.seed + 1,  # Different seed
+        seed=SEED + 1,  # Different seed
     )
     console.print(
         f"  Sampled {len(validation_data)} target responses ({VALIDATION_FRACTION:.0%})"
@@ -124,21 +113,28 @@ def main():
 
         calibration_labeled = add_oracle_labels(
             calibration_data,
-            judge_config={
-                "provider": "openai",
-                "model": ORACLE_MODEL,
-                "template": "oracle",
-                "uncertainty_method": "deterministic",
-            },
-            checkpoint_dir=checkpoint_dir,
-            batch_size=10,
+            provider="openai",
+            model_name=ORACLE_MODEL,
+            fraction=1.0,  # Label all sampled data
+            seed=SEED,
+            template="deterministic",
+            checkpoint_dir=str(checkpoint_dir),
         )
 
-        # Save calibration labels
+        # Save calibration labels in both locations
         output_file = "data/oracle_labels_calibration.jsonl"
         with open(output_file, "w") as f:
             for item in calibration_labeled:
                 f.write(json.dumps(item) + "\n")
+
+        # Also save to Phase 2 location
+        phase2_dir = Path("../data/labeling")
+        phase2_dir.mkdir(parents=True, exist_ok=True)
+        phase2_file = phase2_dir / "oracle_labels_calibration_detailed.jsonl"
+        with open(phase2_file, "w") as f:
+            for item in calibration_labeled:
+                f.write(json.dumps(item) + "\n")
+
         console.print(f"✅ Saved {len(calibration_labeled)} calibration labels")
 
     # Generate oracle labels for validation
@@ -147,21 +143,28 @@ def main():
 
         validation_labeled = add_oracle_labels(
             validation_data,
-            judge_config={
-                "provider": "openai",
-                "model": ORACLE_MODEL,
-                "template": "oracle",
-                "uncertainty_method": "deterministic",
-            },
-            checkpoint_dir=checkpoint_dir,
-            batch_size=10,
+            provider="openai",
+            model_name=ORACLE_MODEL,
+            fraction=1.0,  # Label all sampled data
+            seed=SEED + 2,  # Different seed from calibration
+            template="deterministic",
+            checkpoint_dir=str(checkpoint_dir),
         )
 
-        # Save validation labels
+        # Save validation labels in both locations
         output_file = "data/oracle_labels_validation.jsonl"
         with open(output_file, "w") as f:
             for item in validation_labeled:
                 f.write(json.dumps(item) + "\n")
+
+        # Also save to Phase 2 location
+        phase2_dir = Path("../data/labeling")
+        phase2_dir.mkdir(parents=True, exist_ok=True)
+        phase2_file = phase2_dir / "oracle_labels_validation_detailed.jsonl"
+        with open(phase2_file, "w") as f:
+            for item in validation_labeled:
+                f.write(json.dumps(item) + "\n")
+
         console.print(f"✅ Saved {len(validation_labeled)} validation labels")
 
     # Clean up checkpoint directory if empty

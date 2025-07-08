@@ -30,6 +30,11 @@ class WeightDiagnostics:
     # Overlap diagnostics
     overlap_score: Optional[float] = None  # 0-1, higher is better
     common_support_fraction: Optional[float] = None  # Fraction with good support
+    # API non-determinism indicators
+    api_noise_suspected: bool = False  # True if API non-determinism detected
+    baseline_deviation: Optional[float] = (
+        None  # For identical policies, deviation from 1.0
+    )
 
 
 @dataclass
@@ -148,6 +153,15 @@ def diagnose_weights(
         ess_fraction, extreme_count, len(weights), expected_weight, mean_weight
     )
 
+    # Check for API noise (baseline policies deviating from expected weight of 1.0)
+    api_noise_suspected = False
+    baseline_deviation = None
+    if expected_weight is not None:
+        baseline_deviation = abs(mean_weight - expected_weight)
+        # If a baseline policy has mean weight > 0.05 from expected, suspect API noise
+        if baseline_deviation > 0.05:
+            api_noise_suspected = True
+
     return WeightDiagnostics(
         policy_name=policy_name,
         min_weight=min_weight,
@@ -160,6 +174,8 @@ def diagnose_weights(
         consistency_flag=consistency_flag,
         log_weight_range=log_weight_range,
         weight_coefficient_variation=cv,
+        api_noise_suspected=api_noise_suspected,
+        baseline_deviation=baseline_deviation,
     )
 
 
@@ -224,6 +240,14 @@ def format_weight_diagnostics(diagnostics: WeightDiagnostics) -> str:
         lines.append(f"   Overlap score: {diagnostics.overlap_score:.2f} (0-1 scale)")
         lines.append(f"   Common support: {diagnostics.common_support_fraction:.1%}")
 
+    # Add API noise warning
+    if diagnostics.api_noise_suspected:
+        lines.append(f"   ⚠️  API non-determinism suspected")
+        if diagnostics.baseline_deviation is not None:
+            lines.append(
+                f"      - Baseline weight deviation: {diagnostics.baseline_deviation:.3f} from expected 1.0"
+            )
+
     return "\n".join(lines)
 
 
@@ -254,8 +278,11 @@ def analyze_arena_weights(data: List[Dict[str, Any]]) -> Dict[str, WeightDiagnos
         # Compute weights
         weights = compute_importance_weights(behavior_logprobs, target_logprobs)
 
-        # Determine expected weight (1.0 for scout/identical policies)
-        expected_weight = 1.0 if "scout" in policy_name.lower() else None
+        # Determine expected weight (1.0 for scout/clone/identical policies)
+        is_baseline = any(
+            marker in policy_name.lower() for marker in ["scout", "clone", "p0"]
+        )
+        expected_weight = 1.0 if is_baseline else None
 
         # Diagnose with overlap
         policy_diagnostics = diagnose_weights_with_overlap(
@@ -372,6 +399,12 @@ def diagnose_weights_with_overlap(
         elif basic_diagnostics.consistency_flag == "WARNING":
             basic_diagnostics.consistency_flag = "CRITICAL"
 
+    # Check for API noise in baseline comparisons
+    # If this is a baseline policy (e.g., pi_clone) with poor overlap, suspect API noise
+    if "clone" in policy_name.lower() or "scout" in policy_name.lower():
+        if overlap_diag.overlap_score < 0.7:  # Poor overlap for identical policy
+            basic_diagnostics.api_noise_suspected = True
+
     return basic_diagnostics
 
 
@@ -405,6 +438,8 @@ def create_weight_summary_table(diagnostics: Dict[str, WeightDiagnostics]) -> st
             and diag.common_support_fraction < 0.5
         ):
             issues.append(f"Poor overlap ({diag.common_support_fraction:.1%})")
+        if diag.api_noise_suspected:
+            issues.append("API noise")
 
         issues_str = ", ".join(issues) if issues else "None"
 
@@ -451,3 +486,121 @@ def format_overlap_diagnostics(
         )
 
     return "\n".join(lines)
+
+
+def detect_api_nondeterminism(
+    data: List[Dict[str, Any]],
+    behavior_policy_name: str = "p0",
+    baseline_policy_name: str = "pi_clone",
+    tolerance: float = 0.05,
+) -> Dict[str, Any]:
+    """
+    Detect API non-determinism by analyzing log probability differences
+    between supposedly identical policies.
+
+    Args:
+        data: List of records with log probabilities
+        behavior_policy_name: Name of behavior policy (default: "p0")
+        baseline_policy_name: Name of baseline policy that should be identical (default: "pi_clone")
+        tolerance: Tolerance for mean weight deviation from 1.0
+
+    Returns:
+        Dictionary with detection results and statistics
+    """
+    if not data:
+        return {"detected": False, "reason": "No data provided"}
+
+    # Check if baseline policy exists in data
+    sample_record = data[0]
+    if "logp_target_all" not in sample_record:
+        return {"detected": False, "reason": "No target log probabilities found"}
+
+    if baseline_policy_name not in sample_record["logp_target_all"]:
+        return {
+            "detected": False,
+            "reason": f"Baseline policy {baseline_policy_name} not found",
+        }
+
+    # Extract log probabilities
+    behavior_logprobs = []
+    baseline_logprobs = []
+    log_diffs = []
+    identical_response_diffs = []
+
+    for record in data:
+        behavior_logp = record.get("logp", 0.0)
+        baseline_logp = record.get("logp_target_all", {}).get(baseline_policy_name, 0.0)
+
+        behavior_logprobs.append(behavior_logp)
+        baseline_logprobs.append(baseline_logp)
+
+        # Calculate log difference
+        if behavior_logp != 0.0 or baseline_logp != 0.0:  # Skip empty responses
+            log_diff = abs(baseline_logp - behavior_logp)
+            log_diffs.append(log_diff)
+
+            # Check if responses are identical
+            behavior_response = record.get("response", "")
+            baseline_response = record.get("responses_target_all", {}).get(
+                baseline_policy_name, ""
+            )
+
+            if behavior_response == baseline_response and behavior_response != "":
+                identical_response_diffs.append(log_diff)
+
+    if not log_diffs:
+        return {
+            "detected": False,
+            "reason": "No valid log probability differences found",
+        }
+
+    # Compute importance weights
+    weights = compute_importance_weights(behavior_logprobs, baseline_logprobs)
+    finite_weights = [w for w in weights if math.isfinite(w) and w > 0]
+
+    if not finite_weights:
+        return {"detected": False, "reason": "No valid importance weights computed"}
+
+    # Analyze results
+    mean_weight = float(np.mean(finite_weights))
+    weight_deviation = abs(mean_weight - 1.0)
+
+    # Detect non-determinism
+    detected = False
+    reasons = []
+
+    if weight_deviation > tolerance:
+        detected = True
+        reasons.append(
+            f"Mean weight {mean_weight:.3f} deviates from expected 1.0 by {weight_deviation:.3f}"
+        )
+
+    if identical_response_diffs:
+        max_identical_diff = max(identical_response_diffs)
+        if max_identical_diff > 0.1:
+            detected = True
+            reasons.append(
+                f"Found {len(identical_response_diffs)} identical responses with log prob differences up to {max_identical_diff:.2f}"
+            )
+
+    # Compute statistics
+    results = {
+        "detected": detected,
+        "reasons": reasons,
+        "statistics": {
+            "mean_weight": mean_weight,
+            "weight_deviation": weight_deviation,
+            "mean_log_diff": float(np.mean(log_diffs)) if log_diffs else 0.0,
+            "max_log_diff": max(log_diffs) if log_diffs else 0.0,
+            "identical_response_count": len(identical_response_diffs),
+            "max_identical_response_diff": (
+                max(identical_response_diffs) if identical_response_diffs else 0.0
+            ),
+            "ess_fraction": (
+                compute_ess(finite_weights) / len(weights) if weights else 0.0
+            ),
+        },
+        "recommendation": "Consider averaging multiple API calls or using a deterministic evaluation mode to reduce variance.",
+    }
+
+    return results

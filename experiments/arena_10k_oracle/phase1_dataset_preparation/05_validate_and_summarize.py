@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
 """
-Finalize the Arena 10K Oracle dataset by combining all generated data.
+Validate and summarize the Arena 10K Oracle dataset.
 
-This script creates a complete dataset containing:
-- Prompts
-- Responses (π₀ and target policies)
-- Oracle labels (calibration and validation)
-- Judge scores (deterministic and uncertainty) for ALL policies
-
-The output is a unified dataset ready for CJE ablations.
+This script:
+1. Validates all required data files are present
+2. Verifies Phase 2 format data was created correctly
+3. Creates a comprehensive dataset summary with statistics
+4. Provides guidance for next steps
 """
 
 import json
 import pandas as pd
 from pathlib import Path
 import sys
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from rich.console import Console
 from rich.table import Table
 import numpy as np
@@ -35,6 +33,63 @@ def load_jsonl(path: Path) -> List[Dict[str, Any]]:
     return items
 
 
+def verify_phase2_data():
+    """Verify Phase 2 format data was created by previous steps."""
+
+    console.print("\n[bold]Verifying Phase 2 data:[/bold]")
+
+    # Check Phase 2 data directory
+    phase2_data_dir = Path("../data")
+
+    # Expected files from judge scoring scripts
+    expected_files = [
+        ("p0_scored_deterministic.jsonl", "P0 deterministic scores"),
+        ("p0_scored_uncertainty.jsonl", "P0 uncertainty scores"),
+        ("targets_scored_deterministic.jsonl", "Target deterministic scores"),
+        ("targets_scored_uncertainty.jsonl", "Target uncertainty scores"),
+    ]
+
+    file_counts = {}
+    all_found = True
+
+    for filename, description in expected_files:
+        filepath = phase2_data_dir / filename
+        if filepath.exists():
+            # Count records
+            count = 0
+            with open(filepath) as f:
+                for line in f:
+                    count += 1
+            file_counts[filename] = count
+            console.print(f"  ✅ {filename}: {count} records")
+        else:
+            console.print(f"  ❌ Missing: {filename} ({description})")
+            all_found = False
+            file_counts[filename] = 0
+
+    # Check oracle labels
+    console.print("\n[bold]Verifying oracle labels:[/bold]")
+    labeling_dir = phase2_data_dir / "labeling"
+
+    oracle_files = [
+        ("oracle_labels_calibration_detailed.jsonl", "Calibration labels"),
+        ("oracle_labels_validation_detailed.jsonl", "Validation labels"),
+    ]
+
+    for filename, description in oracle_files:
+        filepath = labeling_dir / filename
+        if filepath.exists():
+            count = 0
+            with open(filepath) as f:
+                for line in f:
+                    count += 1
+            console.print(f"  ✅ {filename}: {count} records")
+        else:
+            console.print(f"  ⚠️  Optional: {filename} ({description}) not found")
+
+    return all_found, file_counts
+
+
 def create_dataset_summary() -> Dict[str, Any]:
     """Create a comprehensive dataset ready for CJE ablations."""
 
@@ -45,8 +100,6 @@ def create_dataset_summary() -> Dict[str, Any]:
         "Prompts": "data/arena_prompts_10k.jsonl",
         "All responses": "data/all_responses.jsonl",
         "Log probabilities": "data/logprobs.jsonl",
-        "Deterministic scores": "data/responses_scored_deterministic.jsonl",
-        "Uncertainty scores": "data/responses_scored_uncertainty.jsonl",
     }
 
     optional_files = {
@@ -100,15 +153,27 @@ def create_dataset_summary() -> Dict[str, Any]:
     # 2. All Responses and Log Probs
     all_responses = load_jsonl(Path("data/all_responses.jsonl"))
     logprob_data = load_jsonl(Path("data/logprobs.jsonl"))
-    det_scores = load_jsonl(Path("data/responses_scored_deterministic.jsonl"))
-    unc_scores = load_jsonl(Path("data/responses_scored_uncertainty.jsonl"))
+
+    # Load Phase 2 format scores for analysis
+    phase2_dir = Path("../data")
+    p0_det_scores = []
+    p0_unc_scores = []
+    target_det_scores = []
+    target_unc_scores = []
+
+    if (phase2_dir / "p0_scored_deterministic.jsonl").exists():
+        p0_det_scores = load_jsonl(phase2_dir / "p0_scored_deterministic.jsonl")
+    if (phase2_dir / "p0_scored_uncertainty.jsonl").exists():
+        p0_unc_scores = load_jsonl(phase2_dir / "p0_scored_uncertainty.jsonl")
+    if (phase2_dir / "targets_scored_deterministic.jsonl").exists():
+        target_det_scores = load_jsonl(
+            phase2_dir / "targets_scored_deterministic.jsonl"
+        )
+    if (phase2_dir / "targets_scored_uncertainty.jsonl").exists():
+        target_unc_scores = load_jsonl(phase2_dir / "targets_scored_uncertainty.jsonl")
 
     # Count P0 responses
     p0_response_count = sum(1 for entry in all_responses if "p0" in entry["responses"])
-
-    # Extract deterministic and uncertainty scores for each policy type
-    p0_det_scores = [s for s in det_scores if s.get("policy", "p0") == "p0"]
-    p0_unc_scores = [s for s in unc_scores if s.get("policy", "p0") == "p0"]
 
     dataset_info["components"]["p0_policy"] = {
         "responses": p0_response_count,
@@ -120,12 +185,10 @@ def create_dataset_summary() -> Dict[str, Any]:
     console.print(f"\n2. π₀ Policy:")
     console.print(f"   - Responses: {p0_response_count}")
     console.print(f"   - With log probs: {len(logprob_data)}")
-    console.print(f"   - Deterministic scores: {len(p0_det_scores)}")
-    console.print(f"   - Uncertainty scores: {len(p0_unc_scores)}")
+    console.print(f"   - Deterministic scores (Phase 2): {len(p0_det_scores)}")
+    console.print(f"   - Uncertainty scores (Phase 2): {len(p0_unc_scores)}")
 
     # 3. Target Policy Responses
-    target_det_scores = [s for s in det_scores if s.get("policy", "p0") != "p0"]
-    target_unc_scores = [s for s in unc_scores if s.get("policy", "p0") != "p0"]
 
     # Group by policy from all_responses
     target_policies = {}
@@ -149,8 +212,10 @@ def create_dataset_summary() -> Dict[str, Any]:
     console.print(f"\n3. Target Policies:")
     for policy, count in sorted(target_policies.items()):
         console.print(f"   - {policy}: {count} responses")
-    console.print(f"   - Total deterministic scores: {len(target_det_scores)}")
-    console.print(f"   - Total uncertainty scores: {len(target_unc_scores)}")
+    console.print(
+        f"   - Total deterministic scores (Phase 2): {len(target_det_scores)}"
+    )
+    console.print(f"   - Total uncertainty scores (Phase 2): {len(target_unc_scores)}")
 
     # 4. Oracle Labels (optional)
     cal_labels_path = Path("data/oracle_labels_calibration.jsonl")
@@ -179,14 +244,22 @@ def create_dataset_summary() -> Dict[str, Any]:
     else:
         console.print(f"\n4. Oracle Labels: [yellow]Not generated[/yellow]")
 
+    # Verify Phase 2 data exists
+    phase2_found, phase2_counts = verify_phase2_data()
+
+    if not phase2_found:
+        console.print("\n[red]Error: Phase 2 data not found![/red]")
+        console.print("Make sure to run judge scoring scripts (03_*.py) first.")
+        return {}
+
     # 5. Analyze judge scoring consistency
     console.print("\n[bold]Judge Scoring Analysis:[/bold]")
 
     # π₀ scores
-    if det_scores and unc_scores:
-        det_means = [r["judge_score"] for r in det_scores]
-        unc_means = [r["judge_score"] for r in unc_scores]
-        unc_vars = [r.get("judge_score_variance", 0.0) for r in unc_scores]
+    if p0_det_scores and p0_unc_scores:
+        det_means = [r["judge_score"] for r in p0_det_scores]
+        unc_means = [r["judge_score"] for r in p0_unc_scores]
+        unc_vars = [r.get("judge_score_variance", 0.0) for r in p0_unc_scores]
 
         console.print(f"\nπ₀ Judge Scores:")
         console.print(
@@ -270,20 +343,31 @@ def create_dataset_summary() -> Dict[str, Any]:
     console.print("\n")
     console.print(table)
 
-    console.print(
-        "\n[bold green]Dataset is ready for Phase 2: CJE Ablations![/bold green]"
-    )
-    console.print("\nNext steps:")
-    console.print("1. cd ../phase2_cje_ablations")
-    console.print("2. Run different CJE configurations")
-    console.print("3. Compare results across ablations")
+    console.print("\n[bold green]Dataset validation complete![/bold green]")
 
-    # Recommendations
-    console.print("\n[bold yellow]Recommendations:[/bold yellow]")
-    console.print("• Compare deterministic vs uncertainty scoring impact")
-    console.print("• Analyze if uncertainty varies by policy quality")
-    console.print("• Test if uncertainty improves calibration")
-    console.print("• Examine judge consistency across policies")
+    # Phase 2 specific instructions
+    console.print("\n[bold]Phase 2 Data Location:[/bold]")
+    phase2_dir = Path("../data").absolute()
+    console.print(f"  {phase2_dir}")
+    console.print("\n[bold]Phase 2 Files Available:[/bold]")
+    console.print(
+        f"  • p0_scored_deterministic.jsonl ({phase2_counts.get('p0_scored_deterministic.jsonl', 0)} records)"
+    )
+    console.print(
+        f"  • p0_scored_uncertainty.jsonl ({phase2_counts.get('p0_scored_uncertainty.jsonl', 0)} records)"
+    )
+    console.print(
+        f"  • targets_scored_deterministic.jsonl ({phase2_counts.get('targets_scored_deterministic.jsonl', 0)} records)"
+    )
+    console.print(
+        f"  • targets_scored_uncertainty.jsonl ({phase2_counts.get('targets_scored_uncertainty.jsonl', 0)} records)"
+    )
+    console.print(f"  • labeling/oracle_labels_*_detailed.jsonl")
+
+    console.print("\n[bold]Next steps:[/bold]")
+    console.print("1. cd ../phase2_cje_ablations")
+    console.print("2. python run_phase2_ablations.py")
+    console.print("3. Analyze estimator performance across different configurations")
 
     return dataset_info
 
