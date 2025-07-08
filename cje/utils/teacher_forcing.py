@@ -203,7 +203,10 @@ class RobustTeacherForcing:
             if self.tokenizer:
                 expected = len(self.tokenizer.encode(full_text))
                 got = len(choice.logprobs.tokens)
-                if got < expected:
+                # Allow larger discrepancies (up to 10% or 50 tokens) due to tokenizer differences
+                # Different models use different tokenizers (e.g., Llama vs GPT)
+                tolerance = max(50, int(expected * 0.10))
+                if got < expected - tolerance:
                     return LogProbResult(
                         status=LogProbStatus.TOKEN_LIMIT_EXCEEDED,
                         error=f"Context truncated: expected {expected} tokens, got {got}",
@@ -211,6 +214,7 @@ class RobustTeacherForcing:
                             "expected": expected,
                             "received": got,
                             "method": "token_counting",
+                            "tolerance": tolerance,
                         },
                     )
 
@@ -397,7 +401,10 @@ class RobustTeacherForcing:
             if self.tokenizer:
                 expected = len(self.tokenizer.encode(full_text))
                 got = len(full_choice.logprobs.tokens)
-                if got < expected:
+                # Allow larger discrepancies (up to 10% or 50 tokens) due to tokenizer differences
+                # Different models use different tokenizers (e.g., Llama vs GPT)
+                tolerance = max(50, int(expected * 0.10))
+                if got < expected - tolerance:
                     return LogProbResult(
                         status=LogProbStatus.TOKEN_LIMIT_EXCEEDED,
                         error=f"Full text truncated: expected {expected} tokens, got {got}",
@@ -405,6 +412,7 @@ class RobustTeacherForcing:
                             "expected": expected,
                             "received": got,
                             "method": "continuation",
+                            "tolerance": tolerance,
                         },
                     )
 
@@ -436,7 +444,10 @@ class RobustTeacherForcing:
             if self.tokenizer:
                 expected = len(self.tokenizer.encode(prompt))
                 got = len(prompt_choice.logprobs.tokens)
-                if got < expected:
+                # Allow larger discrepancies (up to 10% or 50 tokens) due to tokenizer differences
+                # Different models use different tokenizers (e.g., Llama vs GPT)
+                tolerance = max(50, int(expected * 0.10))
+                if got < expected - tolerance:
                     return LogProbResult(
                         status=LogProbStatus.TOKEN_LIMIT_EXCEEDED,
                         error=f"Prompt truncated: expected {expected} tokens, got {got}",
@@ -444,6 +455,7 @@ class RobustTeacherForcing:
                             "expected": expected,
                             "received": got,
                             "method": "continuation",
+                            "tolerance": tolerance,
                         },
                     )
 
