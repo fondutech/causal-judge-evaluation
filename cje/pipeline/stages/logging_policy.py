@@ -98,7 +98,7 @@ class LoggingPolicyStage:
         else:
             # Local HF model
             raise ValueError(
-                f"HuggingFace provider no longer supported. Use API providers: {list(APIPolicyRunner.SUPPORTED_PROVIDERS.keys())}"
+                f"HuggingFace provider no longer supported. Use API providers: openai, anthropic, fireworks, etc."
             )
 
     def _compute_responses_hash(
