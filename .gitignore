@@ -226,3 +226,4 @@ experiments/*/results/
 experiments/*/.cache/
 research_notes/
 *.draft.*
+models/

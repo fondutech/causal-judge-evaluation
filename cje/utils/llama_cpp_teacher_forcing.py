@@ -71,7 +71,7 @@ class LlamaCppTeacherForcing:
         }
 
         # Cache for computed log probs
-        self._cache: Dict[Tuple[str, str], float] = {}
+        self._cache: Dict[Tuple[str, str, str], float] = {}
 
         # Lazy load model
         self._model = None
@@ -139,8 +139,18 @@ class LlamaCppTeacherForcing:
                 metadata={"method": "empty_response"},
             )
 
-        # Check cache
-        cache_key = (prompt, response)
+        # Check cache - but make sure we include the full text with potential space
+        if (
+            prompt
+            and response
+            and not prompt.endswith(" ")
+            and not response.startswith(" ")
+        ):
+            full_text_for_cache = prompt + " " + response
+        else:
+            full_text_for_cache = prompt + response
+        cache_key = (prompt, response, full_text_for_cache)
+
         if cache_key in self._cache:
             self.stats["cache_hits"] += 1
             return LogProbResult(
@@ -153,40 +163,113 @@ class LlamaCppTeacherForcing:
             model = self._get_model()
 
             # 1. Compute log P(prompt + response)
-            full_text = prompt + response
+            # Add space between prompt and response if needed
+            if (
+                prompt
+                and response
+                and not prompt.endswith(" ")
+                and not response.startswith(" ")
+            ):
+                full_text = prompt + " " + response
+            else:
+                full_text = prompt + response
             full_result = model.create_completion(
                 full_text,
-                max_tokens=0,  # Don't generate new tokens
+                max_tokens=1,  # Set to 1 to get logprobs (0 seems to generate anyway)
                 echo=True,  # Include prompt in output
-                logprobs=1,  # Request log probabilities
+                logprobs=True,  # Request log probabilities
                 temperature=0.0,  # Deterministic
             )
 
             # 2. Compute log P(prompt)
             prompt_result = model.create_completion(
                 prompt,
-                max_tokens=0,
+                max_tokens=1,
                 echo=True,
-                logprobs=1,
+                logprobs=True,
                 temperature=0.0,
             )
 
-            # Extract log prob sums
-            full_logprob = (
-                full_result["choices"][0].get("logprobs", {}).get("sum_logprob")
-            )
-            prompt_logprob = (
-                prompt_result["choices"][0].get("logprobs", {}).get("sum_logprob")
-            )
+            # Extract log probs from token_logprobs
+            if (
+                "choices" in full_result
+                and len(full_result["choices"]) > 0
+                and "choices" in prompt_result
+                and len(prompt_result["choices"]) > 0
+            ):
 
-            # Handle missing values
-            if full_logprob is None or prompt_logprob is None:
-                # Try alternative field names (depends on llama-cpp-python version)
-                full_logprob = full_logprob or full_result["choices"][0].get(
-                    "logprob_sum", 0.0
-                )
-                prompt_logprob = prompt_logprob or prompt_result["choices"][0].get(
-                    "logprob_sum", 0.0
+                full_choice = full_result["choices"][0]
+                prompt_choice = prompt_result["choices"][0]
+
+                # Get token log probabilities
+                if (
+                    "logprobs" in full_choice
+                    and "token_logprobs" in full_choice["logprobs"]
+                    and "logprobs" in prompt_choice
+                    and "token_logprobs" in prompt_choice["logprobs"]
+                ):
+
+                    # Get tokens to determine actual input length
+                    full_tokens = full_choice["logprobs"]["tokens"]
+                    prompt_tokens = prompt_choice["logprobs"]["tokens"]
+
+                    # Find where input ends (before generation starts)
+                    # The model seems to generate a lot, so we need to find the actual input boundary
+                    full_text_len = len(full_text)
+                    prompt_len = len(prompt)
+
+                    # Count tokens that are part of the input
+                    full_input_tokens = 0
+                    reconstructed_full = ""
+                    for i, token in enumerate(full_tokens):
+                        reconstructed_full += token
+                        if len(reconstructed_full) >= full_text_len:
+                            full_input_tokens = i + 1
+                            break
+
+                    prompt_input_tokens = 0
+                    reconstructed_prompt = ""
+                    for i, token in enumerate(prompt_tokens):
+                        reconstructed_prompt += token
+                        if len(reconstructed_prompt) >= prompt_len:
+                            prompt_input_tokens = i + 1
+                            break
+
+                    # Sum only the input token log probs
+                    full_token_logprobs = full_choice["logprobs"]["token_logprobs"][
+                        :full_input_tokens
+                    ]
+                    prompt_token_logprobs = prompt_choice["logprobs"]["token_logprobs"][
+                        :prompt_input_tokens
+                    ]
+
+                    # Sum log probabilities (skip None values)
+                    full_logprob = sum(
+                        lp for lp in full_token_logprobs if lp is not None
+                    )
+                    prompt_logprob = sum(
+                        lp for lp in prompt_token_logprobs if lp is not None
+                    )
+
+                    # Debug info for long responses
+                    if len(response) > 50:
+                        logger.debug(
+                            f"Long response debug: response_len={len(response)}, "
+                            f"full_tokens={full_input_tokens}, prompt_tokens={prompt_input_tokens}, "
+                            f"full_logp={full_logprob:.3f}, prompt_logp={prompt_logprob:.3f}"
+                        )
+
+                else:
+                    return LogProbResult(
+                        status=LogProbStatus.API_ERROR,
+                        error="No token_logprobs in response",
+                        metadata={"method": "llama_cpp"},
+                    )
+            else:
+                return LogProbResult(
+                    status=LogProbStatus.API_ERROR,
+                    error="Invalid response structure",
+                    metadata={"method": "llama_cpp"},
                 )
 
             # 3. Compute log P(response|prompt)
