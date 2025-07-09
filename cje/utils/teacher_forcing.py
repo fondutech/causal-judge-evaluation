@@ -61,10 +61,15 @@ class RobustTeacherForcing:
         self.seed = seed
         self.force_continuation = force_continuation
         self.extra_params = kwargs  # Store any additional parameters
-        self.api_key = api_key or os.getenv("FIREWORKS_API_KEY")
 
-        if not self.api_key:
-            raise ValueError("API key required")
+        # Handle API key requirement based on provider
+        if provider == "llama_cpp":
+            # llama.cpp doesn't need an API key
+            self.api_key = None
+        else:
+            self.api_key = api_key or os.getenv("FIREWORKS_API_KEY")
+            if not self.api_key:
+                raise ValueError(f"API key required for provider: {provider}")
 
         self.api_client = self._init_client()
 
@@ -105,6 +110,9 @@ class RobustTeacherForcing:
                 api_key=self.api_key, base_url="https://api.fireworks.ai/inference/v1"
             )
             return client
+        elif self.provider == "llama_cpp":
+            # For llama.cpp, we'll handle this differently
+            return None
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
 
@@ -132,6 +140,26 @@ class RobustTeacherForcing:
         # Apply system prompt if provided
         if self.system_prompt:
             prompt = f"{self.system_prompt}\n\n{prompt}"
+
+        # Special handling for llama.cpp
+        if self.provider == "llama_cpp":
+            from .llama_cpp_teacher_forcing import compute_llama_cpp_logprob
+
+            # Extract model_path from model parameter
+            if not self.model or not os.path.exists(self.model):
+                return LogProbResult(
+                    status=LogProbStatus.API_ERROR,
+                    error=f"Model path not found: {self.model}",
+                    metadata={"provider": "llama_cpp"},
+                )
+
+            return compute_llama_cpp_logprob(
+                prompt=prompt,
+                response=response,
+                model_path=self.model,
+                seed=self.seed if self.seed is not None else 0,
+                **self.extra_params,
+            )
 
         # Detect edge cases that often cause boundary issues
         use_continuation_first = (

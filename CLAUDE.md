@@ -172,6 +172,7 @@ if results["detected"]:
 - 4 target policies: pi_clone (baseline), pi_cot, pi_bigger_model, pi_bad
 - Token boundary bug fixed with edge case detection
 - Extreme weight validation in 02b_compute_logprobs.py
+- Support for llama.cpp as deterministic alternative (see experiments/arena_10k_oracle/LLAMA_CPP_GUIDE.md)
 - English-only filter for prompts
 - Pipeline resumes by default
 

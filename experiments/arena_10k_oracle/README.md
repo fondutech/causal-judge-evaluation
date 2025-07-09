@@ -34,8 +34,10 @@ Evaluates different estimation methods:
 
 ### Prerequisites
 ```bash
-# Set API keys (required)
+# Set API keys (required for Fireworks API)
 source /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/set_secrets.sh
+
+# Or use llama.cpp for local, deterministic computation (see LLAMA_CPP_GUIDE.md)
 
 # Check status
 python check_status.py
@@ -132,6 +134,8 @@ python run_phase1_pipeline.py
 ⚠️ **Data Format Critical (Fixed 2025-07-08)**: Phase 1 must produce data in PrecomputedSampler format with `total_logprob` and `target_logps` fields. Previous versions used wrong field names.
 
 ⚠️ **Judge Scoring Bug Fixed**: Phase 1 judge scoring scripts were using 0.0 as default for missing log probs (now correctly uses None).
+
+⚠️ **Local Alternative Available**: Use llama.cpp for fully deterministic, offline teacher forcing. See [LLAMA_CPP_GUIDE.md](LLAMA_CPP_GUIDE.md) for setup instructions.
 
 ## Cost Estimates
 
