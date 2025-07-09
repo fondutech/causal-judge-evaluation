@@ -29,9 +29,18 @@ class RobustTeacherForcing:
     text boundaries.
 
     Methods tried in order:
-    1. Token counting - Count prompt tokens and skip that many
+    1. Token counting - Count prompt tokens and skip that many (default)
     2. Echo-based - Use model's echo feature to identify response tokens
     3. Continuation - Compute P(response|prompt) from full probabilities
+
+    Args:
+        provider: API provider (e.g., "fireworks")
+        model: Model name
+        api_key: Optional API key
+        temperature: Model temperature
+        system_prompt: Optional system prompt
+        seed: Optional seed for deterministic results
+        force_continuation: If True, ONLY use continuation method (no fallback)
     """
 
     def __init__(
@@ -41,12 +50,16 @@ class RobustTeacherForcing:
         api_key: Optional[str] = None,
         temperature: float = 0.0,
         system_prompt: Optional[str] = None,
+        seed: Optional[int] = None,
+        force_continuation: bool = False,
         **kwargs: Any,  # For any other policy-specific parameters
     ) -> None:
         self.provider = provider
         self.model = model
         self.temperature = temperature
         self.system_prompt = system_prompt
+        self.seed = seed
+        self.force_continuation = force_continuation
         self.extra_params = kwargs  # Store any additional parameters
         self.api_key = api_key or os.getenv("FIREWORKS_API_KEY")
 
@@ -120,12 +133,32 @@ class RobustTeacherForcing:
         if self.system_prompt:
             prompt = f"{self.system_prompt}\n\n{prompt}"
 
-        # Try methods in order - continuation first as it's most reliable
-        methods = [
-            ("continuation", self._continuation_method),
-            ("token_counting", self._token_counting_method),
-            ("echo_based", self._echo_based_method),
-        ]
+        # Detect edge cases that often cause boundary issues
+        use_continuation_first = (
+            self.force_continuation
+            or self._should_use_continuation_method(prompt, response)
+        )
+
+        # Try methods in order
+        if self.force_continuation:
+            # Force continuation only - no fallback to less reliable methods
+            methods = [
+                ("continuation", self._continuation_method),
+            ]
+        elif use_continuation_first:
+            # Continuation is most reliable for edge cases
+            methods = [
+                ("continuation", self._continuation_method),
+                ("token_counting", self._token_counting_method),
+                ("echo_based", self._echo_based_method),
+            ]
+        else:
+            # Token counting is faster for normal cases
+            methods = [
+                ("token_counting", self._token_counting_method),
+                ("continuation", self._continuation_method),
+                ("echo_based", self._echo_based_method),
+            ]
 
         last_error = None
         for method_name, method_func in methods:
@@ -170,14 +203,18 @@ class RobustTeacherForcing:
             full_text = prompt + response
 
             # Get completion with echo
-            completion = self.api_client.completions.create(
-                model=self.model,
-                prompt=full_text,
-                max_tokens=0,  # Don't generate new tokens
-                echo=True,  # Return prompt + response tokens
-                logprobs=1,  # Get log probabilities (must be >=1)
-                temperature=self.temperature,
-            )
+            completion_params = {
+                "model": self.model,
+                "prompt": full_text,
+                "max_tokens": 0,  # Don't generate new tokens
+                "echo": True,  # Return prompt + response tokens
+                "logprobs": 1,  # Get log probabilities (must be >=1)
+                "temperature": self.temperature,
+            }
+            if self.seed is not None:
+                completion_params["seed"] = self.seed
+
+            completion = self.api_client.completions.create(**completion_params)
 
             choice = completion.choices[0]
 
@@ -219,14 +256,18 @@ class RobustTeacherForcing:
                     )
 
             # Count prompt tokens separately
-            prompt_completion = self.api_client.completions.create(
-                model=self.model,
-                prompt=prompt,
-                max_tokens=0,
-                echo=True,
-                logprobs=1,
-                temperature=self.temperature,
-            )
+            prompt_params = {
+                "model": self.model,
+                "prompt": prompt,
+                "max_tokens": 0,
+                "echo": True,
+                "logprobs": 1,
+                "temperature": self.temperature,
+            }
+            if self.seed is not None:
+                prompt_params["seed"] = self.seed
+
+            prompt_completion = self.api_client.completions.create(**prompt_params)
 
             prompt_choice = prompt_completion.choices[0]
 
@@ -254,6 +295,24 @@ class RobustTeacherForcing:
                         "total_tokens": n_total_tokens,
                     },
                 )
+
+            # Check for None values (can happen with certain tokens)
+            none_count = sum(1 for lp in response_logprobs if lp is None)
+            if none_count > 0:
+                logger.warning(
+                    f"Found {none_count} None logprobs out of {len(response_logprobs)} response tokens"
+                )
+                # If too many Nones, this method is unreliable
+                if none_count > len(response_logprobs) * 0.1:  # More than 10% None
+                    return LogProbResult(
+                        status=LogProbStatus.API_ERROR,
+                        error=f"Too many None logprobs: {none_count}/{len(response_logprobs)}",
+                        metadata={
+                            "method": "token_counting",
+                            "none_count": none_count,
+                            "total_response_tokens": len(response_logprobs),
+                        },
+                    )
 
             # Sum log probabilities (skip None values)
             total_logprob = sum(lp for lp in response_logprobs if lp is not None)
@@ -369,14 +428,18 @@ class RobustTeacherForcing:
                     )
             # Get log P(prompt + response)
             full_text = prompt + response
-            full_completion = self.api_client.completions.create(
-                model=self.model,
-                prompt=full_text,
-                max_tokens=0,
-                echo=True,
-                logprobs=1,
-                temperature=self.temperature,
-            )
+            full_params = {
+                "model": self.model,
+                "prompt": full_text,
+                "max_tokens": 0,
+                "echo": True,
+                "logprobs": 1,
+                "temperature": self.temperature,
+            }
+            if self.seed is not None:
+                full_params["seed"] = self.seed
+
+            full_completion = self.api_client.completions.create(**full_params)
 
             full_choice = full_completion.choices[0]
 
@@ -421,14 +484,18 @@ class RobustTeacherForcing:
             full_logprob = sum(lp for lp in full_logprobs if lp is not None)
 
             # Get log P(prompt)
-            prompt_completion = self.api_client.completions.create(
-                model=self.model,
-                prompt=prompt,
-                max_tokens=0,
-                echo=True,
-                logprobs=1,
-                temperature=self.temperature,
-            )
+            prompt_params = {
+                "model": self.model,
+                "prompt": prompt,
+                "max_tokens": 0,
+                "echo": True,
+                "logprobs": 1,
+                "temperature": self.temperature,
+            }
+            if self.seed is not None:
+                prompt_params["seed"] = self.seed
+
+            prompt_completion = self.api_client.completions.create(**prompt_params)
 
             prompt_choice = prompt_completion.choices[0]
 
@@ -508,6 +575,44 @@ class RobustTeacherForcing:
                 metadata={"method": "continuation"},
             )
 
+    def _should_use_continuation_method(self, prompt: str, response: str) -> bool:
+        """
+        Detect cases where token counting is likely to fail.
+
+        These are cases where tokenization boundaries often change:
+        1. Prompt ends with punctuation
+        2. Response starts with a capital letter
+        3. Very short responses
+        4. Responses that start with punctuation
+        5. Prompt ends with incomplete word/number
+        """
+        # Very short responses are problematic
+        if len(response) < 10:
+            return True
+
+        # Check prompt ending
+        prompt_stripped = prompt.rstrip()
+        if prompt_stripped and prompt_stripped[-1] in ".!?;:,\"'-":
+            return True
+
+        # Check response beginning
+        if response and response[0].isupper() and not prompt.endswith(" "):
+            return True
+
+        if response and response[0] in ".!?;:,\"'-":
+            return True
+
+        # Check for incomplete tokens at boundary
+        # e.g., "recent." + "Here" might merge into ".Here"
+        if prompt_stripped and response:
+            last_char = prompt_stripped[-1]
+            first_char = response[0]
+            # Punctuation followed by letter often merges
+            if last_char in ".!?;:," and first_char.isalpha():
+                return True
+
+        return False
+
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics about method usage and success rates."""
         return self.stats.copy()
@@ -521,6 +626,8 @@ def compute_teacher_forced_logprob(
     api_key: Optional[str] = None,
     temperature: float = 0.0,
     system_prompt: Optional[str] = None,
+    seed: Optional[int] = None,
+    force_continuation: bool = False,
     **kwargs: Any,
 ) -> LogProbResult:
     """
@@ -534,6 +641,8 @@ def compute_teacher_forced_logprob(
         api_key: Optional API key (uses environment variable if not provided)
         temperature: Model temperature
         system_prompt: Optional system prompt to prepend
+        seed: Optional seed for deterministic results
+        force_continuation: If True, ONLY use continuation method - no fallback (most reliable)
         **kwargs: Additional policy-specific parameters
 
     Returns:
@@ -545,6 +654,8 @@ def compute_teacher_forced_logprob(
         api_key=api_key,
         temperature=temperature,
         system_prompt=system_prompt,
+        seed=seed,
+        force_continuation=force_continuation,
         **kwargs,
     )
     return tf.compute_log_prob(prompt, response)

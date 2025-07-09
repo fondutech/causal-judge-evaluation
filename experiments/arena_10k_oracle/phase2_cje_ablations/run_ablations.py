@@ -52,12 +52,34 @@ def run_single_ablation(config_path: Path) -> Dict[str, Any]:
         for line in f:
             p0_data.append(json.loads(line))
 
-    # Create sampler from P0 data (which contains target log probs)
-    sampler = PrecomputedSampler(
-        data=p0_data, target_policies=config["policies"]["target"]
-    )
+    # Transform data to expected format
+    transformed_data = []
+    target_policies = config["policies"]["target"]
 
-    console.print(f"Loaded {len(p0_data)} P0 samples with log probabilities")
+    for item in p0_data:
+        new_item = {
+            "prompt": item["prompt"],
+            "prompt_id": item["prompt_id"],
+            "response": item["response"],
+            "judge_score": item["judge_score"],
+            "total_logprob": item["p0_logp"],
+            "target_logps": {},
+        }
+
+        for policy in target_policies:
+            if (
+                policy in item
+                and isinstance(item[policy], dict)
+                and item[policy]["logp"] is not None
+            ):
+                new_item["target_logps"][policy] = item[policy]["logp"]
+
+        transformed_data.append(new_item)
+
+    # Create sampler from transformed data
+    sampler = PrecomputedSampler(data=transformed_data, target_policies=target_policies)
+
+    console.print(f"Loaded {len(transformed_data)} P0 samples with log probabilities")
 
     # Initialize estimator based on config
     estimator_config = config["estimator"]
@@ -78,8 +100,8 @@ def run_single_ablation(config_path: Path) -> Dict[str, Any]:
         raise ValueError(f"Unknown estimator: {estimator_class}")
 
     # Extract contexts and judge scores for fitting
-    contexts = [item["prompt"] for item in p0_data]
-    judge_scores = [item["judge_score"] for item in p0_data]
+    contexts = [item["prompt"] for item in transformed_data]
+    judge_scores = [item["judge_score"] for item in transformed_data]
 
     # Fit and estimate
     console.print(f"Fitting {estimator.__class__.__name__}...")
@@ -113,7 +135,7 @@ def run_single_ablation(config_path: Path) -> Dict[str, Any]:
         "estimator": estimator.__class__.__name__,
         "results": results,
         "oracle": oracle_results,
-        "n_samples": len(logs),
+        "n_samples": len(transformed_data),
     }
 
 

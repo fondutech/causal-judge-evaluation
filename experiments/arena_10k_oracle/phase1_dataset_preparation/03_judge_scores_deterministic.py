@@ -67,18 +67,23 @@ def create_phase2_record(
         "temperature": temperature,
     }
 
-    # For P0 responses, add log probabilities
+    # For P0 responses, add log probabilities in PrecomputedSampler format
     if policy == "p0" and logprobs:
         # Extract p0 log prob - use None for missing values, not 0.0!
-        record["p0_logp"] = logprobs.get("p0", None)
+        p0_logp = logprobs.get("p0", None)
+
+        # PrecomputedSampler expects "total_logprob" field
+        record["total_logprob"] = p0_logp
 
         # Validate for suspicious zero values
-        if record["p0_logp"] == 0.0:
+        if p0_logp == 0.0:
             console.print(
                 f"[yellow]Warning: Suspicious zero log prob for p0 response (len={len(response) if response else 0}) on {prompt_id}[/yellow]"
             )
 
-        # Add target policy log probs - critical to use None for missing values
+        # Add target policy log probs in PrecomputedSampler format
+        record["target_logps"] = {}
+
         for target_policy in ["pi_clone", "pi_cot", "pi_bigger_model", "pi_bad"]:
             target_logp = logprobs.get(target_policy, None)
 
@@ -88,11 +93,9 @@ def create_phase2_record(
                     f"[yellow]Warning: Suspicious zero log prob for {target_policy} (response len={len(response) if response else 0}) on {prompt_id}[/yellow]"
                 )
 
-            record[target_policy] = {
-                "logp": target_logp,
-                "score": None,  # Will be filled when scoring target responses
-                "response": None,  # Will be filled when scoring target responses
-            }
+            # Only add if we have a valid log prob
+            if target_logp is not None:
+                record["target_logps"][target_policy] = target_logp
 
     return record
 

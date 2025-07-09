@@ -4,6 +4,8 @@ This experiment evaluates causal judge estimation methods using 10,000 prompts f
 
 **Important**: We filter for English-only prompts to avoid teacher forcing failures with non-English text.
 
+**Update (2025-01-09)**: Fixed critical token boundary bug that caused extreme importance weights. Phase 1 now uses `force_continuation=True` - ONLY continuation method with no fallback to ensure data integrity.
+
 ## Overview
 
 ### Phase 1: Dataset Preparation
@@ -33,11 +35,10 @@ Evaluates different estimation methods:
 ### Prerequisites
 ```bash
 # Set API keys (required)
-export FIREWORKS_API_KEY="your-key"
-export OPENAI_API_KEY="your-key"  # Optional, only for oracle labels
+source /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/set_secrets.sh
 
-# Or source from AWS Secrets Manager
-source ../../../set_secrets.sh
+# Check status
+python check_status.py
 ```
 
 ### Test Run (100 prompts)
@@ -49,9 +50,16 @@ python run_phase1_pipeline.py 100
 
 # Then run Phase 2 analysis
 cd ../phase2_cje_ablations
-python run_cje_simple.py
-python analyze_weights.py
+python run_cje_analysis.py
 ```
+
+**CRITICAL DATA FORMAT NOTE**: 
+Phase 1 outputs must use PrecomputedSampler format:
+- `total_logprob` field for base policy (NOT `p0_logp`)
+- `target_logps` dict for target policies (NOT individual fields)
+
+If Phase 2 gives "No target_logps found" error, Phase 1 format is wrong.
+See phase2_cje_ablations/README.md for details.
 
 ### Full Run (10,000 prompts)
 ```bash
@@ -62,8 +70,7 @@ python run_phase1_pipeline.py
 
 # Then run Phase 2 analysis
 cd ../phase2_cje_ablations
-python run_cje_simple.py
-python analyze_weights.py
+python run_cje_analysis.py
 ```
 
 ## Key Files
@@ -71,16 +78,49 @@ python analyze_weights.py
 ### Phase 1 Scripts
 - `01_prepare_data.py` - Download and sample Arena prompts
 - `02_generate_responses.py` - Generate all responses (P0 + targets)
-- `02b_compute_logprobs.py` - Compute log probabilities for all policies
+- `02b_compute_logprobs.py` - Compute log probabilities with extreme weight validation
 - `03_judge_scores_deterministic.py` - Score responses deterministically
 - `03b_judge_scores_uncertainty.py` - Score responses with uncertainty
 - `04_generate_oracle_labels.py` - Generate ground truth labels (optional)
 - `05_validate_and_summarize.py` - Validate all data and create summary
 
 ### Phase 2 Scripts
-- `run_cje_simple.py` - Simple IPS/SNIPS implementation (working)
-- `analyze_weights.py` - Comprehensive weight diagnostics
-- `run_ablations.py` - Run all estimators (needs fixes)
+- `run_cje_analysis.py` - Main analysis script with IPS/SNIPS and weight diagnostics
+
+## Monitoring Progress
+
+```bash
+# From arena_10k_oracle directory
+python check_status.py
+
+# Or check specific file
+wc -l phase1_dataset_preparation/data/all_responses.jsonl
+```
+
+## If Interrupted
+
+The pipeline automatically resumes from the last checkpoint:
+```bash
+# Just run the same command again - it will continue where it left off
+python run_phase1_pipeline.py
+```
+
+## Starting Fresh
+
+To completely restart (delete all data):
+```bash
+cd phase1_dataset_preparation
+rm -rf data/ .pipeline_checkpoint.pkl
+python run_phase1_pipeline.py
+```
+
+## Troubleshooting
+
+- **API errors (403, 520)**: Check API keys are set correctly, wait and retry
+- **Missing responses**: Pipeline has retry logic, just run again
+- **Extreme weights**: Automatically rejected by validation in 02b_compute_logprobs.py
+- `DATA_USAGE_GUIDE.md` - Clear guide on data usage
+- `ANALYSIS_SUMMARY.md` - Consolidated findings and recommendations
 - `configs/ablations/*.yaml` - Different CJE method configurations
 
 ## Critical Notes
@@ -88,6 +128,10 @@ python analyze_weights.py
 ⚠️ **Teacher Forcing Bug Fixed**: The robust teacher forcing implementation handles tokenization boundaries correctly, reducing zero log probabilities from 17.7% to <4%.
 
 ⚠️ **P0 Log Probabilities**: Script 02b now computes P0 log probs under P0 policy, which is essential for proper importance weighting.
+
+⚠️ **Data Format Critical (Fixed 2025-07-08)**: Phase 1 must produce data in PrecomputedSampler format with `total_logprob` and `target_logps` fields. Previous versions used wrong field names.
+
+⚠️ **Judge Scoring Bug Fixed**: Phase 1 judge scoring scripts were using 0.0 as default for missing log probs (now correctly uses None).
 
 ## Cost Estimates
 

@@ -28,3 +28,10 @@ for name, path in files.items():
 # Check for checkpoint
 if Path("phase1_dataset_preparation/.pipeline_checkpoint.pkl").exists():
     console.print("\n📌 Pipeline checkpoint found (can resume)")
+
+# Check for extreme weights log
+if Path("phase1_dataset_preparation/data/extreme_weights.jsonl").exists():
+    extreme_count = sum(
+        1 for _ in open("phase1_dataset_preparation/data/extreme_weights.jsonl")
+    )
+    console.print(f"\n⚠️  Extreme weights detected: {extreme_count} issues logged")
