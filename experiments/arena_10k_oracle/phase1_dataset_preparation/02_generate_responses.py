@@ -94,8 +94,13 @@ class AsyncResponseGenerator:
 
             for i in range(0, len(tasks), batch_size):
                 batch = tasks[i : i + batch_size]
+                api_batch_num = i//batch_size + 1
+                total_api_batches = (len(tasks) + batch_size - 1)//batch_size
+                start_idx = i + 1  # 1-indexed for display
+                end_idx = min(i + batch_size, len(tasks))
                 console.print(
-                    f"   Processing batch {i//batch_size + 1}/{(len(tasks) + batch_size - 1)//batch_size}"
+                    f"      → API call {api_batch_num}/{total_api_batches}: "
+                    f"items {start_idx}-{end_idx}"
                 )
 
                 batch_results = await asyncio.gather(
@@ -201,7 +206,16 @@ def generate_responses_for_policy(
     # Process in batches with checkpointing
     processor = BatchProcessor(checkpoint_manager=checkpoint_mgr, batch_size=50)
 
+    current_batch_num = [0]  # Use list to make it mutable in closure
+    
     def process_batch(batch):
+        current_batch_num[0] += 1
+        batch_start = (current_batch_num[0] - 1) * 50 + 1
+        batch_end = min(current_batch_num[0] * 50, len(prompts))
+        console.print(
+            f"\n   📦 [bold]Checkpoint batch {current_batch_num[0]}/{(len(prompts) + 49) // 50}[/bold]: "
+            f"prompts {batch_start}-{batch_end} ({len(batch)} total)"
+        )
         results = asyncio.run(
             generator.generate_batch(
                 batch,
@@ -227,7 +241,7 @@ def generate_responses_for_policy(
     results = processor.process_batches(
         prompts,
         process_batch,
-        description=f"Generating {policy_name} responses",
+        description=f"Generating {policy_name} responses (checkpoint batches)",
     )
 
     return results
@@ -270,7 +284,7 @@ def main():
     all_results = {}
 
     # 1. P0 (logging policy)
-    console.print(f"\n[bold]Generating P0 responses...[/bold]")
+    console.print(f"\n{'='*60}\n[bold cyan]P0 (baseline) policy[/bold cyan]\n{'='*60}")
     checkpoint_mgr = CheckpointManager(
         checkpoint_path="data/checkpoint_p0.jsonl",
         get_uid_fn=lambda x: x["prompt_id"],
@@ -292,7 +306,7 @@ def main():
     # 2. Target policies
     for policy_config in config.target_policies:
         policy_name = policy_config["name"]
-        console.print(f"\n[bold]Generating {policy_name} responses...[/bold]")
+        console.print(f"\n{'='*60}\n[bold cyan]{policy_name} policy[/bold cyan]\n{'='*60}")
 
         checkpoint_mgr = CheckpointManager(
             checkpoint_path=f"data/checkpoint_{policy_name}.jsonl",

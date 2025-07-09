@@ -29,7 +29,11 @@ def download_and_prepare_corpus(
     seed: int = 42,
     output_path: str = "../data/arena_prompts_10k.jsonl",
 ) -> List[Dict[str, Any]]:
-    """Download ChatBot Arena corpus and prepare prompts."""
+    """Download ChatBot Arena corpus and prepare English prompts.
+    
+    Note: We filter for English-only prompts to avoid teacher forcing
+    failures with non-English text.
+    """
 
     console.print(
         f"📥 [bold blue]Downloading ChatBot Arena conversations...[/bold blue]"
@@ -68,6 +72,11 @@ def download_and_prepare_corpus(
             # Skip empty or duplicate prompts
             if not prompt_text or prompt_text in seen_prompts:
                 continue
+            
+            # Filter for English only to avoid teacher forcing issues
+            language = row.get("language", "unknown").lower()
+            if language not in ["english", "en", "eng"]:
+                continue
 
             seen_prompts.add(prompt_text)
             prompts.append(
@@ -85,7 +94,7 @@ def download_and_prepare_corpus(
                 console.print(f"📊 Extracted {len(prompts):,} unique prompts...")
 
         console.print(
-            f"✅ [green]Extracted {len(prompts):,} unique prompts total[/green]"
+            f"✅ [green]Extracted {len(prompts):,} unique English prompts total[/green]"
         )
 
         # Sample if we have more than requested
@@ -116,6 +125,7 @@ def download_and_prepare_corpus(
         console.print("\n📊 [bold]Dataset Statistics:[/bold]")
         console.print(f"  • Total conversations downloaded: {len(ds):,}")
         console.print(f"  • Unique prompts extracted: {len(seen_prompts):,}")
+        console.print(f"  • Language filter: English only")
         console.print(f"  • Final sample size: {len(prompts):,}")
 
         # Show a few examples
@@ -178,7 +188,9 @@ Examples:
 
     try:
         prompts = download_and_prepare_corpus(
-            sample_limit=args.samples, seed=args.seed, output_path=args.output
+            sample_limit=args.samples, 
+            seed=args.seed, 
+            output_path=args.output
         )
 
         console.print(f"\n✅ [bold green]Step 1 complete![/bold green]")

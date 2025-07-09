@@ -23,7 +23,7 @@ rm .pipeline_checkpoint.pkl
 
 The `run_phase1_pipeline.py` script runs all steps automatically:
 
-1. **Download prompts** - Sample from ChatBot Arena conversations
+1. **Download prompts** - Sample English prompts from ChatBot Arena conversations
 2. **Generate responses** - From P0 (baseline) and 4 target policies  
 3. **Compute log probabilities** - P0 responses under all policies (teacher forcing)
 4. **Judge scoring** - Deterministic and uncertainty-based scores (writes Phase 2 format)

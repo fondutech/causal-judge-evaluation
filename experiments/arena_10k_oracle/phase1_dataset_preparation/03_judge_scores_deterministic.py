@@ -15,6 +15,8 @@ from typing import Dict, List, Any, Optional
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
+# Add current directory to path for local imports
+sys.path.append(str(Path(__file__).parent))
 
 from cje.judge import JudgeFactory
 from cje.utils.progress import console

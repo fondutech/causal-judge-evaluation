@@ -2,10 +2,13 @@
 
 This experiment evaluates causal judge estimation methods using 10,000 prompts from ChatBot Arena.
 
+**Important**: We filter for English-only prompts to avoid teacher forcing failures with non-English text.
+
 ## Overview
 
 ### Phase 1: Dataset Preparation
 Generates all data needed for causal judge evaluation:
+- Downloads and filters ChatBot Arena prompts (English only)
 - P0 (logging policy) responses with log probabilities
 - Target policy responses (4 policies including pi_clone)
 - Teacher-forced log probabilities for importance weighting
