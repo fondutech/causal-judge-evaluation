@@ -30,7 +30,7 @@ def download_and_prepare_corpus(
     output_path: str = "../data/arena_prompts_10k.jsonl",
 ) -> List[Dict[str, Any]]:
     """Download ChatBot Arena corpus and prepare English prompts.
-    
+
     Note: We filter for English-only prompts to avoid teacher forcing
     failures with non-English text.
     """
@@ -72,7 +72,7 @@ def download_and_prepare_corpus(
             # Skip empty or duplicate prompts
             if not prompt_text or prompt_text in seen_prompts:
                 continue
-            
+
             # Filter for English only to avoid teacher forcing issues
             language = row.get("language", "unknown").lower()
             if language not in ["english", "en", "eng"]:
@@ -188,9 +188,7 @@ Examples:
 
     try:
         prompts = download_and_prepare_corpus(
-            sample_limit=args.samples, 
-            seed=args.seed, 
-            output_path=args.output
+            sample_limit=args.samples, seed=args.seed, output_path=args.output
         )
 
         console.print(f"\n✅ [bold green]Step 1 complete![/bold green]")

@@ -94,8 +94,8 @@ class AsyncResponseGenerator:
 
             for i in range(0, len(tasks), batch_size):
                 batch = tasks[i : i + batch_size]
-                api_batch_num = i//batch_size + 1
-                total_api_batches = (len(tasks) + batch_size - 1)//batch_size
+                api_batch_num = i // batch_size + 1
+                total_api_batches = (len(tasks) + batch_size - 1) // batch_size
                 start_idx = i + 1  # 1-indexed for display
                 end_idx = min(i + batch_size, len(tasks))
                 console.print(
@@ -207,7 +207,7 @@ def generate_responses_for_policy(
     processor = BatchProcessor(checkpoint_manager=checkpoint_mgr, batch_size=50)
 
     current_batch_num = [0]  # Use list to make it mutable in closure
-    
+
     def process_batch(batch):
         current_batch_num[0] += 1
         batch_start = (current_batch_num[0] - 1) * 50 + 1
@@ -306,7 +306,9 @@ def main():
     # 2. Target policies
     for policy_config in config.target_policies:
         policy_name = policy_config["name"]
-        console.print(f"\n{'='*60}\n[bold cyan]{policy_name} policy[/bold cyan]\n{'='*60}")
+        console.print(
+            f"\n{'='*60}\n[bold cyan]{policy_name} policy[/bold cyan]\n{'='*60}"
+        )
 
         checkpoint_mgr = CheckpointManager(
             checkpoint_path=f"data/checkpoint_{policy_name}.jsonl",

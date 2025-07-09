@@ -2,7 +2,7 @@
 
 Core guidance for Claude Code when working with the CJE repository.
 
-Last updated: 2025-06-29 - Added Arena 10K experiment details
+Last updated: 2025-07-08 - Updated Arena 10K findings and critical bug fixes
 
 ## 🎯 Hygiene Rules
 
@@ -23,6 +23,7 @@ Fix immediately without asking:
 - All failures must return None/null and be handled explicitly
 - Use LogProbResult type for all log probability computations
 - Watch for exact 0.0 log probs on non-empty responses (indicates bug)
+- **Arena 10K Bug Fixed**: Judge scoring scripts were using 0.0 as default for missing log probs (now uses None)
 
 ## Essential Commands
 ```bash
@@ -91,6 +92,10 @@ result = tf.compute_log_prob(prompt, response)  # Uses continuation method first
 - Token boundary misalignment causing 0.0 log probs
 - Response text absorbed into prompt tokens
 - Non-deterministic tokenization between API calls
+
+**Known Limitations (Arena 10K)**:
+- ~1% of prompts fail due to tokenization boundary issues (e.g., "Write a single dot.")
+- Non-English prompts cause teacher forcing failures (fixed with English-only filter)
 
 ## Judge System
 - Three uncertainty methods: deterministic, confidence_interval, monte_carlo
@@ -165,15 +170,26 @@ if results["detected"]:
 **Key Points**:
 - 4 target policies: pi_clone (baseline), pi_cot, pi_bigger_model, pi_bad
 - Teacher forcing bug fixed - no more 0.0 log probs for non-empty responses
-- 1% sample test before full run: `./run_sample_test.sh`
-- Full run: ~140k API calls, ~$60, 50-75 hours
+- English-only filter eliminates ~8% of non-English prompts that cause failures
+- Pipeline resumes by default (no more accidental data loss)
+- Judge scoring bug fixed (was using 0.0 as default for missing log probs)
 
-**Critical Validation**:
+**Running the Experiment**:
 ```bash
-# After sample run, check teacher forcing:
-python analyze_teacher_forcing_stats.py
-# MUST show: "No suspicious zero values found!"
+cd experiments/arena_10k_oracle/phase1_dataset_preparation
+source /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/set_secrets.sh
+python run_phase1_pipeline.py  # Defaults to 10k samples
+
+# Phase 2 analysis
+cd ../phase2_cje_ablations
+python run_cje_simple.py ../phase1_dataset_preparation/data/phase2_*
 ```
+
+**Validation Checklist**:
+- pi_clone median weight should be ~1.0
+- No 0.0 log probs for non-empty responses
+- Missing log probs should be <1% with English filter
+- ESS will be low for small samples but improves with scale
 
 ## Not Currently Supported
 - Trajectory sampling (removed)
