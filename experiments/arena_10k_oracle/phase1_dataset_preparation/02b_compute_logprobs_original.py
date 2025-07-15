@@ -26,7 +26,7 @@ from config_loader import load_arena_config
 
 # Import llama.cpp teacher forcing if available
 try:
-    from cje.utils import LlamaCppTeacherForcingFixed as LlamaCppTeacherForcing
+    from cje.utils import LlamaCppTeacherForcing
 
     LLAMA_CPP_AVAILABLE = True
 except ImportError:
@@ -110,23 +110,13 @@ def compute_logprobs_batch(
             # Get system prompt if available
             system_prompt = policy_configs[policy_name].get("system_prompt", None)
 
-            # For llama.cpp, pass system prompt separately for proper chat template formatting
-            if hasattr(tf_instance, "compute_log_prob"):
-                # Direct llama.cpp instance
-                logprob_result = tf_instance.compute_log_prob(
-                    prompt, p0_response, system_prompt=system_prompt
-                )
+            # Format prompt with system prompt if needed
+            if system_prompt:
+                formatted_prompt = f"{system_prompt}\n\nUser: {prompt}\n\nAssistant:"
             else:
-                # RobustTeacherForcing wrapper - format manually
-                if system_prompt:
-                    formatted_prompt = (
-                        f"{system_prompt}\n\nUser: {prompt}\n\nAssistant:"
-                    )
-                else:
-                    formatted_prompt = f"User: {prompt}\n\nAssistant:"
-                logprob_result = tf_instance.compute_log_prob(
-                    formatted_prompt, p0_response
-                )
+                formatted_prompt = f"User: {prompt}\n\nAssistant:"
+
+            logprob_result = tf_instance.compute_log_prob(formatted_prompt, p0_response)
 
             if logprob_result.status == LogProbStatus.SUCCESS:
                 result["logprobs"][policy_name] = logprob_result.value

@@ -49,6 +49,7 @@ class LlamaCppTeacherForcing:
         n_threads: Optional[int] = None,
         use_mlock: bool = True,
         verbose: bool = False,
+        temperature: float = 1.0,
     ) -> None:
         self.model_path = Path(model_path).expanduser().resolve()
         self.n_ctx = n_ctx
@@ -57,6 +58,7 @@ class LlamaCppTeacherForcing:
         self.n_threads = n_threads
         self.use_mlock = use_mlock
         self.verbose = verbose
+        self.temperature = temperature
 
         # Validate model exists
         if not self.model_path.exists():
@@ -75,6 +77,9 @@ class LlamaCppTeacherForcing:
 
         # Lazy load model
         self._model = None
+
+        # Try use_mlock, fall back if fails on macOS
+        self._use_mlock_fallback = False
 
     def _get_model(self) -> Any:
         """Get or create the Llama model instance."""
@@ -99,16 +104,37 @@ class LlamaCppTeacherForcing:
         logger.info(f"Loading model: {self.model_path.name}")
 
         # Create model with our parameters
-        self._model = Llama(
-            model_path=str(self.model_path),
-            n_ctx=self.n_ctx,
-            n_gpu_layers=self.n_gpu_layers,
-            seed=self.seed,
-            n_threads=self.n_threads,
-            use_mlock=self.use_mlock,
-            verbose=self.verbose,
-            logits_all=True,  # Required for log prob computation
-        )
+        # Try with use_mlock first, fall back if it fails on macOS
+        try:
+            self._model = Llama(
+                model_path=str(self.model_path),
+                n_ctx=self.n_ctx,
+                n_gpu_layers=self.n_gpu_layers,
+                seed=self.seed,
+                n_threads=self.n_threads,
+                use_mlock=self.use_mlock and not self._use_mlock_fallback,
+                verbose=self.verbose,
+                logits_all=True,  # Required for log prob computation
+            )
+        except OSError as e:
+            if "Operation not permitted" in str(e) and self.use_mlock:
+                logger.warning(
+                    "use_mlock=True failed (likely macOS without root), "
+                    "falling back to use_mlock=False"
+                )
+                self._use_mlock_fallback = True
+                self._model = Llama(
+                    model_path=str(self.model_path),
+                    n_ctx=self.n_ctx,
+                    n_gpu_layers=self.n_gpu_layers,
+                    seed=self.seed,
+                    n_threads=self.n_threads,
+                    use_mlock=False,
+                    verbose=self.verbose,
+                    logits_all=True,  # Required for log prob computation
+                )
+            else:
+                raise
 
         # Cache globally
         _MODEL_CACHE[cache_key] = self._model
@@ -139,26 +165,6 @@ class LlamaCppTeacherForcing:
                 metadata={"method": "empty_response"},
             )
 
-        # Check cache - but make sure we include the full text with potential space
-        if (
-            prompt
-            and response
-            and not prompt.endswith(" ")
-            and not response.startswith(" ")
-        ):
-            full_text_for_cache = prompt + " " + response
-        else:
-            full_text_for_cache = prompt + response
-        cache_key = (prompt, response, full_text_for_cache)
-
-        if cache_key in self._cache:
-            self.stats["cache_hits"] += 1
-            return LogProbResult(
-                value=self._cache[cache_key],
-                status=LogProbStatus.SUCCESS,
-                metadata={"method": "llama_cpp_cached"},
-            )
-
         try:
             model = self._get_model()
 
@@ -173,21 +179,35 @@ class LlamaCppTeacherForcing:
                 full_text = prompt + " " + response
             else:
                 full_text = prompt + response
+
+            # Use exact full_text for cache key
+            cache_key = (prompt, response, full_text)
+
+            if cache_key in self._cache:
+                self.stats["cache_hits"] += 1
+                self.stats["successes"] += 1  # Count cache hits as successes
+                return LogProbResult(
+                    value=self._cache[cache_key],
+                    status=LogProbStatus.SUCCESS,
+                    metadata={"method": "llama_cpp_cached"},
+                )
             full_result = model.create_completion(
                 full_text,
-                max_tokens=1,  # Set to 1 to get logprobs (0 seems to generate anyway)
+                max_tokens=0,  # No generation needed
                 echo=True,  # Include prompt in output
-                logprobs=True,  # Request log probabilities
-                temperature=0.0,  # Deterministic
+                logprobs=1,  # Request log probabilities (int, not bool)
+                temperature=1.0,  # MUST be 1.0 for accurate log probs!
+                # Note: seed is set at model construction, not per-call
             )
 
             # 2. Compute log P(prompt)
             prompt_result = model.create_completion(
                 prompt,
-                max_tokens=1,
+                max_tokens=0,  # No generation needed
                 echo=True,
-                logprobs=True,
-                temperature=0.0,
+                logprobs=1,  # Request log probabilities (int, not bool)
+                temperature=1.0,  # MUST be 1.0 for accurate log probs!
+                # Note: seed is set at model construction, not per-call
             )
 
             # Extract log probs from token_logprobs
@@ -209,54 +229,43 @@ class LlamaCppTeacherForcing:
                     and "token_logprobs" in prompt_choice["logprobs"]
                 ):
 
-                    # Get tokens to determine actual input length
-                    full_tokens = full_choice["logprobs"]["tokens"]
-                    prompt_tokens = prompt_choice["logprobs"]["tokens"]
+                    # Get token log probabilities
+                    full_token_logprobs = full_choice["logprobs"]["token_logprobs"]
+                    prompt_token_logprobs = prompt_choice["logprobs"]["token_logprobs"]
 
-                    # Find where input ends (before generation starts)
-                    # The model seems to generate a lot, so we need to find the actual input boundary
-                    full_text_len = len(full_text)
-                    prompt_len = len(prompt)
+                    # With max_tokens=0, we should only get the input tokens
+                    # No need for complex boundary detection
 
-                    # Count tokens that are part of the input
-                    full_input_tokens = 0
-                    reconstructed_full = ""
-                    for i, token in enumerate(full_tokens):
-                        reconstructed_full += token
-                        if len(reconstructed_full) >= full_text_len:
-                            full_input_tokens = i + 1
-                            break
-
-                    prompt_input_tokens = 0
-                    reconstructed_prompt = ""
-                    for i, token in enumerate(prompt_tokens):
-                        reconstructed_prompt += token
-                        if len(reconstructed_prompt) >= prompt_len:
-                            prompt_input_tokens = i + 1
-                            break
-
-                    # Sum only the input token log probs
-                    full_token_logprobs = full_choice["logprobs"]["token_logprobs"][
-                        :full_input_tokens
-                    ]
-                    prompt_token_logprobs = prompt_choice["logprobs"]["token_logprobs"][
-                        :prompt_input_tokens
-                    ]
-
-                    # Sum log probabilities (skip None values)
-                    full_logprob = sum(
+                    # Sum log probabilities (skip only None values)
+                    # Per field guide: only BOS token has None, all others are meaningful
+                    full_valid_logprobs = [
                         lp for lp in full_token_logprobs if lp is not None
-                    )
-                    prompt_logprob = sum(
+                    ]
+                    prompt_valid_logprobs = [
                         lp for lp in prompt_token_logprobs if lp is not None
+                    ]
+
+                    if not full_valid_logprobs:
+                        return LogProbResult(
+                            status=LogProbStatus.API_ERROR,
+                            error="No valid log probabilities in full text",
+                            metadata={"method": "llama_cpp"},
+                        )
+
+                    full_logprob = sum(full_valid_logprobs)
+                    prompt_logprob = (
+                        sum(prompt_valid_logprobs) if prompt_valid_logprobs else 0.0
                     )
 
-                    # Debug info for long responses
-                    if len(response) > 50:
-                        logger.debug(
-                            f"Long response debug: response_len={len(response)}, "
-                            f"full_tokens={full_input_tokens}, prompt_tokens={prompt_input_tokens}, "
-                            f"full_logp={full_logprob:.3f}, prompt_logp={prompt_logprob:.3f}"
+                    # Compute conditional log probability
+                    response_logprob = full_logprob - prompt_logprob
+
+                    # Guard against positive log probs (overflow)
+                    if response_logprob >= 0:
+                        return LogProbResult(
+                            status=LogProbStatus.API_ERROR,
+                            error=f"Overflow: positive conditional log-prob: {response_logprob}",
+                            metadata={"method": "llama_cpp"},
                         )
 
                 else:
@@ -272,16 +281,7 @@ class LlamaCppTeacherForcing:
                     metadata={"method": "llama_cpp"},
                 )
 
-            # 3. Compute log P(response|prompt)
-            response_logprob = full_logprob - prompt_logprob
-
-            # Validate result
-            if response_logprob > 0:
-                return LogProbResult(
-                    status=LogProbStatus.API_ERROR,
-                    error=f"Positive log probability: {response_logprob}",
-                    metadata={"method": "llama_cpp"},
-                )
+            # Response logprob already computed above
 
             # Cache successful result
             self._cache[cache_key] = response_logprob
@@ -324,6 +324,7 @@ def compute_llama_cpp_logprob(
     n_ctx: int = 4096,
     n_gpu_layers: int = -1,
     seed: int = 0,
+    temperature: float = 1.0,
     **kwargs: Any,
 ) -> LogProbResult:
     """
@@ -346,6 +347,7 @@ def compute_llama_cpp_logprob(
         n_ctx=n_ctx,
         n_gpu_layers=n_gpu_layers,
         seed=seed,
+        temperature=temperature,
         **kwargs,
     )
     return tf.compute_log_prob(prompt, response)

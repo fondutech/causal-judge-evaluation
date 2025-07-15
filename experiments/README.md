@@ -4,23 +4,27 @@ This directory contains standalone experiments that demonstrate and validate the
 
 ## Available Experiments
 
-### 1. Arena 10K Fresh Oracle Experiment (`arena_10k_oracle/`)
+### 1. Arena 10K Oracle Experiment (`arena_10k_oracle/`)
 
-A comprehensive experiment demonstrating CJE on 10,000 ChatBot Arena prompts with fresh human oracle labels.
+A comprehensive experiment demonstrating CJE on 10,000 ChatBot Arena prompts using deterministic llama.cpp teacher forcing.
 
 **Key Features:**
-- Real-world data from ChatBot Arena conversations
-- Human calibration via crowdsourcing (2,500 samples)
-- Multiple target policies (CoT, RAG, 70B model)
-- Ground truth validation
-- Complete cost and efficiency analysis
+- Real-world data from ChatBot Arena conversations (English-only)
+- Deterministic teacher forcing with llama.cpp (no API non-determinism!)
+- 2 target policies: pi_clone (validation), pi_bad (deliberately unhelpful)
+- Ground truth validation via GPT-4o oracle labels
+- Complete weight diagnostics and ESS analysis
 
-**Expected Outcomes:**
-- Accuracy: Target ±2pp vs ground truth
-- Efficiency: ~70% CI reduction, 10× GPU speedup  
-- Cost: <$1,000 total (including human labels)
+**Unique Advantages:**
+- 100% reproducible log probabilities
+- No API costs for teacher forcing
+- Pi_clone weights exactly 1.0 (perfect validation)
+- GPU accelerated (Metal/CUDA support)
 
-*Note: This is a planned experiment. Actual results will be reported after completion.*
+**Requirements:**
+- llama-cpp-python installed
+- Llama 3.2 3B model (~2.5GB download)
+- OpenAI API key for judge/oracle only
 
 See [arena_10k_oracle/README.md](arena_10k_oracle/README.md) for detailed instructions.
 

@@ -39,6 +39,7 @@ class MultiTargetSampler:
         checkpoint_dir: Optional[Path] = None,
         enable_caching: bool = True,
         validate_identical: bool = True,
+        max_importance_weight: int = 50,
     ):
         """
         Initialize multi-target sampler.
@@ -48,8 +49,9 @@ class MultiTargetSampler:
             base_policy_name: Name of the base policy for importance weights
             max_workers: Max parallel workers
             checkpoint_dir: Directory for saving checkpoints
-            enable_caching: Whether to cache results
-            validate_identical: Whether to validate identical policies have same outputs
+            enable_caching: Whether to enable caching
+            validate_identical: Whether to validate identical policies
+            max_importance_weight: Maximum importance weight (default: 50)
         """
         if not policies:
             raise ValueError("At least one policy required")
@@ -74,6 +76,7 @@ class MultiTargetSampler:
         self.checkpoint_dir = checkpoint_dir
         self.enable_caching = enable_caching
         self.validate_identical = validate_identical
+        self.max_importance_weight = max_importance_weight
 
         # Tracking
         self.cache: Dict[str, SampleResult] = {}
@@ -182,7 +185,9 @@ class MultiTargetSampler:
             elif result.is_valid:
                 # Use shared utility for consistent weight calculation
                 weights[name] = compute_importance_weight(
-                    target_logp=result.value, base_logp=base_logp
+                    target_logp=result.value,
+                    base_logp=base_logp,
+                    max_weight=self.max_importance_weight,
                 )
             else:
                 # Failed policy has no weight - explicit None!

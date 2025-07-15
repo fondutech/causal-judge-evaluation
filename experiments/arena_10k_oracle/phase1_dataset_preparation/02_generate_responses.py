@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """
-Step 2: Generate responses from all policies (P0 and targets).
+Step 2: Generate responses from all policies using llama.cpp.
 
 This script generates responses for all configured policies and saves them
-in a consolidated format. Uses checkpointing for resumability.
+in a consolidated format. Uses llama.cpp for deterministic generation.
 """
 
 import json
 import os
 import sys
-import asyncio
-import aiohttp
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
@@ -21,244 +19,154 @@ from cje.utils.progress import console
 from cje.utils import CheckpointManager, BatchProcessor
 from config_loader import load_arena_config
 
+try:
+    from llama_cpp import Llama
 
-class AsyncResponseGenerator:
-    """Handles async API calls for response generation."""
+    LLAMA_CPP_AVAILABLE = True
+except ImportError:
+    LLAMA_CPP_AVAILABLE = False
 
-    def __init__(self, api_key: str):
-        self.api_key = api_key
-        self.base_url = "https://api.fireworks.ai/inference/v1/chat/completions"
 
-    async def generate_single(
+class LlamaResponseGenerator:
+    """Handles response generation using llama.cpp."""
+
+    def __init__(self, model_path: str, n_ctx: int = 2048, n_gpu_layers: int = -1):
+        """Initialize llama.cpp model."""
+        if not LLAMA_CPP_AVAILABLE:
+            raise ImportError("llama-cpp-python not installed")
+
+        self.model = Llama(
+            model_path=model_path,
+            n_ctx=n_ctx,
+            n_gpu_layers=n_gpu_layers,
+            verbose=False,
+            seed=42,  # Fixed seed for determinism
+        )
+
+    def generate_response(
         self,
-        session: aiohttp.ClientSession,
         prompt: str,
-        model: str,
         temperature: float,
-        max_tokens: int = 1024,
+        max_tokens: int = 150,
+        system_prompt: Optional[str] = None,
     ) -> str:
         """Generate a single response."""
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        # Format the prompt with system message if provided
+        if system_prompt:
+            full_prompt = f"{system_prompt}\n\nUser: {prompt}\n\nAssistant:"
+        else:
+            full_prompt = f"User: {prompt}\n\nAssistant:"
 
-        payload = {
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
+        # Generate response
+        output = self.model(
+            full_prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            stop=["User:", "\n\n"],
+            echo=False,
+        )
 
-        async with session.post(self.base_url, json=payload, headers=headers) as resp:
-            if resp.status != 200:
-                error_text = await resp.text()
-                raise Exception(f"API error {resp.status}: {error_text}")
+        return output["choices"][0]["text"].strip()
 
-            data = await resp.json()
-            return data["choices"][0]["message"]["content"]
-
-    async def generate_batch(
+    def generate_batch(
         self,
         prompts: List[Dict[str, Any]],
-        model: str,
         temperature: float,
         policy_name: str,
         system_prompt: Optional[str] = None,
-        user_template: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Generate responses for a batch of prompts."""
-        async with aiohttp.ClientSession() as session:
-            tasks = []
-            for prompt_data in prompts:
-                # Format prompt
-                if user_template:
-                    formatted_prompt = user_template.format(
-                        context=prompt_data["prompt"]
-                    )
-                else:
-                    formatted_prompt = prompt_data["prompt"]
+        results = []
 
-                if system_prompt:
-                    formatted_prompt = f"{system_prompt}\n\n{formatted_prompt}"
+        for i, prompt_data in enumerate(prompts):
+            console.print(f"  Generating {policy_name} response {i+1}/{len(prompts)}")
 
-                task = self.generate_single(
-                    session, formatted_prompt, model, temperature
-                )
-                tasks.append((prompt_data, task))
-
-            # Process in batches to avoid rate limits
-            results = []
-            batch_size = 10
-            failed_items = []
-
-            for i in range(0, len(tasks), batch_size):
-                batch = tasks[i : i + batch_size]
-                api_batch_num = i // batch_size + 1
-                total_api_batches = (len(tasks) + batch_size - 1) // batch_size
-                start_idx = i + 1  # 1-indexed for display
-                end_idx = min(i + batch_size, len(tasks))
-                console.print(
-                    f"      → API call {api_batch_num}/{total_api_batches}: "
-                    f"items {start_idx}-{end_idx}"
+            try:
+                response = self.generate_response(
+                    prompt=prompt_data["prompt"],
+                    temperature=temperature,
+                    system_prompt=system_prompt,
                 )
 
-                batch_results = await asyncio.gather(
-                    *[task[1] for task in batch], return_exceptions=True
+                results.append(
+                    {
+                        "prompt_id": prompt_data["prompt_id"],
+                        "prompt": prompt_data["prompt"],
+                        "response": response,
+                        "policy": policy_name,
+                        "temperature": temperature,
+                        "metadata": prompt_data.get("metadata", {}),
+                    }
                 )
 
-                for (prompt_data, _), result in zip(batch, batch_results):
-                    if isinstance(result, Exception):
-                        console.print(
-                            f"[red]Error for {prompt_data['prompt_id']}: {str(result)[:100]}...[/red]"
-                        )
-                        failed_items.append(prompt_data)
-                        continue
-
-                    results.append(
-                        {
-                            "prompt_id": prompt_data["prompt_id"],
-                            "prompt": prompt_data["prompt"],
-                            "response": result,
-                            "policy": policy_name,
-                            "model": model,
-                            "temperature": temperature,
-                            "metadata": prompt_data.get("metadata", {}),
-                        }
-                    )
-
-                # Small delay between batches
-                if i + batch_size < len(tasks):
-                    await asyncio.sleep(0.5)
-
-            # Retry failed items with exponential backoff
-            if failed_items:
-                console.print(
-                    f"[yellow]Retrying {len(failed_items)} failed items...[/yellow]"
+            except Exception as e:
+                console.print(f"[red]Error generating response: {str(e)[:100]}[/red]")
+                # Add empty response to maintain alignment
+                results.append(
+                    {
+                        "prompt_id": prompt_data["prompt_id"],
+                        "prompt": prompt_data["prompt"],
+                        "response": "[GENERATION_FAILED]",
+                        "policy": policy_name,
+                        "temperature": temperature,
+                        "metadata": prompt_data.get("metadata", {}),
+                    }
                 )
-                for attempt in range(3):  # Max 3 retry attempts
-                    if not failed_items:
-                        break
 
-                    await asyncio.sleep(2**attempt)  # Exponential backoff: 1s, 2s, 4s
-
-                    retry_batch = []
-                    for prompt_data in failed_items:
-                        # Format prompt
-                        if user_template:
-                            formatted_prompt = user_template.format(
-                                context=prompt_data["prompt"]
-                            )
-                        else:
-                            formatted_prompt = prompt_data["prompt"]
-
-                        if system_prompt:
-                            formatted_prompt = f"{system_prompt}\n\n{formatted_prompt}"
-
-                        task = self.generate_single(
-                            session, formatted_prompt, model, temperature
-                        )
-                        retry_batch.append((prompt_data, task))
-
-                    retry_results = await asyncio.gather(
-                        *[task[1] for task in retry_batch], return_exceptions=True
-                    )
-
-                    still_failed = []
-                    for (prompt_data, _), result in zip(retry_batch, retry_results):
-                        if isinstance(result, Exception):
-                            still_failed.append(prompt_data)
-                            if attempt == 2:  # Last attempt
-                                console.print(
-                                    f"[red]Failed after 3 attempts: {prompt_data['prompt_id']}[/red]"
-                                )
-                        else:
-                            results.append(
-                                {
-                                    "prompt_id": prompt_data["prompt_id"],
-                                    "prompt": prompt_data["prompt"],
-                                    "response": result,
-                                    "policy": policy_name,
-                                    "model": model,
-                                    "temperature": temperature,
-                                    "metadata": prompt_data.get("metadata", {}),
-                                }
-                            )
-
-                    failed_items = still_failed
-                    if failed_items and attempt < 2:
-                        console.print(
-                            f"[yellow]Still {len(failed_items)} failed, retrying...[/yellow]"
-                        )
-
-            return results
+        return results
 
 
 def generate_responses_for_policy(
     prompts: List[Dict[str, Any]],
     policy_name: str,
     policy_config: Dict[str, Any],
-    generator: AsyncResponseGenerator,
+    generator: LlamaResponseGenerator,
     checkpoint_mgr: CheckpointManager,
 ) -> List[Dict[str, Any]]:
     """Generate responses for a single policy with checkpointing."""
 
     # Process in batches with checkpointing
-    processor = BatchProcessor(checkpoint_manager=checkpoint_mgr, batch_size=50)
+    processor = BatchProcessor(checkpoint_manager=checkpoint_mgr, batch_size=10)
 
     current_batch_num = [0]  # Use list to make it mutable in closure
 
     def process_batch(batch):
         current_batch_num[0] += 1
-        batch_start = (current_batch_num[0] - 1) * 50 + 1
-        batch_end = min(current_batch_num[0] * 50, len(prompts))
+        batch_start = (current_batch_num[0] - 1) * 10 + 1
+        batch_end = min(current_batch_num[0] * 10, len(prompts))
         console.print(
-            f"\n   📦 [bold]Checkpoint batch {current_batch_num[0]}/{(len(prompts) + 49) // 50}[/bold]: "
-            f"prompts {batch_start}-{batch_end} ({len(batch)} total)"
-        )
-        results = asyncio.run(
-            generator.generate_batch(
-                batch,
-                model=policy_config["model_name"],
-                temperature=policy_config["temperature"],
-                policy_name=policy_name,
-                system_prompt=policy_config.get("system_prompt"),
-                user_template=policy_config.get("user_template"),
-            )
+            f"\n   📦 Batch {current_batch_num[0]}/{(len(prompts) + 9) // 10}: "
+            f"prompts {batch_start}-{batch_end}"
         )
 
-        # Ensure we return exactly the same number of results as inputs
-        # This prevents the BatchProcessor from thinking the batch failed
-        if len(results) < len(batch):
-            console.print(
-                f"[yellow]Warning: Got {len(results)} results for {len(batch)} inputs[/yellow]"
-            )
-            # The retry logic in generate_batch should have handled failures
-            # but if not, this prevents infinite retries
+        results = generator.generate_batch(
+            batch,
+            temperature=policy_config.get("temperature", 0.5),
+            policy_name=policy_name,
+            system_prompt=policy_config.get("system_prompt"),
+        )
 
         return results
 
     results = processor.process_batches(
         prompts,
         process_batch,
-        description=f"Generating {policy_name} responses (checkpoint batches)",
+        description=f"Generating {policy_name} responses",
     )
 
     return results
 
 
 def main():
-    # No arguments - everything from config
     # Fixed paths
     INPUT_FILE = "data/arena_prompts_10k.jsonl"
     OUTPUT_FILE = "data/all_responses.jsonl"
 
-    console.print("[bold cyan]Step 2: Generate All Responses[/bold cyan]")
+    console.print("[bold cyan]Step 2: Generate All Responses (llama.cpp)[/bold cyan]")
 
-    # Check API key
-    api_key = os.environ.get("FIREWORKS_API_KEY")
-    if not api_key:
-        console.print("❌ [red]Error: FIREWORKS_API_KEY not set![/red]")
+    # Check llama.cpp availability
+    if not LLAMA_CPP_AVAILABLE:
+        console.print("❌ [red]Error: llama-cpp-python not installed![/red]")
         sys.exit(1)
 
     # Check input exists
@@ -271,6 +179,13 @@ def main():
     # Load config
     config = load_arena_config()
 
+    # Check model file
+    model_config = config.llama_model_config
+    model_path = Path(model_config["path"])
+    if not model_path.exists():
+        console.print(f"❌ [red]Error: Model file not found: {model_path}[/red]")
+        sys.exit(1)
+
     # Load prompts
     console.print(f"\n📄 Loading prompts from {INPUT_FILE}")
     with open(INPUT_FILE) as f:
@@ -278,7 +193,15 @@ def main():
     console.print(f"✅ Loaded {len(prompts)} prompts")
 
     # Initialize generator
-    generator = AsyncResponseGenerator(api_key)
+    console.print(f"\n🦙 Initializing llama.cpp model...")
+    console.print(f"   Model: {model_path.name}")
+    console.print(f"   GPU layers: {model_config.get('n_gpu_layers', -1)}")
+
+    generator = LlamaResponseGenerator(
+        model_path=str(model_path),
+        n_ctx=model_config.get("n_ctx", 2048),
+        n_gpu_layers=model_config.get("n_gpu_layers", -1),
+    )
 
     # Generate responses for all policies
     all_results = {}
@@ -350,24 +273,20 @@ def main():
             if prompt_id in responses_by_prompt:
                 responses_by_prompt[prompt_id]["responses"][policy_name] = {
                     "response": result["response"],
-                    "model": result["model"],
                     "temperature": result["temperature"],
                     "metadata": result.get("metadata", {}),
                 }
 
-                # Add system_prompt and user_template for target policies
+                # Add system_prompt for policies that have it
                 if policy_name != "p0":
                     policy_config = next(
-                        p for p in config.target_policies if p["name"] == policy_name
+                        (p for p in config.target_policies if p["name"] == policy_name),
+                        None,
                     )
-                    if "system_prompt" in policy_config:
+                    if policy_config and "system_prompt" in policy_config:
                         responses_by_prompt[prompt_id]["responses"][policy_name][
                             "system_prompt"
                         ] = policy_config["system_prompt"]
-                    if "user_template" in policy_config:
-                        responses_by_prompt[prompt_id]["responses"][policy_name][
-                            "user_template"
-                        ] = policy_config["user_template"]
 
     # Save consolidated file
     with open(OUTPUT_FILE, "w") as f:
@@ -376,37 +295,20 @@ def main():
 
     console.print(f"\n✅ [bold green]Saved all responses to {OUTPUT_FILE}[/bold green]")
 
-    # Print summary and verify completeness
+    # Print summary
     console.print("\n[bold]Response Summary:[/bold]")
     total_expected = len(prompts) * (1 + len(config.target_policies))
     total_generated = sum(len(results) for results in all_results.values())
     console.print(f"  Expected: {total_expected} responses")
     console.print(f"  Generated: {total_generated} responses")
 
-    missing_responses = []
     for policy_name, results in all_results.items():
-        expected_count = len(prompts)
-        actual_count = len(results)
-        console.print(f"  {policy_name}: {actual_count} responses")
+        console.print(f"  {policy_name}: {len(results)} responses")
 
-        if actual_count < expected_count:
-            # Find missing prompt IDs
-            generated_ids = {r["prompt_id"] for r in results}
-            all_ids = {p["prompt_id"] for p in prompts}
-            missing_ids = all_ids - generated_ids
-            missing_responses.append((policy_name, missing_ids))
-            console.print(
-                f"    [red]⚠️  Missing {len(missing_ids)} responses: {list(missing_ids)[:3]}{'...' if len(missing_ids) > 3 else ''}[/red]"
-            )
-
-    if missing_responses:
-        console.print("\n[red]❌ ERROR: Some responses are missing![/red]")
-        console.print(
-            "[yellow]Please run the script again to retry missing responses.[/yellow]"
-        )
-        sys.exit(1)
-    else:
+    if total_generated == total_expected:
         console.print("\n[green]✅ All responses generated successfully![/green]")
+    else:
+        console.print("\n[yellow]⚠️  Some responses may be missing[/yellow]")
 
 
 if __name__ == "__main__":

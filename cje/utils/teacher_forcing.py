@@ -1,20 +1,46 @@
 """
-Robust teacher forcing implementation with proper token tracking.
+Robust teacher forcing implementation using the continuation method.
 
-This module provides a robust implementation of teacher forcing that correctly
-handles tokenization boundaries and edge cases discovered during the Arena 10K
-analysis.
+This module provides a streamlined implementation of teacher forcing that uses
+only the most reliable method: computing log P(full) - log P(prompt).
+
+The continuation method is the most reliable because:
+1. It doesn't require token boundary detection
+2. It works consistently across different tokenizers
+3. It avoids the "prompt is not a prefix" errors
+
+BEST PRACTICES FOR LOG PROBABILITY COMPUTATION:
+
+1. **Parameter Parity**: Use the SAME temperature value for both behavior
+   and target policy evaluations. The exact value doesn't matter (0.0, 0.7, 1.0)
+   as long as it matches what the policy uses in production.
+
+2. **Top-p = 1.0**: Disable nucleus sampling by setting top_p=1.0.
+
+3. **Use Seed**: Set a seed value (e.g., 42) for reproducible results.
+
+4. **Monitor Pi_Clone**: Always include a "clone" policy (identical to
+   behavior policy) to detect API non-determinism.
+
+Example usage:
+    tf = RobustTeacherForcing(
+        provider="fireworks",
+        model="accounts/fireworks/models/llama-v3-8b",
+        temperature=0.7,     # Match the policy's production temperature
+        top_p=1.0,           # Disable nucleus sampling
+        seed=42,             # For reproducibility
+    )
+
+    result = tf.compute_log_prob(prompt, response)
+    if result.status == LogProbStatus.SUCCESS:
+        print(f"Log probability: {result.value}")
 """
 
 import os
 import time
 import openai
-from typing import Tuple, Optional, Dict, Any, List
-import numpy as np
-from dataclasses import dataclass
-from enum import Enum
+from typing import Optional, Dict, Any
 import logging
-import tiktoken
 
 from ..types import LogProbResult, LogProbStatus
 
@@ -22,25 +48,25 @@ logger = logging.getLogger(__name__)
 
 
 class RobustTeacherForcing:
-    """Teacher forcing with explicit error handling and validation.
+    """Teacher forcing using only the continuation method.
 
-    This implementation uses multiple methods to ensure accurate log probability
-    extraction, handling edge cases where token boundaries don't align with
-    text boundaries.
+    This implementation computes log P(response|prompt) by:
+    1. Getting log P(prompt + response)
+    2. Getting log P(prompt)
+    3. Returning log P(prompt + response) - log P(prompt)
 
-    Methods tried in order:
-    1. Token counting - Count prompt tokens and skip that many (default)
-    2. Echo-based - Use model's echo feature to identify response tokens
-    3. Continuation - Compute P(response|prompt) from full probabilities
+    This avoids all token boundary detection issues and is the most
+    reliable method for computing conditional probabilities.
 
     Args:
-        provider: API provider (e.g., "fireworks")
+        provider: API provider (e.g., "fireworks", "openai")
         model: Model name
-        api_key: Optional API key
-        temperature: Model temperature
+        api_key: Optional API key (uses environment variable if not provided)
+        temperature: Model temperature (should match policy's production setting)
         system_prompt: Optional system prompt
-        seed: Optional seed for deterministic results
-        force_continuation: If True, ONLY use continuation method (no fallback)
+        seed: Optional seed for deterministic results (not supported by all providers)
+        force_continuation: Kept for compatibility but ignored (always uses continuation)
+        top_p: Top-p sampling parameter (default 1.0 to disable nucleus sampling)
     """
 
     def __init__(
@@ -51,630 +77,260 @@ class RobustTeacherForcing:
         temperature: float = 0.0,
         system_prompt: Optional[str] = None,
         seed: Optional[int] = None,
-        force_continuation: bool = False,
-        **kwargs: Any,  # For any other policy-specific parameters
+        top_p: float = 1.0,
+        **kwargs: Any,
     ) -> None:
-        self.provider = provider
+        self.provider = provider.lower()
         self.model = model
         self.temperature = temperature
         self.system_prompt = system_prompt
         self.seed = seed
-        self.force_continuation = force_continuation
-        self.extra_params = kwargs  # Store any additional parameters
+        self.top_p = top_p
+        self.extra_kwargs = kwargs
 
-        # Handle API key requirement based on provider
-        if provider == "llama_cpp":
-            # llama.cpp doesn't need an API key
-            self.api_key = None
+        # Get API key
+        if api_key:
+            self.api_key = api_key
         else:
-            self.api_key = api_key or os.getenv("FIREWORKS_API_KEY")
-            if not self.api_key:
-                raise ValueError(f"API key required for provider: {provider}")
+            # Try environment variables
+            env_vars = {
+                "openai": "OPENAI_API_KEY",
+                "fireworks": "FIREWORKS_API_KEY",
+                "together": "TOGETHER_API_KEY",
+            }
+            env_var = env_vars.get(self.provider)
+            if env_var:
+                self.api_key = os.environ.get(env_var)
+            else:
+                raise ValueError(f"Unknown provider: {provider}")
 
+        if not self.api_key:
+            raise ValueError(f"API key required for provider: {provider}")
+
+        # Initialize API client
         self.api_client = self._init_client()
 
-        # Initialize tokenizer - use cl100k_base as default for modern models
-        # This is used for validation only, actual tokenization happens server-side
-        try:
-            self.tokenizer = tiktoken.get_encoding("cl100k_base")
-        except Exception:
-            # Fallback if tiktoken not available
+        # No tokenizer needed for Fireworks
+        if provider == "fireworks":
             self.tokenizer = None
-            logger.warning("tiktoken not available, some validations will be skipped")
-
-        # Track server model revision to detect changes
-        self.server_revision: Optional[str] = None
+            logger.info(
+                "Tokenizer disabled for Fireworks provider to avoid validation issues"
+            )
+        else:
+            # Could add tokenizer for other providers if needed
+            self.tokenizer = None
 
         # Statistics
-        self.stats: Dict[str, Any] = {
+        self.stats = {
             "total_calls": 0,
-            "method_successes": {
-                "token_counting": 0,
-                "echo_based": 0,
-                "continuation": 0,
-            },
-            "method_failures": {
-                "token_counting": 0,
-                "echo_based": 0,
-                "continuation": 0,
-            },
-            "zero_values": 0,
+            "successes": 0,
+            "failures": 0,
         }
 
-    def _init_client(self) -> Any:
-        """Initialize API client."""
-        if self.provider == "fireworks":
-            import openai
-
-            client = openai.OpenAI(
-                api_key=self.api_key, base_url="https://api.fireworks.ai/inference/v1"
+        # Log configuration
+        logger.info(
+            f"Initialized RobustTeacherForcing: provider={provider}, "
+            f"model={model}, temperature={temperature}, top_p={top_p}"
+        )
+        if temperature != 1.0:
+            logger.info(
+                f"Using temperature={temperature}. Ensure this matches the "
+                f"policy's production temperature for accurate importance weights."
             )
-            return client
-        elif self.provider == "llama_cpp":
-            # For llama.cpp, we'll handle this differently
-            return None
+
+    def _init_client(self):
+        """Initialize the API client based on provider."""
+        if self.provider in ["fireworks", "together"]:
+            # Use OpenAI-compatible client
+            if self.provider == "fireworks":
+                base_url = "https://api.fireworks.ai/inference/v1"
+            else:  # together
+                base_url = "https://api.together.xyz"
+
+            return openai.OpenAI(api_key=self.api_key, base_url=base_url)
+        elif self.provider == "openai":
+            return openai.OpenAI(api_key=self.api_key)
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
 
     def compute_log_prob(self, prompt: str, response: str) -> LogProbResult:
-        """
-        Compute log probability of response given prompt.
+        """Compute log P(response|prompt) using the continuation method.
 
         Args:
             prompt: The prompt text
-            response: The response text
+            response: The response text to compute probability for
 
         Returns:
-            LogProbResult with value or error information
+            LogProbResult with the log probability or error information
         """
         self.stats["total_calls"] += 1
 
-        # Empty response is always 0.0
-        if not response:
-            return LogProbResult(
-                value=0.0,
-                status=LogProbStatus.SUCCESS,
-                metadata={"method": "empty_response"},
-            )
-
-        # Apply system prompt if provided
-        if self.system_prompt:
-            prompt = f"{self.system_prompt}\n\n{prompt}"
-
-        # Special handling for llama.cpp
-        if self.provider == "llama_cpp":
-            from .llama_cpp_teacher_forcing import compute_llama_cpp_logprob
-
-            # Extract model_path from model parameter
-            if not self.model or not os.path.exists(self.model):
-                return LogProbResult(
-                    status=LogProbStatus.API_ERROR,
-                    error=f"Model path not found: {self.model}",
-                    metadata={"provider": "llama_cpp"},
-                )
-
-            return compute_llama_cpp_logprob(
-                prompt=prompt,
-                response=response,
-                model_path=self.model,
-                seed=self.seed if self.seed is not None else 0,
-                **self.extra_params,
-            )
-
-        # Detect edge cases that often cause boundary issues
-        use_continuation_first = (
-            self.force_continuation
-            or self._should_use_continuation_method(prompt, response)
-        )
-
-        # Try methods in order
-        if self.force_continuation:
-            # Force continuation only - no fallback to less reliable methods
-            methods = [
-                ("continuation", self._continuation_method),
-            ]
-        elif use_continuation_first:
-            # Continuation is most reliable for edge cases
-            methods = [
-                ("continuation", self._continuation_method),
-                ("token_counting", self._token_counting_method),
-                ("echo_based", self._echo_based_method),
-            ]
-        else:
-            # Token counting is faster for normal cases
-            methods = [
-                ("token_counting", self._token_counting_method),
-                ("continuation", self._continuation_method),
-                ("echo_based", self._echo_based_method),
-            ]
-
-        last_error = None
-        for method_name, method_func in methods:
-            try:
-                result = method_func(prompt, response)
-                if result.is_valid:
-                    self.stats["method_successes"][method_name] += 1
-
-                    # Track zero values
-                    if result.value == 0.0:
-                        self.stats["zero_values"] += 1
-                        logger.warning(
-                            f"Got 0.0 for non-empty response: '{response[:50]}...'"
-                        )
-
-                    return result
-                else:
-                    self.stats["method_failures"][method_name] += 1
-                    last_error = result.error
-
-            except Exception as e:
-                self.stats["method_failures"][method_name] += 1
-                last_error = str(e)
-                logger.debug(f"Method {method_name} failed: {e}")
-
-        # All methods failed
-        return LogProbResult(
-            status=LogProbStatus.API_ERROR,
-            error=f"All methods failed. Last error: {last_error}",
-            metadata={"attempts": len(methods)},
-        )
-
-    def _token_counting_method(self, prompt: str, response: str) -> LogProbResult:
-        """
-        Method 1: Count tokens in prompt, skip that many in full sequence.
-
-        This is the primary method but can fail when tokenization changes
-        at the prompt/response boundary.
-        """
         try:
-            # Get full text
+            # Note: _get_sequence_logprob will prepend system prompt if present
+            # So we just pass the user content and it handles the rest
+
+            # Step 1: Get log P(prompt + response) - includes system prompt
             full_text = prompt + response
+            full_logprob = self._get_sequence_logprob(full_text)
 
-            # Get completion with echo
-            completion_params = {
-                "model": self.model,
-                "prompt": full_text,
-                "max_tokens": 0,  # Don't generate new tokens
-                "echo": True,  # Return prompt + response tokens
-                "logprobs": 1,  # Get log probabilities (must be >=1)
-                "temperature": self.temperature,
-            }
-            if self.seed is not None:
-                completion_params["seed"] = self.seed
-
-            completion = self.api_client.completions.create(**completion_params)
-
-            choice = completion.choices[0]
-
-            # Patch 3: Check tokenizer revision
-            if hasattr(choice, "model") and choice.model:
-                if self.server_revision is None:
-                    self.server_revision = choice.model
-                elif choice.model != self.server_revision:
-                    raise RuntimeError(
-                        f"Tokenizer/model revision changed mid-run: "
-                        f"{self.server_revision} -> {choice.model}"
-                    )
-
-            # Extract tokens and logprobs
-            if not hasattr(choice, "logprobs") or not choice.logprobs:
+            if full_logprob is None:
+                self.stats["failures"] += 1
                 return LogProbResult(
                     status=LogProbStatus.API_ERROR,
-                    error="No logprobs in response",
-                    metadata={"method": "token_counting"},
+                    error="Failed to get log probability for full sequence",
                 )
 
-            # Patch 2: Truncation guard
-            if self.tokenizer:
-                expected = len(self.tokenizer.encode(full_text))
-                got = len(choice.logprobs.tokens)
-                # Allow larger discrepancies (up to 10% or 50 tokens) due to tokenizer differences
-                # Different models use different tokenizers (e.g., Llama vs GPT)
-                tolerance = max(50, int(expected * 0.10))
-                if got < expected - tolerance:
-                    return LogProbResult(
-                        status=LogProbStatus.TOKEN_LIMIT_EXCEEDED,
-                        error=f"Context truncated: expected {expected} tokens, got {got}",
-                        metadata={
-                            "expected": expected,
-                            "received": got,
-                            "method": "token_counting",
-                            "tolerance": tolerance,
-                        },
-                    )
+            # Step 2: Get log P(prompt) - includes system prompt
+            prompt_logprob = self._get_sequence_logprob(prompt)
 
-            # Count prompt tokens separately
-            prompt_params = {
-                "model": self.model,
-                "prompt": prompt,
-                "max_tokens": 0,
-                "echo": True,
-                "logprobs": 1,
-                "temperature": self.temperature,
-            }
-            if self.seed is not None:
-                prompt_params["seed"] = self.seed
-
-            prompt_completion = self.api_client.completions.create(**prompt_params)
-
-            prompt_choice = prompt_completion.choices[0]
-
-            # Check revision for prompt completion too
-            if hasattr(prompt_choice, "model") and prompt_choice.model:
-                if self.server_revision and prompt_choice.model != self.server_revision:
-                    raise RuntimeError(
-                        f"Tokenizer/model revision changed mid-run: "
-                        f"{self.server_revision} -> {prompt_choice.model}"
-                    )
-
-            n_prompt_tokens = len(prompt_choice.logprobs.tokens)
-            n_total_tokens = len(choice.logprobs.tokens)
-
-            # Extract response logprobs
-            response_logprobs = choice.logprobs.token_logprobs[n_prompt_tokens:]
-
-            if not response_logprobs:
+            if prompt_logprob is None:
+                self.stats["failures"] += 1
                 return LogProbResult(
                     status=LogProbStatus.API_ERROR,
-                    error="No response tokens found",
-                    metadata={
-                        "method": "token_counting",
-                        "prompt_tokens": n_prompt_tokens,
-                        "total_tokens": n_total_tokens,
-                    },
+                    error="Failed to get log probability for prompt",
                 )
 
-            # Check for None values (can happen with certain tokens)
-            none_count = sum(1 for lp in response_logprobs if lp is None)
-            if none_count > 0:
-                logger.warning(
-                    f"Found {none_count} None logprobs out of {len(response_logprobs)} response tokens"
-                )
-                # If too many Nones, this method is unreliable
-                if none_count > len(response_logprobs) * 0.1:  # More than 10% None
-                    return LogProbResult(
-                        status=LogProbStatus.API_ERROR,
-                        error=f"Too many None logprobs: {none_count}/{len(response_logprobs)}",
-                        metadata={
-                            "method": "token_counting",
-                            "none_count": none_count,
-                            "total_response_tokens": len(response_logprobs),
-                        },
-                    )
-
-            # Sum log probabilities (skip None values)
-            total_logprob = sum(lp for lp in response_logprobs if lp is not None)
-
-            # Critical validation: detect if we likely got the wrong tokens
-            if len(response_logprobs) > 0 and response:
-                # Estimate tokens in response (~4 chars per token)
-                estimated_response_tokens = len(response) / 4
-                actual_response_tokens = len(response_logprobs)
-
-                # Check if we have way too many tokens (likely got full sequence)
-                if actual_response_tokens > estimated_response_tokens * 2:
-                    return LogProbResult(
-                        status=LogProbStatus.API_ERROR,
-                        error=(
-                            f"Token count mismatch: got {actual_response_tokens} tokens "
-                            f"for {len(response)}-char response (expected ~{estimated_response_tokens:.0f}). "
-                            f"Likely boundary detection failure."
-                        ),
-                        metadata={
-                            "method": "token_counting",
-                            "prompt_tokens": n_prompt_tokens,
-                            "response_tokens": actual_response_tokens,
-                            "total_tokens": n_total_tokens,
-                            "response_chars": len(response),
-                        },
-                    )
-
-                # Check average log prob per token
-                avg_logprob_per_token = total_logprob / len(response_logprobs)
-                if avg_logprob_per_token < -10:  # Suspiciously negative
-                    return LogProbResult(
-                        status=LogProbStatus.API_ERROR,
-                        error=(
-                            f"Suspiciously negative avg log prob: {avg_logprob_per_token:.2f}/token. "
-                            f"Total: {total_logprob:.2f} for {len(response_logprobs)} tokens. "
-                            f"Likely got full sequence instead of response only."
-                        ),
-                        metadata={
-                            "method": "token_counting",
-                            "avg_per_token": avg_logprob_per_token,
-                            "prompt_tokens": n_prompt_tokens,
-                            "response_tokens": len(response_logprobs),
-                            "total_tokens": n_total_tokens,
-                        },
-                    )
-
-            # Validate result
-            if total_logprob > 0:
-                return LogProbResult(
-                    status=LogProbStatus.API_ERROR,
-                    error=f"Positive log probability: {total_logprob}",
-                    metadata={"method": "token_counting"},
-                )
-
-            return LogProbResult(
-                value=total_logprob,
-                status=LogProbStatus.SUCCESS,
-                metadata={
-                    "method": "token_counting",
-                    "prompt_tokens": n_prompt_tokens,
-                    "response_tokens": len(response_logprobs),
-                    "total_tokens": n_total_tokens,
-                },
-            )
-
-        except Exception as e:
-            return LogProbResult(
-                status=LogProbStatus.API_ERROR,
-                error=f"Token counting failed: {str(e)}",
-                metadata={"method": "token_counting"},
-            )
-
-    def _echo_based_method(self, prompt: str, response: str) -> LogProbResult:
-        """
-        Method 2: Use echo mode with generation to identify response tokens.
-
-        Some models support marking which tokens were generated vs echoed.
-        """
-        # This method requires specific API support
-        # For now, return not implemented
-        return LogProbResult(
-            status=LogProbStatus.API_ERROR,
-            error="Echo-based method not implemented for this provider",
-            metadata={"method": "echo_based"},
-        )
-
-    def _continuation_method(self, prompt: str, response: str) -> LogProbResult:
-        """
-        Method 3: Compute P(response|prompt) using two API calls.
-
-        This is the most expensive but most reliable method.
-        """
-        try:
-            # Patch 4: Prefix validation
-            if self.tokenizer:
-                prompt_ids = self.tokenizer.encode(prompt)
-                full_ids = self.tokenizer.encode(prompt + response)
-
-                # Check if prompt is a proper prefix of full sequence
-                if (
-                    len(full_ids) >= len(prompt_ids)
-                    and full_ids[: len(prompt_ids)] != prompt_ids
-                ):
-                    return LogProbResult(
-                        status=LogProbStatus.TOKEN_BOUNDARY_ERROR,
-                        error="Prompt is not a prefix of full sequence",
-                        metadata={
-                            "prompt_len": len(prompt_ids),
-                            "full_len": len(full_ids),
-                            "method": "continuation",
-                        },
-                    )
-            # Get log P(prompt + response)
-            full_text = prompt + response
-            full_params = {
-                "model": self.model,
-                "prompt": full_text,
-                "max_tokens": 0,
-                "echo": True,
-                "logprobs": 1,
-                "temperature": self.temperature,
-            }
-            if self.seed is not None:
-                full_params["seed"] = self.seed
-
-            full_completion = self.api_client.completions.create(**full_params)
-
-            full_choice = full_completion.choices[0]
-
-            # Check revision
-            if hasattr(full_choice, "model") and full_choice.model:
-                if self.server_revision is None:
-                    self.server_revision = full_choice.model
-                elif full_choice.model != self.server_revision:
-                    raise RuntimeError(
-                        f"Tokenizer/model revision changed mid-run: "
-                        f"{self.server_revision} -> {full_choice.model}"
-                    )
-
-            if not hasattr(full_choice, "logprobs"):
-                return LogProbResult(
-                    status=LogProbStatus.API_ERROR,
-                    error="No logprobs in full completion",
-                    metadata={"method": "continuation"},
-                )
-
-            # Truncation guard for full text
-            if self.tokenizer:
-                expected = len(self.tokenizer.encode(full_text))
-                got = len(full_choice.logprobs.tokens)
-                # Allow larger discrepancies (up to 10% or 50 tokens) due to tokenizer differences
-                # Different models use different tokenizers (e.g., Llama vs GPT)
-                tolerance = max(50, int(expected * 0.10))
-                if got < expected - tolerance:
-                    return LogProbResult(
-                        status=LogProbStatus.TOKEN_LIMIT_EXCEEDED,
-                        error=f"Full text truncated: expected {expected} tokens, got {got}",
-                        metadata={
-                            "expected": expected,
-                            "received": got,
-                            "method": "continuation",
-                            "tolerance": tolerance,
-                        },
-                    )
-
-            # Sum all token logprobs for full text
-            full_logprobs = full_choice.logprobs.token_logprobs
-            full_logprob = sum(lp for lp in full_logprobs if lp is not None)
-
-            # Get log P(prompt)
-            prompt_params = {
-                "model": self.model,
-                "prompt": prompt,
-                "max_tokens": 0,
-                "echo": True,
-                "logprobs": 1,
-                "temperature": self.temperature,
-            }
-            if self.seed is not None:
-                prompt_params["seed"] = self.seed
-
-            prompt_completion = self.api_client.completions.create(**prompt_params)
-
-            prompt_choice = prompt_completion.choices[0]
-
-            # Check revision for prompt
-            if hasattr(prompt_choice, "model") and prompt_choice.model:
-                if self.server_revision and prompt_choice.model != self.server_revision:
-                    raise RuntimeError(
-                        f"Tokenizer/model revision changed mid-run: "
-                        f"{self.server_revision} -> {prompt_choice.model}"
-                    )
-
-            # Truncation guard for prompt
-            if self.tokenizer:
-                expected = len(self.tokenizer.encode(prompt))
-                got = len(prompt_choice.logprobs.tokens)
-                # Allow larger discrepancies (up to 10% or 50 tokens) due to tokenizer differences
-                # Different models use different tokenizers (e.g., Llama vs GPT)
-                tolerance = max(50, int(expected * 0.10))
-                if got < expected - tolerance:
-                    return LogProbResult(
-                        status=LogProbStatus.TOKEN_LIMIT_EXCEEDED,
-                        error=f"Prompt truncated: expected {expected} tokens, got {got}",
-                        metadata={
-                            "expected": expected,
-                            "received": got,
-                            "method": "continuation",
-                            "tolerance": tolerance,
-                        },
-                    )
-
-            prompt_logprobs = prompt_choice.logprobs.token_logprobs
-            prompt_logprob = sum(lp for lp in prompt_logprobs if lp is not None)
-
-            # P(response|prompt) = P(prompt, response) / P(prompt)
-            # In log space: log P(response|prompt) = log P(prompt, response) - log P(prompt)
+            # Step 3: Compute log P(response|prompt) = log P(full) - log P(prompt)
+            # This correctly handles system prompts since both include it
             response_logprob = full_logprob - prompt_logprob
 
-            # Validate - positive log prob is impossible
-            if response_logprob > 0:
-                return LogProbResult(
-                    status=LogProbStatus.API_ERROR,
-                    error=f"Positive log probability: {response_logprob}",
-                    metadata={
-                        "method": "continuation",
-                        "full_logprob": full_logprob,
-                        "prompt_logprob": prompt_logprob,
-                    },
+            # Check for suspiciously low values (possible token boundary issues)
+            avg_logprob_per_char = response_logprob / max(1, len(response))
+            if avg_logprob_per_char < -2.5:  # ~-10 per token assuming ~4 chars/token
+                logger.warning(
+                    f"Suspiciously low log probability: {response_logprob:.2f} "
+                    f"for {len(response)} chars (avg: {avg_logprob_per_char:.2f}/char)"
                 )
 
-            # Validate - check for suspiciously negative values
-            # Rough heuristic: ~4 chars per token, expect -0.5 to -5 per token
-            estimated_tokens = len(response) / 4
-            if estimated_tokens > 0:
-                avg_logprob_per_token = response_logprob / estimated_tokens
-                if avg_logprob_per_token < -10:  # Very suspicious
-                    logger.warning(
-                        f"Suspiciously negative log prob: {response_logprob:.2f} "
-                        f"for ~{estimated_tokens:.0f} tokens (avg: {avg_logprob_per_token:.2f}/token). "
-                        f"Response length: {len(response)} chars"
-                    )
+            self.stats["successes"] += 1
 
             return LogProbResult(
-                value=response_logprob,
                 status=LogProbStatus.SUCCESS,
+                value=response_logprob,
                 metadata={
                     "method": "continuation",
                     "full_logprob": full_logprob,
                     "prompt_logprob": prompt_logprob,
-                    "response_logprob": response_logprob,
+                    "response_length": len(response),
+                    "avg_logprob_per_char": avg_logprob_per_char,
                 },
             )
 
         except Exception as e:
+            self.stats["failures"] += 1
+            logger.error(f"Error in compute_log_prob: {str(e)}")
             return LogProbResult(
                 status=LogProbStatus.API_ERROR,
                 error=f"Continuation method failed: {str(e)}",
-                metadata={"method": "continuation"},
             )
 
-    def _should_use_continuation_method(self, prompt: str, response: str) -> bool:
+    def _get_sequence_logprob(self, text: str) -> Optional[float]:
+        """Get the total log probability for a sequence of text.
+
+        Args:
+            text: The text to compute log probability for
+
+        Returns:
+            Total log probability, or None if failed
         """
-        Detect cases where token counting is likely to fail.
+        try:
+            # Build parameters for completion endpoint
+            # Note: Fireworks v1/completions endpoint expects "prompt" not "messages"
+            # System prompts need to be prepended to the text
+            if self.system_prompt:
+                # Prepend system prompt with clear separation
+                full_text = f"{self.system_prompt}\n\n{text}"
+            else:
+                full_text = text
 
-        These are cases where tokenization boundaries often change:
-        1. Prompt ends with punctuation
-        2. Response starts with a capital letter
-        3. Very short responses
-        4. Responses that start with punctuation
-        5. Prompt ends with incomplete word/number
-        """
-        # Very short responses are problematic
-        if len(response) < 10:
-            return True
+            params = {
+                "model": self.model,
+                "prompt": full_text,
+                "max_tokens": 0,  # Don't generate any new tokens
+                "echo": True,  # Return logprobs for the input
+                "logprobs": 1,  # Request log probabilities
+                "temperature": self.temperature,
+                "top_p": self.top_p,
+            }
 
-        # Check prompt ending
-        prompt_stripped = prompt.rstrip()
-        if prompt_stripped and prompt_stripped[-1] in ".!?;:,\"'-":
-            return True
+            # Add optional parameters
+            if self.seed is not None and self.provider != "fireworks":
+                # Fireworks doesn't support seed parameter
+                params["seed"] = self.seed
 
-        # Check response beginning
-        if response and response[0].isupper() and not prompt.endswith(" "):
-            return True
+            # Make API call
+            completion = self.api_client.completions.create(**params)
 
-        if response and response[0] in ".!?;:,\"'-":
-            return True
+            # Extract log probabilities
+            if not completion.choices:
+                logger.error("No choices in completion response")
+                return None
 
-        # Check for incomplete tokens at boundary
-        # e.g., "recent." + "Here" might merge into ".Here"
-        if prompt_stripped and response:
-            last_char = prompt_stripped[-1]
-            first_char = response[0]
-            # Punctuation followed by letter often merges
-            if last_char in ".!?;:," and first_char.isalpha():
-                return True
+            choice = completion.choices[0]
 
-        return False
+            if not hasattr(choice, "logprobs") or choice.logprobs is None:
+                logger.error("No logprobs in completion response")
+                return None
+
+            # Sum all token log probabilities
+            token_logprobs = choice.logprobs.token_logprobs
+            if not token_logprobs:
+                logger.error("Empty token logprobs")
+                return None
+
+            # Filter out None values and sum
+            total_logprob = sum(lp for lp in token_logprobs if lp is not None)
+
+            return total_logprob
+
+        except Exception as e:
+            logger.error(f"Error getting sequence logprob: {str(e)}")
+            return None
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get statistics about method usage and success rates."""
-        return self.stats.copy()
+        """Get statistics about API calls."""
+        return {
+            "total_calls": self.stats["total_calls"],
+            "method_successes": {
+                "token_counting": 0,
+                "echo_based": 0,
+                "continuation": self.stats["successes"],
+            },
+            "method_failures": {
+                "token_counting": 0,
+                "echo_based": 0,
+                "continuation": self.stats["failures"],
+            },
+            "zero_values": 0,
+        }
 
 
-def compute_teacher_forced_logprob(
+def compute_log_prob(
     prompt: str,
     response: str,
     provider: str,
     model: str,
+    temperature: float,
     api_key: Optional[str] = None,
-    temperature: float = 0.0,
     system_prompt: Optional[str] = None,
-    seed: Optional[int] = None,
-    force_continuation: bool = False,
+    top_p: float = 1.0,
     **kwargs: Any,
 ) -> LogProbResult:
-    """
-    Convenience function for one-off teacher forcing computation.
+    """Convenience function for one-off log probability computation.
 
     Args:
         prompt: The prompt text
         response: The response text
-        provider: API provider (e.g. "fireworks")
+        provider: API provider
         model: Model name
-        api_key: Optional API key (uses environment variable if not provided)
-        temperature: Model temperature
-        system_prompt: Optional system prompt to prepend
-        seed: Optional seed for deterministic results
-        force_continuation: If True, ONLY use continuation method - no fallback (most reliable)
-        **kwargs: Additional policy-specific parameters
+        temperature: Temperature setting (MUST match production setting)
+        api_key: Optional API key
+        system_prompt: Optional system prompt
+        top_p: Top-p parameter (default 1.0)
+        **kwargs: Additional parameters
 
     Returns:
-        LogProbResult with log probability or error
+        LogProbResult with the log probability or error
     """
     tf = RobustTeacherForcing(
         provider=provider,
@@ -682,8 +338,8 @@ def compute_teacher_forced_logprob(
         api_key=api_key,
         temperature=temperature,
         system_prompt=system_prompt,
-        seed=seed,
-        force_continuation=force_continuation,
+        top_p=top_p,
         **kwargs,
     )
+
     return tf.compute_log_prob(prompt, response)

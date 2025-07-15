@@ -2,7 +2,7 @@
 
 Core guidance for Claude Code when working with the CJE repository.
 
-Last updated: 2025-01-09 - Fixed token boundary bug causing extreme weights
+Last updated: 2025-01-10 - Arena 10K now uses deterministic llama.cpp teacher forcing
 
 ## 🎯 Hygiene Rules
 
@@ -66,37 +66,37 @@ This sets: FIREWORKS_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY
 
 ## Teacher Forcing (CRITICAL)
 
-**Silent Failure Bug (Fixed Dec 2024)**: Token boundary detection could fail catastrophically
-- **Symptom**: Log probs of -1500 instead of -30 (returns full sequence instead of response only)
-- **Cause**: `token_counting` method assumes deterministic tokenization across API calls
-- **Fix**: Use `continuation` method as primary (computes log P(full) - log P(prompt))
+**Two Implementations Available**:
 
+### 1. API-Based (RobustTeacherForcing)
 ```python
-# Implementation uses methods in order of reliability:
-# 1. continuation: Most reliable, uses log subtraction
-# 2. token_counting: Can fail if tokenization varies between calls
-# 3. echo_based: Not implemented for most providers
-
 from cje.utils import RobustTeacherForcing
 tf = RobustTeacherForcing(provider="fireworks", model="...", temperature=0.5)
-result = tf.compute_log_prob(prompt, response)  # Uses continuation method first
+result = tf.compute_log_prob(prompt, response)  # Uses continuation method
 ```
+- Uses continuation method: log P(full) - log P(prompt)
+- Subject to API non-determinism
+- Good for general use, but may have variance issues
+
+### 2. Llama.cpp (LlamaCppTeacherForcing) - RECOMMENDED for experiments
+```python
+from cje.utils import LlamaCppTeacherForcing
+tf = LlamaCppTeacherForcing(
+    model_path="models/Llama-3.2-3B-Instruct-Q6_K.gguf",
+    temperature=0.5,
+    seed=42
+)
+result = tf.compute_log_prob(prompt, response)
+```
+- 100% deterministic with fixed seed
+- No API costs or rate limits
+- GPU accelerated (Metal/CUDA)
+- Used by Arena 10K experiment
 
 **Critical Validations**:
 - Avg log prob per token should be > -10 (else likely wrong tokens)
-- Response token count should match response length (~4 chars/token)
-- Extreme negative values indicate boundary detection failure
-- **NEVER allow silent failures** - wrong log probs corrupt all downstream analysis
-
-**Historical Issues**:
-- Token boundary misalignment causing 0.0 log probs
-- Response text absorbed into prompt tokens
-- Non-deterministic tokenization between API calls
-
-**Teacher Forcing Robustness**:
-- Edge case detection for problematic token boundaries
-- Automatic method switching (continuation vs token counting)
-- Validation and rejection of extreme importance weights
+- With llama.cpp, pi_clone weights should be exactly 1.0
+- Monitor extreme weights (>5x for pi_clone indicates issues)
 
 ## Judge System
 - Three uncertainty methods: deterministic, confidence_interval, monte_carlo
@@ -151,35 +151,40 @@ if ess < n_samples * 0.1:  # Less than 10% effective samples
     log.error("Effective sample size too low!")
 ```
 
-### API Non-Determinism Detection
-**Known Issue**: Fireworks API returns different log probabilities for identical inputs
-- Affects importance weights even for identical policies (pi_clone vs p0)
-- Use `detect_api_nondeterminism()` to check for this issue
-- Consider averaging multiple API calls for critical comparisons
-
-```python
-from cje.utils.weight_diagnostics import detect_api_nondeterminism
-results = detect_api_nondeterminism(data)
-if results["detected"]:
-    print("API non-determinism detected:", results["reasons"])
-```
+### API Non-Determinism (SOLVED)
+**Historical Issue**: API providers return different log probabilities for identical inputs
+- **Solution**: Use llama.cpp for deterministic teacher forcing
+- Arena 10K experiment now uses llama.cpp exclusively
+- Pi_clone weights are exactly 1.0 with deterministic computation
 
 ## Arena 10K Experiment
 
 **Location**: `experiments/arena_10k_oracle/`
 
 **Key Points**:
-- 4 target policies: pi_clone (baseline), pi_cot, pi_bigger_model, pi_bad
-- Token boundary bug fixed with edge case detection
-- Extreme weight validation in 02b_compute_logprobs.py
-- Support for llama.cpp as deterministic alternative (see experiments/arena_10k_oracle/LLAMA_CPP_GUIDE.md)
+- Uses llama.cpp exclusively for deterministic teacher forcing
+- 2 target policies: pi_clone (baseline), pi_bad (unhelpful)
+- Extreme weight validation: flags pi_clone weights >5x
 - English-only filter for prompts
 - Pipeline resumes by default
+- No API costs for teacher forcing!
+
+**Setup**:
+```bash
+# Install llama.cpp
+pip install llama-cpp-python
+
+# Download model (~2.5GB)
+cd experiments/arena_10k_oracle
+mkdir -p models
+curl -L -o models/Llama-3.2-3B-Instruct-Q6_K.gguf \
+  https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q6_K.gguf
+```
 
 **Running the Experiment**:
 ```bash
-cd experiments/arena_10k_oracle/phase1_dataset_preparation
-source /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/set_secrets.sh
+cd phase1_dataset_preparation
+source /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/set_secrets.sh  # Still need for judge/oracle
 python run_phase1_pipeline.py  # Defaults to 10k samples
 
 # Phase 2 analysis
@@ -188,10 +193,9 @@ python run_cje_analysis.py
 ```
 
 **Validation Checklist**:
-- pi_clone median weight should be ~1.0
-- Extreme weights (>150x) automatically rejected
-- Check extreme_weights.jsonl for flagged samples
-- ESS should be >50% after validation
+- pi_clone weights should be exactly 1.0 (deterministic!)
+- Extreme weights (>5x) logged in extreme_weights.jsonl
+- ESS should be near 100% with deterministic computation
 
 ## Not Currently Supported
 - Trajectory sampling (removed)

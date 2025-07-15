@@ -2,6 +2,7 @@
 """
 Phase 1 Pipeline for Arena 10K Oracle Dataset
 
+Uses llama.cpp for deterministic teacher forcing.
 Automatically resumes from checkpoint if interrupted.
 Defaults to 10,000 samples.
 Always generates oracle labels for calibration.
@@ -9,6 +10,10 @@ Always generates oracle labels for calibration.
 Usage:
     python run_phase1_pipeline.py         # Run with 10,000 samples (default)
     python run_phase1_pipeline.py 5       # Run with 5 samples for testing
+
+Requirements:
+    - llama-cpp-python installed: pip install llama-cpp-python
+    - Model downloaded: See LLAMA_CPP_GUIDE.md
 
 To start fresh:
     rm -rf data/ .pipeline_checkpoint.pkl
@@ -285,14 +290,11 @@ To start fresh, manually delete: rm -rf data/ .pipeline_checkpoint.pkl
     console.print(f"Seed: {SEED}")
     console.print(f"Config: {config.experiment_name}")
     console.print(f"Mode: {'Resuming' if has_existing_checkpoint else 'Fresh start'}")
+    console.print(
+        f"[bold yellow]🦙 Using llama.cpp for deterministic teacher forcing[/bold yellow]"
+    )
 
-    # Check API keys
-    if not os.environ.get("FIREWORKS_API_KEY"):
-        console.print("[red]❌ Error: FIREWORKS_API_KEY not set[/red]")
-        console.print(
-            "Please run: source /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/set_secrets.sh"
-        )
-        sys.exit(1)
+    # Check API keys (still needed for judge and oracle)
 
     if not os.environ.get("OPENAI_API_KEY"):
         console.print("[red]❌ Error: OPENAI_API_KEY not set for oracle labels[/red]")

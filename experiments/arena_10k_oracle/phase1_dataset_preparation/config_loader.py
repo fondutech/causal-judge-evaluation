@@ -147,6 +147,22 @@ class ArenaConfig:
         # Default template
         return "{context}"
 
+    @property
+    def uses_llama_cpp(self) -> bool:
+        """Check if configuration uses llama.cpp instead of API providers."""
+        # Check if any policy has type "llama_cpp"
+        if self.logging_policy.get("type") == "llama_cpp":
+            return True
+        for policy in self.target_policies:
+            if policy.get("type") == "llama_cpp":
+                return True
+        return False
+
+    @property
+    def llama_model_config(self) -> Optional[Dict[str, Any]]:
+        """Get llama.cpp model configuration if present."""
+        return self.config.get("model")
+
 
 # Convenience function for scripts
 def load_arena_config(config_path: Optional[str] = None) -> ArenaConfig:

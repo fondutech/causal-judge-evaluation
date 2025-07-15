@@ -1,10 +1,10 @@
 # Arena 10K Oracle Experiment
 
-This experiment evaluates causal judge estimation methods using 10,000 prompts from ChatBot Arena.
+This experiment evaluates causal judge estimation methods using 10,000 prompts from ChatBot Arena with deterministic llama.cpp teacher forcing.
 
 **Important**: We filter for English-only prompts to avoid teacher forcing failures with non-English text.
 
-**Update (2025-01-09)**: Fixed critical token boundary bug that caused extreme importance weights. Phase 1 now uses `force_continuation=True` - ONLY continuation method with no fallback to ensure data integrity.
+**Update (2025-01-10)**: Now uses llama.cpp exclusively for deterministic, reproducible teacher forcing. No more API non-determinism issues!
 
 ## Overview
 
@@ -25,19 +25,25 @@ Evaluates different estimation methods:
 
 ## Target Policies
 
+With llama.cpp, we simulate different policies using the same model:
+
 1. **pi_clone**: Identical to P0 (baseline, expects importance weights ≈ 1.0)
-2. **pi_cot**: Chain-of-thought prompting
-3. **pi_bigger_model**: Larger model (llama4-maverick vs llama4-scout)
-4. **pi_bad**: Deliberately poor policy (high temperature, brief responses)
+2. **pi_bad**: Deliberately unhelpful policy (via system prompt)
 
 ## Quick Start
 
 ### Prerequisites
 ```bash
-# Set API keys (required for Fireworks API)
-source /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/set_secrets.sh
+# 1. Install llama-cpp-python
+pip install llama-cpp-python
 
-# Or use llama.cpp for local, deterministic computation (see LLAMA_CPP_GUIDE.md)
+# 2. Download the model
+mkdir -p models
+curl -L -o models/Llama-3.2-3B-Instruct-Q6_K.gguf \
+  https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q6_K.gguf
+
+# 3. Set API keys (still needed for judge/oracle)
+source /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/set_secrets.sh
 
 # Check status
 python check_status.py
@@ -127,27 +133,28 @@ python run_phase1_pipeline.py
 
 ## Critical Notes
 
-⚠️ **Teacher Forcing Bug Fixed**: The robust teacher forcing implementation handles tokenization boundaries correctly, reducing zero log probabilities from 17.7% to <4%.
+✅ **Deterministic Teacher Forcing**: Now uses llama.cpp exclusively for 100% reproducible log probabilities. No more API non-determinism!
 
-⚠️ **P0 Log Probabilities**: Script 02b now computes P0 log probs under P0 policy, which is essential for proper importance weighting.
+✅ **Pi_clone Validation**: With deterministic computation, pi_clone weights should be exactly 1.0 (modulo floating point precision).
 
-⚠️ **Data Format Critical (Fixed 2025-07-08)**: Phase 1 must produce data in PrecomputedSampler format with `total_logprob` and `target_logps` fields. Previous versions used wrong field names.
+⚠️ **Data Format**: Phase 1 produces data in PrecomputedSampler format with `total_logprob` and `target_logps` fields.
 
-⚠️ **Judge Scoring Bug Fixed**: Phase 1 judge scoring scripts were using 0.0 as default for missing log probs (now correctly uses None).
+⚠️ **Model Required**: You must download the Llama 3.2 3B model (~2.5GB) before running. See prerequisites above.
 
-⚠️ **Local Alternative Available**: Use llama.cpp for fully deterministic, offline teacher forcing. See [LLAMA_CPP_GUIDE.md](LLAMA_CPP_GUIDE.md) for setup instructions.
-
-## Cost Estimates
+## Performance & Cost
 
 ### Test Run (100 prompts)
-- API calls: ~1,400
-- Cost: ~$1
-- Time: ~30 minutes
+- Time: ~1-2 hours (depends on GPU)
+- Cost: $0 (local computation) + minimal judge/oracle API costs
 
 ### Full Run (10,000 prompts)
-- API calls: ~140,000
-- Cost: ~$60
-- Time: 50-75 hours
+- Time: ~100-200 hours (depends on GPU)
+- Cost: $0 (local computation) + judge/oracle API costs (~$10-20)
+
+### Performance Tips
+- Use GPU acceleration (Metal on Mac, CUDA on Linux)
+- Ensure `n_gpu_layers: -1` in config for full GPU usage
+- ~120 tokens/sec on M2 Max, ~200+ on RTX 4090
 
 ## Data Flow
 

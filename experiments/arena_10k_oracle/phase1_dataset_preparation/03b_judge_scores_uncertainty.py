@@ -154,7 +154,7 @@ def main():
                         "prompt": prompt,
                         "response": resp_data["response"],
                         "policy": policy_name,
-                        "model": resp_data.get("model", "unknown"),
+                        "model": resp_data.get("model", "llama-3.2-3b"),
                         "temperature": resp_data.get("temperature", 0.5),
                     }
                 )
@@ -180,7 +180,7 @@ def main():
 
     console.print(f"\n⚖️  Initializing judge with uncertainty:")
     console.print(f"   Provider: {config.judge_config['provider']}")
-    console.print(f"   Model: {config.judge_config['model_name']}")
+    console.print(f"   Model: {config.judge_config['model']}")
     console.print(f"   Method: {uncertainty_method}")
     console.print(f"   Temperature: {temperature}")
 
@@ -191,7 +191,7 @@ def main():
 
     judge = JudgeFactory.create(
         provider=config.judge_config["provider"],
-        model=config.judge_config["model_name"],
+        model=config.judge_config["model"],
         template="deterministic",
         uncertainty_method=uncertainty_method,
     )

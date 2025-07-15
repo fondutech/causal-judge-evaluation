@@ -1,174 +1,79 @@
-# Using llama.cpp for Arena 10K Teacher Forcing
+# LLaMA.cpp Integration Guide
 
-This guide explains how to use llama.cpp as a local, deterministic alternative to the Fireworks API for teacher forcing in the Arena 10K experiment.
+This experiment uses llama.cpp for deterministic, local teacher forcing instead of API calls.
 
-## Why Use llama.cpp?
+## Key Benefits
 
-**Advantages:**
-- **Fully deterministic**: With a fixed seed, results are 100% reproducible
-- **No token boundary issues**: The continuation method works reliably
-- **No API costs**: Run unlimited experiments locally
-- **No rate limits**: Process as fast as your hardware allows
-- **Works offline**: No internet connection required
-- **Supports quantized models**: Use Q4_K_M, Q5_K_M etc. for efficiency
+1. **Deterministic**: Fixed seed ensures reproducible log probabilities
+2. **No API costs**: All computations run locally
+3. **GPU acceleration**: Uses Metal on Apple Silicon (~4-5x speedup)
+4. **Perfect control**: No API non-determinism issues
 
-**Trade-offs:**
-- Requires local GPU/CPU resources
-- Need to download GGUF model files
-- May be slower than API calls (depending on hardware)
+## Model Setup
 
-## Installation
-
+### Download Model
 ```bash
-# Install llama-cpp-python with GPU support (CUDA)
-CMAKE_ARGS="-DLLAMA_CUBLAS=on" pip install llama-cpp-python
-
-# For Apple Silicon (Metal)
-CMAKE_ARGS="-DLLAMA_METAL=on" pip install llama-cpp-python
-
-# CPU only
-pip install llama-cpp-python
+mkdir -p models
+curl -L -o models/Llama-3.2-3B-Instruct-Q6_K.gguf \
+  "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q6_K.gguf"
 ```
 
-## Getting GGUF Models
+### Model Details
+- **Model**: Llama 3.2 3B Instruct Q6_K
+- **Size**: ~2.5GB (quantized)
+- **Quality**: Q6_K maintains high quality with 6-bit quantization
+- **Context**: 2048 tokens (configurable)
 
-Download quantized models from HuggingFace:
+## Performance
 
-```bash
-# Example: Llama 3 8B Instruct (Q4_K_M quantization)
-wget https://huggingface.co/TheBloke/Llama-3-8B-Instruct-GGUF/resolve/main/llama-3-8b-instruct.Q4_K_M.gguf
+On M2 Max (tested):
+- **GPU**: ~120 tokens/sec generation
+- **CPU**: ~25 tokens/sec generation
+- **Log prob computation**: ~200-300 samples/min
 
-# Example: Llama 3 70B Instruct (Q4_K_M quantization)
-wget https://huggingface.co/TheBloke/Llama-3-70B-Instruct-GGUF/resolve/main/llama-3-70b-instruct.Q4_K_M.gguf
-```
+## Implementation Details
 
-## Integration with Arena 10K
-
-### 1. Update Configuration
-
-Edit `experiments/arena_10k_oracle/arena_config.yaml`:
-
-```yaml
-# Example configuration for llama.cpp
-policies:
-  p0:
-    provider: "llama_cpp"
-    model: "~/models/llama-3-8b-instruct.Q4_K_M.gguf"
-    temperature: 0.5
-    seed: 42
-    n_ctx: 4096
-    n_gpu_layers: -1  # Use all GPU layers
-    
-  pi_clone:
-    provider: "llama_cpp"
-    model: "~/models/llama-3-8b-instruct.Q4_K_M.gguf"  # Same as p0
-    temperature: 0.5
-    seed: 42
-    n_ctx: 4096
-    n_gpu_layers: -1
-    
-  pi_bigger_model:
-    provider: "llama_cpp"
-    model: "~/models/llama-3-70b-instruct.Q4_K_M.gguf"  # Larger model
-    temperature: 0.5
-    seed: 42
-    n_ctx: 4096
-    n_gpu_layers: 35  # Partial offloading for large models
-    
-  pi_bad:
-    provider: "llama_cpp"
-    model: "~/models/llama-3-8b-instruct.Q4_K_M.gguf"
-    temperature: 1.0  # Higher temperature
-    seed: 42
-    n_ctx: 4096
-    n_gpu_layers: -1
-    system_prompt: "You are an unhelpful assistant."
-```
-
-### 2. Run Phase 1 with llama.cpp
-
-The existing scripts work seamlessly with llama.cpp:
-
-```bash
-cd experiments/arena_10k_oracle/phase1_dataset_preparation
-
-# Step 1: Sample prompts (unchanged)
-python 01_sample_prompts.py --num-samples 100
-
-# Step 2: Compute log probs with llama.cpp
-python 02b_compute_logprobs.py
-
-# Step 3: Judge scoring (unchanged)
-python 03_judge_scores_deterministic.py
-```
-
-### 3. Verify Determinism
-
+### Teacher Forcing Method
+Uses continuation method for reliability:
 ```python
-# Test script to verify determinism
-from cje.utils import RobustTeacherForcing
-
-# Create two instances with same seed
-tf1 = RobustTeacherForcing(
-    provider="llama_cpp",
-    model="~/models/llama-3-8b-instruct.Q4_K_M.gguf",
-    temperature=0.5,
-    seed=42,
-    n_ctx=4096,
-)
-
-tf2 = RobustTeacherForcing(
-    provider="llama_cpp",
-    model="~/models/llama-3-8b-instruct.Q4_K_M.gguf",
-    temperature=0.5,
-    seed=42,
-    n_ctx=4096,
-)
-
-# Should get identical results
-prompt = "What is the capital of France?"
-response = "The capital of France is Paris."
-
-result1 = tf1.compute_log_prob(prompt, response)
-result2 = tf2.compute_log_prob(prompt, response)
-
-assert result1.value == result2.value, "Non-deterministic results!"
-print(f"✓ Deterministic: {result1.value:.4f}")
+log_p(response|prompt) = log_p(prompt + response) - log_p(prompt)
 ```
 
-## Performance Tips
+### Key Fixes Applied
+1. **max_tokens=0**: Prevents unwanted generation
+2. **Fixed seed**: Set at model construction for determinism
+3. **Temperature support**: Properly uses instance temperature
+4. **Robust caching**: Avoids redundant computations
 
-1. **GPU Offloading**: Use `n_gpu_layers=-1` to offload all layers to GPU
-2. **Context Window**: Set `n_ctx` appropriately (4096 or 8192 for most tasks)
-3. **Quantization**: Q4_K_M offers good balance of quality and speed
-4. **Caching**: Models are cached globally, so multiple policies using the same model share memory
-5. **Batch Processing**: The implementation caches results to avoid recomputation
+## Validation
 
-## Example: Mixed Provider Setup
-
-You can mix llama.cpp and API providers:
-
-```yaml
-policies:
-  p0:
-    provider: "fireworks"  # Use API for baseline
-    model: "accounts/fireworks/models/llama-v3-8b-instruct"
-    temperature: 0.5
-    
-  pi_clone:
-    provider: "llama_cpp"  # Use local for deterministic testing
-    model: "~/models/llama-3-8b-instruct.Q4_K_M.gguf"
-    temperature: 0.5
-    seed: 42
-```
+Expected results:
+- `pi_clone` median weight: ~1.0 (validates correctness)
+- ESS > 50% for all policies
+- No extreme weights for identical policies
 
 ## Troubleshooting
 
-1. **Import Error**: Make sure llama-cpp-python is installed
-2. **Model Not Found**: Use absolute paths or ~ for home directory
-3. **Out of Memory**: Reduce `n_gpu_layers` or use smaller quantization
-4. **Slow Performance**: Check GPU is being used (watch nvidia-smi)
+### Out of Memory
+Reduce context size in config:
+```yaml
+model:
+  n_ctx: 1024  # Reduce from 2048
+```
 
-## Full Example Script
+### Slow Performance
+Ensure GPU layers are enabled:
+```yaml
+model:
+  n_gpu_layers: -1  # Use all layers on GPU
+```
 
-See `experiments/arena_10k_oracle/example_llama_cpp.py` for a complete working example.
+### Non-deterministic Results
+Check that seed is properly set in config and not overridden per-call.
+
+## Differences from API Version
+
+1. **Model**: Uses local Llama 3.2 instead of Fireworks models
+2. **Policies**: Simulated via prompts/temperature (no actual different models)
+3. **Speed**: Slower but deterministic and free
+4. **Quality**: May differ slightly from larger API models

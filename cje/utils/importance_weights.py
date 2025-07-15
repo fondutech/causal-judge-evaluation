@@ -11,39 +11,40 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Constants
-DEFAULT_LOG_RATIO_CLIP = 20.0  # Clip log ratios to [-20, 20]
+# Default weight clipping value
+DEFAULT_MAX_WEIGHT = 50
 
 
 def compute_importance_weight(
     target_logp: float,
     base_logp: float,
-    clip_min: float = -DEFAULT_LOG_RATIO_CLIP,
-    clip_max: float = DEFAULT_LOG_RATIO_CLIP,
+    max_weight: int = DEFAULT_MAX_WEIGHT,
 ) -> float:
     """
-    Compute single importance weight with clipping.
+    Compute single importance weight with maximum clipping only.
 
     Args:
         target_logp: Log probability under target policy
         base_logp: Log probability under base policy
-        clip_min: Minimum log ratio (default: -20)
-        clip_max: Maximum log ratio (default: 20)
+        max_weight: Maximum weight value (default: 50). No minimum clipping.
 
     Returns:
-        Importance weight: exp(target_logp - base_logp)
+        Importance weight: clipped to [0, max_weight]
     """
     log_ratio = target_logp - base_logp
 
-    # Clip for numerical stability
-    if log_ratio > clip_max:
-        logger.warning(f"Large log ratio {log_ratio:.2f}, clipping to {clip_max}")
-        log_ratio = clip_max
-    elif log_ratio < clip_min:
-        logger.warning(f"Small log ratio {log_ratio:.2f}, clipping to {clip_min}")
-        log_ratio = clip_min
+    # Compute weight
+    weight = float(np.exp(log_ratio))
 
-    return float(np.exp(log_ratio))
+    # Only clip maximum values
+    if weight > max_weight:
+        logger.warning(
+            f"Large weight {weight:.2f} (log ratio: {log_ratio:.2f}), "
+            f"clipping to {max_weight}"
+        )
+        weight = float(max_weight)
+
+    return weight
 
 
 def compute_weight_statistics(

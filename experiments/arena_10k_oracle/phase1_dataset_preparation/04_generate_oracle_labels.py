@@ -46,7 +46,7 @@ def load_responses_for_oracle(
                             "response": resp_data["response"],
                             "prompt_id": prompt_id,
                             "policy": policy,
-                            "model": resp_data["model"],
+                            "model": resp_data.get("model", "llama-3.2-3b"),
                         }
                     )
 

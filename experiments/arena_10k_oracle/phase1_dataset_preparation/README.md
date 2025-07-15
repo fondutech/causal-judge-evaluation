@@ -1,11 +1,19 @@
 # Phase 1: Dataset Preparation
 
-This phase prepares the Arena 10K dataset with responses from multiple policies and judge scores.
+This phase prepares the Arena 10K dataset with responses from multiple policies and judge scores using deterministic llama.cpp teacher forcing.
 
 ## 🚀 Quick Start
 
 ```bash
-# Source API keys (REQUIRED - both Fireworks and OpenAI!)
+# 1. Install llama-cpp-python
+pip install llama-cpp-python
+
+# 2. Download model (~2.5GB)
+mkdir -p ../models
+curl -L -o ../models/Llama-3.2-3B-Instruct-Q6_K.gguf \
+  https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q6_K.gguf
+
+# 3. Source API keys (still needed for judge/oracle)
 source /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/set_secrets.sh
 
 # Full run with 10,000 samples (default)
@@ -24,10 +32,10 @@ rm .pipeline_checkpoint.pkl
 The `run_phase1_pipeline.py` script runs all steps automatically:
 
 1. **Download prompts** - Sample English prompts from ChatBot Arena conversations
-2. **Generate responses** - From P0 (baseline) and 4 target policies  
-3. **Compute log probabilities** - P0 responses under all policies (teacher forcing)
+2. **Generate responses** - From P0 (baseline) and 2 target policies  
+3. **Compute log probabilities** - P0 responses under all policies using llama.cpp
 4. **Judge scoring** - Deterministic and uncertainty-based scores (writes Phase 2 format)
-5. **Oracle labels** - Ground truth from GPT-4 for calibration/validation (writes to Phase 2)
+5. **Oracle labels** - Ground truth from GPT-4o for calibration/validation (writes to Phase 2)
 6. **Validate and summarize** - Verify all files created and generate statistics
 
 ## 🎯 Output Files
@@ -58,11 +66,11 @@ Automatically created by pipeline scripts:
 
 ## 📊 Policies
 
-- **P0 (baseline)**: Simple Llama model, temperature 0.5
-- **pi_clone**: Same as P0 but with explicit prompt formatting
-- **pi_cot**: Chain-of-thought reasoning
-- **pi_bigger_model**: Larger Llama model
-- **pi_bad**: Intentionally unhelpful (for testing)
+Using llama.cpp with Llama 3.2 3B model:
+
+- **P0 (baseline)**: Temperature 0.5, standard helpful assistant
+- **pi_clone**: Identical to P0 (for validation - weights should be exactly 1.0)
+- **pi_bad**: Temperature 0.5 with unhelpful system prompt
 
 ## 🔧 Pipeline Features
 

@@ -2,12 +2,8 @@ from __future__ import annotations
 
 from typing import List, Optional, Union, Sequence
 
-from .teacher_forcing import compute_teacher_forced_logprob, RobustTeacherForcing
-
 __all__ = [
     "safe_sum",
-    "compute_teacher_forced_logprob",
-    "RobustTeacherForcing",
 ]
 
 

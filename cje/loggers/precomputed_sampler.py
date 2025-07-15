@@ -42,11 +42,13 @@ class PrecomputedSampler:
         target_logps_field: str = "target_logps",
         prompt_field: str = "prompt",
         response_field: str = "response",
+        max_importance_weight: int = 50,
     ):
         self.data = data
         self.target_policies = target_policies
         self.K = len(target_policies)
         self.policy_names = target_policies
+        self.max_importance_weight = max_importance_weight
 
         # Field names
         self.base_policy_field = base_policy_field
@@ -113,8 +115,7 @@ class PrecomputedSampler:
                             weights[i, j] = compute_importance_weight(
                                 target_logp=target_logp,
                                 base_logp=p0_logp,
-                                clip_min=-50,  # Use larger range for precomputed
-                                clip_max=50,
+                                max_weight=self.max_importance_weight,
                             )
                     else:
                         logger.warning(f"Policy {policy} not found in target_logps")

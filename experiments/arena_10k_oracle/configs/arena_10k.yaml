@@ -1,63 +1,65 @@
-# Arena 10K Human Label Experiment Configuration
+# Configuration for Arena 10K Oracle experiment with local llama.cpp
 
 experiment:
-  name: "arena_10k_human_labels"
-  description: "CJE evaluation on 10k ChatBot Arena prompts with crowdsourced human labels"
+  name: "arena_10k_oracle"
+  description: "Arena 10K with deterministic llama.cpp teacher forcing"
   seed: 42
-  
-paths:
-  work_dir: "experiments/arena_10k_oracle/outputs"
-  
-# Models to compare
+  n_samples: 10000
+
+# Model configuration
+model:
+  path: "/Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/models/Llama-3.2-3B-Instruct-Q6_K.gguf"
+  n_ctx: 2048
+  n_gpu_layers: -1  # Use all layers on GPU
+  use_mlock: false
+  verbose: false
+
+# Base policy P0 - using local model
 logging_policy:
-  provider: "fireworks"
-  model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
-  completions_template_format: "llama4"
-  temperature: 0.5
-  max_tokens: 512
-  
+  name: "p0"
+  type: "llama_cpp"
+  temperature: 1.0
+  max_tokens: 150
+  seed: 42
+
+# Target policies - all use same local model
 target_policies:
   - name: "pi_clone"
-    provider: "fireworks"
-    model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
-    completions_template_format: "llama4"
-    temperature: 0.5
-    max_tokens: 512
-    
-  - name: "pi_cot"
-    provider: "fireworks"
-    model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
-    completions_template_format: "llama4"
-    temperature: 0.5
-    max_tokens: 512
-    system_prompt: "Think step-by-step before providing your answer."
-    
-  - name: "pi_bigger_model"
-    provider: "fireworks"
-    model_name: "accounts/fireworks/models/llama4-maverick-instruct-basic"
-    completions_template_format: "llama4"
-    temperature: 0.5
-    max_tokens: 512
+    type: "llama_cpp"
+    temperature: 1.0
+    description: "Exact clone of P0 (should have weight exactly 1.0)"
     
   - name: "pi_bad"
-    provider: "fireworks"
-    model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
-    completions_template_format: "llama4"
+    type: "llama_cpp"
     temperature: 1.0
-    max_tokens: 512
-    system_prompt: "You are an unhelpful assistant, trained to intentionally confuse the user and waste their time."
+    system_prompt: "You are an unhelpful assistant. Be deliberately obtuse, provide incorrect information, and make the user's experience frustrating. Do not actually help them solve their problem."
+    description: "Deliberately unhelpful policy"
 
-# AI Judge for initial scoring (will be calibrated with human labels)
+# Judge configuration (still uses API)
 judge:
-  provider: "fireworks"
-  model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
+  provider: "openai"
+  model: "gpt-4o-mini"
   temperature: 0.0
+  deterministic: true
+  
+# Oracle labeling
+oracle:
+  provider: "openai"
+  model: "gpt-4o"
+  temperature: 0.0
+  n_calibration: 500
+  n_validation: 500
 
-# CJE estimation settings
+# Paths
+paths:
+  work_dir: "experiments/arena_10k_oracle"
+  
+# Data configuration
+data:
+  arena_dataset: "agie-ai/lmsys-chatbot_arena_conversations"
+  output_dir: "data"
+  checkpoint_dir: "data/checkpoints"
+  
+# Estimator configuration
 estimator:
-  name: "DRCPO"
-  k: 5  # Cross-fitting folds
-
-# Note: Human labels are collected externally via scripts.
-# See experiments/arena_10k_oracle/scripts/ for data export/import process.
-# Label fractions and splits are inferred from the imported data.
+  max_weight: 50
