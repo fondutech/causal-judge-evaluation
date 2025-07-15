@@ -76,7 +76,7 @@ class LlamaCppTeacherForcing:
         self._cache: Dict[Tuple[str, str, str], float] = {}
 
         # Lazy load model
-        self._model = None
+        self._model: Optional[Any] = None
 
         # Try use_mlock, fall back if fails on macOS
         self._use_mlock_fallback = False

@@ -64,8 +64,8 @@ class LlamaCppTeacherForcingFixed:
             raise FileNotFoundError(f"Model file not found: {self.model_path}")
 
         # Initialize model
-        self._model = None
-        self._cache = {}
+        self._model: Optional[Any] = None
+        self._cache: Dict[str, Any] = {}
 
         # Get or create lock for this model
         cache_key = str(self.model_path)
@@ -73,7 +73,7 @@ class LlamaCppTeacherForcingFixed:
             _MODEL_LOCKS[cache_key] = threading.Lock()
         self._lock = _MODEL_LOCKS[cache_key]
 
-    def _get_model(self):
+    def _get_model(self) -> Any:
         """Get or create model instance."""
         if self._model is not None:
             return self._model
