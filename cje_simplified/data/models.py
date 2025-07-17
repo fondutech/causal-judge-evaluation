@@ -4,10 +4,12 @@ from typing import Dict, List, Optional, Any, Tuple
 from enum import Enum
 from pydantic import BaseModel, Field, field_validator
 import numpy as np
+import json
 
 
 class LogProbStatus(Enum):
     """Status of log probability computation."""
+
     SUCCESS = "success"
     API_ERROR = "api_error"
     TOKEN_BOUNDARY_ERROR = "token_boundary_error"
@@ -17,10 +19,17 @@ class LogProbStatus(Enum):
 
 class LogProbResult(BaseModel):
     """Result of log probability computation with explicit error handling."""
-    value: Optional[float] = Field(None, description="Log probability value if successful")
-    status: LogProbStatus = Field(LogProbStatus.API_ERROR, description="Computation status")
+
+    value: Optional[float] = Field(
+        None, description="Log probability value if successful"
+    )
+    status: LogProbStatus = Field(
+        LogProbStatus.API_ERROR, description="Computation status"
+    )
     error: Optional[str] = Field(None, description="Error message if failed")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional metadata"
+    )
 
     @property
     def is_valid(self) -> bool:
@@ -34,7 +43,9 @@ class Sample(BaseModel):
     prompt: str = Field(..., description="Input prompt/context")
     response: str = Field(..., description="Generated response")
     reward: float = Field(..., ge=0, le=1, description="Calibrated reward [0,1]")
-    base_logprob: Optional[float] = Field(None, description="Log prob under base policy")
+    base_logprob: Optional[float] = Field(
+        None, description="Log prob under base policy"
+    )
     target_logprobs: Dict[str, Optional[float]] = Field(
         ..., description="Log probs under target policies (None for failures)"
     )
@@ -49,7 +60,9 @@ class Sample(BaseModel):
         return v
 
     @field_validator("target_logprobs")
-    def validate_target_logprobs(cls, v: Dict[str, Optional[float]]) -> Dict[str, Optional[float]]:
+    def validate_target_logprobs(
+        cls, v: Dict[str, Optional[float]]
+    ) -> Dict[str, Optional[float]]:
         for policy, logprob in v.items():
             if logprob is not None and logprob > 0:
                 raise ValueError(
@@ -119,6 +132,107 @@ class Dataset(BaseModel):
             "reward_std": np.std(rewards),
             "valid_samples_per_policy": valid_counts,
         }
+    
+    @classmethod
+    def from_raw_data(
+        cls,
+        data: List[Dict[str, Any]], 
+        target_policies: Optional[List[str]] = None,
+        base_policy_field: str = "p0_logprob",
+        target_logps_field: str = "target_logps",
+        prompt_field: str = "prompt",
+        response_field: str = "response",
+        reward_field: str = "reward",
+    ) -> "Dataset":
+        """Create Dataset from raw data dictionaries.
+        
+        Args:
+            data: List of dictionaries with precomputed data
+            target_policies: List of target policy names. If None, auto-detected.
+            base_policy_field: Field name for base policy log prob
+            target_logps_field: Field name for target policy log probs dict
+            prompt_field: Field name for prompt/context
+            response_field: Field name for response
+            reward_field: Field name for calibrated reward
+            
+        Returns:
+            Dataset instance
+        """
+        # Auto-detect target policies if needed
+        if target_policies is None:
+            policies = set()
+            for record in data:
+                if target_logps_field in record:
+                    policies.update(record[target_logps_field].keys())
+            target_policies = sorted(list(policies))
+        
+        # Convert raw data to samples
+        samples = []
+        for record in data:
+            try:
+                # Extract reward (handle nested format)
+                reward = record[reward_field]
+                if isinstance(reward, dict):
+                    reward = reward.get("mean", reward.get("value"))
+                
+                # Get base log prob
+                base_logprob = record.get(base_policy_field)
+                
+                # Get target log probs
+                target_logprobs = record.get(target_logps_field, {})
+                
+                # Create Sample object
+                sample = Sample(
+                    prompt=record[prompt_field],
+                    response=record[response_field],
+                    reward=float(reward),
+                    base_logprob=base_logprob,
+                    target_logprobs=target_logprobs,
+                    metadata=record.get("metadata", {}),
+                )
+                samples.append(sample)
+            except (KeyError, ValueError) as e:
+                # Skip invalid records
+                print(f"Skipping invalid record: {e}")
+                continue
+        
+        if not samples:
+            raise ValueError("No valid samples could be created from data")
+        
+        return cls(
+            samples=samples,
+            target_policies=target_policies,
+            metadata={
+                "source": "from_raw_data",
+                "base_policy_field": base_policy_field,
+                "target_logps_field": target_logps_field,
+            }
+        )
+    
+    @classmethod
+    def from_jsonl(
+        cls, 
+        file_path: str, 
+        target_policies: Optional[List[str]] = None, 
+        **kwargs
+    ) -> "Dataset":
+        """Load Dataset from JSONL file.
+        
+        Args:
+            file_path: Path to JSONL file
+            target_policies: Optional list of target policy names
+            **kwargs: Additional arguments for from_raw_data
+            
+        Returns:
+            Dataset instance
+        """
+        data = []
+        with open(file_path, "r") as f:
+            for line in f:
+                if line.strip():
+                    data.append(json.loads(line))
+        
+        return cls.from_raw_data(data, target_policies, **kwargs)
 
 
 class EstimationResult(BaseModel):

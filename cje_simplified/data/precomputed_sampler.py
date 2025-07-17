@@ -9,144 +9,70 @@ from .models import Sample, Dataset
 
 
 class PrecomputedSampler:
-    """Load and manage precomputed log probabilities and rewards.
-
-    Expected data format (JSONL):
-    {
-        "prompt": "Input text",
-        "response": "Generated response",
-        "reward": 0.85,  # Calibrated reward (not raw judge score!)
-        "total_logprob": -35.704,  # Base policy log P(response)
-        "target_logps": {
-            "pi_cot": -40.123,
-            "pi_bigger": -32.456
-        }
-    }
-
-    Failed log probs should be stored as null, not fallback values.
-
-    Note: The 'reward' field should contain calibrated rewards that align
-    with your business KPI. Use create_calibrated_rewards() to convert
-    raw judge scores to calibrated rewards before creating the sampler.
+    """Adapter that provides CJE-specific operations on a Dataset.
+    
+    This class wraps a Dataset to provide backward-compatible methods
+    and CJE-specific functionality like importance weight computation.
+    
+    For new code, prefer using Dataset directly and its class methods:
+    - Dataset.from_raw_data() 
+    - Dataset.from_jsonl()
     """
 
-    def __init__(
-        self,
-        data: List[Dict[str, Any]],
-        target_policies: Optional[List[str]] = None,
-        base_policy_field: str = "p0_logprob",
-        target_logps_field: str = "target_logps",
-        prompt_field: str = "prompt",
-        response_field: str = "response",
-        reward_field: str = "reward",
-    ):
-        """Initialize sampler with precomputed data.
-
-        Args:
-            data: List of dictionaries with precomputed data
-            target_policies: List of target policy names. If None, auto-detected.
-            base_policy_field: Field name for base policy log prob
-            target_logps_field: Field name for target policy log probs dict
-            prompt_field: Field name for prompt/context
-            response_field: Field name for response
-            reward_field: Field name for calibrated reward
-        """
-        self.raw_data = data
-        self.base_policy_field = base_policy_field
-        self.target_logps_field = target_logps_field
-        self.prompt_field = prompt_field
-        self.response_field = response_field
-        self.reward_field = reward_field
-
-        # Auto-detect target policies if not provided
-        if target_policies is None:
-            self.target_policies = self._detect_target_policies()
-        else:
-            self.target_policies = target_policies
-
-        # Convert raw data to Sample objects
-        samples = self._create_samples()
+    def __init__(self, data_or_dataset, target_policies=None, **kwargs):
+        """Initialize sampler.
         
-        # Create Dataset object
-        self.dataset = Dataset(
-            samples=samples,
-            target_policies=self.target_policies,
-            metadata={"source": "PrecomputedSampler"}
-        )
-
+        Args:
+            data_or_dataset: Either a Dataset instance or raw data list
+            target_policies: Target policy names (only used if data_or_dataset is a list)
+            **kwargs: Additional arguments passed to Dataset.from_raw_data()
+        """
+        if isinstance(data_or_dataset, Dataset):
+            self.dataset = data_or_dataset
+        else:
+            # Legacy: create Dataset from raw data
+            self.dataset = Dataset.from_raw_data(
+                data_or_dataset, 
+                target_policies=target_policies,
+                **kwargs
+            )
+        
+        self.target_policies = self.dataset.target_policies
+        
         # Prepare formatted data for backwards compatibility
         self.formatted_data = self._format_for_estimators()
+        
+        # For backward compatibility - some code expects this
+        self.raw_data = [self._sample_to_dict(s) for s in self.dataset.samples]
 
     @classmethod
-    def from_jsonl(
-        cls, file_path: str, target_policies: Optional[List[str]] = None, **kwargs
-    ) -> "PrecomputedSampler":
+    def from_jsonl(cls, file_path: str, target_policies: Optional[List[str]] = None, **kwargs) -> "PrecomputedSampler":
         """Load from JSONL file.
-
+        
         Args:
             file_path: Path to JSONL file
             target_policies: Optional list of target policy names
-            **kwargs: Additional arguments for __init__
-
+            **kwargs: Additional arguments for Dataset.from_raw_data
+            
         Returns:
             PrecomputedSampler instance
         """
-        data = []
-        with open(file_path, "r") as f:
-            for line in f:
-                if line.strip():
-                    data.append(json.loads(line))
+        dataset = Dataset.from_jsonl(file_path, target_policies, **kwargs)
+        return cls(dataset)
 
-        return cls(data, target_policies, **kwargs)
-
-    def _detect_target_policies(self) -> List[str]:
-        """Auto-detect target policies from data."""
-        policies = set()
-        for record in self.raw_data:
-            if self.target_logps_field in record:
-                policies.update(record[self.target_logps_field].keys())
-        return sorted(list(policies))
-
-    def _create_samples(self) -> List[Sample]:
-        """Convert raw data to Sample objects."""
-        samples = []
-        for record in self.raw_data:
-            try:
-                # Extract reward (handle nested format)
-                reward = record[self.reward_field]
-                if isinstance(reward, dict):
-                    reward = reward.get("mean", reward.get("value"))
-                
-                # Get base log prob (required)
-                base_logprob = record.get(self.base_policy_field)
-                
-                # Get target log probs
-                target_logprobs = record.get(self.target_logps_field, {})
-                
-                # Create Sample object
-                sample = Sample(
-                    prompt=record[self.prompt_field],
-                    response=record[self.response_field],
-                    reward=float(reward),
-                    base_logprob=base_logprob,
-                    target_logprobs=target_logprobs,
-                    metadata=record.get("metadata", {})
-                )
-                samples.append(sample)
-            except (KeyError, ValueError) as e:
-                # Skip invalid records
-                print(f"Skipping invalid record: {e}")
-                continue
+    def _sample_to_dict(self, sample: Sample) -> Dict[str, Any]:
+        """Convert Sample back to dict for backward compatibility."""
+        base_field = self.dataset.metadata.get("base_policy_field", "p0_logprob")
+        target_field = self.dataset.metadata.get("target_logps_field", "target_logps")
         
-        if not samples:
-            raise ValueError("No valid samples could be created from data")
-        
-        return samples
-
-    def _validate_data(self):
-        """Legacy method for backwards compatibility - validation now done by Pydantic."""
-        # Validation is now handled by the Dataset model
-        pass
+        return {
+            "prompt": sample.prompt,
+            "response": sample.response,
+            "reward": sample.reward,
+            base_field: sample.base_logprob,
+            target_field: sample.target_logprobs,
+            "metadata": sample.metadata,
+        }
 
     def _format_for_estimators(self) -> List[Dict[str, Any]]:
         """Format data for CJE estimators (backwards compatibility).
@@ -287,6 +213,6 @@ class PrecomputedSampler:
             "target_policies": self.target_policies,
             "reward_mean": dataset_summary["reward_mean"],
             "reward_std": dataset_summary["reward_std"],
-            "n_invalid_dropped": len(self.raw_data) - self.n_samples,
+            "n_invalid_dropped": 0,  # No longer tracked
             "valid_samples_per_policy": dataset_summary["valid_samples_per_policy"],
         }
