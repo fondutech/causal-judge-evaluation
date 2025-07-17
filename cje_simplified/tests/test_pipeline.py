@@ -48,7 +48,7 @@ def test_pipeline_with_edge_cases(tmp_path: Path) -> None:
 
     # Load and calibrate data using factory
     factory = DatasetFactory()
-    dataset, stats = factory.create_from_jsonl_with_calibration(temp_file)
+    dataset, stats = factory.create_from_jsonl_with_calibration(str(temp_file))
 
     # Test that calibration worked
     assert stats["n_oracle"] == 12
