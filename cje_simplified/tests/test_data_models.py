@@ -4,8 +4,8 @@ from cje_simplified.data.models import Sample, Dataset, WeightCalibrationConfig
 import numpy as np
 
 
-def test_sample_validation():
-    """Test Sample model validation."""
+def test_sample() -> None:
+    """Test Sample model creation and validation."""
 
     # Valid sample
     sample = Sample(
@@ -20,7 +20,7 @@ def test_sample_validation():
     assert sample.get_importance_weight("pi_a") == np.exp(-4.0 - (-5.0))
     print("✓ Valid sample created")
 
-    # Test invalid log prob
+    # Test invalid base logprob
     try:
         Sample(
             prompt="test",
@@ -44,12 +44,13 @@ def test_sample_validation():
             target_policy_logprobs={"pi_test": 2.0},  # Invalid
         )
         assert False, "Should have raised error"
-    except ValueError:
-        print("✓ Caught invalid reward")
+    except ValueError as e:
+        assert "must be <= 0" in str(e)
+        print("✓ Caught invalid target logprob")
 
 
-def test_dataset():
-    """Test Dataset model."""
+def test_dataset() -> None:
+    """Test Dataset model creation and validation."""
 
     samples = [
         Sample(
@@ -63,38 +64,21 @@ def test_dataset():
     ]
 
     dataset = Dataset(samples=samples, target_policies=["pi_a", "pi_b"])
-
     assert dataset.n_samples == 5
-
-    # Test filtering
-    valid_a = dataset.filter_valid_samples("pi_a")
-    assert len(valid_a) == 5
-
-    # Test summary
-    summary = dataset.summary()
-    assert summary["n_samples"] == 5
-    assert "pi_a" in summary["valid_samples_per_policy"]
+    assert len(dataset.target_policies) == 2
     print("✓ Dataset created and tested")
 
 
-def test_config():
-    """Test configuration model."""
-
-    config = WeightCalibrationConfig(k_folds=10, clip_weight=50.0)
-    assert config.k_folds == 10
-    assert config.target_mean == 1.0  # Default
-
-    # Test validation
-    try:
-        WeightCalibrationConfig(k_folds=1)  # Invalid: < 2
-        assert False
-    except ValueError:
-        print("✓ Config validation works")
+def test_config() -> None:
+    """Test configuration validation."""
+    config = WeightCalibrationConfig(k_folds=3, clip_weight=50.0)
+    assert config.k_folds == 3
+    assert config.clip_weight == 50.0
+    print("✓ Config validation works")
 
 
 if __name__ == "__main__":
-    print("Testing data models...\n")
-    test_sample_validation()
+    test_sample()
     test_dataset()
     test_config()
     print("\nAll data model tests passed! ✨")

@@ -20,13 +20,13 @@ class PrecomputedSampler:
     """
 
     def __init__(
-        self, 
-        data_or_dataset: Union[Dataset, List[Dict[str, Any]]], 
-        target_policies: Optional[List[str]] = None, 
-        **kwargs: Any
+        self,
+        data_or_dataset: Union[Dataset, List[Dict[str, Any]]],
+        target_policies: Optional[List[str]] = None,
+        **kwargs: Any,
     ) -> None:
         """Initialize sampler.
-        
+
         Args:
             data_or_dataset: Either a Dataset instance or raw data list
             target_policies: Target policy names (only used if data_or_dataset is a list)
@@ -39,9 +39,9 @@ class PrecomputedSampler:
             self.dataset = Dataset.from_raw_data(
                 data_or_dataset, target_policies=target_policies, **kwargs
             )
-        
+
         self.target_policies = self.dataset.target_policies
-        
+
         # Prepare formatted data
         self.formatted_data = self._format_for_estimators()
 
@@ -50,12 +50,12 @@ class PrecomputedSampler:
         cls, file_path: str, target_policies: Optional[List[str]] = None, **kwargs: Any
     ) -> "PrecomputedSampler":
         """Load from JSONL file.
-        
+
         Args:
             file_path: Path to JSONL file
             target_policies: Optional list of target policy names
             **kwargs: Additional arguments for Dataset.from_raw_data
-            
+
         Returns:
             PrecomputedSampler instance
         """

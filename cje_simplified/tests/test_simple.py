@@ -8,7 +8,7 @@ from cje_simplified import (
 import numpy as np
 
 
-def test_in_memory_pipeline():
+def test_in_memory_pipeline() -> None:
     """Test pipeline with in-memory data only."""
 
     # Create simple data
@@ -32,7 +32,7 @@ def test_in_memory_pipeline():
     assert 0.6 < results.estimates[0] < 0.8
 
 
-def test_judge_calibration():
+def test_judge_calibration() -> None:
     """Test judge calibration directly."""
 
     # Create synthetic scores
