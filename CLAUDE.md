@@ -2,7 +2,7 @@
 
 Core guidance for Claude Code when working with the CJE repository.
 
-Last updated: 2025-01-17
+Last updated: 2025-01-17 (SOLID refactoring completed)
 
 ## 🎯 Project Philosophy
 
@@ -28,14 +28,17 @@ cje_simplified/           # Clean reimplementation - ALL NEW WORK GOES HERE
 ## 🚀 Quick Start
 
 ```python
-from cje_simplified import Dataset, PrecomputedSampler, CalibratedIPS
+from cje_simplified import load_dataset_with_calibration, PrecomputedSampler, CalibratedIPS
 
-# Modern approach - use Dataset directly
-dataset = Dataset.from_jsonl("data.jsonl")
+# Modern SOLID approach - use convenience functions
+dataset, stats = load_dataset_with_calibration("data.jsonl") 
 sampler = PrecomputedSampler(dataset)
 
-# Legacy approach - still supported
-sampler = PrecomputedSampler.from_jsonl("data.jsonl")
+# Alternative - direct factory usage with dependency injection
+from cje_simplified import DatasetFactory, DatasetLoader
+factory = DatasetFactory(loader=DatasetLoader())
+dataset = factory.create_from_jsonl("data.jsonl")
+sampler = PrecomputedSampler(dataset)
 
 # Run estimation
 estimator = CalibratedIPS(sampler)
@@ -47,32 +50,43 @@ results = estimator.fit_and_estimate()
 ### 1. Data Models First (Pydantic)
 All data structures are defined in `data/models.py`:
 - `Sample` - Single data point with validation
-- `Dataset` - Collection of samples with loading utilities
+- `Dataset` - Pure data container (no loading logic)
 - `LogProbResult` - Explicit error handling for API calls
 - `EstimationResult` - Structured results with statistical methods
 
-### 2. Dependency Injection
-```python
-# Good - explicit dependencies
-dataset = Dataset.from_jsonl("data.jsonl")
-sampler = PrecomputedSampler(dataset)
+### 2. Separation of Concerns (SOLID)
+Loading responsibilities are cleanly separated:
+- `DatasetLoader` - Converts raw data to typed Dataset objects
+- `DatasetFactory` - Orchestrates loading + calibration workflows
+- `DataSource` - Protocol for different data sources (JSONL, memory, etc.)
+- `Dataset` - Pure data container with validation only
 
-# Bad - hidden construction
-sampler = PrecomputedSampler(raw_data)  # Still works for compatibility
+### 3. Dependency Injection
+```python
+# Good - explicit dependencies with injection
+from cje_simplified import DatasetFactory, DatasetLoader
+factory = DatasetFactory(loader=DatasetLoader(base_policy_field="custom_field"))
+dataset = factory.create_from_jsonl("data.jsonl")
+
+# Better - use convenience functions for common cases
+from cje_simplified import load_dataset_from_jsonl
+dataset = load_dataset_from_jsonl("data.jsonl")
 ```
 
-### 3. No Magic Fallbacks
+### 4. No Magic Fallbacks
 ```python
 # Good - explicit None for failures
-if sample.base_logprob is None:
+if sample.base_policy_logprob is None:
     return None
 
 # Bad - magic fallback values
 return -100.0  # NEVER DO THIS
 ```
 
-### 4. Clear Abstractions
-- `Dataset` - Handles data loading and validation
+### 5. Clear Abstractions (Single Responsibility)
+- `Dataset` - Data container with validation only
+- `DatasetLoader` - Converts raw data to Dataset objects  
+- `DatasetFactory` - Coordinates loading + calibration
 - `PrecomputedSampler` - Adds CJE-specific operations to Dataset
 - `BaseCJEEstimator` - Abstract interface for all estimators
 - `CalibratedIPS` - Concrete implementation with cross-fitting
@@ -122,7 +136,7 @@ Expected JSONL format:
 **Critical**: 
 - Use `base_policy_logprob` for the base policy field
 - Store failed log probs as `null`, never use fallback values
-- Rewards must be calibrated to business KPIs (use `create_calibrated_rewards()`)
+- Rewards must be calibrated to business KPIs (use `load_dataset_with_calibration()` or `DatasetFactory`)
 
 ## ⚠️ Common Pitfalls
 
@@ -145,13 +159,19 @@ logprob = api_result or -100.0
 logprob = api_result  # None if failed
 ```
 
-### 3. Modifying Original Codebase
+### 3. Using Old Loading Patterns
 ```python
-# Wrong - touching old code
-from cje.utils import something
+# Wrong - old methods removed in SOLID refactoring
+dataset = Dataset.from_raw_data(data)
+dataset = Dataset.from_jsonl("file.jsonl")
 
-# Correct - use simplified
-from cje_simplified.utils import something
+# Correct - use factory or convenience functions
+from cje_simplified import load_dataset_from_jsonl
+dataset = load_dataset_from_jsonl("file.jsonl")
+
+# Or with calibration
+from cje_simplified import load_dataset_with_calibration
+dataset, stats = load_dataset_with_calibration("file.jsonl")
 ```
 
 ## 🧪 Testing Philosophy
@@ -168,6 +188,9 @@ from cje_simplified.utils import something
 3. **try/except with fallbacks** - Prefer explicit None returns
 4. **Direct dict manipulation** - Use Pydantic models
 5. **Tight coupling** - Each class should have one clear responsibility
+6. **Old loading patterns** - Using removed Dataset methods like `.from_raw_data()`
+7. **Violating SRP** - Classes with multiple responsibilities (loading + validation + business logic)
+8. **Hidden dependencies** - Construction logic inside data models
 
 ## 📈 Importance Weight Monitoring
 
@@ -192,11 +215,27 @@ Moving from old to new codebase:
 from cje import PrecomputedLogger
 logger = PrecomputedLogger(data, p0_policy_name="p0")
 
-# New approach  
-from cje_simplified import Dataset, PrecomputedSampler
-dataset = Dataset.from_raw_data(data)
+# New SOLID approach - recommended
+from cje_simplified import load_dataset_with_calibration, PrecomputedSampler
+dataset, stats = load_dataset_with_calibration("data.jsonl")
+sampler = PrecomputedSampler(dataset)
+
+# New SOLID approach - with dependency injection  
+from cje_simplified import DatasetFactory, DatasetLoader
+factory = DatasetFactory(loader=DatasetLoader())
+dataset = factory.create_from_data(data)
 sampler = PrecomputedSampler(dataset)
 ```
+
+**Field Name Migration:**
+- `total_logprob` → `base_policy_logprob`
+- `p0_logprob` → `base_policy_logprob`  
+- `target_logps` → `target_policy_logprobs`
+
+**Loading Pattern Migration:**
+- `Dataset.from_raw_data()` → `DatasetFactory.create_from_data()`
+- `Dataset.from_jsonl()` → `load_dataset_from_jsonl()` or `DatasetFactory.create_from_jsonl()`
+- `create_calibrated_rewards()` → `load_dataset_with_calibration()`
 
 ## 📝 Documentation Standards
 
@@ -208,9 +247,12 @@ sampler = PrecomputedSampler(dataset)
 ## 🎓 Key Lessons from the Rewrite
 
 1. **Start with data models** - Define your types first
-2. **Make dependencies explicit** - No hidden object construction
-3. **Fail loudly** - Better to error than silently corrupt results
-4. **Keep it simple** - Resist adding "clever" features
-5. **Separate concerns** - One class, one responsibility
+2. **Apply SOLID principles** - Single responsibility, dependency injection, open/closed
+3. **Separate concerns early** - Loading ≠ Validation ≠ Business Logic  
+4. **Make dependencies explicit** - No hidden object construction
+5. **Fail loudly** - Better to error than silently corrupt results
+6. **Keep it simple** - Resist adding "clever" features
+7. **Use protocols for extensibility** - Easy to add new data sources
+8. **Factory pattern for coordination** - When you need to orchestrate multiple responsibilities
 
 Remember: The goal of `cje_simplified` is to be **simple, correct, and maintainable**. When in doubt, choose clarity over cleverness.

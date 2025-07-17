@@ -38,10 +38,41 @@ from .data import (
     Dataset,
     EstimationResult,
     WeightCalibrationConfig,
-    create_calibrated_rewards,
-    prepare_cje_data,
+    DatasetFactory,
+    DatasetLoader,
+    default_factory,
     add_rewards_to_existing_data,
 )
+
+from typing import Optional, List, Any, Tuple, Dict
+
+
+# Convenience functions for backward compatibility
+def load_dataset_from_jsonl(
+    file_path: str, target_policies: Optional[List[str]] = None, **kwargs: Any
+) -> Dataset:
+    """Load Dataset from JSONL file.
+
+    Convenience function using the default factory.
+    """
+    return default_factory.create_from_jsonl(file_path, target_policies)
+
+
+def load_dataset_with_calibration(
+    file_path: str,
+    judge_score_field: str = "judge_score",
+    oracle_label_field: str = "oracle_label",
+    k_folds: int = 5,
+    target_policies: Optional[List[str]] = None,
+) -> Tuple[Dataset, Dict[str, float]]:
+    """Load Dataset from JSONL with judge calibration.
+
+    Convenience function using the default factory.
+    """
+    return default_factory.create_from_jsonl_with_calibration(
+        file_path, judge_score_field, oracle_label_field, k_folds, target_policies
+    )
+
 
 # Utilities and diagnostics
 from .utils import (
@@ -85,6 +116,13 @@ __all__ = [
     "Dataset",
     "EstimationResult",
     "WeightCalibrationConfig",
+    # Data loading (SOLID-compliant)
+    "DatasetFactory",
+    "DatasetLoader",
+    "default_factory",
+    # Convenience functions
+    "load_dataset_from_jsonl",
+    "load_dataset_with_calibration",
     # Types
     "LogProbResult",
     "LogProbStatus",
@@ -98,8 +136,6 @@ __all__ = [
     "calibrate_judge_scores",
     "CalibrationResult",
     # Reward utilities
-    "create_calibrated_rewards",
-    "prepare_cje_data",
     "add_rewards_to_existing_data",
     # Chat support
     "ChatToCompletionsConverter",

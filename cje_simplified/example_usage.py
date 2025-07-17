@@ -9,13 +9,12 @@ from typing import Dict, Any
 from cje_simplified import (
     PrecomputedSampler,
     CalibratedIPS,
+    load_dataset_with_calibration,
     compute_teacher_forced_logprob,
     diagnose_weights,
     create_weight_summary_table,
     detect_api_nondeterminism,
     calibrate_judge_scores,
-    create_calibrated_rewards,
-    prepare_cje_data,
     Llama3TemplateConfig,
     Llama4TemplateConfig,
     HuggingFaceTemplateConfig,
@@ -145,11 +144,11 @@ def prepare_data_for_cje() -> None:
 
     print("\n=== Preparing Data for CJE ===\n")
 
-    # Create calibrated rewards from judge scores
-    data_with_rewards, stats = create_calibrated_rewards(
+    # Load data and calibrate judge scores in one step using SOLID factory
+    dataset, stats = load_dataset_with_calibration(
         "raw_data.jsonl",
-        oracle_label_field="oracle_label",  # Oracle labels are in the data
         judge_score_field="judge_score",
+        oracle_label_field="oracle_label",
         k_folds=2,  # Use 2 folds for small example
     )
 
@@ -158,22 +157,37 @@ def prepare_data_for_cje() -> None:
     print(f"  RMSE: {stats['rmse']:.3f}")
     print(f"  Coverage (±0.1): {stats['coverage']:.1%}")
 
-    # Save prepared data
+    # Save prepared data - convert Dataset to raw data for saving
     with open("cje_ready_data.jsonl", "w") as f:
-        for record in data_with_rewards:
+        for sample in dataset.samples:
+            record = {
+                "prompt": sample.prompt,
+                "response": sample.response,
+                "reward": sample.reward,
+                "base_policy_logprob": sample.base_policy_logprob,
+                "target_policy_logprobs": sample.target_policy_logprobs,
+                "judge_score": sample.metadata.get("judge_score"),  # Preserve original
+                "oracle_label": sample.metadata.get(
+                    "oracle_label"
+                ),  # Preserve original
+            }
             f.write(json.dumps(record) + "\n")
 
     print("\nData prepared and saved to cje_ready_data.jsonl")
 
     # Show example of calibration
     print("\nExample calibration:")
-    for i in range(min(3, len(data_with_rewards))):
-        record = data_with_rewards[i]
-        judge = record["judge_score"]
-        reward = record["reward"]
-        oracle = record.get("oracle_label", "N/A")
+    for i in range(min(3, len(dataset.samples))):
+        sample = dataset.samples[i]
+        judge = sample.metadata.get("judge_score", "N/A")
+        reward = sample.reward
+        oracle = sample.metadata.get("oracle_label", "N/A")
+        judge_str = f"{judge:.1f}" if isinstance(judge, (int, float)) else str(judge)
+        oracle_str = (
+            f"{oracle:.2f}" if isinstance(oracle, (int, float)) else str(oracle)
+        )
         print(
-            f"  Sample {i}: judge_score={judge:.1f} → reward={reward:.3f} (oracle: {oracle})"
+            f"  Sample {i}: judge_score={judge_str} → reward={reward:.3f} (oracle: {oracle_str})"
         )
 
 

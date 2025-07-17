@@ -1,22 +1,17 @@
-"""Load precomputed data for CJE estimation."""
+"""Precomputed sampler for CJE estimation."""
 
-import json
-import math
-from typing import List, Dict, Any, Optional, Set, Union
-from pathlib import Path
+from typing import Dict, List, Optional, Any, Union, Tuple
 import numpy as np
-from .models import Sample, Dataset
+
+from .models import Dataset, Sample
+from .factory import DatasetFactory
 
 
 class PrecomputedSampler:
-    """Adapter that provides CJE-specific operations on a Dataset.
+    """Wrapper around Dataset that provides CJE-specific operations.
 
-    This class wraps a Dataset to provide CJE-specific functionality
-    like importance weight computation.
-
-    For new code, prefer using Dataset directly and its class methods:
-    - Dataset.from_raw_data()
-    - Dataset.from_jsonl()
+    This class takes a Dataset and adds methods needed for importance sampling
+    estimation like weight computation, filtering, and diagnostic checks.
     """
 
     def __init__(
@@ -24,20 +19,21 @@ class PrecomputedSampler:
         data_or_dataset: Union[Dataset, List[Dict[str, Any]]],
         target_policies: Optional[List[str]] = None,
         **kwargs: Any,
-    ) -> None:
-        """Initialize sampler.
+    ):
+        """Initialize with either a Dataset or raw data.
 
         Args:
             data_or_dataset: Either a Dataset instance or raw data list
             target_policies: Target policy names (only used if data_or_dataset is a list)
-            **kwargs: Additional arguments passed to Dataset.from_raw_data()
+            **kwargs: Additional arguments passed to DatasetFactory
         """
         if isinstance(data_or_dataset, Dataset):
             self.dataset = data_or_dataset
         else:
-            # Create Dataset from raw data
-            self.dataset = Dataset.from_raw_data(
-                data_or_dataset, target_policies=target_policies, **kwargs
+            # Create Dataset from raw data using factory
+            factory = DatasetFactory()
+            self.dataset = factory.create_from_data(
+                data_or_dataset, target_policies=target_policies
             )
 
         self.target_policies = self.dataset.target_policies
@@ -49,17 +45,18 @@ class PrecomputedSampler:
     def from_jsonl(
         cls, file_path: str, target_policies: Optional[List[str]] = None, **kwargs: Any
     ) -> "PrecomputedSampler":
-        """Load from JSONL file.
+        """Create sampler from JSONL file.
 
         Args:
             file_path: Path to JSONL file
             target_policies: Optional list of target policy names
-            **kwargs: Additional arguments for Dataset.from_raw_data
+            **kwargs: Additional arguments passed to DatasetFactory
 
         Returns:
             PrecomputedSampler instance
         """
-        dataset = Dataset.from_jsonl(file_path, target_policies, **kwargs)
+        factory = DatasetFactory()
+        dataset = factory.create_from_jsonl(file_path, target_policies)
         return cls(dataset)
 
     def _format_for_estimators(self) -> List[Dict[str, Any]]:
@@ -164,7 +161,7 @@ class PrecomputedSampler:
             elif log_ratio < -50:  # exp(-50) is tiny
                 weight = 0.0
             else:
-                weight = min(math.exp(log_ratio), clip_weight)
+                weight = min(np.exp(log_ratio), clip_weight)
 
             weights.append(weight)
 

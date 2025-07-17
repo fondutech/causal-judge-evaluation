@@ -3,13 +3,13 @@
 This module contains:
 - Data models: Pydantic models for type safety
 - PrecomputedSampler: Load data with log probs and rewards
-- Reward Utils: Convert judge scores to calibrated rewards
+- DatasetFactory: SOLID-compliant data loading with optional calibration
+- DatasetLoader: Pure data loading functionality
+- Reward Utils: Utility functions for calibrated rewards
 """
 
 from .precomputed_sampler import PrecomputedSampler
 from .reward_utils import (
-    create_calibrated_rewards,
-    prepare_cje_data,
     add_rewards_to_existing_data,
 )
 from .models import (
@@ -20,10 +20,17 @@ from .models import (
     LogProbStatus,
     LogProbResult,
 )
+from .factory import DatasetFactory, default_factory
+from .loaders import DatasetLoader, JsonlDataSource, InMemoryDataSource
 
 __all__ = [
     # Data loading
     "PrecomputedSampler",
+    "DatasetFactory",
+    "DatasetLoader",
+    "default_factory",
+    "JsonlDataSource",
+    "InMemoryDataSource",
     # Data models
     "Sample",
     "Dataset",
@@ -32,7 +39,5 @@ __all__ = [
     "LogProbStatus",
     "LogProbResult",
     # Utilities
-    "create_calibrated_rewards",
-    "prepare_cje_data",
     "add_rewards_to_existing_data",
 ]
