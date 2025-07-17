@@ -24,14 +24,6 @@ target_policies:
     temperature: 0.5
     max_tokens: 512
     
-  - name: "pi_cot"
-    provider: "fireworks"
-    model_name: "accounts/fireworks/models/llama4-scout-instruct-basic"
-    completions_template_format: "llama4"
-    temperature: 0.5
-    max_tokens: 512
-    system_prompt: "Think step-by-step before providing your answer."
-    
   - name: "pi_bigger_model"
     provider: "fireworks"
     model_name: "accounts/fireworks/models/llama4-maverick-instruct-basic"
