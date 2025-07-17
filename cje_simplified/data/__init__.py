@@ -12,11 +12,13 @@ from .reward_utils import (
     prepare_cje_data,
     add_rewards_to_existing_data,
 )
-from .data_models import (
+from .models import (
     Sample,
     Dataset,
     EstimationResult,
     WeightCalibrationConfig,
+    LogProbStatus,
+    LogProbResult,
 )
 
 __all__ = [
@@ -27,6 +29,8 @@ __all__ = [
     "Dataset",
     "EstimationResult",
     "WeightCalibrationConfig",
+    "LogProbStatus",
+    "LogProbResult",
     # Utilities
     "create_calibrated_rewards",
     "prepare_cje_data",

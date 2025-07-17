@@ -8,7 +8,7 @@ import os
 from typing import Optional, Dict, Any
 import openai
 
-from ...core.types import LogProbResult, LogProbStatus
+from ...data.models import LogProbResult, LogProbStatus
 
 
 class RobustTeacherForcing:

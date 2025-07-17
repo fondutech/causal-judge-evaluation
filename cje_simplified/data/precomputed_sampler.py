@@ -5,6 +5,7 @@ import math
 from typing import List, Dict, Any, Optional, Set
 from pathlib import Path
 import numpy as np
+from .models import Sample, Dataset
 
 
 class PrecomputedSampler:
@@ -50,7 +51,7 @@ class PrecomputedSampler:
             response_field: Field name for response
             reward_field: Field name for calibrated reward
         """
-        self.data = data
+        self.raw_data = data
         self.base_policy_field = base_policy_field
         self.target_logps_field = target_logps_field
         self.prompt_field = prompt_field
@@ -63,10 +64,17 @@ class PrecomputedSampler:
         else:
             self.target_policies = target_policies
 
-        # Validate data
-        self._validate_data()
+        # Convert raw data to Sample objects
+        samples = self._create_samples()
+        
+        # Create Dataset object
+        self.dataset = Dataset(
+            samples=samples,
+            target_policies=self.target_policies,
+            metadata={"source": "PrecomputedSampler"}
+        )
 
-        # Prepare formatted data for estimators
+        # Prepare formatted data for backwards compatibility
         self.formatted_data = self._format_for_estimators()
 
     @classmethod
@@ -94,40 +102,54 @@ class PrecomputedSampler:
     def _detect_target_policies(self) -> List[str]:
         """Auto-detect target policies from data."""
         policies = set()
-        for record in self.data:
+        for record in self.raw_data:
             if self.target_logps_field in record:
                 policies.update(record[self.target_logps_field].keys())
         return sorted(list(policies))
 
+    def _create_samples(self) -> List[Sample]:
+        """Convert raw data to Sample objects."""
+        samples = []
+        for record in self.raw_data:
+            try:
+                # Extract reward (handle nested format)
+                reward = record[self.reward_field]
+                if isinstance(reward, dict):
+                    reward = reward.get("mean", reward.get("value"))
+                
+                # Get base log prob (required)
+                base_logprob = record.get(self.base_policy_field)
+                
+                # Get target log probs
+                target_logprobs = record.get(self.target_logps_field, {})
+                
+                # Create Sample object
+                sample = Sample(
+                    prompt=record[self.prompt_field],
+                    response=record[self.response_field],
+                    reward=float(reward),
+                    base_logprob=base_logprob,
+                    target_logprobs=target_logprobs,
+                    metadata=record.get("metadata", {})
+                )
+                samples.append(sample)
+            except (KeyError, ValueError) as e:
+                # Skip invalid records
+                print(f"Skipping invalid record: {e}")
+                continue
+        
+        if not samples:
+            raise ValueError("No valid samples could be created from data")
+        
+        return samples
+
     def _validate_data(self):
-        """Validate data has required fields."""
-        if not self.data:
-            raise ValueError("No data provided")
-
-        # Check first record has required fields
-        sample = self.data[0]
-        required_fields = [
-            self.prompt_field,
-            self.response_field,
-            self.reward_field,
-            self.base_policy_field,
-            self.target_logps_field,
-        ]
-
-        missing = [f for f in required_fields if f not in sample]
-        if missing:
-            raise ValueError(f"Missing required fields in data: {missing}")
-
-        # Validate target policies exist
-        target_logps = sample.get(self.target_logps_field, {})
-        missing_policies = set(self.target_policies) - set(target_logps.keys())
-        if missing_policies:
-            raise ValueError(
-                f"Target policies {missing_policies} not found in {self.target_logps_field}"
-            )
+        """Legacy method for backwards compatibility - validation now done by Pydantic."""
+        # Validation is now handled by the Dataset model
+        pass
 
     def _format_for_estimators(self) -> List[Dict[str, Any]]:
-        """Format data for CJE estimators.
+        """Format data for CJE estimators (backwards compatibility).
 
         Returns list of dicts with:
         - context: prompt text
@@ -138,29 +160,16 @@ class PrecomputedSampler:
         """
         formatted = []
 
-        for record in self.data:
-            # Extract reward
-            reward = record[self.reward_field]
-
-            # Handle nested reward format (backwards compatibility)
-            if isinstance(reward, dict):
-                reward = reward.get("mean", reward.get("value"))
-
-            reward = float(reward)
-
-            # Skip if base log prob is invalid
-            base_logp = record.get(self.base_policy_field)
-            if base_logp is None:
+        for sample in self.dataset.samples:
+            # Skip samples without valid base log prob
+            if sample.base_logprob is None:
                 continue
-
-            # Extract target log probs
-            target_logps = record.get(self.target_logps_field, {})
 
             # Check all required target policies have valid log probs
             valid_targets = {}
             skip_record = False
             for policy in self.target_policies:
-                logp = target_logps.get(policy)
+                logp = sample.target_logprobs.get(policy)
                 if logp is None:
                     skip_record = True
                     break
@@ -171,10 +180,10 @@ class PrecomputedSampler:
 
             formatted.append(
                 {
-                    "context": record[self.prompt_field],
-                    "response": record[self.response_field],
-                    "logp": base_logp,
-                    "reward": reward,
+                    "context": sample.prompt,
+                    "response": sample.response,
+                    "logp": sample.base_logprob,
+                    "reward": sample.reward,
                     "logp_target_all": valid_targets,
                 }
             )
@@ -195,34 +204,24 @@ class PrecomputedSampler:
         if target_policy not in self.target_policies:
             return None
 
+        # Use Dataset's filter method to get valid samples
+        valid_samples = self.dataset.filter_valid_samples(target_policy)
+        if not valid_samples:
+            return None
+
         policy_data = []
-        for record in self.data:
-            # Check if we have valid log probs
-            base_logp = record.get(self.base_policy_field)
-            if base_logp is None:
-                continue
-
-            target_logps = record.get(self.target_logps_field, {})
-            target_logp = target_logps.get(target_policy)
-            if target_logp is None:
-                continue
-
-            # Extract reward
-            reward = record[self.reward_field]
-            if isinstance(reward, dict):
-                reward = reward.get("mean", reward.get("value"))
-
+        for sample in valid_samples:
             policy_data.append(
                 {
-                    "reward": float(reward),
-                    "total_logprob": base_logp,
-                    "policy_logprob": target_logp,
-                    "prompt": record.get(self.prompt_field, ""),
-                    "response": record.get(self.response_field, ""),
+                    "reward": sample.reward,
+                    "total_logprob": sample.base_logprob,
+                    "policy_logprob": sample.target_logprobs[target_policy],
+                    "prompt": sample.prompt,
+                    "response": sample.response,
                 }
             )
 
-        return policy_data if policy_data else None
+        return policy_data
 
     def compute_importance_weights(
         self, target_policy: str, clip_weight: float = 100.0
@@ -259,20 +258,20 @@ class PrecomputedSampler:
 
     def get_rewards(self) -> np.ndarray:
         """Get array of calibrated rewards."""
-        return np.array([r["reward"] for r in self.formatted_data])
+        return np.array([s.reward for s in self.dataset.samples])
 
     def get_contexts(self) -> List[str]:
         """Get list of contexts/prompts."""
-        return [r["context"] for r in self.formatted_data]
+        return [s.prompt for s in self.dataset.samples]
 
     def get_responses(self) -> List[str]:
         """Get list of responses."""
-        return [r["response"] for r in self.formatted_data]
+        return [s.response for s in self.dataset.samples]
 
     @property
     def n_samples(self) -> int:
         """Number of valid samples."""
-        return len(self.formatted_data)
+        return self.dataset.n_samples
 
     @property
     def n_policies(self) -> int:
@@ -281,11 +280,13 @@ class PrecomputedSampler:
 
     def summary(self) -> Dict[str, Any]:
         """Get summary statistics."""
+        dataset_summary = self.dataset.summary()
         return {
             "n_samples": self.n_samples,
             "n_policies": self.n_policies,
             "target_policies": self.target_policies,
-            "reward_mean": float(np.mean(self.get_rewards())),
-            "reward_std": float(np.std(self.get_rewards())),
-            "n_invalid_dropped": len(self.data) - self.n_samples,
+            "reward_mean": dataset_summary["reward_mean"],
+            "reward_std": dataset_summary["reward_std"],
+            "n_invalid_dropped": len(self.raw_data) - self.n_samples,
+            "valid_samples_per_policy": dataset_summary["valid_samples_per_policy"],
         }

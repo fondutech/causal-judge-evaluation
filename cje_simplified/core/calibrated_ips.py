@@ -8,7 +8,7 @@ import numpy as np
 from typing import Dict, Optional
 
 from .base_estimator import BaseCJEEstimator
-from ..data.data_models import EstimationResult, WeightCalibrationConfig
+from ..data.models import EstimationResult, WeightCalibrationConfig
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..utils.calibration_utils import calibrate_to_target_mean
 

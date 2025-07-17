@@ -7,7 +7,7 @@ and compute log probabilities for chat-based models.
 from typing import List, Dict, Tuple, Optional
 import logging
 
-from ..core.types import LogProbResult, LogProbStatus
+from ..data.models import LogProbResult, LogProbStatus
 from .templates import (
     ChatTemplateConfig,
     Llama4TemplateConfig,

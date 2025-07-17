@@ -8,13 +8,14 @@ This module contains:
 
 from .base_estimator import BaseCJEEstimator
 from .calibrated_ips import CalibratedIPS
-from ..data.data_models import (
+from ..data.models import (
     Sample,
     Dataset,
     EstimationResult,
     WeightCalibrationConfig,
+    LogProbResult,
+    LogProbStatus,
 )
-from .types import LogProbResult, LogProbStatus
 
 __all__ = [
     # Estimators

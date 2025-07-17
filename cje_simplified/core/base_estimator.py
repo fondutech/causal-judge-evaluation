@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
 import numpy as np
 
-from ..data.data_models import Dataset, EstimationResult, WeightCalibrationConfig
+from ..data.models import Dataset, EstimationResult, WeightCalibrationConfig
 from ..data import PrecomputedSampler
 
 

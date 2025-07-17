@@ -1,8 +1,31 @@
 """Data models for CJE using Pydantic."""
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
+from enum import Enum
 from pydantic import BaseModel, Field, field_validator
 import numpy as np
+
+
+class LogProbStatus(Enum):
+    """Status of log probability computation."""
+    SUCCESS = "success"
+    API_ERROR = "api_error"
+    TOKEN_BOUNDARY_ERROR = "token_boundary_error"
+    TOKEN_LIMIT_EXCEEDED = "token_limit_exceeded"
+    EMPTY_RESPONSE = "empty_response"
+
+
+class LogProbResult(BaseModel):
+    """Result of log probability computation with explicit error handling."""
+    value: Optional[float] = Field(None, description="Log probability value if successful")
+    status: LogProbStatus = Field(LogProbStatus.API_ERROR, description="Computation status")
+    error: Optional[str] = Field(None, description="Error message if failed")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+
+    @property
+    def is_valid(self) -> bool:
+        """Check if computation succeeded."""
+        return self.status == LogProbStatus.SUCCESS and self.value is not None
 
 
 class Sample(BaseModel):
@@ -11,7 +34,7 @@ class Sample(BaseModel):
     prompt: str = Field(..., description="Input prompt/context")
     response: str = Field(..., description="Generated response")
     reward: float = Field(..., ge=0, le=1, description="Calibrated reward [0,1]")
-    base_logprob: float = Field(..., description="Log prob under base policy")
+    base_logprob: Optional[float] = Field(None, description="Log prob under base policy")
     target_logprobs: Dict[str, Optional[float]] = Field(
         ..., description="Log probs under target policies (None for failures)"
     )
@@ -20,13 +43,13 @@ class Sample(BaseModel):
     )
 
     @field_validator("base_logprob")
-    def validate_base_logprob(cls, v):
+    def validate_base_logprob(cls, v: Optional[float]) -> Optional[float]:
         if v is not None and v > 0:
             raise ValueError(f"Log probability must be <= 0, got {v}")
         return v
 
     @field_validator("target_logprobs")
-    def validate_target_logprobs(cls, v):
+    def validate_target_logprobs(cls, v: Dict[str, Optional[float]]) -> Dict[str, Optional[float]]:
         for policy, logprob in v.items():
             if logprob is not None and logprob > 0:
                 raise ValueError(
@@ -47,12 +70,12 @@ class Sample(BaseModel):
 class Dataset(BaseModel):
     """A dataset for CJE analysis."""
 
-    samples: List[Sample] = Field(..., min_items=1)
-    target_policies: List[str] = Field(..., min_items=1)
+    samples: List[Sample] = Field(..., min_length=1)
+    target_policies: List[str] = Field(..., min_length=1)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("target_policies")
-    def validate_policies_exist(cls, v, info):
+    def validate_policies_exist(cls, v: List[str], info: Any) -> List[str]:
         """Ensure target policies exist in samples."""
         if "samples" in info.data:
             all_policies = set()
@@ -107,10 +130,9 @@ class EstimationResult(BaseModel):
     method: str = Field(..., description="Estimation method used")
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = {"arbitrary_types_allowed": True}
 
-    def confidence_interval(self, alpha: float = 0.05) -> tuple[np.ndarray, np.ndarray]:
+    def confidence_interval(self, alpha: float = 0.05) -> Tuple[np.ndarray, np.ndarray]:
         """Compute confidence intervals."""
         from scipy import stats
 
