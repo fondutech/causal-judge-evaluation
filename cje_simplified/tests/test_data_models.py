@@ -9,39 +9,39 @@ def test_sample_validation():
 
     # Valid sample
     sample = Sample(
-        prompt="What is 2+2?",
-        response="4",
-        reward=0.9,
-        base_logprob=-5.0,
-        target_logprobs={"pi_good": -4.0, "pi_bad": -8.0},
+        prompt="What is machine learning?",
+        response="ML is...",
+        reward=0.8,
+        base_policy_logprob=-5.0,
+        target_policy_logprobs={"pi_a": -4.0, "pi_b": -6.0},
     )
 
-    assert sample.reward == 0.9
-    assert sample.get_importance_weight("pi_good") == np.exp(-4.0 - (-5.0))
+    assert sample.reward == 0.8
+    assert sample.get_importance_weight("pi_a") == np.exp(-4.0 - (-5.0))
     print("✓ Valid sample created")
 
     # Test invalid log prob
     try:
         Sample(
             prompt="test",
-            response="test",
+            response="response",
             reward=0.5,
-            base_logprob=1.0,  # Invalid: positive
-            target_logprobs={},
+            base_policy_logprob=1.0,  # Invalid: positive
+            target_policy_logprobs={},
         )
         assert False, "Should have raised error"
     except ValueError as e:
         assert "must be <= 0" in str(e)
-        print("✓ Caught invalid base_logprob")
+        print("✓ Caught invalid base_policy_logprob")
 
     # Test invalid reward
     try:
         Sample(
             prompt="test",
-            response="test",
+            response="response",
             reward=1.5,  # Invalid: > 1
-            base_logprob=-5.0,
-            target_logprobs={},
+            base_policy_logprob=-5.0,
+            target_policy_logprobs={"pi_test": 2.0},  # Invalid
         )
         assert False, "Should have raised error"
     except ValueError:
@@ -53,11 +53,11 @@ def test_dataset():
 
     samples = [
         Sample(
-            prompt=f"Q{i}",
-            response=f"A{i}",
-            reward=0.7 + 0.01 * i,
-            base_logprob=-10.0,
-            target_logprobs={"pi_a": -9.0, "pi_b": -11.0},
+            prompt=f"prompt{i}",
+            response=f"response{i}",
+            reward=0.5 + i * 0.1,
+            base_policy_logprob=-10.0,
+            target_policy_logprobs={"pi_a": -9.0, "pi_b": -11.0},
         )
         for i in range(5)
     ]

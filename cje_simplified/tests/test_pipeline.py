@@ -27,7 +27,7 @@ def test_basic_pipeline():
                 "oracle_label": (
                     0.5 + 0.4 * (i / 15) if i < 10 else None
                 ),  # First 10 have oracle
-                "p0_logprob": -10 - i,
+                "base_policy_logprob": -10 - i,
                 "target_logps": {
                     "pi_better": -8 - i,  # Better (higher log prob)
                     "pi_worse": -15 - i,  # Worse (lower log prob)
@@ -48,7 +48,7 @@ def test_basic_pipeline():
         print(f"✓ Judge calibration worked: {stats['n_oracle']} oracle samples")
 
         # Step 2: Load data
-        sampler = PrecomputedSampler(calibrated_data, base_policy_field="p0_logprob")
+        sampler = PrecomputedSampler(calibrated_data)
         assert sampler.n_samples == 15
         assert sampler.target_policies == ["pi_better", "pi_worse"]
         print(f"✓ Data loaded: {sampler.n_samples} samples")

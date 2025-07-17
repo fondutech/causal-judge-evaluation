@@ -142,7 +142,7 @@ def load_jsonl(file_path: str) -> List[Dict]:
     return data
 
 
-def save_jsonl(data: List[Dict], file_path: str):
+def save_jsonl(data: List[Dict], file_path: str) -> None:
     """Save data to JSONL file."""
     with open(file_path, "w") as f:
         for record in data:
@@ -222,7 +222,13 @@ def prepare_cje_data(
     )
 
     # Validate all required fields
-    required_fields = ["prompt", "response", "reward", "total_logprob", "target_logps"]
+    required_fields = [
+        "prompt",
+        "response",
+        "reward",
+        "base_policy_logprob",
+        "target_policy_logprobs",
+    ]
     sample = data_with_rewards[0]
     missing = [f for f in required_fields if f not in sample]
     if missing:

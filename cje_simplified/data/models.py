@@ -43,24 +43,24 @@ class Sample(BaseModel):
     prompt: str = Field(..., description="Input prompt/context")
     response: str = Field(..., description="Generated response")
     reward: float = Field(..., ge=0, le=1, description="Calibrated reward [0,1]")
-    base_logprob: Optional[float] = Field(
+    base_policy_logprob: Optional[float] = Field(
         None, description="Log prob under base policy"
     )
-    target_logprobs: Dict[str, Optional[float]] = Field(
+    target_policy_logprobs: Dict[str, Optional[float]] = Field(
         ..., description="Log probs under target policies (None for failures)"
     )
     metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Optional metadata"
     )
 
-    @field_validator("base_logprob")
-    def validate_base_logprob(cls, v: Optional[float]) -> Optional[float]:
+    @field_validator("base_policy_logprob")
+    def validate_base_policy_logprob(cls, v: Optional[float]) -> Optional[float]:
         if v is not None and v > 0:
             raise ValueError(f"Log probability must be <= 0, got {v}")
         return v
 
-    @field_validator("target_logprobs")
-    def validate_target_logprobs(
+    @field_validator("target_policy_logprobs")
+    def validate_target_policy_logprobs(
         cls, v: Dict[str, Optional[float]]
     ) -> Dict[str, Optional[float]]:
         for policy, logprob in v.items():
@@ -72,12 +72,12 @@ class Sample(BaseModel):
 
     def get_importance_weight(self, target_policy: str) -> Optional[float]:
         """Compute importance weight for a target policy."""
-        if self.base_logprob is None:
+        if self.base_policy_logprob is None:
             return None
-        target_lp = self.target_logprobs.get(target_policy)
+        target_lp = self.target_policy_logprobs.get(target_policy)
         if target_lp is None:
             return None
-        return np.exp(target_lp - self.base_logprob)
+        return float(np.exp(target_lp - self.base_policy_logprob))
 
 
 class Dataset(BaseModel):
@@ -93,7 +93,7 @@ class Dataset(BaseModel):
         if "samples" in info.data:
             all_policies = set()
             for sample in info.data["samples"]:
-                all_policies.update(sample.target_logprobs.keys())
+                all_policies.update(sample.target_policy_logprobs.keys())
 
             missing = set(v) - all_policies
             if missing:
@@ -105,8 +105,8 @@ class Dataset(BaseModel):
         valid_samples = []
         for sample in self.samples:
             if (
-                sample.base_logprob is not None
-                and sample.target_logprobs.get(target_policy) is not None
+                sample.base_policy_logprob is not None
+                and sample.target_policy_logprobs.get(target_policy) is not None
             ):
                 valid_samples.append(sample)
         return valid_samples
@@ -132,29 +132,29 @@ class Dataset(BaseModel):
             "reward_std": np.std(rewards),
             "valid_samples_per_policy": valid_counts,
         }
-    
+
     @classmethod
     def from_raw_data(
         cls,
-        data: List[Dict[str, Any]], 
+        data: List[Dict[str, Any]],
         target_policies: Optional[List[str]] = None,
-        base_policy_field: str = "p0_logprob",
-        target_logps_field: str = "target_logps",
+        base_policy_field: str = "base_policy_logprob",
+        target_policy_logprobs_field: str = "target_policy_logprobs",
         prompt_field: str = "prompt",
         response_field: str = "response",
         reward_field: str = "reward",
     ) -> "Dataset":
         """Create Dataset from raw data dictionaries.
-        
+
         Args:
             data: List of dictionaries with precomputed data
             target_policies: List of target policy names. If None, auto-detected.
             base_policy_field: Field name for base policy log prob
-            target_logps_field: Field name for target policy log probs dict
+            target_policy_logprobs_field: Field name for target policy log probs dict
             prompt_field: Field name for prompt/context
             response_field: Field name for response
             reward_field: Field name for calibrated reward
-            
+
         Returns:
             Dataset instance
         """
@@ -162,10 +162,10 @@ class Dataset(BaseModel):
         if target_policies is None:
             policies = set()
             for record in data:
-                if target_logps_field in record:
-                    policies.update(record[target_logps_field].keys())
+                if target_policy_logprobs_field in record:
+                    policies.update(record[target_policy_logprobs_field].keys())
             target_policies = sorted(list(policies))
-        
+
         # Convert raw data to samples
         samples = []
         for record in data:
@@ -174,20 +174,20 @@ class Dataset(BaseModel):
                 reward = record[reward_field]
                 if isinstance(reward, dict):
                     reward = reward.get("mean", reward.get("value"))
-                
+
                 # Get base log prob
                 base_logprob = record.get(base_policy_field)
-                
+
                 # Get target log probs
-                target_logprobs = record.get(target_logps_field, {})
-                
+                target_logprobs = record.get(target_policy_logprobs_field, {})
+
                 # Create Sample object
                 sample = Sample(
                     prompt=record[prompt_field],
                     response=record[response_field],
                     reward=float(reward),
-                    base_logprob=base_logprob,
-                    target_logprobs=target_logprobs,
+                    base_policy_logprob=base_logprob,
+                    target_policy_logprobs=target_logprobs,
                     metadata=record.get("metadata", {}),
                 )
                 samples.append(sample)
@@ -195,34 +195,31 @@ class Dataset(BaseModel):
                 # Skip invalid records
                 print(f"Skipping invalid record: {e}")
                 continue
-        
+
         if not samples:
             raise ValueError("No valid samples could be created from data")
-        
+
         return cls(
             samples=samples,
             target_policies=target_policies,
             metadata={
                 "source": "from_raw_data",
                 "base_policy_field": base_policy_field,
-                "target_logps_field": target_logps_field,
-            }
+                "target_policy_logprobs_field": target_policy_logprobs_field,
+            },
         )
-    
+
     @classmethod
     def from_jsonl(
-        cls, 
-        file_path: str, 
-        target_policies: Optional[List[str]] = None, 
-        **kwargs
+        cls, file_path: str, target_policies: Optional[List[str]] = None, **kwargs
     ) -> "Dataset":
         """Load Dataset from JSONL file.
-        
+
         Args:
             file_path: Path to JSONL file
             target_policies: Optional list of target policy names
             **kwargs: Additional arguments for from_raw_data
-            
+
         Returns:
             Dataset instance
         """
@@ -231,7 +228,7 @@ class Dataset(BaseModel):
             for line in f:
                 if line.strip():
                     data.append(json.loads(line))
-        
+
         return cls.from_raw_data(data, target_policies, **kwargs)
 
 

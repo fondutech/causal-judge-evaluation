@@ -111,7 +111,7 @@ Expected JSONL format:
   "prompt": "What is 2+2?",
   "response": "4",
   "reward": 0.85,              // Calibrated reward in [0,1]
-  "p0_logprob": -35.704,       // Base policy log P(response)
+  "base_policy_logprob": -35.704,  // Base policy log P(response)
   "target_logps": {
     "pi_improved": -32.123,
     "pi_baseline": -36.456
@@ -120,7 +120,7 @@ Expected JSONL format:
 ```
 
 **Critical**: 
-- Use `p0_logprob` not `total_logprob` for base policy
+- Use `base_policy_logprob` for the base policy field
 - Store failed log probs as `null`, never use fallback values
 - Rewards must be calibrated to business KPIs (use `create_calibrated_rewards()`)
 
@@ -128,11 +128,12 @@ Expected JSONL format:
 
 ### 1. Wrong Log Prob Field
 ```python
-# Wrong - old field name
+# Wrong - old field names
 "total_logprob": -35.704
+"p0_logprob": -35.704
 
 # Correct - standard field name
-"p0_logprob": -35.704
+"base_policy_logprob": -35.704
 ```
 
 ### 2. Magic Fallback Values

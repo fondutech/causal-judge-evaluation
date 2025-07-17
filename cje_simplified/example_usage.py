@@ -2,6 +2,7 @@
 
 import json
 import os
+import numpy as np
 from typing import Dict, Any
 
 # Import from the simplified CJE library
@@ -23,7 +24,7 @@ from cje_simplified import (
 )
 
 
-def create_example_data():
+def create_example_data() -> None:
     """Create example data files for demonstration."""
 
     # Example data with raw judge scores (not yet calibrated)
@@ -32,8 +33,8 @@ def create_example_data():
             "prompt": "What is machine learning?",
             "response": "Machine learning is a subset of artificial intelligence...",
             "judge_score": 7.5,  # Raw score from judge (e.g., 0-10 scale)
-            "total_logprob": -35.704,
-            "target_logps": {
+            "base_policy_logprob": -35.704,
+            "target_policy_logprobs": {
                 "pi_cot": -40.123,
                 "pi_bigger": -32.456,
                 "pi_clone": -35.800,
@@ -43,8 +44,8 @@ def create_example_data():
             "prompt": "Explain quantum computing",
             "response": "Quantum computing uses quantum mechanical phenomena...",
             "judge_score": 6.8,
-            "total_logprob": -42.156,
-            "target_logps": {
+            "base_policy_logprob": -42.156,
+            "target_policy_logprobs": {
                 "pi_cot": -48.234,
                 "pi_bigger": -38.901,
                 "pi_clone": -42.200,
@@ -54,8 +55,8 @@ def create_example_data():
             "prompt": "What are neural networks?",
             "response": "Neural networks are computing systems inspired by...",
             "judge_score": 8.9,
-            "total_logprob": -28.493,
-            "target_logps": {
+            "base_policy_logprob": -28.493,
+            "target_policy_logprobs": {
                 "pi_cot": -33.567,
                 "pi_bigger": -25.123,
                 "pi_clone": -28.500,
@@ -65,8 +66,8 @@ def create_example_data():
             "prompt": "Define reinforcement learning",
             "response": "Reinforcement learning is a type of machine learning...",
             "judge_score": 7.2,
-            "total_logprob": -31.245,
-            "target_logps": {
+            "base_policy_logprob": -31.245,
+            "target_policy_logprobs": {
                 "pi_cot": -36.789,
                 "pi_bigger": -28.456,
                 "pi_clone": -31.300,
@@ -87,7 +88,7 @@ def create_example_data():
     print(f"Created raw_data.jsonl with {len(raw_data)} samples (2 with oracle labels)")
 
 
-def compute_new_log_probs():
+def compute_new_log_probs() -> None:
     """Example of computing log probabilities for new data."""
 
     # Example 1: Simple completions format
@@ -139,7 +140,7 @@ def compute_new_log_probs():
         print(f"Chat error: {chat_result.error}")
 
 
-def prepare_data_for_cje():
+def prepare_data_for_cje() -> None:
     """Prepare data by calibrating judge scores to oracle labels."""
 
     print("\n=== Preparing Data for CJE ===\n")
@@ -176,7 +177,7 @@ def prepare_data_for_cje():
         )
 
 
-def run_cje_estimation():
+def run_cje_estimation() -> None:
     """Run CJE estimation on prepared data."""
 
     print("\n=== Running CJE Estimation ===\n")
@@ -255,7 +256,7 @@ def run_cje_estimation():
     print(f"Recommendation: {api_check['recommendation']}")
 
 
-def demonstrate_judge_calibration():
+def demonstrate_judge_calibration() -> None:
     """Demonstrate judge score calibration with oracle labels."""
 
     print("\n=== Judge Score Calibration ===\n")
@@ -291,7 +292,7 @@ def demonstrate_judge_calibration():
         )
 
 
-def main():
+def main() -> None:
     """Run all examples."""
 
     # Create example data
@@ -311,8 +312,6 @@ def main():
     run_cje_estimation()
 
     # Demonstrate judge calibration
-    import numpy as np  # Import here to avoid dependency if not running this part
-
     demonstrate_judge_calibration()
 
     # Cleanup

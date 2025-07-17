@@ -17,8 +17,8 @@ def test_in_memory_pipeline():
             "prompt": f"q{i}",
             "response": f"a{i}",
             "reward": 0.7 + 0.01 * i,
-            "p0_logprob": -10.0,
-            "target_logps": {"pi_test": -9.0 + 0.1 * i},
+            "base_policy_logprob": -10.0,
+            "target_policy_logprobs": {"pi_test": -9.0 + 0.1 * i},
         }
         for i in range(20)
     ]

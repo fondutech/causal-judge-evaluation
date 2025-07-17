@@ -2,7 +2,7 @@
 
 import json
 import math
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional, Set, Union
 from pathlib import Path
 import numpy as np
 from .models import Sample, Dataset
@@ -10,16 +10,21 @@ from .models import Sample, Dataset
 
 class PrecomputedSampler:
     """Adapter that provides CJE-specific operations on a Dataset.
-    
-    This class wraps a Dataset to provide backward-compatible methods
-    and CJE-specific functionality like importance weight computation.
-    
+
+    This class wraps a Dataset to provide CJE-specific functionality
+    like importance weight computation.
+
     For new code, prefer using Dataset directly and its class methods:
-    - Dataset.from_raw_data() 
+    - Dataset.from_raw_data()
     - Dataset.from_jsonl()
     """
 
-    def __init__(self, data_or_dataset, target_policies=None, **kwargs):
+    def __init__(
+        self, 
+        data_or_dataset: Union[Dataset, List[Dict[str, Any]]], 
+        target_policies: Optional[List[str]] = None, 
+        **kwargs: Any
+    ) -> None:
         """Initialize sampler.
         
         Args:
@@ -30,23 +35,20 @@ class PrecomputedSampler:
         if isinstance(data_or_dataset, Dataset):
             self.dataset = data_or_dataset
         else:
-            # Legacy: create Dataset from raw data
+            # Create Dataset from raw data
             self.dataset = Dataset.from_raw_data(
-                data_or_dataset, 
-                target_policies=target_policies,
-                **kwargs
+                data_or_dataset, target_policies=target_policies, **kwargs
             )
         
         self.target_policies = self.dataset.target_policies
         
-        # Prepare formatted data for backwards compatibility
+        # Prepare formatted data
         self.formatted_data = self._format_for_estimators()
-        
-        # For backward compatibility - some code expects this
-        self.raw_data = [self._sample_to_dict(s) for s in self.dataset.samples]
 
     @classmethod
-    def from_jsonl(cls, file_path: str, target_policies: Optional[List[str]] = None, **kwargs) -> "PrecomputedSampler":
+    def from_jsonl(
+        cls, file_path: str, target_policies: Optional[List[str]] = None, **kwargs: Any
+    ) -> "PrecomputedSampler":
         """Load from JSONL file.
         
         Args:
@@ -60,42 +62,28 @@ class PrecomputedSampler:
         dataset = Dataset.from_jsonl(file_path, target_policies, **kwargs)
         return cls(dataset)
 
-    def _sample_to_dict(self, sample: Sample) -> Dict[str, Any]:
-        """Convert Sample back to dict for backward compatibility."""
-        base_field = self.dataset.metadata.get("base_policy_field", "p0_logprob")
-        target_field = self.dataset.metadata.get("target_logps_field", "target_logps")
-        
-        return {
-            "prompt": sample.prompt,
-            "response": sample.response,
-            "reward": sample.reward,
-            base_field: sample.base_logprob,
-            target_field: sample.target_logprobs,
-            "metadata": sample.metadata,
-        }
-
     def _format_for_estimators(self) -> List[Dict[str, Any]]:
-        """Format data for CJE estimators (backwards compatibility).
+        """Format data for CJE estimators.
 
         Returns list of dicts with:
         - context: prompt text
         - response: generated text
-        - logp: base policy log prob
+        - base_policy_logprob: base policy log prob
         - reward: calibrated reward
-        - logp_target_all: dict of target log probs
+        - target_policy_logprobs: dict of target log probs
         """
         formatted = []
 
         for sample in self.dataset.samples:
             # Skip samples without valid base log prob
-            if sample.base_logprob is None:
+            if sample.base_policy_logprob is None:
                 continue
 
             # Check all required target policies have valid log probs
             valid_targets = {}
             skip_record = False
             for policy in self.target_policies:
-                logp = sample.target_logprobs.get(policy)
+                logp = sample.target_policy_logprobs.get(policy)
                 if logp is None:
                     skip_record = True
                     break
@@ -108,9 +96,9 @@ class PrecomputedSampler:
                 {
                     "context": sample.prompt,
                     "response": sample.response,
-                    "logp": sample.base_logprob,
+                    "base_policy_logprob": sample.base_policy_logprob,
                     "reward": sample.reward,
-                    "logp_target_all": valid_targets,
+                    "target_policy_logprobs": valid_targets,
                 }
             )
 
@@ -124,7 +112,7 @@ class PrecomputedSampler:
 
         Returns data in format expected by estimators:
         - reward: float
-        - total_logprob: base policy log prob
+        - base_policy_logprob: base policy log prob
         - policy_logprob: target policy log prob
         """
         if target_policy not in self.target_policies:
@@ -140,8 +128,8 @@ class PrecomputedSampler:
             policy_data.append(
                 {
                     "reward": sample.reward,
-                    "total_logprob": sample.base_logprob,
-                    "policy_logprob": sample.target_logprobs[target_policy],
+                    "base_policy_logprob": sample.base_policy_logprob,
+                    "policy_logprob": sample.target_policy_logprobs[target_policy],
                     "prompt": sample.prompt,
                     "response": sample.response,
                 }
@@ -166,8 +154,8 @@ class PrecomputedSampler:
 
         weights = []
         for record in self.formatted_data:
-            base_logp = record["logp"]
-            target_logp = record["logp_target_all"][target_policy]
+            base_logp = record["base_policy_logprob"]
+            target_logp = record["target_policy_logprobs"][target_policy]
 
             # Compute weight with overflow protection
             log_ratio = target_logp - base_logp

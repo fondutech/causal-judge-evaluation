@@ -22,7 +22,8 @@ def main():
     print(f"   ✓ Used {cal_stats['n_oracle']} oracle labels")
 
     print("\n2. Loading data for CJE...")
-    sampler = PrecomputedSampler(calibrated_data, base_policy_field="total_logprob")
+    # Load and estimate
+    sampler = PrecomputedSampler(calibrated_data)
     print(f"   ✓ Loaded {sampler.n_samples} samples")
     print(f"   ✓ Target policies: {sampler.target_policies}")
 

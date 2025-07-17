@@ -71,10 +71,13 @@ class BaseCJEEstimator(ABC):
             weights = []
             for record in data:
                 # Compute w = pi(y|x) / p0(y|x)
-                if record["total_logprob"] is None or record["policy_logprob"] is None:
+                if (
+                    record["base_policy_logprob"] is None
+                    or record["policy_logprob"] is None
+                ):
                     continue
 
-                log_weight = record["policy_logprob"] - record["total_logprob"]
+                log_weight = record["policy_logprob"] - record["base_policy_logprob"]
                 weight = np.exp(np.clip(log_weight, -20, 20))  # Clip for stability
                 weights.append(weight)
 

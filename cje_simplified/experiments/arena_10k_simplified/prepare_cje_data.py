@@ -45,14 +45,16 @@ def prepare_cje_dataset(
                     # Base policy data
                     logprobs_by_prompt[prompt_id]["prompt"] = data["prompt"]
                     logprobs_by_prompt[prompt_id]["response"] = data["response"]
-                    logprobs_by_prompt[prompt_id]["p0_logprob"] = data["logprob"]
-                else:
-                    # Target policy log probs
-                    if "target_logps" not in logprobs_by_prompt[prompt_id]:
-                        logprobs_by_prompt[prompt_id]["target_logps"] = {}
-                    logprobs_by_prompt[prompt_id]["target_logps"][policy] = data[
+                    logprobs_by_prompt[prompt_id]["base_policy_logprob"] = data[
                         "logprob"
                     ]
+                else:
+                    # Target policy log probs
+                    if "target_policy_logprobs" not in logprobs_by_prompt[prompt_id]:
+                        logprobs_by_prompt[prompt_id]["target_policy_logprobs"] = {}
+                    logprobs_by_prompt[prompt_id]["target_policy_logprobs"][policy] = (
+                        data["logprob"]
+                    )
 
     print(f"Found {len(policies)} policies: {sorted(policies)}")
 
@@ -60,11 +62,11 @@ def prepare_cje_dataset(
     records = []
     for prompt_id, data in logprobs_by_prompt.items():
         # Skip if missing base policy data
-        if "p0_logprob" not in data or data["p0_logprob"] is None:
+        if "base_policy_logprob" not in data or data["base_policy_logprob"] is None:
             continue
 
         # Skip if no valid target policies
-        target_logps = data.get("target_logps", {})
+        target_logps = data.get("target_policy_logprobs", {})
         if not any(lp is not None for lp in target_logps.values()):
             continue
 
@@ -78,8 +80,8 @@ def prepare_cje_dataset(
         record = {
             "prompt": data["prompt"],
             "response": data["response"],
-            "p0_logprob": data["p0_logprob"],
-            "target_logps": target_logps,
+            "base_policy_logprob": data["base_policy_logprob"],
+            "target_policy_logprobs": target_logps,
             "judge_score": judge_score,
             # Reward will be computed by calibration later
         }
@@ -105,7 +107,7 @@ def prepare_cje_dataset(
 
     valid_counts = defaultdict(int)
     for record in records:
-        for policy, logprob in record["target_logps"].items():
+        for policy, logprob in record["target_policy_logprobs"].items():
             if logprob is not None:
                 valid_counts[policy] += 1
 

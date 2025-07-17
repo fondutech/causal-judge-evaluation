@@ -4,12 +4,10 @@ from cje_simplified import PrecomputedSampler, CalibratedIPS
 
 
 def test_missing_values():
-    """Test handling of missing log probabilities."""
+    """Test handling of missing values in log probabilities."""
     print("\nTesting missing values...")
 
-    sampler = PrecomputedSampler.from_jsonl(
-        "tests/data/missing_values_data.jsonl", base_policy_field="total_logprob"
-    )
+    sampler = PrecomputedSampler.from_jsonl("tests/data/missing_values_data.jsonl")
     print(f"  Loaded {sampler.n_samples} samples")
 
     # Check data summary shows missing values
@@ -25,12 +23,10 @@ def test_missing_values():
 
 
 def test_extreme_weights():
-    """Test handling of extreme importance weights."""
+    """Test extreme importance weights."""
     print("\nTesting extreme weights...")
 
-    sampler = PrecomputedSampler.from_jsonl(
-        "tests/data/extreme_weights_data.jsonl", base_policy_field="total_logprob"
-    )
+    sampler = PrecomputedSampler.from_jsonl("tests/data/extreme_weights_data.jsonl")
     estimator = CalibratedIPS(sampler, k_folds=2, clip_weight=100.0)
 
     # Get raw weights before calibration
@@ -55,7 +51,7 @@ def test_all_missing():
             "prompt": f"q{i}",
             "response": f"a{i}",
             "reward": 0.7,
-            "p0_logprob": -10.0 if i < 8 else None,  # Some missing
+            "base_policy_logprob": -10.0 if i < 8 else None,  # Some missing
             "target_logps": {"pi_test": -9.0 if i < 5 else None},  # More missing
         }
         for i in range(10)
