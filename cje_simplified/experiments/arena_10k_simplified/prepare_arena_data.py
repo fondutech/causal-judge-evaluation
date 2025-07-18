@@ -57,7 +57,7 @@ def prepare_arena_prompts(
         for msg in conversation:
             if isinstance(msg, dict) and msg.get("role") == "user":
                 content = msg.get("content", "").strip()
-                if content and 10 <= len(content) <= 2000:  # Basic length filter
+                if content:
                     first_user_prompt = content
                     break
 

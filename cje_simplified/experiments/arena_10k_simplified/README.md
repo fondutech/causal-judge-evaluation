@@ -23,7 +23,7 @@ python prepare_arena_data.py --samples 1000 --output data/prompts.jsonl
 Key insights from the old codebase:
 - **Deduplication is critical**: We extract unique prompts to ensure proper policy comparison
 - **Fresh responses only**: Empty responses force generation from our specified policies
-- **Simple filtering**: Basic length and language filters keep the data clean
+- **Simple filtering**: Basic language filter to get English prompts
 
 ### 2. Generate Responses
 ```bash
