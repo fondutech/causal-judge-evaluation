@@ -9,7 +9,8 @@ from typing import Dict, Any
 from cje_simplified import (
     PrecomputedSampler,
     CalibratedIPS,
-    load_dataset_with_calibration,
+    load_dataset_from_jsonl,
+    calibrate_dataset,
     compute_teacher_forced_logprob,
     diagnose_weights,
     create_weight_summary_table,
@@ -18,7 +19,6 @@ from cje_simplified import (
     Llama3TemplateConfig,
     Llama4TemplateConfig,
     HuggingFaceTemplateConfig,
-    convert_chat_for_teacher_forcing,
     compute_chat_logprob,
 )
 
@@ -129,7 +129,6 @@ def compute_new_log_probs() -> None:
         chat=chat,
         model="accounts/fireworks/models/llama-v3p2-3b-instruct",
         template_config=template_config,
-        tokenizer_name="meta-llama/Llama-3.2-3B-Instruct",
     )
 
     if chat_result.is_valid:
@@ -144,22 +143,28 @@ def prepare_data_for_cje() -> None:
 
     print("\n=== Preparing Data for CJE ===\n")
 
-    # Load data and calibrate judge scores in one step using SOLID factory
-    dataset, stats = load_dataset_with_calibration(
-        "raw_data.jsonl",
-        judge_score_field="judge_score",
-        oracle_label_field="oracle_label",
+    # Step 1: Load data with judge scores
+    print("1. Loading data with judge scores...")
+    dataset = load_dataset_from_jsonl("raw_data.jsonl", reward_field="judge_score")
+    print(f"   Loaded {dataset.n_samples} samples")
+
+    # Step 2: Calibrate judge scores to oracle labels
+    print("\n2. Calibrating judge scores to oracle labels...")
+    calibrated_dataset, calibration_result = calibrate_dataset(
+        dataset,
+        judge_field="judge_score",
+        oracle_field="oracle_label",
         k_folds=2,  # Use 2 folds for small example
     )
 
-    print(f"Calibration statistics:")
-    print(f"  Oracle samples: {stats['n_oracle']}")
-    print(f"  RMSE: {stats['rmse']:.3f}")
-    print(f"  Coverage (±0.1): {stats['coverage']:.1%}")
+    print(f"\nCalibration statistics:")
+    print(f"  Oracle samples: {calibration_result.n_oracle}")
+    print(f"  RMSE: {calibration_result.calibration_rmse:.3f}")
+    print(f"  Coverage (±0.1): {calibration_result.coverage_at_01:.1%}")
 
     # Save prepared data - convert Dataset to raw data for saving
     with open("cje_ready_data.jsonl", "w") as f:
-        for sample in dataset.samples:
+        for sample in calibrated_dataset.samples:
             record = {
                 "prompt": sample.prompt,
                 "response": sample.response,
@@ -177,8 +182,8 @@ def prepare_data_for_cje() -> None:
 
     # Show example of calibration
     print("\nExample calibration:")
-    for i in range(min(3, len(dataset.samples))):
-        sample = dataset.samples[i]
+    for i in range(min(3, len(calibrated_dataset.samples))):
+        sample = calibrated_dataset.samples[i]
         judge = sample.metadata.get("judge_score", "N/A")
         reward = sample.reward
         oracle = sample.metadata.get("oracle_label", "N/A")

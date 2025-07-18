@@ -58,28 +58,15 @@ def load_dataset_from_jsonl(
     return default_factory.create_from_jsonl(file_path, target_policies)
 
 
-def load_dataset_with_calibration(
-    file_path: str,
-    judge_score_field: str = "judge_score",
-    oracle_label_field: str = "oracle_label",
-    k_folds: int = 5,
-    target_policies: Optional[List[str]] = None,
-) -> Tuple[Dataset, Dict[str, float]]:
-    """Load Dataset from JSONL with judge calibration.
-
-    Convenience function using the default factory.
-    """
-    return default_factory.create_from_jsonl_with_calibration(
-        file_path, judge_score_field, oracle_label_field, k_folds, target_policies
-    )
-
-
 # Utilities and diagnostics
 from .utils import (
     # Judge calibration
     JudgeCalibrator,
     calibrate_judge_scores,
     CalibrationResult,
+    # Dataset calibration
+    calibrate_dataset,
+    calibrate_from_raw_data,
     # Weight diagnostics
     diagnose_weights,
     create_weight_summary_table,
@@ -92,13 +79,12 @@ from .teacher_forcing import (
     RobustTeacherForcing,
     compute_teacher_forced_logprob,
     compute_total_logprob,
-    ChatToCompletionsConverter,
     ChatTemplateConfig,
     Llama3TemplateConfig,
     Llama4TemplateConfig,
     HuggingFaceTemplateConfig,
-    convert_chat_for_teacher_forcing,
     compute_chat_logprob,
+    convert_chat_to_completions,
 )
 
 __version__ = "0.1.3"
@@ -122,7 +108,6 @@ __all__ = [
     "default_factory",
     # Convenience functions
     "load_dataset_from_jsonl",
-    "load_dataset_with_calibration",
     # Types
     "LogProbResult",
     "LogProbStatus",
@@ -135,14 +120,16 @@ __all__ = [
     "JudgeCalibrator",
     "calibrate_judge_scores",
     "CalibrationResult",
+    # Dataset calibration
+    "calibrate_dataset",
+    "calibrate_from_raw_data",
     # Reward utilities
     "add_rewards_to_existing_data",
     # Chat support
-    "ChatToCompletionsConverter",
     "ChatTemplateConfig",
     "Llama3TemplateConfig",
     "Llama4TemplateConfig",
     "HuggingFaceTemplateConfig",
-    "convert_chat_for_teacher_forcing",
     "compute_chat_logprob",
+    "convert_chat_to_completions",
 ]

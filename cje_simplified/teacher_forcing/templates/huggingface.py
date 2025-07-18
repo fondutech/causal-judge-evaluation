@@ -21,7 +21,7 @@ class HuggingFaceTemplateConfig(ChatTemplateConfig):
         self._tokenizer = None
         self._init_tokenizer()
 
-    def _init_tokenizer(self):
+    def _init_tokenizer(self) -> None:
         """Load the tokenizer."""
         try:
             from transformers import AutoTokenizer
@@ -35,6 +35,8 @@ class HuggingFaceTemplateConfig(ChatTemplateConfig):
 
     def format_message(self, role: str, content: str) -> str:
         """Format a complete message using tokenizer."""
+        if self._tokenizer is None:
+            raise RuntimeError("Tokenizer not initialized")
         # For single message formatting, we'll use the tokenizer with a single-message chat
         chat = [{"role": role, "content": content}]
         return self._tokenizer.apply_chat_template(
@@ -43,6 +45,8 @@ class HuggingFaceTemplateConfig(ChatTemplateConfig):
 
     def format_message_header(self, role: str) -> str:
         """Format just the header using tokenizer."""
+        if self._tokenizer is None:
+            raise RuntimeError("Tokenizer not initialized")
         # Create empty message and extract just the header part
         chat = [{"role": role, "content": ""}]
         full = self._tokenizer.apply_chat_template(
@@ -60,6 +64,8 @@ class HuggingFaceTemplateConfig(ChatTemplateConfig):
         self, chat: List[Dict[str, str]], add_generation_prompt: bool = False
     ) -> str:
         """Direct access to tokenizer's apply_chat_template for complex cases."""
+        if self._tokenizer is None:
+            raise RuntimeError("Tokenizer not initialized")
         return self._tokenizer.apply_chat_template(
             chat, tokenize=False, add_generation_prompt=add_generation_prompt
         )

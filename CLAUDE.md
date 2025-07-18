@@ -28,19 +28,24 @@ cje_simplified/           # Clean reimplementation - ALL NEW WORK GOES HERE
 ## 🚀 Quick Start
 
 ```python
-from cje_simplified import load_dataset_with_calibration, PrecomputedSampler, CalibratedIPS
+from cje_simplified import load_dataset_from_jsonl, calibrate_dataset, PrecomputedSampler, CalibratedIPS
 
-# Modern SOLID approach - use convenience functions
-dataset, stats = load_dataset_with_calibration("data.jsonl") 
-sampler = PrecomputedSampler(dataset)
+# Scenario 1: Oracle labels as rewards (no calibration needed)
+dataset = load_dataset_from_jsonl("data.jsonl", reward_field="oracle_label")
 
-# Alternative - direct factory usage with dependency injection
-from cje_simplified import DatasetFactory, DatasetLoader
-factory = DatasetFactory(loader=DatasetLoader())
-dataset = factory.create_from_jsonl("data.jsonl")
-sampler = PrecomputedSampler(dataset)
+# Scenario 2: Judge scores that need calibration
+dataset = load_dataset_from_jsonl("data.jsonl", reward_field="judge_score")
+calibrated_dataset, result = calibrate_dataset(
+    dataset, 
+    judge_field="judge_score",
+    oracle_field="oracle_label"
+)
+
+# Scenario 3: Pre-calibrated rewards
+dataset = load_dataset_from_jsonl("data.jsonl", reward_field="reward")
 
 # Run estimation
+sampler = PrecomputedSampler(dataset)
 estimator = CalibratedIPS(sampler)
 results = estimator.fit_and_estimate()
 ```
@@ -55,22 +60,26 @@ All data structures are defined in `data/models.py`:
 - `EstimationResult` - Structured results with statistical methods
 
 ### 2. Separation of Concerns (SOLID)
-Loading responsibilities are cleanly separated:
+Responsibilities are cleanly separated:
 - `DatasetLoader` - Converts raw data to typed Dataset objects
-- `DatasetFactory` - Orchestrates loading + calibration workflows
+- `DatasetFactory` - Creates datasets from various sources
+- `calibrate_dataset()` - Calibrates judge scores to oracle labels
 - `DataSource` - Protocol for different data sources (JSONL, memory, etc.)
 - `Dataset` - Pure data container with validation only
 
-### 3. Dependency Injection
+### 3. Modular Data Pipeline
 ```python
-# Good - explicit dependencies with injection
-from cje_simplified import DatasetFactory, DatasetLoader
-factory = DatasetFactory(loader=DatasetLoader(base_policy_field="custom_field"))
-dataset = factory.create_from_jsonl("data.jsonl")
+# Load data with different reward sources
+dataset = load_dataset_from_jsonl("data.jsonl", reward_field="oracle_label")  # Direct oracle
+dataset = load_dataset_from_jsonl("data.jsonl", reward_field="judge_score")   # Needs calibration
 
-# Better - use convenience functions for common cases
-from cje_simplified import load_dataset_from_jsonl
-dataset = load_dataset_from_jsonl("data.jsonl")
+# Calibrate when needed (separate step)
+if needs_calibration:
+    dataset, stats = calibrate_dataset(dataset, judge_field="judge_score", oracle_field="oracle_label")
+
+# Custom field names
+factory = DatasetFactory(loader=DatasetLoader(base_policy_field="p0_logprob"))
+dataset = factory.create_from_jsonl("data.jsonl")
 ```
 
 ### 4. No Magic Fallbacks
@@ -86,10 +95,29 @@ return -100.0  # NEVER DO THIS
 ### 5. Clear Abstractions (Single Responsibility)
 - `Dataset` - Data container with validation only
 - `DatasetLoader` - Converts raw data to Dataset objects  
-- `DatasetFactory` - Coordinates loading + calibration
+- `DatasetFactory` - Creates datasets from various sources
+- `calibrate_dataset()` - Calibrates judge scores to oracle labels (separate step)
 - `PrecomputedSampler` - Adds CJE-specific operations to Dataset
 - `BaseCJEEstimator` - Abstract interface for all estimators
 - `CalibratedIPS` - Concrete implementation with cross-fitting
+
+### 6. Simplified Chat API for Teacher Forcing
+```python
+from cje_simplified import compute_chat_logprob, Llama3TemplateConfig
+
+# Explicit template configuration (no auto-detection)
+config = Llama3TemplateConfig()  # or HuggingFaceTemplateConfig("model-name")
+
+# Compute log probability for chat
+result = compute_chat_logprob(
+    chat=[
+        {"role": "user", "content": "What is 2+2?"},
+        {"role": "assistant", "content": "4"}
+    ],
+    model="accounts/fireworks/models/llama-v3-8b-instruct",
+    template_config=config  # Explicit, no magic
+)
+```
 
 ## 🔧 Essential Commands
 
@@ -169,9 +197,9 @@ dataset = Dataset.from_jsonl("file.jsonl")
 from cje_simplified import load_dataset_from_jsonl
 dataset = load_dataset_from_jsonl("file.jsonl")
 
-# Or with calibration
-from cje_simplified import load_dataset_with_calibration
-dataset, stats = load_dataset_with_calibration("file.jsonl")
+# For calibration - now a separate step
+dataset = load_dataset_from_jsonl("file.jsonl", reward_field="judge_score")
+calibrated_dataset, stats = calibrate_dataset(dataset)
 ```
 
 ## 🧪 Testing Philosophy
@@ -235,7 +263,7 @@ sampler = PrecomputedSampler(dataset)
 **Loading Pattern Migration:**
 - `Dataset.from_raw_data()` → `DatasetFactory.create_from_data()`
 - `Dataset.from_jsonl()` → `load_dataset_from_jsonl()` or `DatasetFactory.create_from_jsonl()`
-- `create_calibrated_rewards()` → `load_dataset_with_calibration()`
+- `load_dataset_with_calibration()` → `load_dataset_from_jsonl()` + `calibrate_dataset()` (now separate steps)
 
 ## 📝 Documentation Standards
 

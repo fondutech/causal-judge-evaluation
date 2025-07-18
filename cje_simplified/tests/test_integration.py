@@ -3,7 +3,8 @@
 from cje_simplified import (
     PrecomputedSampler,
     CalibratedIPS,
-    load_dataset_with_calibration,
+    load_dataset_from_jsonl,
+    calibrate_dataset,
     diagnose_weights,
 )
 
@@ -14,16 +15,20 @@ def test_end_to_end_pipeline() -> None:
     # Use the judge calibration test data we created
     data_file = "tests/data/judge_calibration_data.jsonl"
 
-    print("1. Calibrating judge scores to oracle labels...")
-    dataset, cal_stats = load_dataset_with_calibration(
-        data_file, judge_score_field="judge_score", oracle_label_field="oracle_label"
+    print("1. Loading data and calibrating judge scores...")
+    # Load with judge scores as rewards initially
+    dataset = load_dataset_from_jsonl(data_file, reward_field="judge_score")
+
+    # Calibrate judge scores to oracle labels
+    calibrated_dataset, cal_result = calibrate_dataset(
+        dataset, judge_field="judge_score", oracle_field="oracle_label"
     )
-    print(f"   ✓ Calibrated {dataset.n_samples} samples")
-    print(f"   ✓ Used {cal_stats['n_oracle']} oracle labels")
+    print(f"   ✓ Calibrated {calibrated_dataset.n_samples} samples")
+    print(f"   ✓ Used {cal_result.n_oracle} oracle labels")
 
     print("\n2. Loading data for CJE...")
     # Load and estimate
-    sampler = PrecomputedSampler(dataset)
+    sampler = PrecomputedSampler(calibrated_dataset)
     print(f"   ✓ Loaded {sampler.n_samples} samples")
     print(f"   ✓ Target policies: {sampler.target_policies}")
 

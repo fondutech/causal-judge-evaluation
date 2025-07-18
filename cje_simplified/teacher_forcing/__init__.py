@@ -23,10 +23,8 @@ from .templates import (
 
 # Chat utilities
 from .chat import (
-    ChatToCompletionsConverter,
-    convert_chat_for_teacher_forcing,
-    ChatTeacherForcing,
     compute_chat_logprob,
+    convert_chat_to_completions,
 )
 
 __all__ = [
@@ -39,10 +37,7 @@ __all__ = [
     "Llama3TemplateConfig",
     "Llama4TemplateConfig",
     "HuggingFaceTemplateConfig",
-    # Chat conversion
-    "ChatToCompletionsConverter",
-    "convert_chat_for_teacher_forcing",
-    # Integrated chat support
-    "ChatTeacherForcing",
+    # Chat support
     "compute_chat_logprob",
+    "convert_chat_to_completions",
 ]

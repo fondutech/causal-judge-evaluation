@@ -64,7 +64,7 @@ def compute_ess(weights: np.ndarray) -> float:
     if sum_w2 == 0:
         return 0.0
 
-    return (sum_w**2) / sum_w2
+    return float((sum_w**2) / sum_w2)
 
 
 def diagnose_weights(
@@ -175,7 +175,7 @@ def create_weight_summary_table(all_diagnostics: Dict[str, WeightDiagnostics]) -
 
 
 def detect_api_nondeterminism(
-    sampler, baseline_policy: str = "pi_clone", tolerance: float = 0.05
+    sampler: Any, baseline_policy: str = "pi_clone", tolerance: float = 0.05
 ) -> Dict[str, Any]:
     """Detect if API returns inconsistent log probabilities.
 

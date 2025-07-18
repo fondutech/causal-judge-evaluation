@@ -17,6 +17,10 @@ from .judge_calibration import (
     calibrate_judge_scores,
     CalibrationResult,
 )
+from .dataset_calibration import (
+    calibrate_dataset,
+    calibrate_from_raw_data,
+)
 from .weight_diagnostics import (
     diagnose_weights,
     create_weight_summary_table,
@@ -34,6 +38,9 @@ __all__ = [
     "JudgeCalibrator",
     "calibrate_judge_scores",
     "CalibrationResult",
+    # Dataset calibration
+    "calibrate_dataset",
+    "calibrate_from_raw_data",
     # Weight diagnostics
     "diagnose_weights",
     "create_weight_summary_table",
