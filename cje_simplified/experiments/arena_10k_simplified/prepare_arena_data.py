@@ -2,7 +2,9 @@
 """
 Prepare ChatBot Arena data for CJE experiments.
 
-Downloads ChatBot Arena conversations and extracts first-turn prompts.
+Downloads ChatBot Arena conversations and extracts unique prompts.
+This follows the key insight from the old codebase: deduplicate contexts
+to ensure we're comparing fresh responses from our policies.
 """
 
 import json
@@ -16,10 +18,20 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 
 def prepare_arena_prompts(
-    n_samples: int = 1000, output_file: str = "arena_prompts.jsonl", seed: int = 42
+    n_samples: int = 1000,
+    output_file: str = "arena_prompts.jsonl",
+    seed: int = 42,
 ) -> List[Dict[str, Any]]:
-    """Download and prepare Arena prompts."""
+    """Download and prepare unique Arena prompts (first turn only).
 
+    Args:
+        n_samples: Number of unique prompts to extract
+        output_file: Where to save the prompts
+        seed: Random seed for sampling
+
+    Returns:
+        List of prompt dictionaries
+    """
     print(f"Downloading ChatBot Arena conversations...")
 
     try:
@@ -29,44 +41,56 @@ def prepare_arena_prompts(
         return []
 
     # Download dataset
-    dataset = load_dataset("lmsys/chatbot_arena_conversations", split="train")
+    dataset = load_dataset("agie-ai/lmsys-chatbot_arena_conversations", split="train")
     print(f"Downloaded {len(dataset):,} conversations")
 
-    # Extract unique first-turn prompts
+    # Extract unique prompts (key insight from old codebase)
     prompts = []
     seen = set()
 
     for i, row in enumerate(dataset):
-        # Get conversation (handle different dataset formats)
-        conv = row.get("conversation_a") or row.get("conversation") or []
+        conv_id = row.get("conversation_id", f"conv_{i}")
+        conversation = row.get("conversation_a", [])
 
-        # Find first user message
-        user_prompt = None
-        for msg in conv:
+        # Extract first user turn only
+        first_user_prompt = None
+        for msg in conversation:
             if isinstance(msg, dict) and msg.get("role") == "user":
-                user_prompt = msg.get("content", "").strip()
-                break
+                content = msg.get("content", "").strip()
+                if content and 10 <= len(content) <= 2000:  # Basic length filter
+                    first_user_prompt = content
+                    break
 
-        if not user_prompt or user_prompt in seen:
+        if not first_user_prompt:
             continue
 
-        # Filter English only (simple heuristic)
-        if any(ord(c) > 127 for c in user_prompt[:100]):  # Non-ASCII in first 100 chars
+        # Skip duplicates (critical for proper policy comparison)
+        if first_user_prompt in seen:
             continue
+        seen.add(first_user_prompt)
 
-        seen.add(user_prompt)
         prompts.append(
             {
                 "prompt_id": f"arena_{i}",
-                "prompt": user_prompt,
-                "source": "chatbot_arena",
+                "prompt": first_user_prompt,
             }
         )
 
-        if len(prompts) % 1000 == 0:
-            print(f"Extracted {len(prompts):,} prompts...")
+        if len(prompts) >= n_samples * 2:  # Get extra for filtering
+            break
 
-    print(f"Total unique prompts: {len(prompts):,}")
+    print(f"Extracted {len(prompts):,} unique prompts")
+
+    # Simple English filter
+    filtered = []
+    for p in prompts:
+        # Skip if too many non-ASCII chars (likely non-English)
+        non_ascii = sum(1 for c in p["prompt"][:100] if ord(c) > 127)
+        if non_ascii / min(len(p["prompt"]), 100) < 0.1:
+            filtered.append(p)
+
+    prompts = filtered
+    print(f"After filtering: {len(prompts):,} prompts")
 
     # Sample if needed
     random.seed(seed)
@@ -86,7 +110,7 @@ def prepare_arena_prompts(
     return prompts
 
 
-def main():
+def main() -> None:
     """Run data preparation."""
     import argparse
 
@@ -100,7 +124,9 @@ def main():
     args = parser.parse_args()
 
     prepare_arena_prompts(
-        n_samples=args.samples, output_file=args.output, seed=args.seed
+        n_samples=args.samples,
+        output_file=args.output,
+        seed=args.seed,
     )
 
 

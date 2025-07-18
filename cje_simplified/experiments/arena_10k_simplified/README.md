@@ -13,9 +13,17 @@ The experiment follows the complete CJE pipeline:
 ## Workflow
 
 ### 1. Prepare Arena Data
+
+Extract unique first-turn prompts from ChatBot Arena conversations:
+
 ```bash
-python prepare_arena_data.py --input arena_10k.jsonl --output data/prompts.jsonl
+python prepare_arena_data.py --samples 1000 --output data/prompts.jsonl
 ```
+
+Key insights from the old codebase:
+- **Deduplication is critical**: We extract unique prompts to ensure proper policy comparison
+- **Fresh responses only**: Empty responses force generation from our specified policies
+- **Simple filtering**: Basic length and language filters keep the data clean
 
 ### 2. Generate Responses
 ```bash
