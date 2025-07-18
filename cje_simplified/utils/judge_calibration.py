@@ -11,7 +11,6 @@ from dataclasses import dataclass
 
 from .calibration_utils import (
     cross_fit_isotonic,
-    fit_isotonic_with_cv,
     compute_calibration_diagnostics,
 )
 
@@ -124,7 +123,8 @@ class JudgeCalibrator:
         # Cross-fit calibration on oracle subset
         if n_oracle < n_total:
             # Standard case: calibrate on oracle subset
-            oracle_calibrated, final_model = fit_isotonic_with_cv(
+            # Get cross-fitted predictions for oracle samples
+            oracle_calibrated = cross_fit_isotonic(
                 oracle_scores,
                 oracle_y,
                 k_folds=self.k_folds,
@@ -132,8 +132,9 @@ class JudgeCalibrator:
             )
             calibrated_scores[oracle_mask] = oracle_calibrated
 
-            # Store final model
-            self._final_calibrator = final_model
+            # Fit final model on all oracle data for calibrating non-oracle samples
+            self._final_calibrator = IsotonicRegression(out_of_bounds="clip")
+            self._final_calibrator.fit(oracle_scores, oracle_y)
 
             # Calibrate non-oracle samples
             non_oracle_mask = ~oracle_mask
@@ -143,13 +144,16 @@ class JudgeCalibrator:
                 )
         else:
             # All data has labels: just cross-fit everything
-            calibrated_scores, final_model = fit_isotonic_with_cv(
+            calibrated_scores = cross_fit_isotonic(
                 judge_scores,
                 oracle_y,
                 k_folds=self.k_folds,
                 random_seed=self.random_seed,
             )
-            self._final_calibrator = final_model
+
+            # Still fit a final model for potential future predictions
+            self._final_calibrator = IsotonicRegression(out_of_bounds="clip")
+            self._final_calibrator.fit(judge_scores, oracle_y)
 
         # Compute diagnostics on oracle subset using shared utility
         oracle_cal_scores = calibrated_scores[oracle_mask]

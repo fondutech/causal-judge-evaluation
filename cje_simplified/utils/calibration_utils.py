@@ -68,38 +68,6 @@ def cross_fit_isotonic(
     return calibrated
 
 
-def fit_isotonic_with_cv(
-    X: np.ndarray,
-    y: np.ndarray,
-    k_folds: int = 5,
-    random_seed: int = 42,
-    out_of_bounds: str = "clip",
-) -> Tuple[np.ndarray, IsotonicRegression]:
-    """Fit isotonic regression with cross-validation and return final model.
-
-    Similar to cross_fit_isotonic but also returns a final model trained
-    on all data for future predictions.
-
-    Args:
-        X: Input values to calibrate
-        y: Target values
-        k_folds: Number of cross-fitting folds
-        random_seed: Random seed
-        out_of_bounds: How to handle out-of-bounds predictions
-
-    Returns:
-        Tuple of (cross_fit_predictions, final_model)
-    """
-    # Get cross-fitted predictions
-    cv_predictions = cross_fit_isotonic(X, y, k_folds, random_seed, out_of_bounds)
-
-    # Fit final model on all data
-    final_model = IsotonicRegression(out_of_bounds=out_of_bounds)
-    final_model.fit(X, y)
-
-    return cv_predictions, final_model
-
-
 def calibrate_to_target_mean(
     values: np.ndarray,
     target_mean: float = 1.0,

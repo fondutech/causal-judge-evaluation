@@ -8,7 +8,6 @@ This module contains:
 
 from .calibration_utils import (
     cross_fit_isotonic,
-    fit_isotonic_with_cv,
     calibrate_to_target_mean,
     compute_calibration_diagnostics,
 )
@@ -31,7 +30,6 @@ from .weight_diagnostics import (
 __all__ = [
     # Calibration utilities
     "cross_fit_isotonic",
-    "fit_isotonic_with_cv",
     "calibrate_to_target_mean",
     "compute_calibration_diagnostics",
     # Judge calibration
