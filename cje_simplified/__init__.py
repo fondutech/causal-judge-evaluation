@@ -58,8 +58,12 @@ def load_dataset_from_jsonl(
     return default_factory.create_from_jsonl(file_path, target_policies)
 
 
-# Utilities and diagnostics
-from .utils import (
+# Calibration
+from .calibration import (
+    # Isotonic regression utilities
+    cross_fit_isotonic,
+    calibrate_to_target_mean,
+    compute_calibration_diagnostics,
     # Judge calibration
     JudgeCalibrator,
     calibrate_judge_scores,
@@ -67,6 +71,10 @@ from .utils import (
     # Dataset calibration
     calibrate_dataset,
     calibrate_from_raw_data,
+)
+
+# Utilities and diagnostics
+from .utils import (
     # Weight diagnostics
     diagnose_weights,
     create_weight_summary_table,
@@ -116,6 +124,10 @@ __all__ = [
     "create_weight_summary_table",
     "detect_api_nondeterminism",
     "WeightDiagnostics",
+    # Calibration - isotonic regression
+    "cross_fit_isotonic",
+    "calibrate_to_target_mean",
+    "compute_calibration_diagnostics",
     # Judge calibration
     "JudgeCalibrator",
     "calibrate_judge_scores",

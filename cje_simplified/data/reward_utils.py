@@ -9,7 +9,7 @@ import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 
-from ..utils.judge_calibration import JudgeCalibrator
+from ..calibration.judge import JudgeCalibrator
 
 
 def save_jsonl(data: List[Dict], file_path: str) -> None:

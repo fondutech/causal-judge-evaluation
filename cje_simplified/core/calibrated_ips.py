@@ -10,7 +10,7 @@ from typing import Dict, Optional
 from .base_estimator import BaseCJEEstimator
 from ..data.models import EstimationResult, WeightCalibrationConfig
 from ..data.precomputed_sampler import PrecomputedSampler
-from ..utils.calibration_utils import calibrate_to_target_mean
+from ..calibration.isotonic import calibrate_to_target_mean
 
 
 class CalibratedIPS(BaseCJEEstimator):

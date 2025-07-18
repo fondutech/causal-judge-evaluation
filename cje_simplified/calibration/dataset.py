@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Optional, Tuple
 import numpy as np
 from ..data.models import Dataset, Sample
 from ..data.loaders import DatasetLoader, InMemoryDataSource
-from .judge_calibration import JudgeCalibrator, CalibrationResult
+from .judge import JudgeCalibrator, CalibrationResult
 
 
 def calibrate_dataset(

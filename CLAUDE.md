@@ -18,10 +18,11 @@ The original CJE codebase became a "ball of mud" - overly complex, tightly coupl
 ```
 cje/                      # Original codebase (deprecated, do not modify)
 cje_simplified/           # Clean reimplementation - ALL NEW WORK GOES HERE
+├── calibration/          # Calibration utilities (isotonic, judge, dataset)
 ├── core/                 # Core abstractions (estimators, base classes)
 ├── data/                 # Data models and loading utilities  
 ├── teacher_forcing/      # Log probability computation
-├── utils/                # Calibration, diagnostics, helpers
+├── utils/                # Diagnostics and helpers
 └── tests/                # Test suite with example data
 ```
 
@@ -96,7 +97,10 @@ return -100.0  # NEVER DO THIS
 - `Dataset` - Data container with validation only
 - `DatasetLoader` - Converts raw data to Dataset objects  
 - `DatasetFactory` - Creates datasets from various sources
-- `calibrate_dataset()` - Calibrates judge scores to oracle labels (separate step)
+- `calibration/` - All calibration functionality
+  - `isotonic.py` - Cross-fitted isotonic regression utilities
+  - `judge.py` - Judge score calibration to oracle labels
+  - `dataset.py` - Dataset calibration workflows
 - `PrecomputedSampler` - Adds CJE-specific operations to Dataset
 - `BaseCJEEstimator` - Abstract interface for all estimators
 - `CalibratedIPS` - Concrete implementation with cross-fitting

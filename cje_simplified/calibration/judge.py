@@ -9,7 +9,7 @@ from typing import Optional, Tuple, Dict
 from sklearn.isotonic import IsotonicRegression
 from dataclasses import dataclass
 
-from .calibration_utils import (
+from .isotonic import (
     cross_fit_isotonic,
     compute_calibration_diagnostics,
 )
