@@ -60,7 +60,10 @@ def calibrate_dataset(
         judge_scores.append(float(judge_score))
 
         # Look for oracle label
-        if oracle_field in sample.metadata:
+        if (
+            oracle_field in sample.metadata
+            and sample.metadata[oracle_field] is not None
+        ):
             oracle_labels.append(float(sample.metadata[oracle_field]))
             oracle_mask.append(True)
         else:
@@ -82,14 +85,14 @@ def calibrate_dataset(
 
     # Create new samples with calibrated rewards
     calibrated_samples = []
+    oracle_idx = 0
     for i, sample in enumerate(dataset.samples):
         # Create new sample with calibrated reward
         new_metadata = sample.metadata.copy()
         new_metadata[judge_field] = judge_scores[i]  # Preserve original
         if oracle_mask[i]:
-            new_metadata[oracle_field] = oracle_labels[oracle_mask_array][
-                : np.sum(oracle_mask_array[: i + 1])
-            ][-1]
+            new_metadata[oracle_field] = oracle_labels[oracle_idx]
+            oracle_idx += 1
 
         calibrated_sample = Sample(
             prompt=sample.prompt,

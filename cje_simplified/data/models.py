@@ -41,7 +41,9 @@ class Sample(BaseModel):
 
     prompt: str = Field(..., description="Input prompt/context")
     response: str = Field(..., description="Generated response")
-    reward: float = Field(..., ge=0, le=1, description="Calibrated reward [0,1]")
+    reward: Optional[float] = Field(
+        None, ge=0, le=1, description="Calibrated reward [0,1]"
+    )
     base_policy_logprob: Optional[float] = Field(
         None, description="Log prob under base policy"
     )

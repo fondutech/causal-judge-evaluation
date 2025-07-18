@@ -26,6 +26,9 @@ class PrecomputedSampler:
             data_or_dataset: Either a Dataset instance or raw data list
             target_policies: Target policy names (only used if data_or_dataset is a list)
             **kwargs: Additional arguments passed to DatasetFactory
+
+        Raises:
+            ValueError: If any samples are missing rewards
         """
         if isinstance(data_or_dataset, Dataset):
             self.dataset = data_or_dataset
@@ -34,6 +37,17 @@ class PrecomputedSampler:
             factory = DatasetFactory()
             self.dataset = factory.create_from_data(
                 data_or_dataset, target_policies=target_policies
+            )
+
+        # Validate that all samples have rewards
+        samples_without_rewards = [
+            i for i, sample in enumerate(self.dataset.samples) if sample.reward is None
+        ]
+        if samples_without_rewards:
+            raise ValueError(
+                f"PrecomputedSampler requires all samples to have rewards. "
+                f"Found {len(samples_without_rewards)} samples without rewards. "
+                f"Please calibrate your dataset first using calibrate_dataset()."
             )
 
         self.target_policies = self.dataset.target_policies

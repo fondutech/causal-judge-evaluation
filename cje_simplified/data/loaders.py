@@ -123,10 +123,14 @@ class DatasetLoader:
 
     def _convert_record_to_sample(self, record: Dict[str, Any]) -> Sample:
         """Convert a single record to a Sample."""
-        # Extract reward (handle nested format)
-        reward = record[self.reward_field]
-        if isinstance(reward, dict):
-            reward = reward.get("mean", reward.get("value"))
+        # Extract reward if present (handle nested format)
+        reward = None
+        if self.reward_field in record:
+            reward = record[self.reward_field]
+            if isinstance(reward, dict):
+                reward = reward.get("mean", reward.get("value"))
+            if reward is not None:
+                reward = float(reward)
 
         # Get base log prob
         base_logprob = record.get(self.base_policy_field)
@@ -134,12 +138,29 @@ class DatasetLoader:
         # Get target log probs
         target_logprobs = record.get(self.target_policy_logprobs_field, {})
 
+        # Collect all other fields into metadata
+        metadata = record.get("metadata", {})
+
+        # Add any fields that aren't core fields to metadata
+        core_fields = {
+            self.prompt_field,
+            self.response_field,
+            self.reward_field,
+            self.base_policy_field,
+            self.target_policy_logprobs_field,
+            "metadata",
+        }
+
+        for key, value in record.items():
+            if key not in core_fields:
+                metadata[key] = value
+
         # Create Sample object
         return Sample(
             prompt=record[self.prompt_field],
             response=record[self.response_field],
-            reward=float(reward),
+            reward=reward,
             base_policy_logprob=base_logprob,
             target_policy_logprobs=target_logprobs,
-            metadata=record.get("metadata", {}),
+            metadata=metadata,
         )

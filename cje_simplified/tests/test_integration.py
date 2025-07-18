@@ -13,11 +13,16 @@ def test_end_to_end_pipeline() -> None:
     """Run full integration test with existing test data."""
 
     # Use the judge calibration test data we created
-    data_file = "tests/data/judge_calibration_data.jsonl"
+    # Use absolute path resolution to work from any working directory
+    import os
+    from pathlib import Path
+
+    test_dir = Path(__file__).parent
+    data_file = test_dir / "data" / "judge_calibration_data.jsonl"
 
     print("1. Loading data and calibrating judge scores...")
-    # Load with judge scores as rewards initially
-    dataset = load_dataset_from_jsonl(data_file, reward_field="judge_score")
+    # Load data without rewards - they will be added through calibration
+    dataset = load_dataset_from_jsonl(str(data_file))
 
     # Calibrate judge scores to oracle labels
     calibrated_dataset, cal_result = calibrate_dataset(

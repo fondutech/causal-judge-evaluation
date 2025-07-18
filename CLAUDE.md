@@ -2,7 +2,7 @@
 
 Core guidance for Claude Code when working with the CJE repository.
 
-Last updated: 2025-01-17 (SOLID refactoring completed)
+Last updated: 2025-01-18 (Calibration decoupling, optional rewards, simplified chat API)
 
 ## 🎯 Project Philosophy
 
@@ -31,22 +31,27 @@ cje_simplified/           # Clean reimplementation - ALL NEW WORK GOES HERE
 ```python
 from cje_simplified import load_dataset_from_jsonl, calibrate_dataset, PrecomputedSampler, CalibratedIPS
 
-# Scenario 1: Oracle labels as rewards (no calibration needed)
-dataset = load_dataset_from_jsonl("data.jsonl", reward_field="oracle_label")
+# Three distinct workflows:
 
-# Scenario 2: Judge scores that need calibration
-dataset = load_dataset_from_jsonl("data.jsonl", reward_field="judge_score")
+# 1. Oracle labels as rewards (no calibration needed)
+dataset = load_dataset_from_jsonl("data_with_oracle.jsonl")  # Assumes oracle_label field exists
+# Map oracle labels directly to rewards
+for sample in dataset.samples:
+    sample.reward = sample.metadata["oracle_label"]
+
+# 2. Judge scores that need calibration
+dataset = load_dataset_from_jsonl("data_with_judges.jsonl")  # No rewards yet
 calibrated_dataset, result = calibrate_dataset(
     dataset, 
     judge_field="judge_score",
     oracle_field="oracle_label"
 )
 
-# Scenario 3: Pre-calibrated rewards
-dataset = load_dataset_from_jsonl("data.jsonl", reward_field="reward")
+# 3. Pre-calibrated rewards
+dataset = load_dataset_from_jsonl("data_with_rewards.jsonl")  # Already has reward field
 
-# Run estimation
-sampler = PrecomputedSampler(dataset)
+# Run estimation (requires rewards)
+sampler = PrecomputedSampler(dataset)  # Will error if rewards are missing
 estimator = CalibratedIPS(sampler)
 results = estimator.fit_and_estimate()
 ```
@@ -55,10 +60,12 @@ results = estimator.fit_and_estimate()
 
 ### 1. Data Models First (Pydantic)
 All data structures are defined in `data/models.py`:
-- `Sample` - Single data point with validation
+- `Sample` - Single data point with validation (reward is Optional)
 - `Dataset` - Pure data container (no loading logic)
 - `LogProbResult` - Explicit error handling for API calls
 - `EstimationResult` - Structured results with statistical methods
+
+**Key change**: Rewards are now optional in Sample, allowing datasets to exist before calibration.
 
 ### 2. Separation of Concerns (SOLID)
 Responsibilities are cleanly separated:
@@ -70,17 +77,24 @@ Responsibilities are cleanly separated:
 
 ### 3. Modular Data Pipeline
 ```python
-# Load data with different reward sources
-dataset = load_dataset_from_jsonl("data.jsonl", reward_field="oracle_label")  # Direct oracle
-dataset = load_dataset_from_jsonl("data.jsonl", reward_field="judge_score")   # Needs calibration
+# Load data without rewards (new default behavior)
+dataset = load_dataset_from_jsonl("data.jsonl")  # No rewards required
 
 # Calibrate when needed (separate step)
-if needs_calibration:
+if has_judge_scores:
     dataset, stats = calibrate_dataset(dataset, judge_field="judge_score", oracle_field="oracle_label")
 
-# Custom field names
+# Or directly assign oracle labels as rewards
+if has_oracle_labels:
+    for sample in dataset.samples:
+        sample.reward = sample.metadata["oracle_label"]
+
+# Custom field names with dependency injection
 factory = DatasetFactory(loader=DatasetLoader(base_policy_field="p0_logprob"))
 dataset = factory.create_from_jsonl("data.jsonl")
+
+# PrecomputedSampler validates rewards exist
+sampler = PrecomputedSampler(dataset)  # Errors if rewards are None
 ```
 
 ### 4. No Magic Fallbacks
@@ -168,7 +182,33 @@ Expected JSONL format:
 **Critical**: 
 - Use `base_policy_logprob` for the base policy field
 - Store failed log probs as `null`, never use fallback values
-- Rewards must be calibrated to business KPIs (use `load_dataset_with_calibration()` or `DatasetFactory`)
+- Rewards must be calibrated to business KPIs (use `calibrate_dataset()` after loading)
+
+## 📝 Key Architectural Changes (Latest)
+
+1. **Decoupled Loading and Calibration**
+   - Removed `load_dataset_with_calibration()` 
+   - Loading and calibration are now separate operations
+   - Enables three distinct workflows (oracle, judge calibration, pre-calibrated)
+
+2. **Optional Rewards**
+   - `Sample.reward` is now `Optional[float]`
+   - Datasets can be loaded without rewards
+   - `PrecomputedSampler` validates rewards exist before estimation
+
+3. **Simplified Chat API**
+   - Removed `ChatTeacherForcing` class
+   - Removed auto-detection in favor of explicit template configuration
+   - Reduced from 6 layers to 2-3 layers
+
+4. **Calibration Module**
+   - Created dedicated `calibration/` directory
+   - Removed redundant `fit_isotonic_with_cv` function
+   - Clear separation of isotonic, judge, and dataset calibration
+
+5. **Metadata Auto-Collection**
+   - DatasetLoader automatically puts non-core fields into metadata
+   - Enables fields like `judge_score` and `oracle_label` to be accessed uniformly
 
 ## ⚠️ Common Pitfalls
 
@@ -202,8 +242,8 @@ from cje_simplified import load_dataset_from_jsonl
 dataset = load_dataset_from_jsonl("file.jsonl")
 
 # For calibration - now a separate step
-dataset = load_dataset_from_jsonl("file.jsonl", reward_field="judge_score")
-calibrated_dataset, stats = calibrate_dataset(dataset)
+dataset = load_dataset_from_jsonl("file.jsonl")  # No reward_field needed
+calibrated_dataset, stats = calibrate_dataset(dataset, judge_field="judge_score")
 ```
 
 ## 🧪 Testing Philosophy
@@ -223,6 +263,8 @@ calibrated_dataset, stats = calibrate_dataset(dataset)
 6. **Old loading patterns** - Using removed Dataset methods like `.from_raw_data()`
 7. **Violating SRP** - Classes with multiple responsibilities (loading + validation + business logic)
 8. **Hidden dependencies** - Construction logic inside data models
+9. **Coupled loading/calibration** - Using removed `load_dataset_with_calibration()`
+10. **Assuming rewards exist** - Not checking if rewards are None before using PrecomputedSampler
 
 ## 📈 Importance Weight Monitoring
 

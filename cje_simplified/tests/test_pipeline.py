@@ -4,6 +4,8 @@ from cje_simplified import (
     PrecomputedSampler,
     CalibratedIPS,
     DatasetFactory,
+    DatasetLoader,
+    calibrate_dataset,
 )
 import json
 import os
@@ -46,17 +48,22 @@ def test_pipeline_with_edge_cases(tmp_path: Path) -> None:
         for record in test_data:
             f.write(json.dumps(record) + "\n")
 
-    # Load and calibrate data using factory
+    # Load data first - no rewards yet
     factory = DatasetFactory()
-    dataset, stats = factory.create_from_jsonl_with_calibration(str(temp_file))
+    dataset = factory.create_from_jsonl(str(temp_file))
+
+    # Then calibrate separately
+    calibrated_dataset, cal_result = calibrate_dataset(
+        dataset, judge_field="judge_score", oracle_field="oracle_label"
+    )
 
     # Test that calibration worked
-    assert stats["n_oracle"] == 12
-    assert stats["n_total"] == 15
-    assert all(0 <= sample.reward <= 1 for sample in dataset.samples)
+    assert cal_result.n_oracle == 12
+    assert calibrated_dataset.n_samples == 15  # Check total samples in dataset
+    assert all(0 <= sample.reward <= 1 for sample in calibrated_dataset.samples)
 
     # Run estimation
-    sampler = PrecomputedSampler(dataset)
+    sampler = PrecomputedSampler(calibrated_dataset)
     estimator = CalibratedIPS(sampler)
     results = estimator.fit_and_estimate()
 
