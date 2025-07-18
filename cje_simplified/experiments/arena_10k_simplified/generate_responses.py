@@ -27,6 +27,7 @@ def generate_responses(
     max_responses: Optional[int] = None,
     policy_name: str = "base",
     system_prompt: str = "You are a helpful assistant.",
+    max_tokens: int = 1000,
 ) -> List[Dict]:
     """Generate responses for prompts using Fireworks API.
 
@@ -38,6 +39,7 @@ def generate_responses(
         max_responses: Limit number of responses to generate
         policy_name: Name of the policy (for tracking)
         system_prompt: System prompt to use
+        max_tokens: Maximum number of tokens to generate
 
     Returns:
         List of response dictionaries
@@ -57,7 +59,7 @@ def generate_responses(
         prompts = prompts[:max_responses]
 
     print(f"Generating {len(prompts)} responses with {policy_name} policy...")
-    print(f"Model: {model}, Temperature: {temperature}")
+    print(f"Model: {model}, Temperature: {temperature}, Max tokens: {max_tokens}")
     print(f"System prompt: {system_prompt[:50]}...")
 
     # Fireworks API endpoint
@@ -84,7 +86,7 @@ def generate_responses(
                 "model": model,
                 "messages": messages,
                 "temperature": temperature,
-                "max_tokens": 200,  # Keep responses short for cost
+                "max_tokens": max_tokens,
             }
 
             response = requests.post(url, json=payload, headers=headers)
@@ -117,9 +119,6 @@ def generate_responses(
             }
             results.append(result)
 
-        # Rate limiting
-        time.sleep(0.1)
-
     # Save results
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -144,6 +143,9 @@ def main() -> None:
         "--output-dir", default="data/responses", help="Output directory"
     )
     parser.add_argument("--max-responses", type=int, help="Limit number of responses")
+    parser.add_argument(
+        "--max-tokens", type=int, default=1000, help="Maximum tokens per response"
+    )
 
     args = parser.parse_args()
 
@@ -182,6 +184,7 @@ def main() -> None:
             policy_name=policy["name"],
             system_prompt=policy["system_prompt"],
             max_responses=args.max_responses,
+            max_tokens=args.max_tokens,
         )
 
 

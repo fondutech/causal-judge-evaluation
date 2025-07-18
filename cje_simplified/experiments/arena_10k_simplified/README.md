@@ -32,6 +32,9 @@ python generate_responses.py --prompts data/prompts.jsonl --output-dir data/resp
 
 # Or limit to a small test set
 python generate_responses.py --prompts data/prompts.jsonl --output-dir data/responses --max-responses 10
+
+# Adjust max tokens (default is 1000)
+python generate_responses.py --prompts data/prompts.jsonl --output-dir data/responses --max-tokens 1500
 ```
 
 This generates responses using the Fireworks API with different system prompts:
