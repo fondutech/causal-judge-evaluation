@@ -1,6 +1,6 @@
 """Precomputed sampler for CJE estimation."""
 
-from typing import Dict, List, Optional, Any, Union, Tuple
+from typing import Dict, List, Optional, Any, Union
 import numpy as np
 
 from .models import Dataset, Sample
@@ -212,6 +212,5 @@ class PrecomputedSampler:
             "target_policies": self.target_policies,
             "reward_mean": dataset_summary["reward_mean"],
             "reward_std": dataset_summary["reward_std"],
-            "n_invalid_dropped": 0,  # No longer tracked
             "valid_samples_per_policy": dataset_summary["valid_samples_per_policy"],
         }
