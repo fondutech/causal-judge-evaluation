@@ -149,7 +149,7 @@ def main() -> None:
 
     # Define policies with different system prompts
     # Using the same model for all to isolate the effect of system prompts
-    model = "accounts/fireworks/models/llama-v3p1-8b-instruct"
+    model = "accounts/fireworks/models/llama4-maverick-instruct-basic"
 
     policies: List[Dict[str, Any]] = [
         {
