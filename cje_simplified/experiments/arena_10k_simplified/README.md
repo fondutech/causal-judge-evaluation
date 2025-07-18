@@ -27,20 +27,23 @@ Key insights from the old codebase:
 
 ### 2. Generate Responses
 ```bash
-# Generate from base policy
-python generate_responses.py --prompts data/prompts.jsonl --policy base
+# Generate responses from all policies (base, clone, unhelpful)
+python generate_responses.py --prompts data/prompts.jsonl --output-dir data/responses
 
-# Generate from improved policies
-python generate_responses.py --prompts data/prompts.jsonl --policy improved_v1
-python generate_responses.py --prompts data/prompts.jsonl --policy improved_v2
+# Or limit to a small test set
+python generate_responses.py --prompts data/prompts.jsonl --output-dir data/responses --max-responses 10
 ```
+
+This generates responses using the Fireworks API with different system prompts:
+- **base**: "You are a helpful assistant."
+- **clone**: "You are a helpful assistant." (same as base for comparison)
+- **unhelpful**: "You are an unhelpful assistant that deliberately confuses and misleads the user."
 
 ### 3. Compute Log Probabilities
 ```bash
-# Compute log probs for all responses under each model
-python compute_logprobs.py --responses-dir data/responses --model base
-python compute_logprobs.py --responses-dir data/responses --model improved_v1
-python compute_logprobs.py --responses-dir data/responses --model improved_v2
+# Compute log probs for all responses under each policy's model
+# This will compute log P(response|prompt) for each response under each model
+python compute_logprobs.py --responses-dir data/responses --output-dir data/logprobs
 ```
 
 ### 4. Prepare CJE Dataset
