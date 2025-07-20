@@ -28,15 +28,17 @@ Extract prompts from the ChatGPT Arena dataset:
 ```bash
 python prepare_arena_data.py \
     --input /path/to/chatbot_arena_conversations.json \
-    --output data/arena_prompts.jsonl \
+    --output data/prompts.jsonl \
     --max-prompts 1000
 ```
+
+Extracts the first user turn from Arena conversations.
 
 ### 2. Generate Responses
 Generate responses using different policies (base, clone, unhelpful):
 ```bash
 python generate_responses.py \
-    --prompts data/arena_prompts.jsonl \
+    --prompts data/prompts.jsonl \
     --output-dir data/responses \
     --max-responses 100  # For testing
 ```
@@ -46,26 +48,7 @@ Policies are defined in `policy_config.py`:
 - **clone**: Identical to base (control)
 - **unhelpful**: Deliberately confusing responses
 
-### 3. Compute Log Probabilities
-Compute log P(base_response | prompt) under each policy's model:
-```bash
-python compute_logprobs.py \
-    --responses-dir data/responses \
-    --output-dir data/logprobs
-```
-
-This computes importance weights for CJE.
-
-### 4. Prepare CJE Dataset
-Combine responses and log probabilities into CJE format:
-```bash
-python prepare_cje_data.py \
-    --responses-dir data/responses \
-    --logprobs-dir data/logprobs \
-    --output data/cje_dataset.jsonl
-```
-
-### 5. Add Judge Scores
+### 3. Add Judge Scores
 Score responses using a judge model:
 ```bash
 python add_judge_scores.py --input data/responses/base_responses.jsonl
@@ -76,7 +59,7 @@ python add_judge_scores.py --input data/responses/unhelpful_responses.jsonl
 Uses Fireworks API with LangChain structured outputs for reliable scoring.
 Default model: `llama4-scout-instruct-basic`
 
-### 6. Add Oracle Labels
+### 4. Add Oracle Labels
 Add ground truth labels for validation and calibration:
 ```bash
 python add_oracle_labels.py --input data/responses/base_responses.jsonl
@@ -86,6 +69,28 @@ python add_oracle_labels.py --input data/responses/unhelpful_responses.jsonl
 
 Oracle labels are higher-quality evaluations used as ground truth.
 Default model: `kimi-k2-instruct`
+All responses get oracle labels for validation purposes.
+
+### 5. Compute Log Probabilities
+Compute log P(base_response | prompt) under each policy's model:
+```bash
+python compute_logprobs.py \
+    --responses-dir data/responses \
+    --output-dir data/logprobs
+```
+
+This computes importance weights for CJE.
+
+### 6. Prepare CJE Dataset
+Combine responses and log probabilities into CJE format:
+```bash
+python prepare_cje_data.py \
+    --responses-dir data/responses \
+    --logprobs-dir data/logprobs \
+    --output data/cje_dataset.jsonl
+```
+
+This script reads judge scores and oracle labels from the response files.
 
 ### 7. Run CJE Analysis
 Run the complete analysis with calibration:
@@ -123,6 +128,12 @@ unhelpful: 0.412 (±0.024, CI: [0.365, 0.459])
 2. **Judge Calibration**: Judge scores are calibrated to oracle labels using isotonic regression with cross-fitting. For ablation studies, you can vary the fraction of oracle labels used for calibration.
 
 3. **Cross-Fitting**: Prevents overfitting in both calibration and importance weight estimation.
+
+## Data Flow
+
+1. Response files are modified in place to add judge scores and oracle labels
+2. Log probabilities are computed for BASE responses under all policy models
+3. The final CJE dataset combines data from both response and logprob files
 
 ## Customization
 

@@ -2,7 +2,7 @@
 
 Core guidance for Claude Code when working with the CJE repository.
 
-Last updated: 2025-01-20 (Unified evaluation system, 100% oracle labeling for validation)
+Last updated: 2025-01-20 (Unified evaluation system, simplified data pipeline)
 
 ## 🎯 Project Philosophy
 
@@ -151,10 +151,14 @@ poetry run pytest cje_simplified/     # Test simplified codebase only
 # Linting (MUST pass before commits)
 make lint
 
-# Run experiments
+# Run experiments (typical workflow)
 cd cje_simplified/experiments/arena_10k_simplified
+python generate_responses.py --prompts data/prompts.jsonl
 python add_judge_scores.py --input data/responses/base_responses.jsonl
 python add_oracle_labels.py --input data/responses/base_responses.jsonl
+python compute_logprobs.py --responses-dir data/responses
+python prepare_cje_data.py --responses-dir data/responses --logprobs-dir data/logprobs
+python run_cje_analysis.py --data data/cje_dataset.jsonl
 ```
 
 ## 🔑 API Keys
@@ -219,6 +223,13 @@ Expected JSONL format:
    - Uses LangChain structured outputs for reliable scoring (0-100 scale)
    - Minimal scripts: `add_judge_scores.py` and `add_oracle_labels.py`
    - Oracle labels all responses for validation purposes
+
+7. **Experiment Pipeline Data Flow**
+   - Response files are modified in place to add evaluation scores
+   - `prepare_cje_data.py` reads from both response and logprob files
+   - Judge/oracle scores stored in `metadata` field of response files
+   - Log probabilities computed for BASE responses under all policies
+   - Final dataset combines everything for CJE analysis
 
 ## ⚠️ Common Pitfalls
 

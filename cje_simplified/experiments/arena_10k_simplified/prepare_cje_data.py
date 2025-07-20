@@ -22,6 +22,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 def prepare_cje_dataset(
     logprobs_dir: str,
+    responses_dir: str,
     output_file: str,
     base_policy: str = "base",
 ) -> List[Dict]:
@@ -36,6 +37,20 @@ def prepare_cje_dataset(
     """
 
     print("Preparing CJE dataset...")
+
+    # First, load base responses to get judge/oracle scores
+    responses_by_prompt: Dict[str, Dict[str, Any]] = {}
+    base_responses_file = Path(responses_dir) / f"{base_policy}_responses.jsonl"
+
+    print(f"Loading base responses from {base_responses_file}...")
+    with open(base_responses_file, "r") as f:
+        for line in f:
+            data = json.loads(line)
+            prompt_id = data.get("prompt_id")
+            if prompt_id:
+                responses_by_prompt[prompt_id] = data
+
+    print(f"Loaded {len(responses_by_prompt)} base responses with evaluation scores")
 
     # Load all log prob files
     logprobs_by_prompt: Dict[str, Dict[str, Any]] = defaultdict(dict)
@@ -84,6 +99,20 @@ def prepare_cje_dataset(
         if not any(lp is not None for lp in target_logps.values()):
             continue
 
+        # Get evaluation scores from base responses
+        base_response_data = responses_by_prompt.get(prompt_id, {})
+        metadata = {
+            "prompt_id": data.get("prompt_id", prompt_id),
+        }
+
+        # Add judge and oracle scores if available
+        if "metadata" in base_response_data:
+            response_metadata = base_response_data["metadata"]
+            if "judge_score" in response_metadata:
+                metadata["judge_score"] = response_metadata["judge_score"]
+            if "oracle_label" in response_metadata:
+                metadata["oracle_label"] = response_metadata["oracle_label"]
+
         # Create record following core data model structure
         record = {
             "prompt": data["prompt"],
@@ -91,13 +120,8 @@ def prepare_cje_dataset(
             "base_policy_logprob": data["base_policy_logprob"],
             "target_policy_logprobs": target_logps,
             # Note: reward field is left empty - will be added by calibration
-            # metadata contains fields for calibration (judge_score, oracle_label)
-            "metadata": {
-                "prompt_id": data.get("prompt_id", prompt_id),
-            },
+            "metadata": metadata,
         }
-
-        # Note: judge_score will be added by a separate script
 
         records.append(record)
 
@@ -118,6 +142,17 @@ def prepare_cje_dataset(
     print(f"  Total samples: {len(records)}")
     print(f"  Base policy: {base_policy}")
     print(f"  Target policies: {sorted(p for p in policies if p != base_policy)}")
+
+    # Check how many records have evaluation scores
+    with_judge = sum(1 for r in records if "judge_score" in r.get("metadata", {}))
+    with_oracle = sum(1 for r in records if "oracle_label" in r.get("metadata", {}))
+    print(f"\nEvaluation scores:")
+    print(
+        f"  Records with judge scores: {with_judge}/{len(records)} ({100*with_judge/len(records):.1f}%)"
+    )
+    print(
+        f"  Records with oracle labels: {with_oracle}/{len(records)} ({100*with_oracle/len(records):.1f}%)"
+    )
 
     valid_counts: Dict[str, int] = defaultdict(int)
     for record in records:
@@ -141,6 +176,11 @@ def main() -> None:
         "--logprobs-dir", default="data/logprobs", help="Directory with log prob files"
     )
     parser.add_argument(
+        "--responses-dir",
+        default="data/responses",
+        help="Directory with response files",
+    )
+    parser.add_argument(
         "--output", default="data/cje_dataset.jsonl", help="Output CJE dataset"
     )
     parser.add_argument(
@@ -152,6 +192,7 @@ def main() -> None:
     # Prepare dataset
     prepare_cje_dataset(
         logprobs_dir=args.logprobs_dir,
+        responses_dir=args.responses_dir,
         output_file=args.output,
         base_policy=args.base_policy,
     )
