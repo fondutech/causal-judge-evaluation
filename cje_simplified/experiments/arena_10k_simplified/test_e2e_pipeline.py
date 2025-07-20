@@ -36,10 +36,12 @@ def run_command(cmd: str, check: bool = True) -> subprocess.CompletedProcess:
 
 
 def create_test_prompts(output_dir: Path) -> None:
-    """Create a minimal test prompts file with 2 samples."""
+    """Create a minimal test prompts file with 4 samples."""
     prompts = [
         {"prompt_id": "test_0", "prompt": "What is 2+2?"},
         {"prompt_id": "test_1", "prompt": "Explain quantum computing in one sentence."},
+        {"prompt_id": "test_2", "prompt": "What is the capital of France?"},
+        {"prompt_id": "test_3", "prompt": "How do I make a paper airplane?"},
     ]
 
     prompts_file = output_dir / "prompts.jsonl"
@@ -61,8 +63,8 @@ def verify_responses(responses_dir: Path) -> None:
         with open(file_path) as f:
             lines = f.readlines()
             assert (
-                len(lines) == 2
-            ), f"Expected 2 responses, got {len(lines)} for {policy}"
+                len(lines) == 4
+            ), f"Expected 4 responses, got {len(lines)} for {policy}"
 
             # Check structure
             for line in lines:
@@ -103,8 +105,8 @@ def verify_logprobs(logprobs_dir: Path) -> None:
         with open(file_path) as f:
             lines = f.readlines()
             assert (
-                len(lines) == 2
-            ), f"Expected 2 logprobs, got {len(lines)} for {policy}"
+                len(lines) == 4
+            ), f"Expected 4 logprobs, got {len(lines)} for {policy}"
 
             for line in lines:
                 data = json.loads(line)
@@ -119,7 +121,7 @@ def verify_cje_dataset(dataset_file: Path) -> None:
     """Verify the final CJE dataset."""
     with open(dataset_file) as f:
         lines = f.readlines()
-        assert len(lines) == 2, f"Expected 2 records, got {len(lines)}"
+        assert len(lines) == 4, f"Expected 4 records, got {len(lines)}"
 
         for line in lines:
             data = json.loads(line)
@@ -168,7 +170,7 @@ def main() -> None:
             f"python generate_responses.py "
             f"--prompts {test_dir}/prompts.jsonl "
             f"--output-dir {test_dir}/responses "
-            f"--max-responses 2"
+            f"--max-responses 4"
         )
         verify_responses(test_dir / "responses")
 
@@ -208,14 +210,14 @@ def main() -> None:
         result = run_command(
             f"python run_cje_analysis.py "
             f"--data {test_dir}/cje_dataset.jsonl "
-            f"--k-folds 2",
+            f"--n-folds 2",
             check=False,  # May fail with only 2 samples
         )
 
         if result.returncode == 0:
             print("✅ CJE analysis completed")
         else:
-            print("⚠️  CJE analysis failed (expected with only 2 samples)")
+            print("⚠️  CJE analysis failed (expected with only 4 samples)")
 
         print("\n🎉 End-to-end test completed successfully!")
 
