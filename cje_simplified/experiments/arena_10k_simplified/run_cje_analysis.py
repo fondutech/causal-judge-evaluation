@@ -2,11 +2,15 @@
 """
 Run CJE analysis on prepared Arena data using the new architecture.
 
-This shows how to use the decoupled loading and calibration approach.
+This shows how to use the decoupled loading and calibration approach:
+1. Load dataset (rewards optional)
+2. Calibrate judge scores OR use oracle labels directly
+3. Run CJE estimation with cross-fitting
 """
 
 import sys
 from pathlib import Path
+from typing import Optional
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
@@ -44,7 +48,7 @@ def main() -> int:
         help="Field containing oracle labels",
     )
     parser.add_argument(
-        "--k-folds",
+        "--n-folds",
         type=int,
         default=5,
         help="Number of cross-fitting folds",
@@ -85,7 +89,7 @@ def main() -> int:
                 dataset,
                 judge_field=args.judge_field,
                 oracle_field=args.oracle_field,
-                k_folds=args.k_folds,
+                k_folds=args.n_folds,
             )
             print(f"   ✓ Calibrated using {cal_result.n_oracle} oracle samples")
             print(f"   ✓ Calibration RMSE: {cal_result.calibration_rmse:.3f}")
@@ -107,40 +111,39 @@ def main() -> int:
     print("\n3. Running CJE estimation...")
     try:
         sampler = PrecomputedSampler(calibrated_dataset)
-        estimator = CalibratedIPS(sampler, k_folds=args.k_folds)
+        estimator = CalibratedIPS(sampler, k_folds=args.n_folds)
         results = estimator.fit_and_estimate()
 
         # Display results
         print("\n4. Results:")
         print("   " + "-" * 40)
-        for i, policy in enumerate(dataset.target_policies):
-            estimate = results.estimates[i]
-            stderr = results.standard_errors[i]
-            ci_lower, ci_upper = estimate - 1.96 * stderr, estimate + 1.96 * stderr
 
+        # Display results for each policy
+        policy_results = results.policy_results
+        for policy, result in policy_results.items():
             print(f"   {policy}:")
-            print(f"     Estimate: {estimate:.3f}")
-            print(f"     Std Error: {stderr:.3f}")
-            print(f"     95% CI: [{ci_lower:.3f}, {ci_upper:.3f}]")
+            print(f"     Estimate: {result.point_estimate:.3f}")
+            print(f"     Std Error: {result.standard_error:.3f}")
+            print(f"     95% CI: [{result.ci_lower:.3f}, {result.ci_upper:.3f}]")
+            print(f"     Relative efficiency: {result.relative_efficiency:.1%}")
 
         # Best policy
-        best_idx = results.best_policy()
-        print(f"\n   🏆 Best policy: {dataset.target_policies[best_idx]}")
+        best_policy = max(policy_results.items(), key=lambda x: x[1].point_estimate)[0]
+        print(f"\n   🏆 Best policy: {best_policy}")
 
-        # Get weight diagnostics
-        print("\n5. Weight diagnostics:")
-        for policy in dataset.target_policies:
-            weights = estimator.get_weights(policy)
-            if weights is not None:
-                mean_w = weights.mean()
-                max_w = weights.max()
-                ess = (weights.sum()) ** 2 / (weights**2).sum()
-                ess_frac = ess / len(weights)
+        # Show weight diagnostics for best policy
+        print(f"\n5. Weight diagnostics for best policy ({best_policy}):")
+        best_result = policy_results[best_policy]
+        if hasattr(best_result, "weights") and best_result.weights is not None:
+            weights = best_result.weights
+            mean_w = weights.mean()
+            max_w = weights.max()
+            ess = best_result.effective_sample_size
+            ess_frac = ess / len(weights)
 
-                print(f"   {policy}:")
-                print(f"     Mean weight: {mean_w:.3f}")
-                print(f"     Max weight: {max_w:.3f}")
-                print(f"     ESS fraction: {ess_frac:.1%}")
+            print(f"     Mean weight: {mean_w:.3f}")
+            print(f"     Max weight: {max_w:.3f}")
+            print(f"     Effective sample size: {ess:.0f} ({ess_frac:.1%})")
 
     except ValueError as e:
         print(f"\n❌ Estimation failed: {e}")

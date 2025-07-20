@@ -3,37 +3,53 @@
 Compute log probabilities for responses using teacher forcing.
 
 This uses the Fireworks API to compute log P(response|prompt) for each
-response under different models.
+response under different models, properly handling chat templates and system prompts.
 """
 
 import json
 import os
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 import sys
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from cje_simplified import compute_teacher_forced_logprob
+from cje_simplified import compute_chat_logprob, Llama4TemplateConfig
+from policy_config import POLICIES, get_policy_config
 
 
 def compute_logprobs_for_responses(
-    responses_file: str,
+    base_responses_file: str,
     output_file: str,
-    model: str,
-    temperature: float = 1.0,
     max_samples: Optional[int] = None,
+    policy_name: str = "base",
 ) -> List[Dict]:
-    """Compute log probabilities for responses."""
+    """Compute log probabilities for BASE policy responses under a given policy's model.
+
+    This is used for CJE - we always compute log P(base_response | prompt) under
+    different policy models to estimate importance weights.
+
+    Args:
+        base_responses_file: Path to BASE policy responses JSONL file
+        output_file: Where to save log probabilities
+        max_samples: Limit number of samples to process
+        policy_name: Name of the policy whose model to use for computing log probs
+    """
 
     # Check API key
     if not os.getenv("FIREWORKS_API_KEY"):
         raise ValueError("FIREWORKS_API_KEY environment variable required")
 
-    # Load responses
+    # Get policy configuration
+    policy_config = get_policy_config(policy_name)
+    model = policy_config["model"]
+    temperature = policy_config["temperature"]
+    system_prompt = policy_config["system_prompt"]
+
+    # Load BASE policy responses
     responses = []
-    with open(responses_file, "r") as f:
+    with open(base_responses_file, "r") as f:
         for line in f:
             data = json.loads(line)
             if data.get("response"):  # Skip failed responses
@@ -42,18 +58,32 @@ def compute_logprobs_for_responses(
     if max_samples:
         responses = responses[:max_samples]
 
-    print(f"Computing log probs for {len(responses)} responses...")
-    print(f"Model: {model}, Temperature: {temperature}")
+    print(f"Computing log probs for {len(responses)} BASE responses...")
+    print(f"Using {policy_name} policy model: {model}")
+    print(f"Temperature: {temperature}, System prompt: {system_prompt[:50]}...")
+
+    # Create template config (using Llama4 template for llama4-maverick-instruct-basic)
+    template_config = Llama4TemplateConfig()
 
     # Compute log probabilities
-    results = []
+    results: List[Dict[str, Any]] = []
     for i, data in enumerate(responses):
         prompt = data["prompt"]
         response = data["response"]
 
-        # Compute log probability
-        result = compute_teacher_forced_logprob(
-            prompt=prompt, response=response, model=model, temperature=temperature
+        # Create chat format with system prompt
+        chat = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+            {"role": "assistant", "content": response},
+        ]
+
+        # Compute log probability using chat format
+        result = compute_chat_logprob(
+            chat=chat,
+            model=model,
+            temperature=temperature,
+            template_config=template_config,
         )
 
         # Store result
@@ -62,7 +92,7 @@ def compute_logprobs_for_responses(
             "prompt": prompt,
             "response": response,
             "source_policy": data["policy"],
-            "eval_model": model.split("/")[-1],  # Short name
+            "eval_model": model,  # Model from policy config
             "logprob": result.value if result.is_valid else None,
             "error": result.error if not result.is_valid else None,
         }
@@ -76,8 +106,8 @@ def compute_logprobs_for_responses(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, "w") as f:
-        for result in results:
-            f.write(json.dumps(result) + "\n")
+        for record in results:
+            f.write(json.dumps(record) + "\n")
 
     # Print summary
     valid = sum(1 for r in results if r["logprob"] is not None)
@@ -87,8 +117,8 @@ def compute_logprobs_for_responses(
     return results
 
 
-def main():
-    """Compute log probabilities for all response files."""
+def main() -> None:
+    """Compute log probabilities for BASE responses under all policy models."""
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -100,34 +130,32 @@ def main():
     parser.add_argument(
         "--output-dir", default="data/logprobs", help="Output directory"
     )
-    parser.add_argument(
-        "--model",
-        default="accounts/fireworks/models/llama-v3p2-3b-instruct",
-        help="Fireworks model for evaluation",
-    )
-    parser.add_argument(
-        "--temperature",
-        type=float,
-        default=1.0,
-        help="Temperature for log prob computation",
-    )
     parser.add_argument("--max-samples", type=int, help="Limit samples per file")
 
     args = parser.parse_args()
 
-    # Process all response files
+    # Get base responses file
     responses_dir = Path(args.responses_dir)
-    for response_file in responses_dir.glob("*_responses.jsonl"):
-        policy_name = response_file.stem.replace("_responses", "")
+    base_responses_file = responses_dir / "base_responses.jsonl"
+
+    if not base_responses_file.exists():
+        raise FileNotFoundError(
+            f"Base responses file not found: {base_responses_file}\n"
+            "Please run generate_responses.py first."
+        )
+
+    # Process BASE responses under each policy's model
+    for policy_name in POLICIES:
         output_file = f"{args.output_dir}/{policy_name}_logprobs.jsonl"
 
-        print(f"\nProcessing {policy_name} policy...")
+        print(
+            f"\nComputing log probs for BASE responses under {policy_name} policy model..."
+        )
         compute_logprobs_for_responses(
-            responses_file=str(response_file),
+            base_responses_file=str(base_responses_file),
             output_file=output_file,
-            model=args.model,
-            temperature=args.temperature,
             max_samples=args.max_samples,
+            policy_name=policy_name,
         )
 
 

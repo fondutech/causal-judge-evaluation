@@ -1,167 +1,132 @@
 # Arena 10K Simplified Experiment
 
-This experiment demonstrates the CJE methodology on Arena-style data using the new simplified architecture.
+This experiment demonstrates the complete CJE (Causal Judge Evaluation) pipeline using the ChatGPT Arena dataset.
 
-## Overview
+## Pipeline Overview
 
-The experiment follows the complete CJE pipeline:
-1. Generate responses from different policies
-2. Compute log probabilities using teacher forcing
-3. Add judge scores (and optionally oracle labels)
-4. Run CJE analysis with different reward workflows
+The CJE pipeline evaluates different LLM policies by:
+1. Generating responses from a base policy
+2. Computing importance weights using log probabilities
+3. Calibrating judge scores to ground truth labels
+4. Estimating counterfactual rewards for each policy
 
-## Workflow
+## Prerequisites
+
+```bash
+# Set API keys
+export FIREWORKS_API_KEY="your-key-here"
+
+# Install dependencies
+cd /path/to/cje_simplified
+poetry install
+```
+
+## Step-by-Step Pipeline
 
 ### 1. Prepare Arena Data
-
-Extract unique first-turn prompts from ChatBot Arena conversations:
-
+Extract prompts from the ChatGPT Arena dataset:
 ```bash
-python prepare_arena_data.py --samples 1000 --output data/prompts.jsonl
+python prepare_arena_data.py \
+    --input /path/to/chatbot_arena_conversations.json \
+    --output data/arena_prompts.jsonl \
+    --max-prompts 1000
 ```
-
-Key insights from the old codebase:
-- **Deduplication is critical**: We extract unique prompts to ensure proper policy comparison
-- **Fresh responses only**: Empty responses force generation from our specified policies
-- **Simple filtering**: Basic language filter to get English prompts
 
 ### 2. Generate Responses
+Generate responses using different policies (base, clone, unhelpful):
 ```bash
-# Generate responses from all policies (base, clone, unhelpful)
-python generate_responses.py --prompts data/prompts.jsonl --output-dir data/responses
-
-# Or limit to a small test set
-python generate_responses.py --prompts data/prompts.jsonl --output-dir data/responses --max-responses 10
-
-# Adjust max tokens (default is 1000)
-python generate_responses.py --prompts data/prompts.jsonl --output-dir data/responses --max-tokens 1500
+python generate_responses.py \
+    --prompts data/arena_prompts.jsonl \
+    --output-dir data/responses \
+    --max-responses 100  # For testing
 ```
 
-This generates responses using the Fireworks API with different system prompts:
-- **base**: "You are a helpful assistant."
-- **clone**: "You are a helpful assistant." (same as base for comparison)
-- **unhelpful**: "You are an unhelpful assistant that deliberately confuses and misleads the user."
+Policies are defined in `policy_config.py`:
+- **base**: Standard helpful assistant
+- **clone**: Identical to base (control)
+- **unhelpful**: Deliberately confusing responses
 
 ### 3. Compute Log Probabilities
+Compute log P(base_response | prompt) under each policy's model:
 ```bash
-# Compute log probs for all responses under each policy's model
-# This will compute log P(response|prompt) for each response under each model
-python compute_logprobs.py --responses-dir data/responses --output-dir data/logprobs
+python compute_logprobs.py \
+    --responses-dir data/responses \
+    --output-dir data/logprobs
 ```
+
+This computes importance weights for CJE.
 
 ### 4. Prepare CJE Dataset
+Combine responses and log probabilities into CJE format:
 ```bash
-# Create dataset with judge scores
-python prepare_cje_data.py --logprobs-dir data/logprobs --output data/cje_dataset.jsonl
-
-# Optionally add oracle labels for calibration (10% of data)
-python prepare_cje_data.py --logprobs-dir data/logprobs --output data/cje_dataset.jsonl --add-oracle
+python prepare_cje_data.py \
+    --responses-dir data/responses \
+    --logprobs-dir data/logprobs \
+    --output data/cje_dataset.jsonl
 ```
 
-### 5. Run CJE Analysis
-
-The new architecture supports three distinct workflows:
-
-#### Option A: Oracle Labels as Rewards
-If you have oracle labels for all data points:
+### 5. Add Judge Scores
+Score responses using a judge model:
 ```bash
-python run_cje_analysis.py --data data/cje_dataset_oracle.jsonl --use-oracle
+python add_judge_scores.py --input data/responses/base_responses.jsonl
+python add_judge_scores.py --input data/responses/clone_responses.jsonl
+python add_judge_scores.py --input data/responses/unhelpful_responses.jsonl
 ```
 
-#### Option B: Judge Score Calibration (Recommended)
-If you have judge scores and oracle labels for a subset:
+Uses Fireworks API with LangChain structured outputs for reliable scoring.
+Default model: `llama4-scout-instruct-basic`
+
+### 6. Add Oracle Labels
+Add ground truth labels for validation and calibration:
 ```bash
-python run_cje_analysis.py --data data/cje_dataset.jsonl
+python add_oracle_labels.py --input data/responses/base_responses.jsonl
+python add_oracle_labels.py --input data/responses/clone_responses.jsonl
+python add_oracle_labels.py --input data/responses/unhelpful_responses.jsonl
 ```
 
-#### Option C: Pre-calibrated Rewards
-If rewards are already calibrated and included in the dataset:
+Oracle labels are higher-quality evaluations used as ground truth.
+Default model: `kimi-k2-instruct`
+
+### 7. Run CJE Analysis
+Run the complete analysis with calibration:
 ```bash
-python run_cje_analysis.py --data data/cje_dataset_calibrated.jsonl
+python run_cje_analysis.py \
+    --data data/cje_dataset.jsonl \
+    --n-folds 5
 ```
 
-## Data Format
+The analysis will use judge scores calibrated to oracle labels. All responses have oracle labels for validation purposes.
 
-The expected JSONL format after prepare_cje_data.py:
-```json
-{
-  "prompt": "What is the capital of France?",
-  "response": "The capital of France is Paris.",
-  "base_policy_logprob": -15.234,
-  "target_policy_logprobs": {
-    "improved_v1": -12.456,
-    "improved_v2": -13.789
-  },
-  "judge_score": 0.85,
-  "oracle_label": 0.90  // Optional, only for some samples
-}
+## Output
+
+The analysis produces:
+- Point estimates for each policy's expected reward
+- Standard errors and confidence intervals
+- Relative efficiency metrics
+- Weight diagnostics
+
+Example output:
+```
+RESULTS
+====================
+base     : 0.723 (±0.015, CI: [0.694, 0.752])
+clone    : 0.721 (±0.016, CI: [0.690, 0.752])
+unhelpful: 0.412 (±0.024, CI: [0.365, 0.459])
+
+🏆 Best policy: base
 ```
 
-Note: The `reward` field is not required during data loading. It will be:
-- Set directly from oracle_label (Option A)
-- Computed via calibration (Option B)  
-- Already present in the data (Option C)
+## Key Concepts
 
-## Key Architectural Changes
+1. **Importance Weighting**: We compute log P(base_response | prompt) under each policy to estimate what rewards other policies would have received.
 
-1. **Decoupled Loading**: Data is loaded without requiring rewards
-2. **Optional Rewards**: The `Sample.reward` field is now Optional[float]
-3. **Validation at Estimation**: PrecomputedSampler validates rewards exist
-4. **Flexible Workflows**: Support for oracle, calibration, and pre-calibrated data
+2. **Judge Calibration**: Judge scores are calibrated to oracle labels using isotonic regression with cross-fitting. For ablation studies, you can vary the fraction of oracle labels used for calibration.
 
-## Example Output
+3. **Cross-Fitting**: Prevents overfitting in both calibration and importance weight estimation.
 
-```
-Running CJE Analysis
-==================================================
+## Customization
 
-1. Loading dataset...
-   ✓ Loaded 1000 samples
-   ✓ Target policies: ['improved_v1', 'improved_v2']
+- **Add new policies**: Edit `policy_config.py`
+- **Custom evaluators**: Use `FireworksEvaluator` from `evaluation_utils.py` with custom models/prompts
+- **Different datasets**: Modify `prepare_arena_data.py` or create new data preparation scripts
 
-2. Calibrating judge scores to oracle labels...
-   ✓ Calibrated using 100 oracle samples
-   ✓ Calibration RMSE: 0.082
-   ✓ Coverage (±0.1): 89.0%
-
-3. Running CJE estimation...
-
-4. Results:
-   ----------------------------------------
-   improved_v1:
-     Estimate: 0.723
-     Std Error: 0.015
-     95% CI: [0.694, 0.752]
-   improved_v2:
-     Estimate: 0.681
-     Std Error: 0.018
-     95% CI: [0.646, 0.716]
-
-   🏆 Best policy: improved_v1
-
-5. Weight diagnostics:
-   improved_v1:
-     Mean weight: 1.000
-     Max weight: 3.421
-     ESS fraction: 68.5%
-   improved_v2:
-     Mean weight: 1.000
-     Max weight: 2.876
-     ESS fraction: 74.2%
-
-✓ Analysis complete!
-```
-
-## Troubleshooting
-
-1. **"No valid samples could be created from data"**
-   - Ensure your data has all required fields
-   - Check that log probabilities are not None
-
-2. **"PrecomputedSampler requires all samples to have rewards"**
-   - You need to either calibrate judge scores or use oracle labels
-   - The reward field must be populated before estimation
-
-3. **"No oracle labels found"**
-   - Add oracle labels using `--add-oracle` flag in prepare_cje_data.py
-   - Or manually add oracle_label field to some samples

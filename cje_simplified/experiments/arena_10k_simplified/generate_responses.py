@@ -18,6 +18,8 @@ import sys
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
+from policy_config import POLICIES, get_all_policies
+
 
 def generate_responses(
     prompts_file: str,
@@ -149,30 +151,8 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Define policies with different system prompts
-    # Using the same model for all to isolate the effect of system prompts
-    model = "accounts/fireworks/models/llama4-maverick-instruct-basic"
-
-    policies: List[Dict[str, Any]] = [
-        {
-            "name": "base",
-            "model": model,
-            "temperature": 0.7,
-            "system_prompt": "You are a helpful assistant.",
-        },
-        {
-            "name": "clone",
-            "model": model,
-            "temperature": 0.7,
-            "system_prompt": "You are a helpful assistant.",
-        },
-        {
-            "name": "unhelpful",
-            "model": model,
-            "temperature": 0.7,
-            "system_prompt": "You are an unhelpful assistant that deliberately confuses and misleads the user.",
-        },
-    ]
+    # Get policies from centralized configuration
+    policies = get_all_policies()
 
     for policy in policies:
         output_file = f"{args.output_dir}/{policy['name']}_responses.jsonl"

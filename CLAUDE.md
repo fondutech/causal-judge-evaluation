@@ -2,7 +2,7 @@
 
 Core guidance for Claude Code when working with the CJE repository.
 
-Last updated: 2025-01-18 (Calibration decoupling, optional rewards, simplified chat API)
+Last updated: 2025-01-20 (Unified evaluation system, 100% oracle labeling for validation)
 
 ## 🎯 Project Philosophy
 
@@ -152,8 +152,9 @@ poetry run pytest cje_simplified/     # Test simplified codebase only
 make lint
 
 # Run experiments
-cd cje_simplified
-python example_usage.py
+cd cje_simplified/experiments/arena_10k_simplified
+python add_judge_scores.py --input data/responses/base_responses.jsonl
+python add_oracle_labels.py --input data/responses/base_responses.jsonl
 ```
 
 ## 🔑 API Keys
@@ -209,6 +210,15 @@ Expected JSONL format:
 5. **Metadata Auto-Collection**
    - DatasetLoader automatically puts non-core fields into metadata
    - Enables fields like `judge_score` and `oracle_label` to be accessed uniformly
+
+6. **Unified Evaluation System**
+   - Single `FireworksEvaluator` class for both judges and oracles
+   - Judges and oracles differ only in model choice
+   - Judge model: `accounts/fireworks/models/llama4-scout-instruct-basic`
+   - Oracle model: `accounts/fireworks/models/kimi-k2-instruct`
+   - Uses LangChain structured outputs for reliable scoring (0-100 scale)
+   - Minimal scripts: `add_judge_scores.py` and `add_oracle_labels.py`
+   - Oracle labels all responses for validation purposes
 
 ## ⚠️ Common Pitfalls
 
@@ -290,9 +300,10 @@ from cje import PrecomputedLogger
 logger = PrecomputedLogger(data, p0_policy_name="p0")
 
 # New SOLID approach - recommended
-from cje_simplified import load_dataset_with_calibration, PrecomputedSampler
-dataset, stats = load_dataset_with_calibration("data.jsonl")
-sampler = PrecomputedSampler(dataset)
+from cje_simplified import load_dataset_from_jsonl, calibrate_dataset, PrecomputedSampler
+dataset = load_dataset_from_jsonl("data.jsonl")
+calibrated_dataset, stats = calibrate_dataset(dataset, judge_field="judge_score")
+sampler = PrecomputedSampler(calibrated_dataset)
 
 # New SOLID approach - with dependency injection  
 from cje_simplified import DatasetFactory, DatasetLoader
