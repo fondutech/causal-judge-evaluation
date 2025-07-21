@@ -8,6 +8,7 @@ response under different models, properly handling chat templates and system pro
 
 import json
 import os
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -24,6 +25,7 @@ def compute_logprobs_for_responses(
     output_file: str,
     max_samples: Optional[int] = None,
     policy_name: str = "base",
+    max_retries: int = 3,
 ) -> List[Dict]:
     """Compute log probabilities for BASE policy responses under a given policy's model.
 
@@ -35,6 +37,7 @@ def compute_logprobs_for_responses(
         output_file: Where to save log probabilities
         max_samples: Limit number of samples to process
         policy_name: Name of the policy whose model to use for computing log probs
+        max_retries: Maximum number of retries for failed computations (default: 3)
     """
 
     # Check API key
@@ -78,13 +81,52 @@ def compute_logprobs_for_responses(
             {"role": "assistant", "content": response},
         ]
 
-        # Compute log probability using chat format
-        result = compute_chat_logprob(
-            chat=chat,
-            model=model,
-            temperature=temperature,
-            template_config=template_config,
-        )
+        # Compute log probability with retries
+        retry_count = 0
+        result = None
+        last_error = None
+
+        while retry_count < max_retries:
+            try:
+                result = compute_chat_logprob(
+                    chat=chat,
+                    model=model,
+                    temperature=temperature,
+                    template_config=template_config,
+                )
+
+                # Validate result
+                if result.is_valid and result.value is not None:
+                    # Check for positive logprobs (likely an error)
+                    if result.value > 0:
+                        last_error = f"Positive logprob detected: {result.value}"
+                        result = None
+                        retry_count += 1
+                        if retry_count < max_retries:
+                            print(
+                                f"  Retry {retry_count}/{max_retries} for {data['prompt_id']}: positive logprob"
+                            )
+                        continue
+                    # Success!
+                    break
+                else:
+                    # API call failed
+                    last_error = result.error or "Unknown error"
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        print(
+                            f"  Retry {retry_count}/{max_retries} for {data['prompt_id']}: {last_error}"
+                        )
+                        # Brief pause before retry
+                        time.sleep(0.5)
+            except Exception as e:
+                last_error = str(e)
+                retry_count += 1
+                if retry_count < max_retries:
+                    print(
+                        f"  Retry {retry_count}/{max_retries} for {data['prompt_id']}: {last_error}"
+                    )
+                    time.sleep(0.5)
 
         # Store result
         output_data = {
@@ -93,8 +135,17 @@ def compute_logprobs_for_responses(
             "response": response,
             "source_policy": data["policy"],
             "eval_model": model,  # Model from policy config
-            "logprob": result.value if result.is_valid else None,
-            "error": result.error if not result.is_valid else None,
+            "logprob": (
+                result.value
+                if result and result.is_valid and result.value <= 0
+                else None
+            ),
+            "error": (
+                last_error
+                if not (result and result.is_valid and result.value <= 0)
+                else None
+            ),
+            "retries": retry_count if retry_count > 0 else None,
         }
         results.append(output_data)
 
@@ -112,15 +163,23 @@ def compute_logprobs_for_responses(
     # Print summary
     valid = sum(1 for r in results if r["logprob"] is not None)
     failed = len(results) - valid
+    retried = sum(1 for r in results if r.get("retries") and r.get("retries") > 0)
 
     print(f"✓ Computed {valid}/{len(results)} valid log probabilities")
+    if retried > 0:
+        print(f"  ℹ️  {retried} computations required retries")
     if failed > 0:
-        print(f"⚠️  WARNING: {failed} log prob computations failed!")
+        print(f"⚠️  WARNING: {failed} log prob computations failed after retries!")
         # Show first few errors
         errors = [r for r in results if r["logprob"] is None and r.get("error")][:3]
         for err in errors:
+            retries_msg = (
+                f" (after {err.get('retries', 0)} retries)"
+                if err.get("retries")
+                else ""
+            )
             print(
-                f"   - Prompt {err['prompt_id']}: {err.get('error', 'Unknown error')}"
+                f"   - Prompt {err['prompt_id']}: {err.get('error', 'Unknown error')}{retries_msg}"
             )
         if failed > 3:
             print(f"   ... and {failed - 3} more failures")
@@ -143,6 +202,12 @@ def main() -> None:
         "--output-dir", default="data/logprobs", help="Output directory"
     )
     parser.add_argument("--max-samples", type=int, help="Limit samples per file")
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=3,
+        help="Maximum retries for failed computations (default: 3)",
+    )
 
     args = parser.parse_args()
 
@@ -168,6 +233,7 @@ def main() -> None:
             output_file=output_file,
             max_samples=args.max_samples,
             policy_name=policy_name,
+            max_retries=args.max_retries,
         )
 
 
