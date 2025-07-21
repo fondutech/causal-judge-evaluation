@@ -85,8 +85,12 @@ def compute_logprobs_for_responses(
         retry_count = 0
         result = None
         last_error = None
+        attempt_history: List[Dict[str, Any]] = []  # Track all attempts for debugging
 
         while retry_count < max_retries:
+            attempt_start = time.time()
+            attempt_error = None
+
             try:
                 result = compute_chat_logprob(
                     chat=chat,
@@ -95,23 +99,46 @@ def compute_logprobs_for_responses(
                     template_config=template_config,
                 )
 
+                # Record attempt
+                attempt_result: Dict[str, Any] = {
+                    "attempt": retry_count + 1,
+                    "timestamp": attempt_start,
+                    "duration": time.time() - attempt_start,
+                    "success": False,
+                    "logprob": None,
+                    "error": None,
+                }
+
                 # Validate result
                 if result.is_valid and result.value is not None:
                     # Check for positive logprobs (likely an error)
                     if result.value > 0:
-                        last_error = f"Positive logprob detected: {result.value}"
+                        positive_value = result.value
+                        attempt_error = f"Positive logprob detected: {positive_value}"
+                        attempt_result["error"] = attempt_error
+                        attempt_result["logprob"] = positive_value
+                        attempt_history.append(attempt_result)
+
+                        last_error = attempt_error
                         result = None
                         retry_count += 1
                         if retry_count < max_retries:
                             print(
-                                f"  Retry {retry_count}/{max_retries} for {data['prompt_id']}: positive logprob"
+                                f"  Retry {retry_count}/{max_retries} for {data['prompt_id']}: positive logprob ({positive_value:.3f})"
                             )
                         continue
                     # Success!
+                    attempt_result["success"] = True
+                    attempt_result["logprob"] = result.value
+                    attempt_history.append(attempt_result)
                     break
                 else:
                     # API call failed
-                    last_error = result.error or "Unknown error"
+                    attempt_error = result.error or "Unknown error"
+                    attempt_result["error"] = attempt_error
+                    attempt_history.append(attempt_result)
+
+                    last_error = attempt_error
                     retry_count += 1
                     if retry_count < max_retries:
                         print(
@@ -120,7 +147,18 @@ def compute_logprobs_for_responses(
                         # Brief pause before retry
                         time.sleep(0.5)
             except Exception as e:
-                last_error = str(e)
+                attempt_error = str(e)
+                attempt_result = {
+                    "attempt": retry_count + 1,
+                    "timestamp": attempt_start,
+                    "duration": time.time() - attempt_start,
+                    "success": False,
+                    "logprob": None,
+                    "error": attempt_error,
+                }
+                attempt_history.append(attempt_result)
+
+                last_error = attempt_error
                 retry_count += 1
                 if retry_count < max_retries:
                     print(
@@ -128,7 +166,7 @@ def compute_logprobs_for_responses(
                     )
                     time.sleep(0.5)
 
-        # Store result
+        # Store result with metadata
         output_data = {
             "prompt_id": data["prompt_id"],
             "prompt": prompt,
@@ -146,6 +184,7 @@ def compute_logprobs_for_responses(
                 else None
             ),
             "retries": retry_count if retry_count > 0 else None,
+            "attempt_history": attempt_history if len(attempt_history) > 1 else None,
         }
         results.append(output_data)
 
@@ -165,9 +204,23 @@ def compute_logprobs_for_responses(
     failed = len(results) - valid
     retried = sum(1 for r in results if r.get("retries") and r.get("retries") > 0)
 
+    # Analyze retry patterns
+    retry_reasons: Dict[str, int] = {}
+    for r in results:
+        if r.get("attempt_history") and len(r["attempt_history"]) > 1:
+            for attempt in r["attempt_history"][:-1]:  # All but last attempt
+                reason = attempt.get("error", "Unknown").split(":")[0]
+                retry_reasons[reason] = retry_reasons.get(reason, 0) + 1
+
     print(f"✓ Computed {valid}/{len(results)} valid log probabilities")
     if retried > 0:
         print(f"  ℹ️  {retried} computations required retries")
+        if retry_reasons:
+            print("  Retry reasons:")
+            for reason, count in sorted(
+                retry_reasons.items(), key=lambda x: x[1], reverse=True
+            ):
+                print(f"    - {reason}: {count}")
     if failed > 0:
         print(f"⚠️  WARNING: {failed} log prob computations failed after retries!")
         # Show first few errors
