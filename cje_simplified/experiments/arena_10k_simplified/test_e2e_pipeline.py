@@ -6,6 +6,7 @@ This test runs the entire pipeline on 2 samples with fixed seeds
 to ensure deterministic behavior.
 """
 
+import argparse
 import json
 import os
 import shutil
@@ -151,10 +152,23 @@ def verify_cje_dataset(dataset_file: Path) -> None:
 
 def main() -> None:
     """Run the end-to-end test."""
+    parser = argparse.ArgumentParser(description="End-to-end test for CJE pipeline")
+    parser.add_argument(
+        "--no-cleanup",
+        action="store_true",
+        help="Don't clean up test directory after completion",
+    )
+    parser.add_argument(
+        "--test-dir",
+        default="test_e2e_data",
+        help="Directory for test files (default: test_e2e_data)",
+    )
+    args = parser.parse_args()
+
     print("🧪 Starting end-to-end pipeline test...")
 
     # Setup test directory
-    test_dir = Path("test_e2e_data")
+    test_dir = Path(args.test_dir)
     if test_dir.exists():
         shutil.rmtree(test_dir)
     test_dir.mkdir()
@@ -230,15 +244,24 @@ def main() -> None:
             first_record = json.loads(f.readline())
             print(json.dumps(first_record, indent=2))
 
+        if not args.no_cleanup:
+            print(
+                "\n💡 Tip: Use --no-cleanup flag to preserve test files for inspection"
+            )
+
     except Exception as e:
         print(f"\n❌ Test failed: {e}")
         print(f"Test directory preserved at: {test_dir}")
         raise
     else:
-        # Cleanup only on success
-        if test_dir.exists():
-            shutil.rmtree(test_dir)
-            print("\n🧹 Test directory cleaned up")
+        # Cleanup only on success and if not disabled
+        if args.no_cleanup:
+            print(f"\n📁 Test directory preserved at: {test_dir}")
+            print("  Run without --no-cleanup flag to automatically clean up")
+        else:
+            if test_dir.exists():
+                shutil.rmtree(test_dir)
+                print("\n🧹 Test directory cleaned up")
 
 
 if __name__ == "__main__":
