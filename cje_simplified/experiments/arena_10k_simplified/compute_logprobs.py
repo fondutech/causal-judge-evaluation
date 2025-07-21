@@ -111,7 +111,19 @@ def compute_logprobs_for_responses(
 
     # Print summary
     valid = sum(1 for r in results if r["logprob"] is not None)
+    failed = len(results) - valid
+
     print(f"✓ Computed {valid}/{len(results)} valid log probabilities")
+    if failed > 0:
+        print(f"⚠️  WARNING: {failed} log prob computations failed!")
+        # Show first few errors
+        errors = [r for r in results if r["logprob"] is None and r.get("error")][:3]
+        for err in errors:
+            print(
+                f"   - Prompt {err['prompt_id']}: {err.get('error', 'Unknown error')}"
+            )
+        if failed > 3:
+            print(f"   ... and {failed - 3} more failures")
     print(f"✓ Saved to {output_path}")
 
     return results

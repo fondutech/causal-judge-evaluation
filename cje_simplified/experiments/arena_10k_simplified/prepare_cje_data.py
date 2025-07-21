@@ -125,7 +125,28 @@ def prepare_cje_dataset(
 
         records.append(record)
 
-    print(f"Created {len(records)} complete records")
+    # Track dropped records
+    total_prompts = len(logprobs_by_prompt)
+    dropped_base = sum(
+        1
+        for d in logprobs_by_prompt.values()
+        if "base_policy_logprob" not in d or d.get("base_policy_logprob") is None
+    )
+    dropped_all_targets = sum(
+        1
+        for d in logprobs_by_prompt.values()
+        if "base_policy_logprob" in d
+        and d.get("base_policy_logprob") is not None
+        and not any(
+            lp is not None for lp in d.get("target_policy_logprobs", {}).values()
+        )
+    )
+
+    print(f"Created {len(records)} complete records from {total_prompts} prompts")
+    if dropped_base > 0:
+        print(f"⚠️  Dropped {dropped_base} records with null base policy logprob")
+    if dropped_all_targets > 0:
+        print(f"⚠️  Dropped {dropped_all_targets} records with all target logprobs null")
 
     # Save dataset
     output_path = Path(output_file)
@@ -136,6 +157,12 @@ def prepare_cje_dataset(
             f.write(json.dumps(record) + "\n")
 
     print(f"✓ Saved CJE dataset to {output_path}")
+
+    # Warn if too few samples
+    if len(records) < 10:
+        print(
+            f"\n⚠️  WARNING: Only {len(records)} samples in dataset. Minimum 10 recommended for reliable CJE analysis."
+        )
 
     # Print summary statistics
     print("\nDataset summary:")
