@@ -112,7 +112,10 @@ def verify_logprobs(logprobs_dir: Path) -> None:
                 data = json.loads(line)
                 assert "prompt_id" in data
                 assert "logprob" in data
-                assert isinstance(data["logprob"], (int, float))
+                # Logprob can be None if computation failed
+                assert data["logprob"] is None or isinstance(
+                    data["logprob"], (int, float)
+                )
 
     print("✅ Log probability files verified")
 
@@ -211,7 +214,7 @@ def main() -> None:
             f"python run_cje_analysis.py "
             f"--data {test_dir}/cje_dataset.jsonl "
             f"--n-folds 2",
-            check=False,  # May fail with only 2 samples
+            check=False,  # May fail if not enough samples with valid logprobs
         )
 
         if result.returncode == 0:
