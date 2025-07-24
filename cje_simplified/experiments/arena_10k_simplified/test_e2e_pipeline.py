@@ -40,12 +40,12 @@ def run_command(cmd: str, check: bool = True) -> subprocess.CompletedProcess:
     return result
 
 
-def create_test_prompts(output_dir: Path, n_samples: int = 10) -> None:
+def create_test_prompts(output_dir: Path, n_samples: int = 50) -> None:
     """Extract test prompts from ChatBot Arena dataset.
 
     Args:
         output_dir: Directory to save prompts
-        n_samples: Number of prompts to extract (default: 10)
+        n_samples: Number of prompts to extract (default: 50)
     """
     print(f"Preparing {n_samples} prompts from ChatBot Arena dataset...")
 
@@ -66,7 +66,7 @@ def create_test_prompts(output_dir: Path, n_samples: int = 10) -> None:
     print(f"✅ Extracted {len(prompts)} Arena prompts: {prompts_file}")
 
 
-def verify_responses(responses_dir: Path) -> None:
+def verify_responses(responses_dir: Path, n_samples: int = 50) -> None:
     """Verify that responses were generated correctly."""
     policies = ["base", "clone", "unhelpful"]
 
@@ -77,8 +77,8 @@ def verify_responses(responses_dir: Path) -> None:
         with open(file_path) as f:
             lines = f.readlines()
             assert (
-                len(lines) == 10
-            ), f"Expected 10 responses, got {len(lines)} for {policy}"
+                len(lines) == n_samples
+            ), f"Expected {n_samples} responses, got {len(lines)} for {policy}"
 
             # Check structure
             for line in lines:
@@ -108,7 +108,7 @@ def verify_evaluation_scores(responses_dir: Path) -> None:
     print("✅ Evaluation scores verified")
 
 
-def verify_logprobs(logprobs_dir: Path) -> None:
+def verify_logprobs(logprobs_dir: Path, n_samples: int = 50) -> None:
     """Verify that log probabilities were computed."""
     policies = ["base", "clone", "unhelpful"]
 
@@ -119,8 +119,8 @@ def verify_logprobs(logprobs_dir: Path) -> None:
         with open(file_path) as f:
             lines = f.readlines()
             assert (
-                len(lines) == 10
-            ), f"Expected 10 logprobs, got {len(lines)} for {policy}"
+                len(lines) == n_samples
+            ), f"Expected {n_samples} logprobs, got {len(lines)} for {policy}"
 
             for line in lines:
                 data = json.loads(line)
@@ -134,11 +134,13 @@ def verify_logprobs(logprobs_dir: Path) -> None:
     print("✅ Log probability files verified")
 
 
-def verify_cje_dataset(dataset_file: Path) -> None:
+def verify_cje_dataset(dataset_file: Path, n_samples: int = 50) -> None:
     """Verify the final CJE dataset."""
     with open(dataset_file) as f:
         lines = f.readlines()
-        assert len(lines) == 10, f"Expected 10 records, got {len(lines)}"
+        assert (
+            len(lines) == n_samples
+        ), f"Expected {n_samples} records, got {len(lines)}"
 
         for line in lines:
             data = json.loads(line)
@@ -177,6 +179,12 @@ def main() -> None:
         default="test_e2e_data",
         help="Directory for test files (default: test_e2e_data)",
     )
+    parser.add_argument(
+        "--n-samples",
+        type=int,
+        default=50,
+        help="Number of samples to test (default: 50)",
+    )
     args = parser.parse_args()
 
     print("🧪 Starting end-to-end pipeline test...")
@@ -194,7 +202,7 @@ def main() -> None:
     try:
         # Step 1: Extract test prompts from Arena dataset
         # Using real Arena prompts ensures realistic diversity and complexity
-        create_test_prompts(test_dir)
+        create_test_prompts(test_dir, n_samples=args.n_samples)
 
         # Step 2: Generate responses (with fixed seed)
         # Note: Using max-tokens=50 for faster testing (enough for 1-2 sentences)
@@ -202,10 +210,10 @@ def main() -> None:
             f"python generate_responses.py "
             f"--prompts {test_dir}/prompts.jsonl "
             f"--output-dir {test_dir}/responses "
-            f"--max-responses 10 "
+            f"--max-responses {args.n_samples} "
             f"--max-tokens 50"
         )
-        verify_responses(test_dir / "responses")
+        verify_responses(test_dir / "responses", n_samples=args.n_samples)
 
         # Step 3: Add judge scores
         for policy in ["base", "clone", "unhelpful"]:
@@ -228,7 +236,7 @@ def main() -> None:
             f"--responses-dir {test_dir}/responses "
             f"--output-dir {test_dir}/logprobs"
         )
-        verify_logprobs(test_dir / "logprobs")
+        verify_logprobs(test_dir / "logprobs", n_samples=args.n_samples)
 
         # Step 6: Prepare CJE dataset
         # Note: Using 50% oracle coverage to test calibration workflow
@@ -239,7 +247,7 @@ def main() -> None:
             f"--output {test_dir}/cje_dataset.jsonl "
             f"--oracle-coverage 0.5"
         )
-        verify_cje_dataset(test_dir / "cje_dataset.jsonl")
+        verify_cje_dataset(test_dir / "cje_dataset.jsonl", n_samples=args.n_samples)
 
         # Step 7: Run CJE analysis (quick test)
         results_file = test_dir / "cje_results.json"

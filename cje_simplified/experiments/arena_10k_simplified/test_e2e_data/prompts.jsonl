@@ -3,8 +3,3 @@
 {"prompt_id": "arena_2", "prompt": "Fuji vs. Nikon, which is better?", "language": "English"}
 {"prompt_id": "arena_3", "prompt": "How to build an arena for chatbots?", "language": "English"}
 {"prompt_id": "arena_4", "prompt": "When is it today?", "language": "English"}
-{"prompt_id": "arena_5", "prompt": "Count from 1 to 10 with step = 3", "language": "English"}
-{"prompt_id": "arena_6", "prompt": "Emoji for \"sharing\". List 10", "language": "English"}
-{"prompt_id": "arena_7", "prompt": "How to parallelize a neural network?", "language": "English"}
-{"prompt_id": "arena_8", "prompt": "A = 5, B =10, A+B=?", "language": "English"}
-{"prompt_id": "arena_10", "prompt": "What is the future of bitcoin?", "language": "English"}
