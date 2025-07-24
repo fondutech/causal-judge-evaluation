@@ -2,7 +2,7 @@
 """
 End-to-end test for the Arena experiment pipeline.
 
-This test runs the entire pipeline on 2 samples with fixed seeds
+This test runs the entire pipeline on 10 samples with fixed seeds
 to ensure deterministic behavior.
 """
 
@@ -36,21 +36,30 @@ def run_command(cmd: str, check: bool = True) -> subprocess.CompletedProcess:
     return result
 
 
-def create_test_prompts(output_dir: Path) -> None:
-    """Create a minimal test prompts file with 4 samples."""
-    prompts = [
-        {"prompt_id": "test_0", "prompt": "What is 2+2?"},
-        {"prompt_id": "test_1", "prompt": "Explain quantum computing in one sentence."},
-        {"prompt_id": "test_2", "prompt": "What is the capital of France?"},
-        {"prompt_id": "test_3", "prompt": "How do I make a paper airplane?"},
-    ]
+def create_test_prompts(output_dir: Path, n_samples: int = 50) -> None:
+    """Extract test prompts from ChatBot Arena dataset.
 
+    Args:
+        output_dir: Directory to save prompts
+        n_samples: Number of prompts to extract (default: 50)
+    """
+    print(f"Preparing {n_samples} prompts from ChatBot Arena dataset...")
+
+    # Import the prepare function
+    from prepare_arena_data import prepare_arena_prompts
+
+    # Generate prompts with a test-specific seed for reproducibility
     prompts_file = output_dir / "prompts.jsonl"
-    with open(prompts_file, "w") as f:
-        for prompt in prompts:
-            f.write(json.dumps(prompt) + "\n")
+    prompts = prepare_arena_prompts(
+        n_samples=n_samples,
+        output_file=str(prompts_file),
+        seed=12345,  # Different seed for test data
+    )
 
-    print(f"✅ Created test prompts: {prompts_file}")
+    if len(prompts) < n_samples:
+        print(f"⚠️  Warning: Only got {len(prompts)} prompts, expected {n_samples}")
+
+    print(f"✅ Extracted {len(prompts)} Arena prompts: {prompts_file}")
 
 
 def verify_responses(responses_dir: Path) -> None:
@@ -64,8 +73,8 @@ def verify_responses(responses_dir: Path) -> None:
         with open(file_path) as f:
             lines = f.readlines()
             assert (
-                len(lines) == 4
-            ), f"Expected 4 responses, got {len(lines)} for {policy}"
+                len(lines) == 50
+            ), f"Expected 50 responses, got {len(lines)} for {policy}"
 
             # Check structure
             for line in lines:
@@ -106,8 +115,8 @@ def verify_logprobs(logprobs_dir: Path) -> None:
         with open(file_path) as f:
             lines = f.readlines()
             assert (
-                len(lines) == 4
-            ), f"Expected 4 logprobs, got {len(lines)} for {policy}"
+                len(lines) == 50
+            ), f"Expected 50 logprobs, got {len(lines)} for {policy}"
 
             for line in lines:
                 data = json.loads(line)
@@ -125,7 +134,7 @@ def verify_cje_dataset(dataset_file: Path) -> None:
     """Verify the final CJE dataset."""
     with open(dataset_file) as f:
         lines = f.readlines()
-        assert len(lines) == 4, f"Expected 4 records, got {len(lines)}"
+        assert len(lines) == 50, f"Expected 50 records, got {len(lines)}"
 
         for line in lines:
             data = json.loads(line)
@@ -135,6 +144,7 @@ def verify_cje_dataset(dataset_file: Path) -> None:
             assert "base_policy_logprob" in data
             assert "target_policy_logprobs" in data
             assert "metadata" in data
+            assert "reward" in data, "Missing reward field"
 
             # Check metadata
             metadata = data["metadata"]
@@ -178,16 +188,18 @@ def main() -> None:
     (test_dir / "logprobs").mkdir()
 
     try:
-        # Step 1: Create test prompts
+        # Step 1: Extract test prompts from Arena dataset
+        # Using real Arena prompts ensures realistic diversity and complexity
         create_test_prompts(test_dir)
 
         # Step 2: Generate responses (with fixed seed)
-        # Note: We'll use temperature=0 for deterministic responses
+        # Note: Using max-tokens=50 for faster testing (enough for 1-2 sentences)
         run_command(
             f"python generate_responses.py "
             f"--prompts {test_dir}/prompts.jsonl "
             f"--output-dir {test_dir}/responses "
-            f"--max-responses 4"
+            f"--max-responses 50 "
+            f"--max-tokens 50"
         )
         verify_responses(test_dir / "responses")
 
@@ -215,26 +227,44 @@ def main() -> None:
         verify_logprobs(test_dir / "logprobs")
 
         # Step 6: Prepare CJE dataset
+        # Note: Using 50% oracle coverage to test calibration workflow
         run_command(
             f"python prepare_cje_data.py "
             f"--responses-dir {test_dir}/responses "
             f"--logprobs-dir {test_dir}/logprobs "
-            f"--output {test_dir}/cje_dataset.jsonl"
+            f"--output {test_dir}/cje_dataset.jsonl "
+            f"--oracle-coverage 0.5"
         )
         verify_cje_dataset(test_dir / "cje_dataset.jsonl")
 
         # Step 7: Run CJE analysis (quick test)
+        results_file = test_dir / "cje_results.json"
         result = run_command(
             f"python run_cje_analysis.py "
             f"--data {test_dir}/cje_dataset.jsonl "
-            f"--n-folds 2",
-            check=False,  # May fail if not enough samples with valid logprobs
+            f"--n-folds 2 "
+            f"--output {results_file}",
+            check=True,  # Should succeed with 10 samples
         )
 
-        if result.returncode == 0:
-            print("✅ CJE analysis completed")
-        else:
-            print("⚠️  CJE analysis failed (expected with only 4 samples)")
+        print("✅ CJE analysis completed")
+
+        # Verify results file was created
+        assert results_file.exists(), "CJE results file not created"
+        print(f"✓ CJE results written to: {results_file}")
+
+        # Print summary of results
+        with open(results_file) as f:
+            results_data = json.load(f)
+            print("\n📊 CJE Results Summary:")
+            print(f"  Best policy: {results_data['best_policy']}")
+            print(
+                f"  Effective sample size: {results_data['weight_diagnostics']['effective_sample_size']:.0f}"
+            )
+            for policy, stats in results_data["estimation"]["policies"].items():
+                print(
+                    f"  {policy}: {stats['estimate']:.3f} ± {stats['standard_error']:.3f}"
+                )
 
         print("\n🎉 End-to-end test completed successfully!")
 

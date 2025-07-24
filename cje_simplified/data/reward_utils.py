@@ -41,11 +41,11 @@ def add_rewards_to_existing_data(
     Returns:
         Path to output file
     """
-    # Load data using Dataset for consistency
-    from .models import Dataset
+    # Load data using the proper loading pattern
+    from cje_simplified import load_dataset_from_jsonl
 
-    # Load with Dataset to get type safety, then extract raw data
-    dataset = Dataset.from_jsonl(data_path)
+    # Load dataset with type safety
+    dataset = load_dataset_from_jsonl(data_path)
 
     # Get judge scores - look for them in metadata first, then try the field
     judge_scores = []

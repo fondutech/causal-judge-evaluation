@@ -148,15 +148,16 @@ def prepare_cje_dataset(
     if dropped_all_targets > 0:
         print(f"⚠️  Dropped {dropped_all_targets} records with all target logprobs null")
 
-    # Save dataset
-    output_path = Path(output_file)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    # Save dataset if output file is provided
+    if output_file is not None:
+        output_path = Path(output_file)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(output_path, "w") as f:
-        for record in records:
-            f.write(json.dumps(record) + "\n")
+        with open(output_path, "w") as f:
+            for record in records:
+                f.write(json.dumps(record) + "\n")
 
-    print(f"✓ Saved CJE dataset to {output_path}")
+        print(f"✓ Saved CJE dataset to {output_path}")
 
     # Warn if too few samples
     if len(records) < 10:
@@ -213,16 +214,113 @@ def main() -> None:
     parser.add_argument(
         "--base-policy", default="base", help="Name of base/behavior policy"
     )
+    parser.add_argument(
+        "--oracle-coverage",
+        type=float,
+        default=1.0,
+        help="Fraction of oracle labels to use for calibration (0.0-1.0). Default: 1.0 (use oracle labels directly as rewards). If < 1.0, calibrate judge scores using subset.",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for oracle label masking",
+    )
 
     args = parser.parse_args()
 
     # Prepare dataset
-    prepare_cje_dataset(
+    records = prepare_cje_dataset(
         logprobs_dir=args.logprobs_dir,
         responses_dir=args.responses_dir,
-        output_file=args.output,
+        output_file=None,  # Don't save yet, we need to add rewards
         base_policy=args.base_policy,
     )
+
+    # Always add rewards based on oracle coverage
+    import random
+    import numpy as np
+    from sklearn.isotonic import IsotonicRegression
+
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+
+    # Extract judge scores and oracle labels
+    judge_scores = []
+    oracle_labels = []
+    has_both = []
+
+    for i, record in enumerate(records):
+        metadata = record.get("metadata", {})
+        if "judge_score" in metadata and "oracle_label" in metadata:
+            judge_scores.append(metadata["judge_score"])
+            oracle_labels.append(metadata["oracle_label"])
+            has_both.append(i)
+
+    if not has_both:
+        raise ValueError("No records have both judge scores and oracle labels")
+
+    judge_scores = np.array(judge_scores)
+    oracle_labels = np.array(oracle_labels)
+
+    if args.oracle_coverage == 1.0:
+        # Use oracle labels directly as rewards
+        print(f"\nUsing oracle labels directly as rewards (100% coverage)")
+        for i, record in enumerate(records):
+            if "oracle_label" in record.get("metadata", {}):
+                record["reward"] = float(record["metadata"]["oracle_label"])
+    else:
+        # Calibrate judge scores using subset of oracle labels
+        n_oracle = int(len(has_both) * args.oracle_coverage)
+        if n_oracle < 2:
+            raise ValueError(
+                f"Need at least 2 oracle samples for calibration, got {n_oracle}"
+            )
+
+        # Randomly select subset for calibration
+        calibration_indices = sorted(random.sample(range(len(has_both)), n_oracle))
+        calibration_mask = np.zeros(len(has_both), dtype=bool)
+        calibration_mask[calibration_indices] = True
+
+        print(
+            f"\nCalibrating judge scores using {n_oracle}/{len(has_both)} oracle labels ({args.oracle_coverage:.0%} coverage)"
+        )
+
+        # Fit isotonic regression on calibration subset
+        iso_reg = IsotonicRegression(out_of_bounds="clip")
+        iso_reg.fit(judge_scores[calibration_mask], oracle_labels[calibration_mask])
+
+        # Apply calibration to all records with judge scores
+        for record in records:
+            metadata = record.get("metadata", {})
+            if "judge_score" in metadata:
+                judge_score = metadata["judge_score"]
+                calibrated_reward = float(iso_reg.predict([judge_score])[0])
+                record["reward"] = calibrated_reward
+
+        # Report calibration quality
+        calibrated_all = iso_reg.predict(judge_scores)
+        rmse = np.sqrt(np.mean((calibrated_all - oracle_labels) ** 2))
+        print(f"  Calibration RMSE: {rmse:.3f}")
+
+        # Coverage at different thresholds
+        abs_errors = np.abs(calibrated_all - oracle_labels)
+        coverage_01 = np.mean(abs_errors <= 0.1)
+        print(f"  Coverage (±0.1): {coverage_01:.1%}")
+
+    # Check how many records have rewards
+    with_rewards = sum(1 for r in records if "reward" in r)
+    print(f"\nAdded rewards to {with_rewards}/{len(records)} records")
+
+    # Save dataset
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, "w") as f:
+        for record in records:
+            f.write(json.dumps(record) + "\n")
+
+    print(f"\n✓ Saved CJE dataset to {output_path}")
 
 
 if __name__ == "__main__":

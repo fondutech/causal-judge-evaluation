@@ -229,7 +229,16 @@ Expected JSONL format:
    - `prepare_cje_data.py` reads from both response and logprob files
    - Judge/oracle scores stored in `metadata` field of response files
    - Log probabilities computed for BASE responses under all policies
+   - Uses median of 3 logprob samples to handle API non-determinism
    - Final dataset combines everything for CJE analysis
+
+8. **Pre-computed Rewards in Arena Experiment**
+   - `prepare_cje_data.py` supports `--oracle-coverage` parameter (0.0 to 1.0)
+   - When 1.0: Uses oracle labels directly as rewards
+   - When < 1.0: Calibrates judge scores using random subset of oracle labels
+   - `run_cje_analysis.py` checks for pre-computed rewards first
+   - Base policy results included in output (marked as "observed" vs "counterfactual")
+   - Enables ablation studies on oracle coverage without separate scripts
 
 ## ⚠️ Common Pitfalls
 

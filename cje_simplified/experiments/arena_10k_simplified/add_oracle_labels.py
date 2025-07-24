@@ -83,12 +83,6 @@ def add_oracle_labels(
             records[record_idx]["metadata"] = {}
 
         records[record_idx]["metadata"][oracle_field] = result.scores[idx]
-        # Add reasoning if available
-        if result.metadata and idx < len(result.metadata):
-            if "reasoning" in result.metadata[idx]:
-                records[record_idx]["metadata"]["oracle_reasoning"] = result.metadata[
-                    idx
-                ]["reasoning"]
 
     oracle_count = len(result.scores)
 

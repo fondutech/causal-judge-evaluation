@@ -53,40 +53,6 @@ class BaseCJEEstimator(ABC):
         """
         return self._weights_cache.get(target_policy)
 
-    def _compute_raw_weights(self, target_policy: str) -> Optional[np.ndarray]:
-        """Compute raw importance weights for a policy.
-
-        Args:
-            target_policy: Name of target policy
-
-        Returns:
-            Array of raw weights or None if computation fails
-        """
-        try:
-            # Get formatted data for the specific policy
-            data = self.sampler.get_data_for_policy(target_policy)
-            if data is None:
-                return None
-
-            weights = []
-            for record in data:
-                # Compute w = pi(y|x) / p0(y|x)
-                if (
-                    record["base_policy_logprob"] is None
-                    or record["policy_logprob"] is None
-                ):
-                    continue
-
-                log_weight = record["policy_logprob"] - record["base_policy_logprob"]
-                weight = np.exp(np.clip(log_weight, -20, 20))  # Clip for stability
-                weights.append(weight)
-
-            return np.array(weights) if weights else None
-
-        except Exception as e:
-            print(f"Error computing weights for {target_policy}: {e}")
-            return None
-
     @property
     def is_fitted(self) -> bool:
         """Check if estimator has been fitted."""

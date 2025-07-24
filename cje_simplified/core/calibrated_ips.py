@@ -48,7 +48,7 @@ class CalibratedIPS(BaseCJEEstimator):
 
         for policy in self.sampler.target_policies:
             # Get raw weights
-            raw_weights = self._compute_raw_weights(policy)
+            raw_weights = self.sampler.compute_importance_weights(policy)
             if raw_weights is None:
                 continue
 
@@ -59,9 +59,6 @@ class CalibratedIPS(BaseCJEEstimator):
                 k_folds=self.config.k_folds,
                 random_seed=self.config.random_seed,
             )
-
-            # Clip for stability
-            calibrated = np.clip(calibrated, 0, self.config.clip_weight)
 
             # Cache results
             self._calibrated_weights[policy] = calibrated

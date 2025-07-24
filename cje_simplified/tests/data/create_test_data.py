@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 
 
-def create_test_data():
+def create_test_data() -> None:
     """Create various test datasets for different scenarios."""
 
     data_dir = Path(__file__).parent
@@ -24,8 +24,8 @@ def create_test_data():
             "reward": 0.5
             + 0.3 * np.sin(i / 3)
             + 0.1 * np.random.randn(),  # Varying rewards
-            "total_logprob": base_logprob,
-            "target_logps": {
+            "base_policy_logprob": base_logprob,
+            "target_policy_logprobs": {
                 "pi_improved": base_logprob
                 + np.random.normal(2, 5),  # Sometimes better
                 "pi_worse": base_logprob - np.random.exponential(5),  # Usually worse
@@ -48,8 +48,8 @@ def create_test_data():
             "prompt": f"Test prompt {i}",
             "response": f"Test response {i}",
             "reward": 0.6 + 0.2 * np.random.randn(),
-            "total_logprob": base_logprob if i % 3 != 0 else None,  # Some missing
-            "target_logps": {
+            "base_policy_logprob": base_logprob if i % 3 != 0 else None,  # Some missing
+            "target_policy_logprobs": {
                 "pi_a": base_logprob + np.random.normal(1, 3) if i % 4 != 0 else None,
                 "pi_b": base_logprob + np.random.normal(-1, 3) if i % 5 != 0 else None,
             },
@@ -76,8 +76,8 @@ def create_test_data():
             "prompt": f"Extreme test {i}",
             "response": f"Response {i}",
             "reward": np.clip(0.5 + 0.5 * np.random.randn(), 0, 1),
-            "total_logprob": base_logprob,
-            "target_logps": {
+            "base_policy_logprob": base_logprob,
+            "target_policy_logprobs": {
                 "pi_extreme": base_logprob + target_adjustment,
             },
         }
@@ -105,8 +105,8 @@ def create_test_data():
             "oracle_label": (
                 oracle_label if i < 10 else None
             ),  # Only first 10 have oracle
-            "total_logprob": -30 - np.random.exponential(10),
-            "target_logps": {
+            "base_policy_logprob": -30 - np.random.exponential(10),
+            "target_policy_logprobs": {
                 "pi_test": -28 - np.random.exponential(10),
             },
         }

@@ -1,9 +1,9 @@
-"""Example usage of simplified CJE library."""
+"""Example usage of simplified CJE library - demonstrates all three workflows."""
 
 import json
 import os
 import numpy as np
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 # Import from the simplified CJE library
 from cje_simplified import (
@@ -20,18 +20,47 @@ from cje_simplified import (
     Llama4TemplateConfig,
     HuggingFaceTemplateConfig,
     compute_chat_logprob,
+    Dataset,
+    Sample,
 )
 
 
 def create_example_data() -> None:
-    """Create example data files for demonstration."""
+    """Create example data files for all three workflows."""
 
-    # Example data with raw judge scores (not yet calibrated)
-    raw_data = [
+    # 1. Data with oracle labels (for workflow 1)
+    oracle_data = [
+        {
+            "prompt": "What is machine learning?",
+            "response": "Machine learning is a subset of artificial intelligence...",
+            "oracle_label": 0.82,  # Direct oracle label (ground truth)
+            "base_policy_logprob": -35.704,
+            "target_policy_logprobs": {
+                "pi_cot": -40.123,
+                "pi_bigger": -32.456,
+                "pi_clone": -35.800,
+            },
+        },
+        {
+            "prompt": "Explain quantum computing",
+            "response": "Quantum computing uses quantum mechanical phenomena...",
+            "oracle_label": 0.71,
+            "base_policy_logprob": -42.156,
+            "target_policy_logprobs": {
+                "pi_cot": -48.234,
+                "pi_bigger": -38.901,
+                "pi_clone": -42.200,
+            },
+        },
+    ]
+
+    # 2. Data with judge scores that need calibration (for workflow 2)
+    judge_data = [
         {
             "prompt": "What is machine learning?",
             "response": "Machine learning is a subset of artificial intelligence...",
             "judge_score": 7.5,  # Raw score from judge (e.g., 0-10 scale)
+            "oracle_label": 0.82,  # Oracle label for calibration
             "base_policy_logprob": -35.704,
             "target_policy_logprobs": {
                 "pi_cot": -40.123,
@@ -43,6 +72,7 @@ def create_example_data() -> None:
             "prompt": "Explain quantum computing",
             "response": "Quantum computing uses quantum mechanical phenomena...",
             "judge_score": 6.8,
+            "oracle_label": 0.71,  # Oracle label for calibration
             "base_policy_logprob": -42.156,
             "target_policy_logprobs": {
                 "pi_cot": -48.234,
@@ -54,6 +84,7 @@ def create_example_data() -> None:
             "prompt": "What are neural networks?",
             "response": "Neural networks are computing systems inspired by...",
             "judge_score": 8.9,
+            # No oracle label - will be calibrated based on above samples
             "base_policy_logprob": -28.493,
             "target_policy_logprobs": {
                 "pi_cot": -33.567,
@@ -65,6 +96,7 @@ def create_example_data() -> None:
             "prompt": "Define reinforcement learning",
             "response": "Reinforcement learning is a type of machine learning...",
             "judge_score": 7.2,
+            # No oracle label - will be calibrated based on above samples
             "base_policy_logprob": -31.245,
             "target_policy_logprobs": {
                 "pi_cot": -36.789,
@@ -74,17 +106,145 @@ def create_example_data() -> None:
         },
     ]
 
-    # Add oracle labels for first 2 samples (50% oracle fraction)
-    # These represent true business KPIs (e.g., user satisfaction 0-1)
-    raw_data[0]["oracle_label"] = 0.82
-    raw_data[1]["oracle_label"] = 0.71
+    # 3. Data with pre-calibrated rewards (for workflow 3)
+    calibrated_data = [
+        {
+            "prompt": "What is machine learning?",
+            "response": "Machine learning is a subset of artificial intelligence...",
+            "reward": 0.85,  # Pre-calibrated reward
+            "base_policy_logprob": -35.704,
+            "target_policy_logprobs": {
+                "pi_cot": -40.123,
+                "pi_bigger": -32.456,
+                "pi_clone": -35.800,
+            },
+        },
+        {
+            "prompt": "Explain quantum computing",
+            "response": "Quantum computing uses quantum mechanical phenomena...",
+            "reward": 0.72,
+            "base_policy_logprob": -42.156,
+            "target_policy_logprobs": {
+                "pi_cot": -48.234,
+                "pi_bigger": -38.901,
+                "pi_clone": -42.200,
+            },
+        },
+    ]
 
-    # Save raw data
-    with open("raw_data.jsonl", "w") as f:
-        for record in raw_data:
+    # Save all datasets
+    with open("oracle_data.jsonl", "w") as f:
+        for record in oracle_data:
             f.write(json.dumps(record) + "\n")
 
-    print(f"Created raw_data.jsonl with {len(raw_data)} samples (2 with oracle labels)")
+    with open("judge_data.jsonl", "w") as f:
+        for record in judge_data:
+            f.write(json.dumps(record) + "\n")
+
+    with open("calibrated_data.jsonl", "w") as f:
+        for record in calibrated_data:
+            f.write(json.dumps(record) + "\n")
+
+    print(f"Created oracle_data.jsonl with {len(oracle_data)} samples")
+    print(
+        f"Created judge_data.jsonl with {len(judge_data)} samples (2 with oracle labels)"
+    )
+    print(f"Created calibrated_data.jsonl with {len(calibrated_data)} samples")
+
+
+def workflow_1_oracle_labels() -> None:
+    """Workflow 1: Using oracle labels directly as rewards."""
+
+    print("\n=== WORKFLOW 1: Oracle Labels as Rewards ===\n")
+
+    # Load dataset without rewards
+    dataset = load_dataset_from_jsonl("oracle_data.jsonl")
+    print(f"Loaded {dataset.n_samples} samples")
+
+    # Map oracle labels directly to rewards
+    for sample in dataset.samples:
+        if "oracle_label" in sample.metadata:
+            sample.reward = sample.metadata["oracle_label"]
+
+    # Verify rewards were set
+    rewards_set = sum(1 for s in dataset.samples if s.reward is not None)
+    print(f"Set rewards for {rewards_set}/{dataset.n_samples} samples")
+
+    # Now ready for CJE estimation
+    sampler = PrecomputedSampler(dataset)
+    estimator = CalibratedIPS(sampler, k_folds=2, random_seed=42)
+    results = estimator.fit_and_estimate()
+
+    print(f"\nEstimates: {results.estimates}")
+    print(f"Best policy: {sampler.target_policies[results.best_policy()]}")
+
+
+def workflow_2_judge_calibration() -> None:
+    """Workflow 2: Calibrating judge scores using oracle labels."""
+
+    print("\n=== WORKFLOW 2: Judge Score Calibration ===\n")
+
+    # Load dataset without specifying reward field
+    dataset = load_dataset_from_jsonl("judge_data.jsonl")
+    print(f"Loaded {dataset.n_samples} samples")
+
+    # Check which samples have oracle labels
+    oracle_count = sum(1 for s in dataset.samples if "oracle_label" in s.metadata)
+    print(f"Oracle labels available for {oracle_count}/{dataset.n_samples} samples")
+
+    # Calibrate judge scores to oracle labels
+    calibrated_dataset, cal_result = calibrate_dataset(
+        dataset,
+        judge_field="judge_score",
+        oracle_field="oracle_label",
+        k_folds=2,  # Use 2 folds for small example
+    )
+
+    print(f"\nCalibration statistics:")
+    print(f"  Oracle samples: {cal_result.n_oracle}")
+    print(f"  RMSE: {cal_result.calibration_rmse:.3f}")
+    print(f"  Coverage (±0.1): {cal_result.coverage_at_01:.1%}")
+
+    # Show calibration results
+    print("\nCalibration results:")
+    for i, sample in enumerate(calibrated_dataset.samples):
+        judge = sample.metadata.get("judge_score", "N/A")
+        reward = sample.reward
+        oracle = sample.metadata.get("oracle_label", "N/A")
+        oracle_str = (
+            f" (oracle: {oracle:.2f})" if isinstance(oracle, (int, float)) else ""
+        )
+        print(f"  Sample {i}: judge={judge} → reward={reward:.3f}{oracle_str}")
+
+    # Now ready for CJE estimation
+    sampler = PrecomputedSampler(calibrated_dataset)
+    estimator = CalibratedIPS(sampler, k_folds=2, random_seed=42)
+    results = estimator.fit_and_estimate()
+
+    print(f"\nEstimates: {results.estimates}")
+    print(f"Best policy: {sampler.target_policies[results.best_policy()]}")
+
+
+def workflow_3_pre_calibrated() -> None:
+    """Workflow 3: Using pre-calibrated rewards."""
+
+    print("\n=== WORKFLOW 3: Pre-calibrated Rewards ===\n")
+
+    # Load dataset that already has rewards
+    dataset = load_dataset_from_jsonl("calibrated_data.jsonl")
+    print(f"Loaded {dataset.n_samples} samples")
+
+    # Check that rewards exist
+    rewards_exist = sum(1 for s in dataset.samples if s.reward is not None)
+    print(f"Rewards present for {rewards_exist}/{dataset.n_samples} samples")
+
+    # Can directly use for CJE estimation
+    sampler = PrecomputedSampler(dataset)
+    estimator = CalibratedIPS(sampler, k_folds=2, random_seed=42)
+    results = estimator.fit_and_estimate()
+
+    print(f"\nEstimates: {results.estimates}")
+    print(f"Best policy: {sampler.target_policies[results.best_policy()]}")
 
 
 def compute_new_log_probs() -> None:
@@ -138,147 +298,10 @@ def compute_new_log_probs() -> None:
         print(f"Chat error: {chat_result.error}")
 
 
-def prepare_data_for_cje() -> None:
-    """Prepare data by calibrating judge scores to oracle labels."""
-
-    print("\n=== Preparing Data for CJE ===\n")
-
-    # Step 1: Load data with judge scores
-    print("1. Loading data with judge scores...")
-    dataset = load_dataset_from_jsonl("raw_data.jsonl", reward_field="judge_score")
-    print(f"   Loaded {dataset.n_samples} samples")
-
-    # Step 2: Calibrate judge scores to oracle labels
-    print("\n2. Calibrating judge scores to oracle labels...")
-    calibrated_dataset, calibration_result = calibrate_dataset(
-        dataset,
-        judge_field="judge_score",
-        oracle_field="oracle_label",
-        k_folds=2,  # Use 2 folds for small example
-    )
-
-    print(f"\nCalibration statistics:")
-    print(f"  Oracle samples: {calibration_result.n_oracle}")
-    print(f"  RMSE: {calibration_result.calibration_rmse:.3f}")
-    print(f"  Coverage (±0.1): {calibration_result.coverage_at_01:.1%}")
-
-    # Save prepared data - convert Dataset to raw data for saving
-    with open("cje_ready_data.jsonl", "w") as f:
-        for sample in calibrated_dataset.samples:
-            record = {
-                "prompt": sample.prompt,
-                "response": sample.response,
-                "reward": sample.reward,
-                "base_policy_logprob": sample.base_policy_logprob,
-                "target_policy_logprobs": sample.target_policy_logprobs,
-                "judge_score": sample.metadata.get("judge_score"),  # Preserve original
-                "oracle_label": sample.metadata.get(
-                    "oracle_label"
-                ),  # Preserve original
-            }
-            f.write(json.dumps(record) + "\n")
-
-    print("\nData prepared and saved to cje_ready_data.jsonl")
-
-    # Show example of calibration
-    print("\nExample calibration:")
-    for i in range(min(3, len(calibrated_dataset.samples))):
-        sample = calibrated_dataset.samples[i]
-        judge = sample.metadata.get("judge_score", "N/A")
-        reward = sample.reward
-        oracle = sample.metadata.get("oracle_label", "N/A")
-        judge_str = f"{judge:.1f}" if isinstance(judge, (int, float)) else str(judge)
-        oracle_str = (
-            f"{oracle:.2f}" if isinstance(oracle, (int, float)) else str(oracle)
-        )
-        print(
-            f"  Sample {i}: judge_score={judge_str} → reward={reward:.3f} (oracle: {oracle_str})"
-        )
-
-
-def run_cje_estimation() -> None:
-    """Run CJE estimation on prepared data."""
-
-    print("\n=== Running CJE Estimation ===\n")
-
-    # Load data with calibrated rewards
-    sampler = PrecomputedSampler.from_jsonl("cje_ready_data.jsonl")
-
-    print(f"Loaded {sampler.n_samples} samples")
-    print(f"Target policies: {sampler.target_policies}")
-    print(f"Data summary: {sampler.summary()}")
-
-    # Run calibrated IPS estimation
-    estimator = CalibratedIPS(
-        sampler,
-        k_folds=2,  # Use 2 folds for small example
-        clip_weight=100.0,
-        random_seed=42,
-    )
-
-    results = estimator.fit_and_estimate()
-
-    # Display results
-    print("\n=== Estimation Results ===\n")
-    print(f"Estimates: {results.estimates}")
-    print(f"Standard errors: {results.standard_errors}")
-
-    # Confidence intervals
-    ci_lower, ci_upper = results.confidence_interval(0.95)
-    print("\n95% Confidence Intervals:")
-    for i, policy in enumerate(sampler.target_policies):
-        print(f"  {policy}: [{ci_lower[i]:.3f}, {ci_upper[i]:.3f}]")
-
-    # Best policy
-    best_idx = results.best_policy()
-    print(
-        f"\nBest policy: {sampler.target_policies[best_idx]} "
-        f"(estimate: {results.estimates[best_idx]:.3f})"
-    )
-
-    # Policy comparisons
-    print("\n=== Policy Comparisons ===\n")
-    comparison = results.compare_policies(0, 1)  # Compare first two policies
-    print(f"Comparing {sampler.target_policies[0]} vs {sampler.target_policies[1]}:")
-    print(
-        f"  Difference: {comparison['difference']:.3f} ± {comparison['se_difference']:.3f}"
-    )
-    print(f"  P-value: {comparison['p_value']:.3f}")
-    print(f"  Significant: {comparison['significant']}")
-
-    # Weight diagnostics
-    print("\n=== Weight Diagnostics ===\n")
-
-    all_diagnostics = {}
-    for policy in sampler.target_policies:
-        weights = estimator.get_weights(policy)
-        if weights is not None:
-            # For pi_clone, expect weight ~1.0
-            expected = 1.0 if policy == "pi_clone" else None
-            diag = diagnose_weights(weights, policy, expected)
-            all_diagnostics[policy] = diag
-            print(diag.summary())
-            print()
-
-    # Summary table
-    print("\n" + create_weight_summary_table(all_diagnostics))
-
-    # Check for API non-determinism
-    print("\n=== API Non-determinism Check ===\n")
-    api_check = detect_api_nondeterminism(sampler, baseline_policy="pi_clone")
-    print(f"Non-determinism detected: {api_check['detected']}")
-    if "mean_weight" in api_check:
-        print(
-            f"Clone policy mean weight: {api_check['mean_weight']:.3f} "
-            f"(deviation: {api_check['deviation']:.3f})"
-        )
-    print(f"Recommendation: {api_check['recommendation']}")
-
-
 def demonstrate_judge_calibration() -> None:
     """Demonstrate judge score calibration with oracle labels."""
 
-    print("\n=== Judge Score Calibration ===\n")
+    print("\n=== Judge Score Calibration (Standalone) ===\n")
 
     # Example: Raw judge scores and oracle labels for subset
     raw_judge_scores = np.array([0.7, 0.8, 0.6, 0.9, 0.75, 0.85, 0.65, 0.95])
@@ -311,11 +334,56 @@ def demonstrate_judge_calibration() -> None:
         )
 
 
-def main() -> None:
-    """Run all examples."""
+def advanced_diagnostics() -> None:
+    """Demonstrate advanced weight diagnostics and API non-determinism detection."""
 
-    # Create example data
+    print("\n=== Advanced Diagnostics ===\n")
+
+    # Use workflow 3 data for diagnostics
+    dataset = load_dataset_from_jsonl("calibrated_data.jsonl")
+    sampler = PrecomputedSampler(dataset)
+    estimator = CalibratedIPS(sampler, k_folds=2, clip_weight=100.0, random_seed=42)
+    results = estimator.fit_and_estimate()
+
+    # Weight diagnostics
+    print("=== Weight Diagnostics ===\n")
+
+    all_diagnostics = {}
+    for policy in sampler.target_policies:
+        weights = estimator.get_weights(policy)
+        if weights is not None:
+            # For pi_clone, expect weight ~1.0
+            expected = 1.0 if policy == "pi_clone" else None
+            diag = diagnose_weights(weights, policy, expected)
+            all_diagnostics[policy] = diag
+            print(diag.summary())
+            print()
+
+    # Summary table
+    print("\n" + create_weight_summary_table(all_diagnostics))
+
+    # Check for API non-determinism
+    print("\n=== API Non-determinism Check ===\n")
+    api_check = detect_api_nondeterminism(sampler, baseline_policy="pi_clone")
+    print(f"Non-determinism detected: {api_check['detected']}")
+    if "mean_weight" in api_check:
+        print(
+            f"Clone policy mean weight: {api_check['mean_weight']:.3f} "
+            f"(deviation: {api_check['deviation']:.3f})"
+        )
+    print(f"Recommendation: {api_check['recommendation']}")
+
+
+def main() -> None:
+    """Run all examples demonstrating the three workflows."""
+
+    # Create example data for all workflows
     create_example_data()
+
+    # Demonstrate all three workflows
+    workflow_1_oracle_labels()
+    workflow_2_judge_calibration()
+    workflow_3_pre_calibrated()
 
     # Optionally compute new log probs (requires API key)
     if os.getenv("FIREWORKS_API_KEY"):
@@ -324,17 +392,14 @@ def main() -> None:
     else:
         print("\nSkipping log prob computation (no FIREWORKS_API_KEY)")
 
-    # Prepare data (calibrate judge scores)
-    prepare_data_for_cje()
-
-    # Run CJE estimation
-    run_cje_estimation()
-
-    # Demonstrate judge calibration
+    # Demonstrate standalone judge calibration
     demonstrate_judge_calibration()
 
+    # Show advanced diagnostics
+    advanced_diagnostics()
+
     # Cleanup
-    for f in ["raw_data.jsonl", "cje_ready_data.jsonl"]:
+    for f in ["oracle_data.jsonl", "judge_data.jsonl", "calibrated_data.jsonl"]:
         if os.path.exists(f):
             os.remove(f)
 

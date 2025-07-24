@@ -75,12 +75,6 @@ def add_judge_scores(
     # Update records with scores
     for idx, record_idx in enumerate(to_score_indices):
         records[record_idx]["metadata"]["judge_score"] = result.scores[idx]
-        # Add reasoning if available
-        if result.metadata and idx < len(result.metadata):
-            if "reasoning" in result.metadata[idx]:
-                records[record_idx]["metadata"]["judge_reasoning"] = result.metadata[
-                    idx
-                ]["reasoning"]
 
     # Save output
     output_path = Path(output_file)

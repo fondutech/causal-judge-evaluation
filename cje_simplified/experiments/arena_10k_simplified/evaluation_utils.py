@@ -43,9 +43,8 @@ class BatchJudgeResult:
 
 # Pydantic model for structured outputs
 class EvaluationResponse(BaseModel):
-    """Structured response from the evaluator. Reason first, then score."""
+    """Evaluation response with just a score."""
 
-    reasoning: str = Field(description="Explanation of the evaluation")
     score: float = Field(
         description="Score from 0 to 100 based on response quality",
         ge=0.0,
@@ -88,17 +87,12 @@ class FireworksEvaluator:
 
     def _default_prompt_template(self) -> str:
         """Default prompt template."""
-        return """Evaluate the AI response below.
+        return """Rate this AI response from 0 to 100:
 
-<user_prompt>
-{prompt}
-</user_prompt>
+User: {prompt}
+AI: {response}
 
-<ai_response>
-{response}
-</ai_response>
-
-Rate the response quality from 0 to 100, considering relevance, helpfulness, clarity, and accuracy."""
+Consider relevance, helpfulness, clarity, and accuracy. Output only the score."""
 
     def score(self, prompt: str, response: str) -> JudgeScore:
         """Score a single response."""
@@ -114,7 +108,7 @@ Rate the response quality from 0 to 100, considering relevance, helpfulness, cla
                 {"role": "user", "content": user_message},
             ]
 
-            result: EvaluationResponse = self.structured_llm.invoke(messages)
+            result = self.structured_llm.invoke(messages)
 
             # Normalize score from 0-100 to 0-1
             normalized_score = result.score / 100.0
@@ -122,17 +116,16 @@ Rate the response quality from 0 to 100, considering relevance, helpfulness, cla
             return JudgeScore(
                 score=normalized_score,
                 metadata={
-                    "reasoning": result.reasoning,
                     "model": self.model,
                     "raw_score": result.score,  # Keep raw 0-100 score
                 },
             )
 
         except Exception as e:
-            # Return neutral score on error
-            return JudgeScore(
-                score=0.5, metadata={"error": str(e), "model": self.model}
-            )
+            # Raise error instead of using magic fallback
+            raise RuntimeError(
+                f"Failed to score response with {self.model}: {str(e)}"
+            ) from e
 
     def score_batch(
         self,
