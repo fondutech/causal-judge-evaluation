@@ -27,12 +27,15 @@ poetry install
 Extract prompts from the ChatGPT Arena dataset:
 ```bash
 python prepare_arena_data.py \
-    --input /path/to/chatbot_arena_conversations.json \
-    --output data/prompts.jsonl \
-    --max-prompts 1000
+    --samples 1000 \
+    --output data/arena_prompts.jsonl
 ```
 
-Extracts the first user turn from Arena conversations.
+This script:
+- Downloads the ChatBot Arena dataset from HuggingFace
+- Filters for English conversations only using the language field
+- Extracts unique first-turn user prompts
+- Avoids duplicates to ensure fresh responses
 
 ### 2. Generate Responses
 Generate responses using different policies (base, clone, unhelpful):
@@ -57,7 +60,7 @@ python add_judge_scores.py --input data/responses/unhelpful_responses.jsonl
 ```
 
 Uses Fireworks API with LangChain structured outputs for reliable scoring.
-Default model: `llama4-scout-instruct-basic`
+Default model: `llama-v3p1-8b-instruct`
 
 ### 4. Add Oracle Labels
 Add ground truth labels for validation and calibration:

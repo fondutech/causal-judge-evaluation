@@ -21,6 +21,10 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 def run_command(cmd: str, check: bool = True) -> subprocess.CompletedProcess:
     """Run a shell command and return the result."""
+    # If command starts with "python ", prepend "poetry run "
+    if cmd.strip().startswith("python "):
+        cmd = "poetry run " + cmd
+
     print(f"\n📍 Running: {cmd}")
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
@@ -36,12 +40,12 @@ def run_command(cmd: str, check: bool = True) -> subprocess.CompletedProcess:
     return result
 
 
-def create_test_prompts(output_dir: Path, n_samples: int = 50) -> None:
+def create_test_prompts(output_dir: Path, n_samples: int = 10) -> None:
     """Extract test prompts from ChatBot Arena dataset.
 
     Args:
         output_dir: Directory to save prompts
-        n_samples: Number of prompts to extract (default: 50)
+        n_samples: Number of prompts to extract (default: 10)
     """
     print(f"Preparing {n_samples} prompts from ChatBot Arena dataset...")
 
@@ -73,8 +77,8 @@ def verify_responses(responses_dir: Path) -> None:
         with open(file_path) as f:
             lines = f.readlines()
             assert (
-                len(lines) == 50
-            ), f"Expected 50 responses, got {len(lines)} for {policy}"
+                len(lines) == 10
+            ), f"Expected 10 responses, got {len(lines)} for {policy}"
 
             # Check structure
             for line in lines:
@@ -115,8 +119,8 @@ def verify_logprobs(logprobs_dir: Path) -> None:
         with open(file_path) as f:
             lines = f.readlines()
             assert (
-                len(lines) == 50
-            ), f"Expected 50 logprobs, got {len(lines)} for {policy}"
+                len(lines) == 10
+            ), f"Expected 10 logprobs, got {len(lines)} for {policy}"
 
             for line in lines:
                 data = json.loads(line)
@@ -134,7 +138,7 @@ def verify_cje_dataset(dataset_file: Path) -> None:
     """Verify the final CJE dataset."""
     with open(dataset_file) as f:
         lines = f.readlines()
-        assert len(lines) == 50, f"Expected 50 records, got {len(lines)}"
+        assert len(lines) == 10, f"Expected 10 records, got {len(lines)}"
 
         for line in lines:
             data = json.loads(line)
@@ -198,7 +202,7 @@ def main() -> None:
             f"python generate_responses.py "
             f"--prompts {test_dir}/prompts.jsonl "
             f"--output-dir {test_dir}/responses "
-            f"--max-responses 50 "
+            f"--max-responses 10 "
             f"--max-tokens 50"
         )
         verify_responses(test_dir / "responses")

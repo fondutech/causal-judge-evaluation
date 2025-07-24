@@ -218,9 +218,10 @@ Expected JSONL format:
 6. **Unified Evaluation System**
    - Single `FireworksEvaluator` class for both judges and oracles
    - Judges and oracles differ only in model choice
-   - Judge model: `accounts/fireworks/models/llama4-scout-instruct-basic`
+   - Judge model: `accounts/fireworks/models/llama-v3p1-8b-instruct` (changed from llama4-scout due to structured output issues)
    - Oracle model: `accounts/fireworks/models/kimi-k2-instruct`
    - Uses LangChain structured outputs for reliable scoring (0-100 scale)
+   - XML-structured prompts for better clarity and consistency
    - Minimal scripts: `add_judge_scores.py` and `add_oracle_labels.py`
    - Oracle labels all responses for validation purposes
 
@@ -239,6 +240,12 @@ Expected JSONL format:
    - `run_cje_analysis.py` checks for pre-computed rewards first
    - Base policy results included in output (marked as "observed" vs "counterfactual")
    - Enables ablation studies on oracle coverage without separate scripts
+
+9. **Language Filtering in Arena Data**
+   - `prepare_arena_data.py` now uses the `language` field from ChatBot Arena dataset
+   - Filters for English conversations only: ["English", "english", "en", "EN"]
+   - Replaced character-based detection with direct field checking
+   - Ensures consistent, high-quality English prompts for evaluation
 
 ## ⚠️ Common Pitfalls
 

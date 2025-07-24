@@ -6,6 +6,7 @@ using LLM-based judges and oracles with structured outputs.
 """
 
 import os
+import json
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 import numpy as np
@@ -43,10 +44,10 @@ class BatchJudgeResult:
 
 # Pydantic model for structured outputs
 class EvaluationResponse(BaseModel):
-    """Evaluation response with just a score."""
+    """Response containing evaluation score for an AI response."""
 
     score: float = Field(
-        description="Score from 0 to 100 based on response quality",
+        description="Quality score from 0 to 100, where 0 is completely unhelpful and 100 is perfectly helpful",
         ge=0.0,
         le=100.0,
     )
@@ -59,7 +60,7 @@ class FireworksEvaluator:
     def __init__(
         self,
         model: str,
-        system_prompt: str = "You are an expert evaluator that assesses AI response quality.",
+        system_prompt: str = "You are an AI evaluator. Rate responses from 0 to 100. Always provide a score, even if the response is incomplete or truncated.",
         user_prompt_template: str = None,
         temperature: float = 0.0,
         api_key: Optional[str] = None,
@@ -87,12 +88,20 @@ class FireworksEvaluator:
 
     def _default_prompt_template(self) -> str:
         """Default prompt template."""
-        return """Rate this AI response from 0 to 100:
+        return """<task>
+Evaluate the quality of the AI assistant's response to the user's question.
+Score from 0-100 based on relevance, helpfulness, clarity, and completeness.
+If the response is truncated, score based on what is provided.
+</task>
 
-User: {prompt}
-AI: {response}
+<exchange>
+<question>{prompt}</question>
+<answer>{response}</answer>
+</exchange>
 
-Consider relevance, helpfulness, clarity, and accuracy. Output only the score."""
+<instruction>
+Provide your evaluation score (0-100):
+</instruction>"""
 
     def score(self, prompt: str, response: str) -> JudgeScore:
         """Score a single response."""
@@ -101,31 +110,56 @@ Consider relevance, helpfulness, clarity, and accuracy. Output only the score.""
             prompt=prompt, response=response
         )
 
-        try:
-            # Get structured response
-            messages = [
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": user_message},
-            ]
+        # Try up to 3 times if structured output fails
+        max_retries = 3
+        last_error = None
 
-            result = self.structured_llm.invoke(messages)
+        for attempt in range(max_retries):
+            try:
+                # Get structured response
+                messages = [
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": user_message},
+                ]
 
-            # Normalize score from 0-100 to 0-1
-            normalized_score = result.score / 100.0
+                result = self.structured_llm.invoke(messages)
 
-            return JudgeScore(
-                score=normalized_score,
-                metadata={
-                    "model": self.model,
-                    "raw_score": result.score,  # Keep raw 0-100 score
-                },
-            )
+                # Check if result is None or invalid
+                if result is None:
+                    # Log what we sent for debugging
+                    print(
+                        f"DEBUG: Structured output returned None for prompt: {prompt[:50]}..."
+                    )
+                    print(f"DEBUG: Response: {response[:50]}...")
+                    raise ValueError("Structured output returned None")
 
-        except Exception as e:
-            # Raise error instead of using magic fallback
-            raise RuntimeError(
-                f"Failed to score response with {self.model}: {str(e)}"
-            ) from e
+                if not isinstance(result, EvaluationResponse):
+                    raise ValueError(f"Unexpected result type: {type(result)}")
+
+                # Normalize score from 0-100 to 0-1
+                normalized_score = result.score / 100.0
+
+                return JudgeScore(
+                    score=normalized_score,
+                    metadata={
+                        "model": self.model,
+                        "raw_score": result.score,  # Keep raw 0-100 score
+                        "attempts": attempt + 1,
+                    },
+                )
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    # Wait briefly before retry
+                    import time
+
+                    time.sleep(0.5)
+                    continue
+
+        # All retries failed
+        raise RuntimeError(
+            f"Failed to score response with {self.model} after {max_retries} attempts: {str(last_error)}"
+        ) from last_error
 
     def score_batch(
         self,
@@ -155,5 +189,5 @@ Consider relevance, helpfulness, clarity, and accuracy. Output only the score.""
 
 
 # Default models
-DEFAULT_JUDGE_MODEL = "accounts/fireworks/models/llama4-scout-instruct-basic"
+DEFAULT_JUDGE_MODEL = "accounts/fireworks/models/llama-v3p1-8b-instruct"
 DEFAULT_ORACLE_MODEL = "accounts/fireworks/models/kimi-k2-instruct"

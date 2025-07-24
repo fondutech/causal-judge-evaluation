@@ -51,6 +51,11 @@ def prepare_arena_prompts(
     for i, row in enumerate(dataset):
         conv_id = row.get("conversation_id", f"conv_{i}")
         conversation = row.get("conversation_a", [])
+        language = row.get("language", "unknown")
+
+        # Skip non-English conversations
+        if language not in ["English", "english", "en", "EN"]:
+            continue
 
         # Extract first user turn only
         first_user_prompt = None
@@ -73,24 +78,14 @@ def prepare_arena_prompts(
             {
                 "prompt_id": f"arena_{i}",
                 "prompt": first_user_prompt,
+                "language": language,
             }
         )
 
-        if len(prompts) >= n_samples * 2:  # Get extra for filtering
+        if len(prompts) >= n_samples:
             break
 
-    print(f"Extracted {len(prompts):,} unique prompts")
-
-    # Simple English filter
-    filtered = []
-    for p in prompts:
-        # Skip if too many non-ASCII chars (likely non-English)
-        non_ascii = sum(1 for c in p["prompt"][:100] if ord(c) > 127)
-        if non_ascii / min(len(p["prompt"]), 100) < 0.1:
-            filtered.append(p)
-
-    prompts = filtered
-    print(f"After filtering: {len(prompts):,} prompts")
+    print(f"Extracted {len(prompts):,} unique English prompts")
 
     # Sample if needed
     random.seed(seed)
