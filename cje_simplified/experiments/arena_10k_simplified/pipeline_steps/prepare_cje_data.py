@@ -16,7 +16,8 @@ from collections import defaultdict
 
 import sys
 
-sys.path.append(str(Path(__file__).parent.parent.parent))
+sys.path.append(str(Path(__file__).parent.parent.parent.parent))
+sys.path.append(str(Path(__file__).parent.parent))  # Add arena_10k_simplified to path
 
 
 def prepare_cje_dataset(

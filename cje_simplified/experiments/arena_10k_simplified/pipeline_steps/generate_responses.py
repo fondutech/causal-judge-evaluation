@@ -16,7 +16,8 @@ import requests  # type: ignore
 
 import sys
 
-sys.path.append(str(Path(__file__).parent.parent.parent))
+sys.path.append(str(Path(__file__).parent.parent.parent.parent))
+sys.path.append(str(Path(__file__).parent.parent))  # Add arena_10k_simplified to path
 
 from policy_config import POLICIES, get_all_policies
 

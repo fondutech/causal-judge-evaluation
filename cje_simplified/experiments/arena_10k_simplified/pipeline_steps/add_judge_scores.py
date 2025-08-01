@@ -12,7 +12,8 @@ from typing import Any
 import sys
 import numpy as np
 
-sys.path.append(str(Path(__file__).parent.parent.parent))
+sys.path.append(str(Path(__file__).parent.parent.parent.parent))
+sys.path.append(str(Path(__file__).parent.parent))  # Add arena_10k_simplified to path
 
 from evaluation_utils import FireworksEvaluator, DEFAULT_JUDGE_MODEL
 
@@ -71,7 +72,9 @@ def add_judge_scores(
     print(f"\nScoring {len(to_score_indices)} records...")
 
     # Score in batch with failure resilience
-    result = judge.score_batch(prompts, responses, show_progress=show_progress, skip_failures=True)
+    result = judge.score_batch(
+        prompts, responses, show_progress=show_progress, skip_failures=True
+    )
 
     # Update records with scores
     for idx, record_idx in enumerate(to_score_indices):
@@ -93,7 +96,7 @@ def add_judge_scores(
     # Print score statistics - filter out None values for failed scorings
     valid_scores = [s for s in result.scores if s is not None]
     failed_count = len(result.scores) - len(valid_scores)
-    
+
     if valid_scores:
         print(f"\nScore statistics:")
         print(f"  Valid scores: {len(valid_scores)}")

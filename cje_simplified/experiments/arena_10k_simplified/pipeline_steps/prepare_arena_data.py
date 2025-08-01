@@ -15,46 +15,47 @@ from typing import List, Dict, Any
 
 import sys
 
-sys.path.append(str(Path(__file__).parent.parent.parent))
+sys.path.append(str(Path(__file__).parent.parent.parent.parent))
+sys.path.append(str(Path(__file__).parent.parent))  # Add arena_10k_simplified to path
 
 
 def is_problematic_prompt(prompt: str) -> bool:
     """Check if a prompt is likely to cause oracle scoring failures.
-    
+
     This filters out prompts that:
     1. Ask to spell offensive words letter by letter
     2. Contains patterns that lead to problematic content generation
-    
+
     Args:
         prompt: The prompt to check
-        
+
     Returns:
         True if the prompt should be filtered out
     """
     prompt_lower = prompt.lower()
-    
+
     # Pattern 1: Letter-by-letter spelling that could form offensive words
     letter_patterns = [
         # N-I-G-G-E-R patterns
         r"write.*letters.*n.*i.*g.*g.*e.*r",
-        r"spell.*n.*i.*g.*g.*e.*r", 
+        r"spell.*n.*i.*g.*g.*e.*r",
         r"sequence.*n.*i.*g.*g.*e.*r",
-        # F-A-G-G-O-T patterns  
+        # F-A-G-G-O-T patterns
         r"write.*letters.*f.*a.*g.*g.*o.*t",
         r"spell.*f.*a.*g.*g.*o.*t",
         r"sequence.*f.*a.*g.*g.*o.*t",
     ]
-    
+
     for pattern in letter_patterns:
         if re.search(pattern, prompt_lower):
             return True
-    
+
     # Pattern 2: Explicit requests to spell offensive words
     offensive_words = ["nigger", "faggot", "retard"]
     for word in offensive_words:
         if word in prompt_lower:
             return True
-    
+
     return False
 
 

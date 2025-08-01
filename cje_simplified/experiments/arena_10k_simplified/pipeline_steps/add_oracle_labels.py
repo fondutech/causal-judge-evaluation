@@ -15,7 +15,8 @@ import sys
 from tqdm import tqdm
 import numpy as np
 
-sys.path.append(str(Path(__file__).parent.parent.parent))
+sys.path.append(str(Path(__file__).parent.parent.parent.parent))
+sys.path.append(str(Path(__file__).parent.parent))  # Add arena_10k_simplified to path
 
 from evaluation_utils import FireworksEvaluator, DEFAULT_ORACLE_MODEL
 
@@ -73,7 +74,11 @@ def add_oracle_labels(
     # Score in batch with failure resilience
     print(f"\nEvaluating {len(prompts)} records...")
     result = oracle.score_batch(
-        prompts, responses, show_progress=show_progress, desc="Oracle evaluations", skip_failures=True
+        prompts,
+        responses,
+        show_progress=show_progress,
+        desc="Oracle evaluations",
+        skip_failures=True,
     )
 
     # Update records with oracle labels
@@ -103,7 +108,8 @@ def add_oracle_labels(
     oracle_labels = [
         r["metadata"][oracle_field]
         for r in records
-        if oracle_field in r.get("metadata", {}) and r["metadata"][oracle_field] is not None
+        if oracle_field in r.get("metadata", {})
+        and r["metadata"][oracle_field] is not None
     ]
 
     valid_scores = [s for s in result.scores if s is not None]
@@ -127,8 +133,12 @@ def add_oracle_labels(
 
     for r in records:
         metadata = r.get("metadata", {})
-        if (oracle_field in metadata and "judge_score" in metadata and 
-            metadata[oracle_field] is not None and metadata["judge_score"] is not None):
+        if (
+            oracle_field in metadata
+            and "judge_score" in metadata
+            and metadata[oracle_field] is not None
+            and metadata["judge_score"] is not None
+        ):
             judge_scores.append(metadata["judge_score"])
             oracle_for_judged.append(metadata[oracle_field])
 

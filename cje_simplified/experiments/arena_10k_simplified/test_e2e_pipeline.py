@@ -50,7 +50,7 @@ def create_test_prompts(output_dir: Path, n_samples: int = 50) -> None:
     print(f"Preparing {n_samples} prompts from ChatBot Arena dataset...")
 
     # Import the prepare function
-    from prepare_arena_data import prepare_arena_prompts
+    from pipeline_steps.prepare_arena_data import prepare_arena_prompts
 
     # Generate prompts with a test-specific seed for reproducibility
     prompts_file = output_dir / "prompts.jsonl"
@@ -207,7 +207,7 @@ def main() -> None:
         # Step 2: Generate responses (with fixed seed)
         # Note: Using max-tokens=50 for faster testing (enough for 1-2 sentences)
         run_command(
-            f"python generate_responses.py "
+            f"python pipeline_steps/generate_responses.py "
             f"--prompts {test_dir}/prompts.jsonl "
             f"--output-dir {test_dir}/responses "
             f"--max-responses {args.n_samples} "
@@ -218,21 +218,21 @@ def main() -> None:
         # Step 3: Add judge scores
         for policy in ["base", "clone", "unhelpful"]:
             run_command(
-                f"python add_judge_scores.py "
+                f"python pipeline_steps/add_judge_scores.py "
                 f"--input {test_dir}/responses/{policy}_responses.jsonl"
             )
 
         # Step 4: Add oracle labels
         for policy in ["base", "clone", "unhelpful"]:
             run_command(
-                f"python add_oracle_labels.py "
+                f"python pipeline_steps/add_oracle_labels.py "
                 f"--input {test_dir}/responses/{policy}_responses.jsonl"
             )
         verify_evaluation_scores(test_dir / "responses")
 
         # Step 5: Compute log probabilities
         run_command(
-            f"python compute_logprobs.py "
+            f"python pipeline_steps/compute_logprobs.py "
             f"--responses-dir {test_dir}/responses "
             f"--output-dir {test_dir}/logprobs"
         )
@@ -241,7 +241,7 @@ def main() -> None:
         # Step 6: Prepare CJE dataset
         # Note: Using 50% oracle coverage to test calibration workflow
         run_command(
-            f"python prepare_cje_data.py "
+            f"python pipeline_steps/prepare_cje_data.py "
             f"--responses-dir {test_dir}/responses "
             f"--logprobs-dir {test_dir}/logprobs "
             f"--output {test_dir}/cje_dataset.jsonl "
