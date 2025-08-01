@@ -1,7 +1,7 @@
 # Fireworks API Non-Determinism Findings
 
 ## Issue
-During debugging of the test_e2e_pipeline, we discovered significant non-determinism in the Fireworks API logprob computations.
+During debugging of the test_pipeline, we discovered significant non-determinism in the Fireworks API logprob computations.
 
 ## Key Findings
 

@@ -252,7 +252,7 @@ def main() -> None:
         # Step 7: Run CJE analysis (quick test)
         results_file = test_dir / "cje_results.json"
         result = run_command(
-            f"python run_cje_analysis.py "
+            f"python analyze_dataset.py "
             f"--data {test_dir}/cje_dataset.jsonl "
             f"--n-folds 2 "
             f"--output {results_file}",

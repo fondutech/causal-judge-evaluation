@@ -10,7 +10,7 @@ This shows how to use the decoupled loading and calibration approach:
 
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any, Union
 import numpy as np
 import os
 import logging
@@ -18,10 +18,10 @@ import logging
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 # Set up logging based on environment variable
-log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
     level=getattr(logging, log_level, logging.INFO),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
 from cje_simplified import (
@@ -42,6 +42,7 @@ try:
         plot_weight_summary,
         plot_calibration_comparison,
     )
+
     _viz_available = True
 except ImportError:
     _viz_available = False
@@ -109,17 +110,17 @@ def main() -> int:
     parser.add_argument(
         "--estimator-config",
         type=json.loads,
-        help="JSON config for estimator (e.g., '{\"k_folds\": 10, \"clip_weight\": 50}')",
+        help='JSON config for estimator (e.g., \'{"k_folds": 10, "clip_weight": 50}\')',
     )
 
     args = parser.parse_args()
-    
+
     # Update logging level if debug flag is set
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
         # Also set debug for key modules
-        logging.getLogger('cje_simplified.calibration.isotonic').setLevel(logging.DEBUG)
-        logging.getLogger('cje_simplified.core.calibrated_ips').setLevel(logging.DEBUG)
+        logging.getLogger("cje_simplified.calibration.isotonic").setLevel(logging.DEBUG)
+        logging.getLogger("cje_simplified.core.calibrated_ips").setLevel(logging.DEBUG)
 
     print("Running CJE Analysis")
     print("=" * 50)
@@ -200,21 +201,22 @@ def main() -> int:
 
     # Step 3: Run CJE estimation (requires rewards)
     print(f"\n3. Running CJE estimation with {args.estimator}...")
-    
+
     # Initialize variables that will be used in JSON output
-    all_weight_diagnostics = {}
+    all_weight_diagnostics: Dict[str, Any] = {}
     best_policy = "base"
     mean_w = 1.0
     max_w = 1.0
     ess = float(dataset.n_samples)
     ess_frac = 1.0
-    
+
     try:
         sampler = PrecomputedSampler(calibrated_dataset)
-        
+
         # Initialize the selected estimator
         estimator_config = args.estimator_config or {}
-        
+
+        estimator: Union[CalibratedIPS, RawIPS]
         if args.estimator == "calibrated-ips":
             # Use n_folds from command line if provided
             k_folds = estimator_config.get("k_folds", args.n_folds)
@@ -225,8 +227,11 @@ def main() -> int:
             estimator = RawIPS(sampler, clip_weight=clip_weight)
         else:
             raise ValueError(f"Unknown estimator: {args.estimator}")
-            
+
         results = estimator.fit_and_estimate()
+
+        # Get target policies list for indexing
+        target_policies = list(sampler.target_policies)  # type: ignore
 
         # Display results
         print("\n4. Results:")
@@ -252,7 +257,7 @@ def main() -> int:
 
         # Display results for each target policy
         ci_lower, ci_upper = results.confidence_interval(alpha=0.05)
-        for i, policy in enumerate(sampler.target_policies):
+        for i, policy in enumerate(target_policies):
             print(f"   {policy}:")
             print(f"     Estimate: {results.estimates[i]:.3f}")
             print(f"     Std Error: {results.standard_errors[i]:.3f}")
@@ -260,48 +265,45 @@ def main() -> int:
 
         # Best policy (including base)
         all_estimates = [base_mean] + list(results.estimates)
-        all_policies = ["base"] + sampler.target_policies
+        all_policies = ["base"] + target_policies
         best_idx = np.argmax(all_estimates)
         best_policy = all_policies[best_idx]
         print(f"\n   🏆 Best policy: {best_policy}")
 
         # Show weight diagnostics for all policies
         print(f"\n5. Weight diagnostics:")
-        
+
         # Collect diagnostics for all policies
         all_weight_diagnostics = {}
-        
+
         # Base policy has uniform weights (no importance sampling)
         base_diag = diagnose_weights(
-            np.ones(len(base_rewards)), 
-            "base", 
-            expected_weight=1.0
+            np.ones(len(base_rewards)), "base", expected_weight=1.0
         )
         all_weight_diagnostics["base"] = base_diag
-        
+
         # Target policies
-        for policy in sampler.target_policies:
+        for policy in target_policies:
             weights = estimator.get_weights(policy)
             if weights is not None:
                 # Expected weight is 1.0 for clone, None for others
                 expected = 1.0 if policy == "clone" else None
                 diag = diagnose_weights(weights, policy, expected)
                 all_weight_diagnostics[policy] = diag
-        
+
         # Print summary table
         print("\n" + create_weight_summary_table(all_weight_diagnostics))
-        
+
         # Print detailed diagnostics if any issues found
         has_issues = any(
-            d.consistency_flag != "GOOD" 
-            for d in all_weight_diagnostics.values()
+            d.consistency_flag != "GOOD" for d in all_weight_diagnostics.values()
         )
         if has_issues:
             print("\n   ⚠️  Weight diagnostics warnings:")
             for policy, diag in all_weight_diagnostics.items():
                 if diag.consistency_flag != "GOOD":
                     print(f"\n   {diag.summary()}")
-        
+
         # Store diagnostics for the best policy for JSON output
         best_diag = all_weight_diagnostics.get(best_policy)
         if best_diag:
@@ -320,65 +322,92 @@ def main() -> int:
         if _viz_available and args.plot_dir and not args.no_plots:
             print("\n6. Generating visualizations...")
             from pathlib import Path
+
             plot_dir = Path(args.plot_dir)
             plot_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Collect weights for visualization
             weights_dict = {}
-            
+
             # Base policy (uniform weights)
             weights_dict["base"] = np.ones(len(base_rewards))
-            
+
             # Target policies
             for policy in sampler.target_policies:
                 weights = estimator.get_weights(policy)
                 if weights is not None:
                     weights_dict[policy] = weights
-            
+
             # Generate plots
             try:
                 # Weight distributions
                 fig = plot_weight_distributions(weights_dict)
-                fig.savefig(plot_dir / "weight_distributions.png", dpi=150, bbox_inches='tight')
-                print(f"   ✓ Saved weight distributions to {plot_dir}/weight_distributions.png")
-                
+                fig.savefig(
+                    plot_dir / "weight_distributions.png", dpi=150, bbox_inches="tight"
+                )
+                print(
+                    f"   ✓ Saved weight distributions to {plot_dir}/weight_distributions.png"
+                )
+
                 # ESS comparison
                 fig = plot_ess_comparison(weights_dict)
-                fig.savefig(plot_dir / "ess_comparison.png", dpi=150, bbox_inches='tight')
+                fig.savefig(
+                    plot_dir / "ess_comparison.png", dpi=150, bbox_inches="tight"
+                )
                 print(f"   ✓ Saved ESS comparison to {plot_dir}/ess_comparison.png")
-                
+
                 # Weight summary
                 fig = plot_weight_summary(weights_dict)
-                fig.savefig(plot_dir / "weight_summary.png", dpi=150, bbox_inches='tight')
+                fig.savefig(
+                    plot_dir / "weight_summary.png", dpi=150, bbox_inches="tight"
+                )
                 print(f"   ✓ Saved weight summary to {plot_dir}/weight_summary.png")
-                
+
                 # Calibration comparison (if calibration was performed)
-                if not args.use_oracle and "cal_result" in locals() and not rewards_exist:
+                if (
+                    not args.use_oracle
+                    and "cal_result" in locals()
+                    and not rewards_exist
+                ):
                     # Extract judge scores and oracle labels
                     judge_scores = []
                     oracle_labels = []
                     for s in dataset.samples:
-                        if args.judge_field in s.metadata and args.oracle_field in s.metadata:
+                        if (
+                            args.judge_field in s.metadata
+                            and args.oracle_field in s.metadata
+                        ):
                             judge_scores.append(s.metadata[args.judge_field])
                             oracle_labels.append(s.metadata[args.oracle_field])
-                    
+
                     if judge_scores and oracle_labels:
                         # Get calibrated predictions
-                        calibrated_preds = [s.reward for s in calibrated_dataset.samples if s.reward is not None]
-                        
+                        calibrated_preds = [
+                            s.reward
+                            for s in calibrated_dataset.samples
+                            if s.reward is not None
+                        ]
+
                         if len(calibrated_preds) == len(judge_scores):
                             fig = plot_calibration_comparison(
                                 judge_scores=np.array(judge_scores),
                                 oracle_labels=np.array(oracle_labels),
-                                calibrated_scores=np.array(calibrated_preds)
+                                calibrated_scores=np.array(calibrated_preds),
                             )
-                            fig.savefig(plot_dir / "calibration_comparison.png", dpi=150, bbox_inches='tight')
-                            print(f"   ✓ Saved calibration comparison to {plot_dir}/calibration_comparison.png")
-                
+                            fig.savefig(
+                                plot_dir / "calibration_comparison.png",
+                                dpi=150,
+                                bbox_inches="tight",
+                            )
+                            print(
+                                f"   ✓ Saved calibration comparison to {plot_dir}/calibration_comparison.png"
+                            )
+
                 # Close all figures to free memory
                 import matplotlib.pyplot as plt
-                plt.close('all')
-                
+
+                plt.close("all")
+
             except Exception as e:
                 print(f"   ⚠️  Warning: Failed to generate some plots: {e}")
 
@@ -415,7 +444,7 @@ def main() -> int:
                 "estimator": args.estimator,
                 "estimator_config": estimator_config,
                 "n_folds": args.n_folds,
-                "policies": {}
+                "policies": {},
             },
             "best_policy": best_policy,
             "weight_diagnostics": {
@@ -440,7 +469,7 @@ def main() -> int:
         }
 
         # Add per-policy results
-        for i, policy in enumerate(sampler.target_policies):
+        for i, policy in enumerate(target_policies):
             results_data["estimation"]["policies"][policy] = {
                 "estimate": float(results.estimates[i]),
                 "standard_error": float(results.standard_errors[i]),
@@ -448,7 +477,7 @@ def main() -> int:
                 "ci_upper": float(ci_upper[i]),
                 "type": "counterfactual",
             }
-        
+
         # Add weight diagnostics for all policies
         for policy, diag in all_weight_diagnostics.items():
             results_data["weight_diagnostics"]["all_policies"][policy] = {
@@ -469,12 +498,12 @@ def main() -> int:
                 "calibration_rmse": float(cal_result.calibration_rmse),
                 "coverage_at_01": float(cal_result.coverage_at_01),
             }
-        
+
         # Add visualization info if plots were generated
         if _viz_available and args.plot_dir and not args.no_plots:
             results_data["visualizations"] = {
                 "directory": args.plot_dir,
-                "plots_generated": True
+                "plots_generated": True,
             }
 
         # Write to file

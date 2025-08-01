@@ -34,10 +34,10 @@ arena_10k_simplified/
 │   ├── compute_logprobs.py      # Compute log probabilities
 │   └── prepare_cje_data.py      # Combine into CJE format
 │
-├── test_e2e_pipeline.py         # Test pipeline (50 samples)
-├── prepare_arena_experiment.py  # Production pipeline (1000+ samples)
-├── run_cje_analysis.py          # Run CJE estimation
-├── run_oracle_ablation.py       # Ablation studies
+├── test_pipeline.py             # Test pipeline (50 samples)
+├── generate_arena_data.py       # Production pipeline (1000+ samples)
+├── analyze_dataset.py           # Run CJE estimation
+├── analyze_oracle_coverage.py   # Ablation studies
 │
 ├── test_e2e_data/               # Test outputs (50 samples)
 └── data/                        # Production outputs (1000+ samples)
@@ -52,7 +52,7 @@ arena_10k_simplified/
 ### Testing Pipeline (50 samples)
 Run a quick test to verify everything works:
 ```bash
-python test_e2e_pipeline.py --n-samples 50
+python test_pipeline.py --n-samples 50
 ```
 
 This runs the complete pipeline on 50 samples for testing.
@@ -60,7 +60,7 @@ This runs the complete pipeline on 50 samples for testing.
 ### Production Pipeline (1000+ samples)
 Run the full production data preparation:
 ```bash
-python prepare_arena_experiment.py \
+python generate_arena_data.py \
     --n-samples 1000 \
     --max-tokens 256 \
     --oracle-coverage 0.5
@@ -71,7 +71,7 @@ This runs all pipeline steps automatically and saves to `data/`.
 ### Incremental Runs
 To skip existing files and only run missing steps:
 ```bash
-python prepare_arena_experiment.py \
+python generate_arena_data.py \
     --n-samples 1000 \
     --skip-existing
 ```
@@ -148,7 +148,7 @@ python pipeline_steps/prepare_cje_data.py \
 ### Run CJE Analysis
 Analyze a prepared dataset:
 ```bash
-python run_cje_analysis.py \
+python analyze_dataset.py \
     --data data/cje_dataset.jsonl \
     --n-folds 5 \
     --output data/results.json \
@@ -159,14 +159,14 @@ python run_cje_analysis.py \
 Study the effect of oracle coverage on estimation quality:
 ```bash
 # Prepare datasets with different oracle coverage
-python prepare_ablation_data.py \
+python create_oracle_coverage_variants.py \
     --response-dir data/responses \
     --logprob-dir data/logprobs \
     --oracle-fraction 0.25 \
     --output data/ablation_data/oracle_0_25.jsonl
 
 # Run ablation study
-python run_oracle_ablation.py \
+python analyze_oracle_coverage.py \
     --data-dir data/ablation_data \
     --output-dir data/ablation_results
 ```
@@ -202,7 +202,7 @@ The ablation study framework allows systematic comparison of different estimator
 
 ```bash
 # Run all experiments (oracle coverage: 25%, 50%, 100% × estimators: CalibratedIPS, RawIPS)
-python run_oracle_ablation.py
+python analyze_oracle_coverage.py
 
 # The script will:
 # 1. Use existing ablation datasets (or create them if --prepare-data is used)
@@ -218,19 +218,19 @@ Create datasets with different oracle coverage levels:
 
 ```bash
 # 25% oracle coverage
-python prepare_ablation_data.py \
+python create_oracle_coverage_variants.py \
     --oracle-fraction 0.25 \
     --seed 42 \
     --output test_e2e_data/ablation_data/oracle_0_25_seed42.jsonl
 
 # 50% oracle coverage  
-python prepare_ablation_data.py \
+python create_oracle_coverage_variants.py \
     --oracle-fraction 0.50 \
     --seed 42 \
     --output test_e2e_data/ablation_data/oracle_0_50_seed42.jsonl
 
 # 100% oracle coverage
-python prepare_ablation_data.py \
+python create_oracle_coverage_variants.py \
     --oracle-fraction 1.00 \
     --seed 42 \
     --output test_e2e_data/ablation_data/oracle_1_00_seed42.jsonl
@@ -248,13 +248,13 @@ Test different estimators on each dataset:
 
 ```bash
 # CalibratedIPS (with isotonic weight calibration)
-python run_cje_analysis.py \
+python analyze_dataset.py \
     --data test_e2e_data/ablation_data/oracle_0_25_seed42.jsonl \
     --estimator calibrated-ips \
     --output results/calibrated_ips_25.json
 
 # RawIPS (standard importance sampling)
-python run_cje_analysis.py \
+python analyze_dataset.py \
     --data test_e2e_data/ablation_data/oracle_0_25_seed42.jsonl \
     --estimator raw-ips \
     --output results/raw_ips_25.json
@@ -283,8 +283,8 @@ The ablation runner generates:
 
 To add new estimators:
 1. Create a new estimator class inheriting from `BaseCJEEstimator`
-2. Add it to `run_cje_analysis.py`'s estimator choices
-3. Update `run_oracle_ablation.py`'s ABLATION_CONFIG
+2. Add it to `analyze_dataset.py`'s estimator choices
+3. Update `analyze_oracle_coverage.py`'s ABLATION_CONFIG
 
 ## Output
 
@@ -394,7 +394,7 @@ All policies may show similar estimates when evaluated on high-quality base resp
 
 Run the end-to-end test to verify the pipeline:
 ```bash
-python test_e2e_pipeline.py
+python test_pipeline.py
 ```
 
 This test:
@@ -409,7 +409,7 @@ This test:
 
 For debugging:
 ```bash
-python test_e2e_pipeline.py --no-cleanup --test-dir my_test_data
+python test_pipeline.py --no-cleanup --test-dir my_test_data
 ```
 
 ## Customization

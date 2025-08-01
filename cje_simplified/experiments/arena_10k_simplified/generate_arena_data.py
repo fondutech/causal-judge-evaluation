@@ -277,7 +277,7 @@ def main() -> None:
         results_file = data_dir / "cje_results.json"
 
         run_command(
-            f"python run_cje_analysis.py "
+            f"python analyze_dataset.py "
             f"--data {cje_dataset_file} "
             f"--n-folds 5 "
             f"--output {results_file}",
@@ -302,10 +302,10 @@ def main() -> None:
     print(f"📁 Output directory: {data_dir}")
     print("\nNext steps:")
     print(
-        f"  1. Run ablation studies: python run_oracle_ablation.py --data-dir {data_dir}"
+        f"  1. Run ablation studies: python analyze_oracle_coverage.py --data-dir {data_dir}"
     )
     print(
-        f"  2. Analyze specific datasets: python run_cje_analysis.py --data {cje_dataset_file}"
+        f"  2. Analyze specific datasets: python analyze_dataset.py --data {cje_dataset_file}"
     )
 
 
