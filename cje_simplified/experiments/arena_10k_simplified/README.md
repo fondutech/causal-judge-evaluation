@@ -22,109 +22,159 @@ cd /path/to/cje_simplified
 poetry install
 ```
 
-## Step-by-Step Pipeline
+## Directory Structure
 
-### 1. Prepare Arena Data
-Extract prompts from the ChatGPT Arena dataset:
-```bash
-python prepare_arena_data.py \
-    --samples 1000 \
-    --output data/arena_prompts.jsonl
+```
+arena_10k_simplified/
+├── pipeline_steps/              # Data preparation modules
+│   ├── prepare_arena_data.py    # Extract prompts from ChatBot Arena
+│   ├── generate_responses.py    # Generate responses for each policy
+│   ├── add_judge_scores.py      # Add lightweight evaluations
+│   ├── add_oracle_labels.py     # Add high-quality evaluations
+│   ├── compute_logprobs.py      # Compute log probabilities
+│   └── prepare_cje_data.py      # Combine into CJE format
+│
+├── test_e2e_pipeline.py         # Test pipeline (50 samples)
+├── prepare_arena_experiment.py  # Production pipeline (1000+ samples)
+├── run_cje_analysis.py          # Run CJE estimation
+├── run_oracle_ablation.py       # Ablation studies
+│
+├── test_e2e_data/               # Test outputs (50 samples)
+└── data/                        # Production outputs (1000+ samples)
+    ├── prompts.jsonl
+    ├── responses/
+    ├── logprobs/
+    └── cje_dataset.jsonl
 ```
 
-This script:
-- Downloads the ChatBot Arena dataset from HuggingFace
-- Filters for English conversations only using the language field
+## Quick Start
+
+### Testing Pipeline (50 samples)
+Run a quick test to verify everything works:
+```bash
+python test_e2e_pipeline.py --n-samples 50
+```
+
+This runs the complete pipeline on 50 samples for testing.
+
+### Production Pipeline (1000+ samples)
+Run the full production data preparation:
+```bash
+python prepare_arena_experiment.py \
+    --n-samples 1000 \
+    --max-tokens 256 \
+    --oracle-coverage 0.5
+```
+
+This runs all pipeline steps automatically and saves to `data/`.
+
+### Incremental Runs
+To skip existing files and only run missing steps:
+```bash
+python prepare_arena_experiment.py \
+    --n-samples 1000 \
+    --skip-existing
+```
+
+## Detailed Pipeline Steps
+
+The pipeline consists of 6 data preparation steps (in `pipeline_steps/` directory):
+
+### 1. Extract Arena Prompts
+```bash
+python pipeline_steps/prepare_arena_data.py \
+    --samples 1000 \
+    --output data/prompts.jsonl
+```
+- Downloads ChatBot Arena dataset from HuggingFace
+- Filters for English conversations using language field
 - Extracts unique first-turn user prompts
 - Avoids duplicates to ensure fresh responses
 
 ### 2. Generate Responses
-Generate responses using different policies (base, clone, unhelpful):
 ```bash
-python generate_responses.py \
+python pipeline_steps/generate_responses.py \
     --prompts data/prompts.jsonl \
     --output-dir data/responses \
-    --max-responses 100  # For testing
+    --max-tokens 256
 ```
-
-Policies are defined in `policy_config.py`:
+Policies (defined in `policy_config.py`):
 - **base**: Standard helpful assistant
 - **clone**: Identical to base (control)
 - **unhelpful**: Deliberately confusing responses
 
 ### 3. Add Judge Scores
-Score responses using a judge model:
 ```bash
-python add_judge_scores.py --input data/responses/base_responses.jsonl
-python add_judge_scores.py --input data/responses/clone_responses.jsonl
-python add_judge_scores.py --input data/responses/unhelpful_responses.jsonl
+python pipeline_steps/add_judge_scores.py \
+    --input data/responses/base_responses.jsonl
 ```
-
-Uses OpenAI API with LangChain structured outputs for reliable scoring.
-Default model: `gpt-4.1-nano-2025-04-14`
+- Uses OpenAI API with structured outputs
+- Default model: `gpt-4.1-nano-2025-04-14`
+- Adds scores to response files in-place
 
 ### 4. Add Oracle Labels
-Add ground truth labels for validation and calibration:
 ```bash
-python add_oracle_labels.py --input data/responses/base_responses.jsonl
-python add_oracle_labels.py --input data/responses/clone_responses.jsonl
-python add_oracle_labels.py --input data/responses/unhelpful_responses.jsonl
+python pipeline_steps/add_oracle_labels.py \
+    --input data/responses/base_responses.jsonl
 ```
-
-Oracle labels are higher-quality evaluations used as ground truth.
-Default model: `o4-mini-2025-04-16`
-All responses get oracle labels for validation purposes.
+- Higher-quality evaluations for ground truth
+- Default model: `o4-mini-2025-04-16`
+- All responses get oracle labels for validation
 
 ### 5. Compute Log Probabilities
-Compute log P(base_response | prompt) under each policy's model:
 ```bash
-python compute_logprobs.py \
+python pipeline_steps/compute_logprobs.py \
     --responses-dir data/responses \
     --output-dir data/logprobs
 ```
-
-This computes importance weights for CJE. Uses median of 3 samples to handle API variance.
+- Computes log P(base_response | prompt) under each policy
+- Uses median of 3 samples to handle API variance
+- Required for importance weight calculation
 
 ### 6. Prepare CJE Dataset
-Combine responses and log probabilities into CJE format:
 ```bash
-python prepare_cje_data.py \
+python pipeline_steps/prepare_cje_data.py \
     --responses-dir data/responses \
     --logprobs-dir data/logprobs \
-    --output data/cje_dataset.jsonl
+    --output data/cje_dataset.jsonl \
+    --oracle-coverage 0.5
 ```
+- Combines all data into CJE format
+- Calibrates judge scores using oracle labels
+- Oracle coverage controls calibration subset
 
-This script reads judge scores and oracle labels from the response files.
+## Analysis and Ablation Studies
 
-**Advanced: Pre-compute rewards with different oracle coverage**
-```bash
-# 100% oracle coverage - use oracle labels directly as rewards
-python prepare_cje_data.py \
-    --responses-dir data/responses \
-    --logprobs-dir data/logprobs \
-    --output data/cje_dataset_oracle_100.jsonl \
-    --oracle-coverage 1.0
-
-# 50% oracle coverage - calibrate judge scores using 50% of oracle labels
-python prepare_cje_data.py \
-    --responses-dir data/responses \
-    --logprobs-dir data/logprobs \
-    --output data/cje_dataset_calibrated_50.jsonl \
-    --oracle-coverage 0.5 \
-    --seed 42
-```
-
-### 7. Run CJE Analysis
-Run the complete analysis:
+### Run CJE Analysis
+Analyze a prepared dataset:
 ```bash
 python run_cje_analysis.py \
     --data data/cje_dataset.jsonl \
     --n-folds 5 \
-    --output results.json \
+    --output data/results.json \
     --plot-dir data/plots
 ```
 
-When rewards are pre-computed in the dataset (using `--oracle-coverage` in step 6), the analysis will use those rewards directly. Otherwise, it will calibrate judge scores to oracle labels.
+### Oracle Coverage Ablation
+Study the effect of oracle coverage on estimation quality:
+```bash
+# Prepare datasets with different oracle coverage
+python prepare_ablation_data.py \
+    --response-dir data/responses \
+    --logprob-dir data/logprobs \
+    --oracle-fraction 0.25 \
+    --output data/ablation_data/oracle_0_25.jsonl
+
+# Run ablation study
+python run_oracle_ablation.py \
+    --data-dir data/ablation_data \
+    --output-dir data/ablation_results
+```
+
+This compares:
+- Different oracle coverage levels (25%, 50%, 100%)
+- Different estimators (CalibratedIPS, RawIPS)
+- Multiple random seeds for robustness
 
 **Options:**
 - `--use-oracle`: Use oracle labels directly as rewards (skip calibration)
