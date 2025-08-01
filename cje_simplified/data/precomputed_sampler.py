@@ -2,9 +2,12 @@
 
 from typing import Dict, List, Optional, Any, Union
 import numpy as np
+import logging
 
 from .models import Dataset, Sample
 from .factory import DatasetFactory
+
+logger = logging.getLogger(__name__)
 
 
 class PrecomputedSampler:
@@ -164,6 +167,9 @@ class PrecomputedSampler:
             raise ValueError(f"Unknown target policy: {target_policy}")
 
         weights = []
+        n_clipped_high = 0
+        max_unclipped_ratio = -float('inf')
+        
         for record in self.formatted_data:
             base_logp = record["base_policy_logprob"]
             target_logp = record["target_policy_logprobs"][target_policy]
@@ -172,14 +178,43 @@ class PrecomputedSampler:
             log_ratio = target_logp - base_logp
             if log_ratio > 50:  # exp(50) is huge
                 weight = clip_weight
+                n_clipped_high += 1
+                max_unclipped_ratio = max(max_unclipped_ratio, log_ratio)
             elif log_ratio < -50:  # exp(-50) is tiny
                 weight = 0.0
             else:
-                weight = min(np.exp(log_ratio), clip_weight)
+                raw_weight = np.exp(log_ratio)
+                if raw_weight > clip_weight:
+                    weight = clip_weight
+                    n_clipped_high += 1
+                    max_unclipped_ratio = max(max_unclipped_ratio, log_ratio)
+                else:
+                    weight = raw_weight
 
             weights.append(weight)
 
-        return np.array(weights)
+        weights = np.array(weights)
+        
+        # Log clipping statistics
+        if n_clipped_high > 0:
+            logger.info(
+                f"Weight clipping for policy '{target_policy}': "
+                f"{n_clipped_high} weights clipped to {clip_weight}"
+            )
+            if max_unclipped_ratio > -float('inf'):
+                logger.debug(
+                    f"Maximum unclipped weight would have been {np.exp(max_unclipped_ratio):.2e} "
+                    f"(log ratio={max_unclipped_ratio:.2f})"
+                )
+        
+        logger.debug(
+            f"Weight statistics for '{target_policy}': "
+            f"mean={weights.mean():.3f}, std={weights.std():.3f}, "
+            f"min={weights.min():.3f}, max={weights.max():.3f}, "
+            f"n_zero={np.sum(weights == 0)}, n_at_clip={np.sum(weights == clip_weight)}"
+        )
+        
+        return weights
 
     def get_rewards(self) -> np.ndarray:
         """Get array of calibrated rewards."""

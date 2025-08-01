@@ -6,11 +6,14 @@ weights to achieve unbiased, efficient estimation.
 
 import numpy as np
 from typing import Dict, Optional
+import logging
 
 from .base_estimator import BaseCJEEstimator
 from ..data.models import EstimationResult, WeightCalibrationConfig
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..calibration.isotonic import calibrate_to_target_mean
+
+logger = logging.getLogger(__name__)
 
 
 class CalibratedIPS(BaseCJEEstimator):
@@ -51,6 +54,13 @@ class CalibratedIPS(BaseCJEEstimator):
             raw_weights = self.sampler.compute_importance_weights(policy)
             if raw_weights is None:
                 continue
+
+            logger.debug(
+                f"Calibrating weights for policy '{policy}': "
+                f"n_samples={len(raw_weights)}, raw_mean={raw_weights.mean():.3f}, "
+                f"raw_std={raw_weights.std():.3f}, raw_var={raw_weights.var():.6f}, "
+                f"raw_range=[{raw_weights.min():.3f}, {raw_weights.max():.3f}]"
+            )
 
             # Calibrate weights
             calibrated = calibrate_to_target_mean(

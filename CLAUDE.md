@@ -159,6 +159,13 @@ python add_oracle_labels.py --input data/responses/base_responses.jsonl
 python compute_logprobs.py --responses-dir data/responses
 python prepare_cje_data.py --responses-dir data/responses --logprobs-dir data/logprobs
 python run_cje_analysis.py --data data/cje_dataset.jsonl
+
+# Run ablation study
+python run_oracle_ablation.py  # Runs all experiments and generates summary
+
+# Test different estimators
+python run_cje_analysis.py --data data/cje_dataset.jsonl --estimator raw-ips
+python run_cje_analysis.py --data data/cje_dataset.jsonl --estimator calibrated-ips --n-folds 10
 ```
 
 ## 🔑 API Keys
@@ -167,6 +174,10 @@ Always source secrets before running:
 ```bash
 source /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/set_secrets.sh
 ```
+
+Required API keys:
+- `OPENAI_API_KEY` - For judge and oracle evaluation models
+- `FIREWORKS_API_KEY` - For response generation and log probability computation
 
 ## 📊 Data Format
 
@@ -218,8 +229,8 @@ Expected JSONL format:
 6. **Unified Evaluation System**
    - Single `FireworksEvaluator` class for both judges and oracles
    - Judges and oracles differ only in model choice
-   - Judge model: `accounts/fireworks/models/llama-v3p1-8b-instruct` (changed from llama4-scout due to structured output issues)
-   - Oracle model: `accounts/fireworks/models/kimi-k2-instruct`
+   - Judge model: `gpt-4.1-nano-2025-04-14` (OpenAI's lightweight model for cost-effective evaluation)
+   - Oracle model: `o4-mini-2025-04-16` (OpenAI's advanced model for higher quality evaluations)
    - Uses LangChain structured outputs for reliable scoring (0-100 scale)
    - XML-structured prompts for better clarity and consistency
    - Minimal scripts: `add_judge_scores.py` and `add_oracle_labels.py`
@@ -246,6 +257,39 @@ Expected JSONL format:
    - Filters for English conversations only: ["English", "english", "en", "EN"]
    - Replaced character-based detection with direct field checking
    - Ensures consistent, high-quality English prompts for evaluation
+
+10. **Ablation Study Framework**
+   - `prepare_ablation_data.py` creates datasets with varying oracle coverage (25%, 50%, 100%)
+   - `run_oracle_ablation.py` orchestrates experiments across estimators and datasets
+   - `run_cje_analysis.py` extended with `--estimator` flag (calibrated-ips, raw-ips)
+   - Supports systematic comparison of estimation methods
+   - Key finding: CalibratedIPS reduces variance by ~9x for extreme weight distributions
+
+11. **Multiple Estimator Support**
+   - Added `RawIPS` estimator for standard importance sampling
+   - Extended `run_cje_analysis.py` to support estimator selection
+   - All estimators inherit from `BaseCJEEstimator` for consistency
+   - Easy to add new estimators (DirectMethod, DoublyRobust planned)
+
+12. **Improved Numerical Stability**
+   - Removed overly strict monotonicity assertion in isotonic regression
+   - Now logs violations instead of failing on tiny numerical errors
+   - Added comprehensive weight clipping logging
+   - Handles extreme weight distributions (up to 286 million before clipping)
+
+13. **Evaluation Model Updates**
+   - Switched from Fireworks to OpenAI models for better structured output reliability
+   - Judge: `gpt-4.1-nano-2025-04-14` (cost-effective, lightweight)
+   - Oracle: `o4-mini-2025-04-16` (higher quality, note: only supports temperature=1.0)
+   - `FireworksEvaluator` class now auto-detects provider based on model name
+   - Both judge and oracle scoring include `skip_failures=True` for resilience
+
+11. **Isotonic Calibration Robustness**
+   - Fixed monotonicity issues with floating-point precision
+   - Uses `IsotonicRegression` for weight→plateau mapping (prevents out-of-order mappings)
+   - Treats weight differences < 1e-8 as ties (not strict pairs)
+   - Allows 1e-8 tolerance for calibrated differences (handles FP noise)
+   - Logging support with `logging.getLogger()` instead of print statements
 
 ## ⚠️ Common Pitfalls
 
@@ -283,12 +327,51 @@ dataset = load_dataset_from_jsonl("file.jsonl")  # No reward_field needed
 calibrated_dataset, stats = calibrate_dataset(dataset, judge_field="judge_score")
 ```
 
+### 4. Extreme Weight Distributions
+```python
+# Problem: Some policies create weights > 100 million
+# Solution: Weights are clipped to 100 by default
+# Monitor: Check weight diagnostics for extreme values
+
+# Example from unhelpful policy:
+# Raw weight: 285,562,286 → Clipped to: 100
+# This causes ESS to drop to 1.2% for raw IPS
+```
+
+### 5. Numerical Precision in Calibration
+```python
+# Problem: Isotonic regression can have tiny violations (~1e-7)
+# Solution: Removed assertion, now just logs warnings
+# This is expected with extreme weight distributions
+```
+
 ## 🧪 Testing Philosophy
 
 - Small, focused unit tests
 - Real data in `tests/data/` for integration tests
 - No mocking of core abstractions (use real Dataset objects)
 - Test behavior, not implementation details
+
+## 🐛 Debugging
+
+Enable debug logging in multiple ways:
+```bash
+# Option 1: Command line flag
+poetry run python run_cje_analysis.py --data data.jsonl --debug
+
+# Option 2: Environment variable
+LOG_LEVEL=DEBUG poetry run python run_cje_analysis.py --data data.jsonl
+
+# Option 3: In Python
+import logging
+logging.basicConfig(level=logging.DEBUG)
+```
+
+Debug output includes:
+- Weight statistics before/after calibration
+- Variance ratios and safeguard triggers
+- Monotonicity check details (strict pairs vs ties)
+- API failures with retry information
 
 ## 🚨 Red Flags in Code Review
 

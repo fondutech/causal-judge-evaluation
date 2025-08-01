@@ -14,7 +14,8 @@ The CJE pipeline evaluates different LLM policies by:
 
 ```bash
 # Set API keys
-export FIREWORKS_API_KEY="your-key-here"
+export OPENAI_API_KEY="your-key-here"  # For judge and oracle models
+export FIREWORKS_API_KEY="your-key-here"  # For response generation and log probs
 
 # Install dependencies
 cd /path/to/cje_simplified
@@ -59,8 +60,8 @@ python add_judge_scores.py --input data/responses/clone_responses.jsonl
 python add_judge_scores.py --input data/responses/unhelpful_responses.jsonl
 ```
 
-Uses Fireworks API with LangChain structured outputs for reliable scoring.
-Default model: `llama-v3p1-8b-instruct`
+Uses OpenAI API with LangChain structured outputs for reliable scoring.
+Default model: `gpt-4.1-nano-2025-04-14`
 
 ### 4. Add Oracle Labels
 Add ground truth labels for validation and calibration:
@@ -71,7 +72,7 @@ python add_oracle_labels.py --input data/responses/unhelpful_responses.jsonl
 ```
 
 Oracle labels are higher-quality evaluations used as ground truth.
-Default model: `kimi-k2-instruct`
+Default model: `o4-mini-2025-04-16`
 All responses get oracle labels for validation purposes.
 
 ### 5. Compute Log Probabilities
@@ -119,7 +120,8 @@ Run the complete analysis:
 python run_cje_analysis.py \
     --data data/cje_dataset.jsonl \
     --n-folds 5 \
-    --output results.json
+    --output results.json \
+    --plot-dir data/plots
 ```
 
 When rewards are pre-computed in the dataset (using `--oracle-coverage` in step 6), the analysis will use those rewards directly. Otherwise, it will calibrate judge scores to oracle labels.
@@ -130,38 +132,109 @@ When rewards are pre-computed in the dataset (using `--oracle-coverage` in step 
 - `--n-folds`: Number of cross-fitting folds for importance weight calibration (default: 5, minimum: 2)
 - `--judge-field`: Field containing judge scores (default: "judge_score")
 - `--oracle-field`: Field containing oracle labels (default: "oracle_label")
+- `--plot-dir`: Directory to save visualization plots (requires matplotlib)
+- `--no-plots`: Disable plot generation even if matplotlib is available
 
 Note: The `--n-folds` parameter is used for calibrating importance weights to ensure unbiased estimation, even when rewards are pre-computed. This is separate from any judge score calibration.
 
+**Visualizations:**
+When `--plot-dir` is specified, the analysis generates:
+- **Weight distributions**: Histograms showing importance weight distributions for each policy
+- **ESS comparison**: Bar chart comparing Effective Sample Size across policies
+- **Weight summary**: Combined visualization of weight statistics and diagnostics
+- **Calibration comparison**: Reliability diagram comparing judge vs calibrated scores (if calibration was performed)
+
 ## Running Ablation Studies
 
-To compare different oracle coverage levels:
+The ablation study framework allows systematic comparison of different estimators and oracle coverage levels.
+
+### Quick Start: Run Complete Ablation Study
 
 ```bash
-# 1. Create dataset with 100% oracle coverage (oracle labels as rewards)
-python prepare_cje_data.py \
-    --responses-dir data/responses \
-    --logprobs-dir data/logprobs \
-    --output data/cje_oracle_100.jsonl \
-    --oracle-coverage 1.0
+# Run all experiments (oracle coverage: 25%, 50%, 100% × estimators: CalibratedIPS, RawIPS)
+python run_oracle_ablation.py
 
-# 2. Create dataset with 50% oracle coverage (calibrated judge scores)
-python prepare_cje_data.py \
-    --responses-dir data/responses \
-    --logprobs-dir data/logprobs \
-    --output data/cje_calibrated_50.jsonl \
-    --oracle-coverage 0.5 \
-    --seed 42
-
-# 3. Run analysis on both datasets
-python run_cje_analysis.py --data data/cje_oracle_100.jsonl --output results_oracle_100.json
-python run_cje_analysis.py --data data/cje_calibrated_50.jsonl --output results_calibrated_50.json
-
-# 4. Compare results
-diff results_oracle_100.json results_calibrated_50.json
+# The script will:
+# 1. Use existing ablation datasets (or create them if --prepare-data is used)
+# 2. Run each estimator on each dataset
+# 3. Generate a summary table and visualizations
 ```
 
-The results will show how calibration quality affects CJE estimates.
+### Step-by-Step Workflow
+
+#### 1. Prepare Ablation Datasets
+
+Create datasets with different oracle coverage levels:
+
+```bash
+# 25% oracle coverage
+python prepare_ablation_data.py \
+    --oracle-fraction 0.25 \
+    --seed 42 \
+    --output test_e2e_data/ablation_data/oracle_0_25_seed42.jsonl
+
+# 50% oracle coverage  
+python prepare_ablation_data.py \
+    --oracle-fraction 0.50 \
+    --seed 42 \
+    --output test_e2e_data/ablation_data/oracle_0_50_seed42.jsonl
+
+# 100% oracle coverage
+python prepare_ablation_data.py \
+    --oracle-fraction 1.00 \
+    --seed 42 \
+    --output test_e2e_data/ablation_data/oracle_1_00_seed42.jsonl
+```
+
+This script:
+- Reads immutable response and logprob files
+- Randomly selects the specified fraction of samples for oracle calibration
+- Uses those samples to calibrate judge scores for ALL samples
+- Creates a CJE-ready dataset with calibrated rewards
+
+#### 2. Run Individual Experiments
+
+Test different estimators on each dataset:
+
+```bash
+# CalibratedIPS (with isotonic weight calibration)
+python run_cje_analysis.py \
+    --data test_e2e_data/ablation_data/oracle_0_25_seed42.jsonl \
+    --estimator calibrated-ips \
+    --output results/calibrated_ips_25.json
+
+# RawIPS (standard importance sampling)
+python run_cje_analysis.py \
+    --data test_e2e_data/ablation_data/oracle_0_25_seed42.jsonl \
+    --estimator raw-ips \
+    --output results/raw_ips_25.json
+```
+
+#### 3. Analyze Results
+
+The ablation runner generates:
+- `ablation_summary.csv` - All metrics in tabular format
+- Console output with formatted comparisons
+- Policy-specific estimates and standard errors
+- Effective Sample Size (ESS) comparisons
+
+### Available Estimators
+
+- **calibrated-ips**: Calibrated importance sampling with isotonic regression on weights
+- **raw-ips**: Standard importance sampling without weight calibration
+
+### Key Findings from Ablations
+
+1. **Weight calibration dramatically reduces variance** for policies with extreme weights
+2. **25% oracle coverage is often sufficient** - more oracle data shows diminishing returns
+3. **The unhelpful policy** creates extreme weights (up to 100 after clipping) that challenge standard IPS
+
+### Extending the Framework
+
+To add new estimators:
+1. Create a new estimator class inheriting from `BaseCJEEstimator`
+2. Add it to `run_cje_analysis.py`'s estimator choices
+3. Update `run_oracle_ablation.py`'s ABLATION_CONFIG
 
 ## Output
 

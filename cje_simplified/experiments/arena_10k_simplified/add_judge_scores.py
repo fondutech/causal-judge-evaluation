@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 from typing import Any
 import sys
+import numpy as np
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
@@ -69,12 +70,14 @@ def add_judge_scores(
 
     print(f"\nScoring {len(to_score_indices)} records...")
 
-    # Score in batch
-    result = judge.score_batch(prompts, responses, show_progress=show_progress)
+    # Score in batch with failure resilience
+    result = judge.score_batch(prompts, responses, show_progress=show_progress, skip_failures=True)
 
     # Update records with scores
     for idx, record_idx in enumerate(to_score_indices):
-        records[record_idx]["metadata"]["judge_score"] = result.scores[idx]
+        # Handle failed scorings - set to None if scoring failed
+        score = result.scores[idx] if result.scores[idx] is not None else None
+        records[record_idx]["metadata"]["judge_score"] = score
 
     # Save output
     output_path = Path(output_file)
@@ -87,12 +90,21 @@ def add_judge_scores(
     print(f"\n✓ Added {len(to_score_indices)} judge scores")
     print(f"✓ Saved to {output_path}")
 
-    # Print score statistics
-    print(f"\nScore statistics:")
-    print(f"  Mean: {result.mean_score:.3f}")
-    print(f"  Std:  {result.std_score:.3f}")
-    print(f"  Min:  {min(result.scores):.3f}")
-    print(f"  Max:  {max(result.scores):.3f}")
+    # Print score statistics - filter out None values for failed scorings
+    valid_scores = [s for s in result.scores if s is not None]
+    failed_count = len(result.scores) - len(valid_scores)
+    
+    if valid_scores:
+        print(f"\nScore statistics:")
+        print(f"  Valid scores: {len(valid_scores)}")
+        if failed_count > 0:
+            print(f"  Failed scores: {failed_count}")
+        print(f"  Mean: {np.mean(valid_scores):.3f}")
+        print(f"  Std:  {np.std(valid_scores):.3f}")
+        print(f"  Min:  {min(valid_scores):.3f}")
+        print(f"  Max:  {max(valid_scores):.3f}")
+    else:
+        print(f"\nNo valid judge scores obtained")
 
 
 def main() -> None:

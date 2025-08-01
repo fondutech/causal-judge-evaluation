@@ -26,6 +26,7 @@ from .core import (
     # Estimators
     BaseCJEEstimator,
     CalibratedIPS,
+    RawIPS,
     # Types
     LogProbResult,
     LogProbStatus,
@@ -82,6 +83,18 @@ from .utils import (
     WeightDiagnostics,
 )
 
+# Import visualization utilities if available
+try:
+    from .utils import (
+        plot_weight_distributions,
+        plot_ess_comparison,
+        plot_weight_summary,
+        plot_calibration_comparison,
+    )
+    _viz_available = True
+except ImportError:
+    _viz_available = False
+
 # Teacher forcing
 from .teacher_forcing import (
     RobustTeacherForcing,
@@ -101,6 +114,7 @@ __all__ = [
     # Core functionality
     "BaseCJEEstimator",
     "CalibratedIPS",
+    "RawIPS",
     "PrecomputedSampler",
     "RobustTeacherForcing",
     "compute_teacher_forced_logprob",
@@ -145,3 +159,12 @@ __all__ = [
     "compute_chat_logprob",
     "convert_chat_to_completions",
 ]
+
+# Add visualization exports if available
+if _viz_available:
+    __all__.extend([
+        "plot_weight_distributions",
+        "plot_ess_comparison",
+        "plot_weight_summary",
+        "plot_calibration_comparison",
+    ])

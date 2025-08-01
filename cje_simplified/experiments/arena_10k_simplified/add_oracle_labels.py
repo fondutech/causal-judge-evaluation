@@ -70,10 +70,10 @@ def add_oracle_labels(
         print("No valid records to evaluate.")
         return
 
-    # Score in batch
+    # Score in batch with failure resilience
     print(f"\nEvaluating {len(prompts)} records...")
     result = oracle.score_batch(
-        prompts, responses, show_progress=show_progress, desc="Oracle evaluations"
+        prompts, responses, show_progress=show_progress, desc="Oracle evaluations", skip_failures=True
     )
 
     # Update records with oracle labels
@@ -82,7 +82,9 @@ def add_oracle_labels(
         if "metadata" not in records[record_idx]:
             records[record_idx]["metadata"] = {}
 
-        records[record_idx]["metadata"][oracle_field] = result.scores[idx]
+        # Handle failed scorings - set to None if scoring failed
+        score = result.scores[idx] if result.scores[idx] is not None else None
+        records[record_idx]["metadata"][oracle_field] = score
 
     oracle_count = len(result.scores)
 
@@ -97,38 +99,48 @@ def add_oracle_labels(
     print(f"\n✓ Added {oracle_count} oracle labels")
     print(f"✓ Saved to {output_path}")
 
-    # Print statistics
+    # Print statistics - filter out None values for failed scorings
     oracle_labels = [
         r["metadata"][oracle_field]
         for r in records
-        if oracle_field in r.get("metadata", {})
+        if oracle_field in r.get("metadata", {}) and r["metadata"][oracle_field] is not None
     ]
 
-    if result.scores:
+    valid_scores = [s for s in result.scores if s is not None]
+    failed_count = len(result.scores) - len(valid_scores)
+
+    if valid_scores:
         print(f"\nOracle label statistics:")
-        print(f"  Mean: {result.mean_score:.3f}")
-        print(f"  Std:  {result.std_score:.3f}")
-        print(f"  Min:  {min(result.scores):.3f}")
-        print(f"  Max:  {max(result.scores):.3f}")
+        print(f"  Valid scores: {len(valid_scores)}")
+        if failed_count > 0:
+            print(f"  Failed scores: {failed_count}")
+        print(f"  Mean: {np.mean(valid_scores):.3f}")
+        print(f"  Std:  {np.std(valid_scores):.3f}")
+        print(f"  Min:  {min(valid_scores):.3f}")
+        print(f"  Max:  {max(valid_scores):.3f}")
+    else:
+        print(f"\nNo valid oracle scores obtained")
 
-        # Compare with judge scores if available
-        judge_scores = []
-        oracle_for_judged = []
+    # Compare with judge scores if available (only for valid oracle scores)
+    judge_scores = []
+    oracle_for_judged = []
 
-        for r in records:
-            if oracle_field in r.get("metadata", {}) and "judge_score" in r["metadata"]:
-                judge_scores.append(r["metadata"]["judge_score"])
-                oracle_for_judged.append(r["metadata"][oracle_field])
+    for r in records:
+        metadata = r.get("metadata", {})
+        if (oracle_field in metadata and "judge_score" in metadata and 
+            metadata[oracle_field] is not None and metadata["judge_score"] is not None):
+            judge_scores.append(metadata["judge_score"])
+            oracle_for_judged.append(metadata[oracle_field])
 
-        if judge_scores and oracle_for_judged:
-            if len(judge_scores) > 1:  # Need at least 2 points for correlation
-                correlation = np.corrcoef(judge_scores, oracle_for_judged)[0, 1]
-                print(f"\nJudge-Oracle correlation: {correlation:.3f}")
-            else:
-                print(f"\nJudge-Oracle correlation: N/A (need at least 2 points)")
+    if judge_scores and oracle_for_judged:
+        if len(judge_scores) > 1:  # Need at least 2 points for correlation
+            correlation = np.corrcoef(judge_scores, oracle_for_judged)[0, 1]
+            print(f"\nJudge-Oracle correlation: {correlation:.3f}")
+        else:
+            print(f"\nJudge-Oracle correlation: N/A (need at least 2 points)")
 
-            mean_diff = np.mean(np.array(oracle_for_judged) - np.array(judge_scores))
-            print(f"Mean difference (oracle - judge): {mean_diff:+.3f}")
+        mean_diff = np.mean(np.array(oracle_for_judged) - np.array(judge_scores))
+        print(f"Mean difference (oracle - judge): {mean_diff:+.3f}")
 
 
 def main() -> None:

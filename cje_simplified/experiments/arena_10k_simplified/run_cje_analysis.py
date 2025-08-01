@@ -12,15 +12,39 @@ import sys
 from pathlib import Path
 from typing import Optional
 import numpy as np
+import os
+import logging
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
+
+# Set up logging based on environment variable
+log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+logging.basicConfig(
+    level=getattr(logging, log_level, logging.INFO),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 from cje_simplified import (
     load_dataset_from_jsonl,
     calibrate_dataset,
     PrecomputedSampler,
     CalibratedIPS,
+    RawIPS,
+    diagnose_weights,
+    create_weight_summary_table,
 )
+
+# Import visualization if available
+try:
+    from cje_simplified import (
+        plot_weight_distributions,
+        plot_ess_comparison,
+        plot_weight_summary,
+        plot_calibration_comparison,
+    )
+    _viz_available = True
+except ImportError:
+    _viz_available = False
 
 
 def main() -> int:
@@ -57,12 +81,45 @@ def main() -> int:
         help="Number of cross-fitting folds",
     )
     parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging",
+    )
+    parser.add_argument(
         "--output",
         type=str,
         help="Path to write results (optional, defaults to stdout only)",
     )
+    parser.add_argument(
+        "--plot-dir",
+        type=str,
+        help="Directory to save visualization plots (requires matplotlib)",
+    )
+    parser.add_argument(
+        "--no-plots",
+        action="store_true",
+        help="Disable plot generation even if matplotlib is available",
+    )
+    parser.add_argument(
+        "--estimator",
+        choices=["calibrated-ips", "raw-ips"],
+        default="calibrated-ips",
+        help="Estimation method to use (default: calibrated-ips)",
+    )
+    parser.add_argument(
+        "--estimator-config",
+        type=json.loads,
+        help="JSON config for estimator (e.g., '{\"k_folds\": 10, \"clip_weight\": 50}')",
+    )
 
     args = parser.parse_args()
+    
+    # Update logging level if debug flag is set
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+        # Also set debug for key modules
+        logging.getLogger('cje_simplified.calibration.isotonic').setLevel(logging.DEBUG)
+        logging.getLogger('cje_simplified.core.calibrated_ips').setLevel(logging.DEBUG)
 
     print("Running CJE Analysis")
     print("=" * 50)
@@ -142,10 +199,33 @@ def main() -> int:
                 raise ValueError("No rewards found and calibration failed")
 
     # Step 3: Run CJE estimation (requires rewards)
-    print("\n3. Running CJE estimation...")
+    print(f"\n3. Running CJE estimation with {args.estimator}...")
+    
+    # Initialize variables that will be used in JSON output
+    all_weight_diagnostics = {}
+    best_policy = "base"
+    mean_w = 1.0
+    max_w = 1.0
+    ess = float(dataset.n_samples)
+    ess_frac = 1.0
+    
     try:
         sampler = PrecomputedSampler(calibrated_dataset)
-        estimator = CalibratedIPS(sampler, k_folds=args.n_folds)
+        
+        # Initialize the selected estimator
+        estimator_config = args.estimator_config or {}
+        
+        if args.estimator == "calibrated-ips":
+            # Use n_folds from command line if provided
+            k_folds = estimator_config.get("k_folds", args.n_folds)
+            estimator = CalibratedIPS(sampler, k_folds=k_folds)
+        elif args.estimator == "raw-ips":
+            # Use clip_weight from config or default
+            clip_weight = estimator_config.get("clip_weight", 100.0)
+            estimator = RawIPS(sampler, clip_weight=clip_weight)
+        else:
+            raise ValueError(f"Unknown estimator: {args.estimator}")
+            
         results = estimator.fit_and_estimate()
 
         # Display results
@@ -185,29 +265,122 @@ def main() -> int:
         best_policy = all_policies[best_idx]
         print(f"\n   🏆 Best policy: {best_policy}")
 
-        # Show weight diagnostics for best policy
-        print(f"\n5. Weight diagnostics for best policy ({best_policy}):")
-        if best_policy == "base":
-            # Base policy has uniform weights
+        # Show weight diagnostics for all policies
+        print(f"\n5. Weight diagnostics:")
+        
+        # Collect diagnostics for all policies
+        all_weight_diagnostics = {}
+        
+        # Base policy has uniform weights (no importance sampling)
+        base_diag = diagnose_weights(
+            np.ones(len(base_rewards)), 
+            "base", 
+            expected_weight=1.0
+        )
+        all_weight_diagnostics["base"] = base_diag
+        
+        # Target policies
+        for policy in sampler.target_policies:
+            weights = estimator.get_weights(policy)
+            if weights is not None:
+                # Expected weight is 1.0 for clone, None for others
+                expected = 1.0 if policy == "clone" else None
+                diag = diagnose_weights(weights, policy, expected)
+                all_weight_diagnostics[policy] = diag
+        
+        # Print summary table
+        print("\n" + create_weight_summary_table(all_weight_diagnostics))
+        
+        # Print detailed diagnostics if any issues found
+        has_issues = any(
+            d.consistency_flag != "GOOD" 
+            for d in all_weight_diagnostics.values()
+        )
+        if has_issues:
+            print("\n   ⚠️  Weight diagnostics warnings:")
+            for policy, diag in all_weight_diagnostics.items():
+                if diag.consistency_flag != "GOOD":
+                    print(f"\n   {diag.summary()}")
+        
+        # Store diagnostics for the best policy for JSON output
+        best_diag = all_weight_diagnostics.get(best_policy)
+        if best_diag:
+            mean_w = best_diag.mean_weight
+            max_w = best_diag.max_weight
+            ess = best_diag.ess_fraction * len(base_rewards)
+            ess_frac = best_diag.ess_fraction
+        else:
+            # Fallback values
             mean_w = 1.0
             max_w = 1.0
             ess = float(len(base_rewards))
             ess_frac = 1.0
-            print(f"     Mean weight: {mean_w:.3f}")
-            print(f"     Max weight: {max_w:.3f}")
-            print(f"     Effective sample size: {ess:.0f} ({ess_frac:.1%})")
-        else:
-            weights = estimator.get_weights(best_policy)
-            if weights is not None:
-                mean_w = weights.mean()
-                max_w = weights.max()
-                # Calculate effective sample size
-                ess = (weights.sum() ** 2) / (weights**2).sum()
-                ess_frac = ess / len(weights)
 
-                print(f"     Mean weight: {mean_w:.3f}")
-                print(f"     Max weight: {max_w:.3f}")
-                print(f"     Effective sample size: {ess:.0f} ({ess_frac:.1%})")
+        # Generate visualizations if requested
+        if _viz_available and args.plot_dir and not args.no_plots:
+            print("\n6. Generating visualizations...")
+            from pathlib import Path
+            plot_dir = Path(args.plot_dir)
+            plot_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Collect weights for visualization
+            weights_dict = {}
+            
+            # Base policy (uniform weights)
+            weights_dict["base"] = np.ones(len(base_rewards))
+            
+            # Target policies
+            for policy in sampler.target_policies:
+                weights = estimator.get_weights(policy)
+                if weights is not None:
+                    weights_dict[policy] = weights
+            
+            # Generate plots
+            try:
+                # Weight distributions
+                fig = plot_weight_distributions(weights_dict)
+                fig.savefig(plot_dir / "weight_distributions.png", dpi=150, bbox_inches='tight')
+                print(f"   ✓ Saved weight distributions to {plot_dir}/weight_distributions.png")
+                
+                # ESS comparison
+                fig = plot_ess_comparison(weights_dict)
+                fig.savefig(plot_dir / "ess_comparison.png", dpi=150, bbox_inches='tight')
+                print(f"   ✓ Saved ESS comparison to {plot_dir}/ess_comparison.png")
+                
+                # Weight summary
+                fig = plot_weight_summary(weights_dict)
+                fig.savefig(plot_dir / "weight_summary.png", dpi=150, bbox_inches='tight')
+                print(f"   ✓ Saved weight summary to {plot_dir}/weight_summary.png")
+                
+                # Calibration comparison (if calibration was performed)
+                if not args.use_oracle and "cal_result" in locals() and not rewards_exist:
+                    # Extract judge scores and oracle labels
+                    judge_scores = []
+                    oracle_labels = []
+                    for s in dataset.samples:
+                        if args.judge_field in s.metadata and args.oracle_field in s.metadata:
+                            judge_scores.append(s.metadata[args.judge_field])
+                            oracle_labels.append(s.metadata[args.oracle_field])
+                    
+                    if judge_scores and oracle_labels:
+                        # Get calibrated predictions
+                        calibrated_preds = [s.reward for s in calibrated_dataset.samples if s.reward is not None]
+                        
+                        if len(calibrated_preds) == len(judge_scores):
+                            fig = plot_calibration_comparison(
+                                judge_scores=np.array(judge_scores),
+                                oracle_labels=np.array(oracle_labels),
+                                calibrated_scores=np.array(calibrated_preds)
+                            )
+                            fig.savefig(plot_dir / "calibration_comparison.png", dpi=150, bbox_inches='tight')
+                            print(f"   ✓ Saved calibration comparison to {plot_dir}/calibration_comparison.png")
+                
+                # Close all figures to free memory
+                import matplotlib.pyplot as plt
+                plt.close('all')
+                
+            except Exception as e:
+                print(f"   ⚠️  Warning: Failed to generate some plots: {e}")
 
     except ValueError as e:
         print(f"\n❌ Estimation failed: {e}")
@@ -218,7 +391,11 @@ def main() -> int:
         print("  3. Have pre-calibrated rewards in the dataset")
         return 1
 
-    print("\n✓ Analysis complete!")
+    # Final success message
+    steps_completed = 5  # base steps
+    if _viz_available and args.plot_dir and not args.no_plots:
+        steps_completed = 6
+    print(f"\n✓ Analysis complete! ({steps_completed} steps)")
 
     # Write results to file if requested
     if args.output:
@@ -234,13 +411,21 @@ def main() -> int:
                 if rewards_exist > 0
                 else ("oracle_direct" if args.use_oracle else "judge_calibration")
             ),
-            "estimation": {"n_folds": args.n_folds, "policies": {}},
+            "estimation": {
+                "estimator": args.estimator,
+                "estimator_config": estimator_config,
+                "n_folds": args.n_folds,
+                "policies": {}
+            },
             "best_policy": best_policy,
             "weight_diagnostics": {
-                "mean_weight": float(mean_w),
-                "max_weight": float(max_w),
-                "effective_sample_size": float(ess),
-                "effective_sample_size_fraction": float(ess_frac),
+                "best_policy": {
+                    "mean_weight": float(mean_w),
+                    "max_weight": float(max_w),
+                    "effective_sample_size": float(ess),
+                    "effective_sample_size_fraction": float(ess_frac),
+                },
+                "all_policies": {},
             },
         }
 
@@ -263,6 +448,19 @@ def main() -> int:
                 "ci_upper": float(ci_upper[i]),
                 "type": "counterfactual",
             }
+        
+        # Add weight diagnostics for all policies
+        for policy, diag in all_weight_diagnostics.items():
+            results_data["weight_diagnostics"]["all_policies"][policy] = {
+                "mean_weight": float(diag.mean_weight),
+                "max_weight": float(diag.max_weight),
+                "min_weight": float(diag.min_weight),
+                "median_weight": float(diag.median_weight),
+                "ess_fraction": float(diag.ess_fraction),
+                "extreme_weight_count": int(diag.extreme_weight_count),
+                "zero_weight_count": int(diag.zero_weight_count),
+                "consistency_flag": diag.consistency_flag,
+            }
 
         # Add calibration stats if available
         if not args.use_oracle and "cal_result" in locals():
@@ -270,6 +468,13 @@ def main() -> int:
                 "n_oracle": cal_result.n_oracle,
                 "calibration_rmse": float(cal_result.calibration_rmse),
                 "coverage_at_01": float(cal_result.coverage_at_01),
+            }
+        
+        # Add visualization info if plots were generated
+        if _viz_available and args.plot_dir and not args.no_plots:
+            results_data["visualizations"] = {
+                "directory": args.plot_dir,
+                "plots_generated": True
             }
 
         # Write to file

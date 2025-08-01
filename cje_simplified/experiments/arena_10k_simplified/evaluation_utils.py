@@ -37,9 +37,11 @@ class BatchJudgeResult:
 
     def __post_init__(self) -> None:
         """Compute statistics."""
-        if self.scores:
-            self.mean_score = np.mean(self.scores)
-            self.std_score = np.std(self.scores)
+        # Filter out None values for statistics
+        valid_scores = [s for s in self.scores if s is not None]
+        if valid_scores:
+            self.mean_score = np.mean(valid_scores)
+            self.std_score = np.std(valid_scores)
 
 
 # Pydantic model for structured outputs
@@ -55,7 +57,7 @@ class EvaluationResponse(BaseModel):
 
 # Evaluator class
 class FireworksEvaluator:
-    """Fireworks-based evaluator for scoring AI responses."""
+    """LLM-based evaluator for scoring AI responses (supports Fireworks and OpenAI)."""
 
     def __init__(
         self,
@@ -71,16 +73,36 @@ class FireworksEvaluator:
             user_prompt_template or self._default_prompt_template()
         )
         self.temperature = temperature
-        self.api_key = api_key or os.getenv("FIREWORKS_API_KEY")
-        if not self.api_key:
-            raise ValueError("FIREWORKS_API_KEY required")
-
-        # Initialize LangChain model with Fireworks
-        os.environ["FIREWORKS_API_KEY"] = self.api_key
+        
+        # Determine provider based on model name
+        if model.startswith("gpt") or model.startswith("o1") or model.startswith("o4"):
+            # OpenAI model
+            self.provider = "openai"
+            self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+            if not self.api_key:
+                raise ValueError("OPENAI_API_KEY required for OpenAI models")
+            os.environ["OPENAI_API_KEY"] = self.api_key
+        else:
+            # Fireworks model
+            self.provider = "fireworks"
+            self.api_key = api_key or os.getenv("FIREWORKS_API_KEY")
+            if not self.api_key:
+                raise ValueError("FIREWORKS_API_KEY required for Fireworks models")
+            os.environ["FIREWORKS_API_KEY"] = self.api_key
+        
+        # Initialize LangChain model
+        # Note: o4-mini models only support temperature=1.0
+        if model.startswith("o4"):
+            actual_temperature = 1.0
+            if temperature != 1.0:
+                print(f"Note: {model} only supports temperature=1.0, ignoring temperature={temperature}")
+        else:
+            actual_temperature = temperature
+            
         self.llm = init_chat_model(
             model,
-            model_provider="fireworks",
-            temperature=temperature,
+            model_provider=self.provider,
+            temperature=actual_temperature,
         )
 
         # Create structured LLM
@@ -167,27 +189,56 @@ Provide your evaluation score (0-100):
         responses: List[str],
         show_progress: bool = True,
         desc: str = "Scoring",
+        skip_failures: bool = False,
     ) -> BatchJudgeResult:
-        """Score a batch of responses."""
+        """Score a batch of responses.
+        
+        Args:
+            prompts: List of prompts
+            responses: List of responses
+            show_progress: Whether to show progress bar
+            desc: Description for progress bar
+            skip_failures: If True, skip failed scorings and continue with the batch
+            
+        Returns:
+            BatchJudgeResult with scores and metadata
+        """
         if len(prompts) != len(responses):
             raise ValueError(f"Length mismatch: {len(prompts)} != {len(responses)}")
 
         scores = []
         metadata = []
+        failed_indices = []
 
-        iterator = zip(prompts, responses)
+        iterator = zip(enumerate(zip(prompts, responses)), range(len(prompts)))
         if show_progress:
-            iterator = tqdm(iterator, total=len(prompts), desc=desc)
+            iterator = tqdm(enumerate(zip(prompts, responses)), total=len(prompts), desc=desc)
 
-        for prompt, response in iterator:
-            result = self.score(prompt, response)
-            scores.append(result.score)
-            if result.metadata:
-                metadata.append(result.metadata)
+        for i, (prompt, response) in iterator:
+            try:
+                result = self.score(prompt, response)
+                scores.append(result.score)
+                if result.metadata:
+                    metadata.append(result.metadata)
+            except Exception as e:
+                if skip_failures:
+                    print(f"⚠️  Warning: Failed to score item {i}: {str(e)}")
+                    print(f"   Prompt: {prompt[:50]}...")
+                    print(f"   Response: {response[:50]}...")
+                    scores.append(None)  # Placeholder for failed scoring
+                    metadata.append({"error": str(e), "failed": True})
+                    failed_indices.append(i)
+                else:
+                    # Re-raise if not skipping failures
+                    raise
+
+        if failed_indices and skip_failures:
+            print(f"⚠️  Warning: {len(failed_indices)} out of {len(prompts)} scorings failed")
+            print(f"   Failed indices: {failed_indices}")
 
         return BatchJudgeResult(scores=scores, metadata=metadata if metadata else None)
 
 
 # Default models
-DEFAULT_JUDGE_MODEL = "accounts/fireworks/models/llama-v3p1-8b-instruct"
-DEFAULT_ORACLE_MODEL = "accounts/fireworks/models/kimi-k2-instruct"
+DEFAULT_JUDGE_MODEL = "gpt-4.1-nano-2025-04-14"
+DEFAULT_ORACLE_MODEL = "o4-mini-2025-04-16"
