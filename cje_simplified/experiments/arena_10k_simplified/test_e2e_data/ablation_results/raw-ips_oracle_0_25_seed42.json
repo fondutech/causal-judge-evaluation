@@ -1,0 +1,82 @@
+{
+  "timestamp": "2025-08-01T15:25:27.190625",
+  "dataset": {
+    "path": "test_e2e_data/ablation_data/oracle_0_25_seed42.jsonl",
+    "n_samples": 500,
+    "target_policies": [
+      "clone",
+      "unhelpful"
+    ]
+  },
+  "workflow": "pre_computed_rewards",
+  "estimation": {
+    "estimator": "raw-ips",
+    "estimator_config": {},
+    "n_folds": 5,
+    "policies": {
+      "base": {
+        "estimate": 0.3729460390310375,
+        "standard_error": 0.011690080754190504,
+        "ci_lower": 0.35003348075282414,
+        "ci_upper": 0.3958585973092509,
+        "type": "observed",
+        "n_samples": 500
+      },
+      "clone": {
+        "estimate": 0.3896737083175768,
+        "standard_error": 0.017685810164883953,
+        "ci_lower": 0.3550101573569919,
+        "ci_upper": 0.42433725927816174,
+        "type": "counterfactual"
+      },
+      "unhelpful": {
+        "estimate": 0.37605391017474477,
+        "standard_error": 0.18215499523795986,
+        "ci_lower": 0.019036679904278375,
+        "ci_upper": 0.7330711404452112,
+        "type": "counterfactual"
+      }
+    }
+  },
+  "best_policy": "clone",
+  "weight_diagnostics": {
+    "best_policy": {
+      "mean_weight": 1.026803193380221,
+      "max_weight": 6.1606128424031095,
+      "effective_sample_size": 432.1303633073045,
+      "effective_sample_size_fraction": 0.864260726614609
+    },
+    "all_policies": {
+      "base": {
+        "mean_weight": 1.0,
+        "max_weight": 1.0,
+        "min_weight": 1.0,
+        "median_weight": 1.0,
+        "ess_fraction": 1.0,
+        "extreme_weight_count": 0,
+        "zero_weight_count": 0,
+        "consistency_flag": "GOOD"
+      },
+      "clone": {
+        "mean_weight": 1.026803193380221,
+        "max_weight": 6.1606128424031095,
+        "min_weight": 0.0001090018721712105,
+        "median_weight": 1.0,
+        "ess_fraction": 0.864260726614609,
+        "extreme_weight_count": 1,
+        "zero_weight_count": 0,
+        "consistency_flag": "GOOD"
+      },
+      "unhelpful": {
+        "mean_weight": 1.1207142318437968,
+        "max_weight": 100.0,
+        "min_weight": 0.0,
+        "median_weight": 2.1387737300632777e-07,
+        "ess_fraction": 0.012473285890505136,
+        "extreme_weight_count": 430,
+        "zero_weight_count": 17,
+        "consistency_flag": "CRITICAL"
+      }
+    }
+  }
+}

@@ -65,10 +65,10 @@ def add_rewards_to_existing_data(
             score = score.get("mean", score.get("value"))
         judge_scores.append(float(score))
 
-    judge_scores = np.array(judge_scores)
+    judge_scores_array = np.array(judge_scores)
 
     # Apply calibration
-    calibrated_rewards = calibrator.transform(judge_scores)
+    calibrated_rewards = calibrator.transform(judge_scores_array)
 
     # Convert back to dict format and add rewards
     data = []

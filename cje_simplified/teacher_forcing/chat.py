@@ -126,6 +126,7 @@ def compute_chat_logprob(
     # Validate chat format
     if not chat or chat[-1]["role"] != "assistant":
         return LogProbResult(
+            value=None,
             status=LogProbStatus.API_ERROR,
             error="Chat must end with assistant message for teacher forcing",
         )
@@ -140,6 +141,7 @@ def compute_chat_logprob(
         )
     except Exception as e:
         return LogProbResult(
+            value=None,
             status=LogProbStatus.API_ERROR,
             error=f"Chat conversion failed: {str(e)}",
         )
@@ -172,6 +174,7 @@ def compute_chat_logprob(
         # Sanity checks
         if lp_reply > 0:
             return LogProbResult(
+                value=None,
                 status=LogProbStatus.API_ERROR,
                 error=f"Positive log probability: {lp_reply}",
                 metadata={
@@ -194,6 +197,7 @@ def compute_chat_logprob(
         return LogProbResult(
             value=lp_reply,
             status=LogProbStatus.SUCCESS,
+            error=None,
             metadata={
                 "method": "chat_teacher_forcing",
                 "lp_full": full_result.value,
@@ -205,5 +209,7 @@ def compute_chat_logprob(
 
     except Exception as e:
         return LogProbResult(
-            status=LogProbStatus.API_ERROR, error=f"API calls failed: {str(e)}"
+            value=None,
+            status=LogProbStatus.API_ERROR,
+            error=f"API calls failed: {str(e)}",
         )

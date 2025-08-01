@@ -11,9 +11,8 @@ This creates the final dataset in the format expected by CJE analysis:
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set, Any
 from collections import defaultdict
-from typing import Dict, Set, Any
 
 import sys
 
@@ -23,7 +22,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 def prepare_cje_dataset(
     logprobs_dir: str,
     responses_dir: str,
-    output_file: str,
+    output_file: Optional[str],
     base_policy: str = "base",
 ) -> List[Dict]:
     """Combine BASE policy responses with log probs from all policies.
@@ -260,8 +259,8 @@ def main() -> None:
     if not has_both:
         raise ValueError("No records have both judge scores and oracle labels")
 
-    judge_scores = np.array(judge_scores)
-    oracle_labels = np.array(oracle_labels)
+    judge_scores_array = np.array(judge_scores)
+    oracle_labels_array = np.array(oracle_labels)
 
     if args.oracle_coverage == 1.0:
         # Use oracle labels directly as rewards
@@ -288,7 +287,9 @@ def main() -> None:
 
         # Fit isotonic regression on calibration subset
         iso_reg = IsotonicRegression(out_of_bounds="clip")
-        iso_reg.fit(judge_scores[calibration_mask], oracle_labels[calibration_mask])
+        iso_reg.fit(
+            judge_scores_array[calibration_mask], oracle_labels_array[calibration_mask]
+        )
 
         # Apply calibration to all records with judge scores
         for record in records:
@@ -299,12 +300,12 @@ def main() -> None:
                 record["reward"] = calibrated_reward
 
         # Report calibration quality
-        calibrated_all = iso_reg.predict(judge_scores)
-        rmse = np.sqrt(np.mean((calibrated_all - oracle_labels) ** 2))
+        calibrated_all = iso_reg.predict(judge_scores_array)
+        rmse = np.sqrt(np.mean((calibrated_all - oracle_labels_array) ** 2))
         print(f"  Calibration RMSE: {rmse:.3f}")
 
         # Coverage at different thresholds
-        abs_errors = np.abs(calibrated_all - oracle_labels)
+        abs_errors = np.abs(calibrated_all - oracle_labels_array)
         coverage_01 = np.mean(abs_errors <= 0.1)
         print(f"  Coverage (±0.1): {coverage_01:.1%}")
 

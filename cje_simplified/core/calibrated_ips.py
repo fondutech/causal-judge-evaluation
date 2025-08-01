@@ -39,7 +39,10 @@ class CalibratedIPS(BaseCJEEstimator):
     ):
         # Create config
         config = WeightCalibrationConfig(
-            k_folds=k_folds, clip_weight=clip_weight, random_seed=random_seed
+            k_folds=k_folds,
+            clip_weight=clip_weight,
+            target_mean=1.0,
+            random_seed=random_seed,
         )
         super().__init__(sampler, config)
 

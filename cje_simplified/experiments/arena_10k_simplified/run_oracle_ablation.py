@@ -59,10 +59,11 @@ def run_single_experiment(
 
     # Load and return results
     with open(output_file) as f:
-        return json.load(f)
+        data: Dict[str, Any] = json.load(f)
+        return data
 
 
-def extract_metrics(result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def extract_metrics(result: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """Extract key metrics from a result."""
     if result is None:
         return None

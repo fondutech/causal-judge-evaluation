@@ -13,7 +13,7 @@ tests = [
 ]
 
 
-def main():
+def main() -> int:
     """Run all test files."""
     print("Running all CJE tests...\n")
 

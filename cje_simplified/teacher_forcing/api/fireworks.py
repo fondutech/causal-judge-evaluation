@@ -63,6 +63,7 @@ class RobustTeacherForcing:
             return LogProbResult(
                 value=0.0,
                 status=LogProbStatus.SUCCESS,
+                error=None,
                 metadata={"method": "empty_response"},
             )
 
@@ -88,6 +89,7 @@ class RobustTeacherForcing:
 
             if not hasattr(full_completion.choices[0], "logprobs"):
                 return LogProbResult(
+                    value=None,
                     status=LogProbStatus.API_ERROR,
                     error="No logprobs in response",
                     metadata={"method": "continuation"},
@@ -116,6 +118,7 @@ class RobustTeacherForcing:
             # Validate result
             if response_logprob > 0:
                 return LogProbResult(
+                    value=None,
                     status=LogProbStatus.API_ERROR,
                     error=f"Positive log probability: {response_logprob}",
                     metadata={
@@ -140,6 +143,7 @@ class RobustTeacherForcing:
             return LogProbResult(
                 value=response_logprob,
                 status=LogProbStatus.SUCCESS,
+                error=None,
                 metadata={
                     "method": "continuation",
                     "full_logprob": full_logprob,
@@ -150,6 +154,7 @@ class RobustTeacherForcing:
 
         except Exception as e:
             return LogProbResult(
+                value=None,
                 status=LogProbStatus.API_ERROR,
                 error=f"Teacher forcing failed: {str(e)}",
                 metadata={"method": "continuation"},
