@@ -193,7 +193,7 @@ class PrecomputedSampler:
 
             weights.append(weight)
 
-        weights = np.array(weights)
+        weights_array = np.array(weights)
         
         # Log clipping statistics
         if n_clipped_high > 0:
@@ -209,12 +209,12 @@ class PrecomputedSampler:
         
         logger.debug(
             f"Weight statistics for '{target_policy}': "
-            f"mean={weights.mean():.3f}, std={weights.std():.3f}, "
-            f"min={weights.min():.3f}, max={weights.max():.3f}, "
-            f"n_zero={np.sum(weights == 0)}, n_at_clip={np.sum(weights == clip_weight)}"
+            f"mean={weights_array.mean():.3f}, std={weights_array.std():.3f}, "
+            f"min={weights_array.min():.3f}, max={weights_array.max():.3f}, "
+            f"n_zero={np.sum(weights_array == 0)}, n_at_clip={np.sum(weights_array == clip_weight)}"
         )
         
-        return weights
+        return weights_array
 
     def get_rewards(self) -> np.ndarray:
         """Get array of calibrated rewards."""
