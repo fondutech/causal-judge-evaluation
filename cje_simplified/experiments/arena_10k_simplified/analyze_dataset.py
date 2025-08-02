@@ -10,7 +10,7 @@ This shows how to use the decoupled loading and calibration approach:
 
 import sys
 from pathlib import Path
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, Union, List
 import numpy as np
 import os
 import logging
@@ -231,7 +231,7 @@ def main() -> int:
         results = estimator.fit_and_estimate()
 
         # Get target policies list for indexing
-        target_policies = list(sampler.target_policies)  # type: ignore
+        target_policies: List[str] = list(sampler.target_policies)
 
         # Display results
         print("\n4. Results:")
@@ -257,11 +257,17 @@ def main() -> int:
 
         # Display results for each target policy
         ci_lower, ci_upper = results.confidence_interval(alpha=0.05)
-        for i, policy in enumerate(target_policies):
+        for policy, estimate, se, ci_l, ci_u in zip(
+            target_policies,
+            results.estimates,
+            results.standard_errors,
+            ci_lower,
+            ci_upper,
+        ):
             print(f"   {policy}:")
-            print(f"     Estimate: {results.estimates[i]:.3f}")
-            print(f"     Std Error: {results.standard_errors[i]:.3f}")
-            print(f"     95% CI: [{ci_lower[i]:.3f}, {ci_upper[i]:.3f}]")
+            print(f"     Estimate: {estimate:.3f}")
+            print(f"     Std Error: {se:.3f}")
+            print(f"     95% CI: [{ci_l:.3f}, {ci_u:.3f}]")
 
         # Best policy (including base)
         all_estimates = [base_mean] + list(results.estimates)
@@ -428,7 +434,7 @@ def main() -> int:
 
     # Write results to file if requested
     if args.output:
-        results_data = {
+        results_data: Dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
             "dataset": {
                 "path": args.data,
@@ -469,12 +475,18 @@ def main() -> int:
         }
 
         # Add per-policy results
-        for i, policy in enumerate(target_policies):
+        for policy, estimate, se, ci_l, ci_u in zip(
+            target_policies,
+            results.estimates,
+            results.standard_errors,
+            ci_lower,
+            ci_upper,
+        ):
             results_data["estimation"]["policies"][policy] = {
-                "estimate": float(results.estimates[i]),
-                "standard_error": float(results.standard_errors[i]),
-                "ci_lower": float(ci_lower[i]),
-                "ci_upper": float(ci_upper[i]),
+                "estimate": float(estimate),
+                "standard_error": float(se),
+                "ci_lower": float(ci_l),
+                "ci_upper": float(ci_u),
                 "type": "counterfactual",
             }
 
