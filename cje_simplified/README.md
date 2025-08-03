@@ -38,21 +38,20 @@ print(f"95% CI: {results.confidence_interval(0.95)}")
 ### Step 1: Calibrate Judge Scores to Business KPIs
 
 ```python
-from cje_simplified import create_calibrated_rewards
+from cje_simplified import load_dataset_from_jsonl, calibrate_dataset
 
-# Convert raw judge scores to calibrated rewards
-data_with_rewards, stats = create_calibrated_rewards(
-    "data_with_judge_scores.jsonl",
-    oracle_label_field="human_rating",  # Field with true KPIs
-    judge_score_field="gpt4_score",     # Field with judge scores
+# Load dataset with judge scores and oracle labels
+dataset = load_dataset_from_jsonl("data_with_judge_scores.jsonl")
+
+# Calibrate judge scores to oracle labels
+calibrated_dataset, stats = calibrate_dataset(
+    dataset,
+    judge_field="gpt4_score",     # Field with judge scores
+    oracle_field="human_rating"   # Field with true KPIs
 )
 
-# Or use prepare_cje_data for end-to-end preparation
-prepare_cje_data(
-    "raw_data.jsonl",
-    oracle_data_path="human_labels.jsonl",
-    output_path="ready_for_cje.jsonl"
-)
+print(f"Calibration RMSE: {stats.calibration_rmse:.3f}")
+print(f"Coverage: {stats.coverage_at_01:.1%}")
 ```
 
 ### Step 2: Expected Data Format
@@ -64,8 +63,8 @@ After preparation, data should have this format:
   "prompt": "What is machine learning?",
   "response": "Machine learning is...",
   "reward": 0.85,  # Calibrated reward (not raw judge score!)
-  "total_logprob": -35.704,
-  "target_logps": {
+  "base_policy_logprob": -35.704,
+  "target_policy_logprobs": {
     "pi_cot": -40.123,
     "pi_bigger": -32.456
   }
@@ -74,8 +73,8 @@ After preparation, data should have this format:
 
 Key requirements:
 - `reward`: Calibrated reward aligned with business KPI
-- `total_logprob`: Log probability under base/behavior policy
-- `target_logps`: Log probabilities under each target policy
+- `base_policy_logprob`: Log probability under base/behavior policy
+- `target_policy_logprobs`: Log probabilities under each target policy
 - Failed computations stored as `null` (no fallback values)
 
 ## Computing Log Probabilities

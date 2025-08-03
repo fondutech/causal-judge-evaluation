@@ -87,10 +87,13 @@ class PrecomputedSampler:
         - target_policy_logprobs: dict of target log probs
         """
         formatted = []
+        n_missing_base = 0
+        n_missing_target = {policy: 0 for policy in self.target_policies}
 
         for sample in self.dataset.samples:
             # Skip samples without valid base log prob
             if sample.base_policy_logprob is None:
+                n_missing_base += 1
                 continue
 
             # Check all required target policies have valid log probs
@@ -99,6 +102,7 @@ class PrecomputedSampler:
             for policy in self.target_policies:
                 logp = sample.target_policy_logprobs.get(policy)
                 if logp is None:
+                    n_missing_target[policy] += 1
                     skip_record = True
                     break
                 valid_targets[policy] = logp
@@ -116,8 +120,37 @@ class PrecomputedSampler:
                 }
             )
 
+        # Report filtering statistics
+        n_total = len(self.dataset.samples)
+        n_valid = len(formatted)
+        n_filtered = n_total - n_valid
+
+        if n_filtered > 0:
+            filter_pct = (n_filtered / n_total) * 100
+            logger.warning(
+                f"Filtered {n_filtered}/{n_total} samples ({filter_pct:.1f}%) due to missing log probabilities:\n"
+                f"  - Missing base_policy_logprob: {n_missing_base}\n"
+                f"  - Missing target policy logprobs: {n_missing_target}"
+            )
+
+            if filter_pct > 50:
+                logger.error(
+                    f"WARNING: More than 50% of samples filtered! Only {n_valid}/{n_total} samples remain. "
+                    f"This may significantly impact estimation quality."
+                )
+
         if not formatted:
-            raise ValueError("No valid records after filtering invalid log probs")
+            raise ValueError(
+                f"No valid records after filtering! All {n_total} samples had invalid log probabilities.\n"
+                f"  - Missing base_policy_logprob: {n_missing_base}\n"
+                f"  - Missing target policy logprobs: {n_missing_target}"
+            )
+
+        if n_valid < 10:
+            logger.warning(
+                f"Only {n_valid} valid samples available for estimation. "
+                f"Results may be unreliable with such small sample size."
+            )
 
         return formatted
 
@@ -168,8 +201,8 @@ class PrecomputedSampler:
 
         weights = []
         n_clipped_high = 0
-        max_unclipped_ratio = -float('inf')
-        
+        max_unclipped_ratio = -float("inf")
+
         for record in self.formatted_data:
             base_logp = record["base_policy_logprob"]
             target_logp = record["target_policy_logprobs"][target_policy]
@@ -194,26 +227,26 @@ class PrecomputedSampler:
             weights.append(weight)
 
         weights_array = np.array(weights)
-        
+
         # Log clipping statistics
         if n_clipped_high > 0:
             logger.info(
                 f"Weight clipping for policy '{target_policy}': "
                 f"{n_clipped_high} weights clipped to {clip_weight}"
             )
-            if max_unclipped_ratio > -float('inf'):
+            if max_unclipped_ratio > -float("inf"):
                 logger.debug(
                     f"Maximum unclipped weight would have been {np.exp(max_unclipped_ratio):.2e} "
                     f"(log ratio={max_unclipped_ratio:.2f})"
                 )
-        
+
         logger.debug(
             f"Weight statistics for '{target_policy}': "
             f"mean={weights_array.mean():.3f}, std={weights_array.std():.3f}, "
             f"min={weights_array.min():.3f}, max={weights_array.max():.3f}, "
             f"n_zero={np.sum(weights_array == 0)}, n_at_clip={np.sum(weights_array == clip_weight)}"
         )
-        
+
         return weights_array
 
     def get_rewards(self) -> np.ndarray:
@@ -230,8 +263,38 @@ class PrecomputedSampler:
 
     @property
     def n_samples(self) -> int:
-        """Number of valid samples."""
+        """Number of samples in the dataset.
+
+        Note: This returns the total number of samples in the dataset.
+        For the number of samples with valid log probabilities that will
+        be used for estimation, use n_valid_samples.
+        """
         return self.dataset.n_samples
+
+    @property
+    def n_valid_samples(self) -> int:
+        """Number of valid samples with all required log probabilities.
+
+        This is the number of samples that will actually be used for estimation,
+        after filtering out samples with missing log probabilities.
+        """
+        return len(self.formatted_data)
+
+    @property
+    def n_samples_total(self) -> int:
+        """Total number of samples in the dataset (before filtering).
+
+        Deprecated: Use n_samples instead.
+        """
+        return self.dataset.n_samples
+
+    @property
+    def n_samples_valid(self) -> int:
+        """Number of valid samples for estimation.
+
+        Deprecated: Use n_valid_samples instead.
+        """
+        return self.n_valid_samples
 
     @property
     def n_policies(self) -> int:
@@ -241,8 +304,16 @@ class PrecomputedSampler:
     def summary(self) -> Dict[str, Any]:
         """Get summary statistics."""
         dataset_summary = self.dataset.summary()
+        filter_rate = (
+            1.0 - (self.n_valid_samples / self.n_samples) if self.n_samples > 0 else 0.0
+        )
+
         return {
-            "n_samples": self.n_samples,
+            "n_samples": self.n_samples,  # Keep for backwards compatibility
+            "n_samples_valid": self.n_valid_samples,
+            "n_samples_total": self.n_samples,  # Same as n_samples
+            "n_samples_filtered": self.n_samples - self.n_valid_samples,
+            "filter_rate": filter_rate,
             "n_policies": self.n_policies,
             "target_policies": self.target_policies,
             "reward_mean": dataset_summary["reward_mean"],

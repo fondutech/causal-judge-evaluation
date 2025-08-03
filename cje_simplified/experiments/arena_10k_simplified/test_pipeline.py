@@ -239,13 +239,14 @@ def main() -> None:
         verify_logprobs(test_dir / "logprobs", n_samples=args.n_samples)
 
         # Step 6: Prepare CJE dataset
-        # Note: Using 50% oracle coverage to test calibration workflow
+        # Use 100% oracle coverage for small test datasets to ensure we have enough samples for calibration
+        oracle_coverage = 1.0 if args.n_samples < 10 else 0.5
         run_command(
             f"python pipeline_steps/prepare_cje_data.py "
             f"--responses-dir {test_dir}/responses "
             f"--logprobs-dir {test_dir}/logprobs "
             f"--output {test_dir}/cje_dataset.jsonl "
-            f"--oracle-coverage 0.5"
+            f"--oracle-coverage {oracle_coverage}"
         )
         verify_cje_dataset(test_dir / "cje_dataset.jsonl", n_samples=args.n_samples)
 
@@ -270,9 +271,14 @@ def main() -> None:
             results_data = json.load(f)
             print("\n📊 CJE Results Summary:")
             print(f"  Best policy: {results_data['best_policy']}")
-            print(
-                f"  Effective sample size: {results_data['weight_diagnostics']['effective_sample_size']:.0f}"
-            )
+            if "best_policy" in results_data.get("weight_diagnostics", {}):
+                ess = results_data["weight_diagnostics"]["best_policy"].get(
+                    "effective_sample_size", "N/A"
+                )
+                if ess != "N/A":
+                    print(f"  Effective sample size: {ess:.1f}")
+                else:
+                    print("  Effective sample size: N/A")
             for policy, stats in results_data["estimation"]["policies"].items():
                 print(
                     f"  {policy}: {stats['estimate']:.3f} ± {stats['standard_error']:.3f}"

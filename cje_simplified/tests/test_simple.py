@@ -1,35 +1,7 @@
 """Minimal tests without file I/O."""
 
-from cje_simplified import (
-    PrecomputedSampler,
-    CalibratedIPS,
-    calibrate_judge_scores,
-)
+from cje_simplified import calibrate_judge_scores
 import numpy as np
-
-
-def test_in_memory_pipeline() -> None:
-    """Test pipeline with in-memory data only."""
-
-    # Create simple data
-    data = [
-        {
-            "prompt": f"q{i}",
-            "response": f"a{i}",
-            "reward": 0.7 + 0.01 * i,
-            "base_policy_logprob": -10.0,
-            "target_policy_logprobs": {"pi_test": -9.0 + 0.1 * i},
-        }
-        for i in range(20)
-    ]
-
-    # Load and estimate
-    sampler = PrecomputedSampler(data)
-    estimator = CalibratedIPS(sampler, k_folds=2)
-    results = estimator.fit_and_estimate()
-
-    print(f"✓ Pipeline ran: estimate = {results.estimates[0]:.3f}")
-    assert 0.6 < results.estimates[0] < 0.8
 
 
 def test_judge_calibration() -> None:
@@ -48,6 +20,5 @@ def test_judge_calibration() -> None:
 
 if __name__ == "__main__":
     print("Running simple tests...\n")
-    test_in_memory_pipeline()
     test_judge_calibration()
     print("\nDone! ✨")

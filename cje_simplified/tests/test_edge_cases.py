@@ -20,6 +20,12 @@ def test_missing_values() -> None:
     ]
 
     sampler = PrecomputedSampler(data)
+    # n_samples returns total (for backwards compatibility), n_valid_samples returns filtered
+    assert sampler.n_samples == 10  # Total samples in dataset
+    assert sampler.n_valid_samples == 5  # Valid samples after filtering
+    print(
+        f"  ✓ Correctly filtered: {sampler.n_samples} total, {sampler.n_valid_samples} valid"
+    )
 
 
 def test_extreme_weights() -> None:
@@ -27,6 +33,7 @@ def test_extreme_weights() -> None:
     print("\nTesting extreme weights...")
 
     # Create data with very different log probs (extreme weights)
+    # log prob diff of 45 -> weight ratio of exp(45) ≈ 3.5e19!
     data = [
         {
             "prompt": f"q{i}",
@@ -39,6 +46,13 @@ def test_extreme_weights() -> None:
     ]
 
     sampler = PrecomputedSampler(data)
+    estimator = CalibratedIPS(sampler, k_folds=2)
+    results = estimator.fit_and_estimate()
+
+    # With such extreme weights, estimate should still be computed
+    assert results.estimates[0] is not None
+    # Calibration should help stabilize these extreme weights
+    print(f"  ✓ Handled extreme weights: estimate = {results.estimates[0]:.3f}")
 
 
 def test_all_missing() -> None:
@@ -68,9 +82,35 @@ def test_all_missing() -> None:
     print(f"  ✓ Handled partial missing data: estimate = {results.estimates[0]:.3f}")
 
 
+def test_all_invalid() -> None:
+    """Test when ALL samples have missing values."""
+    print("\nTesting all invalid samples...")
+
+    # Create data where ALL samples have missing logprobs
+    data = [
+        {
+            "prompt": f"q{i}",
+            "response": f"a{i}",
+            "reward": 0.7,
+            "base_policy_logprob": None,  # All missing
+            "target_policy_logprobs": {"pi_test": -9.0},
+        }
+        for i in range(5)
+    ]
+
+    try:
+        sampler = PrecomputedSampler(data)
+        print(f"  ✗ Should have raised ValueError but got {sampler.n_samples} samples")
+        assert False, "Should have raised ValueError"
+    except ValueError as e:
+        assert "No valid records after filtering" in str(e)
+        print(f"  ✓ Correctly raised ValueError for all invalid samples")
+
+
 if __name__ == "__main__":
     print("Testing edge cases...")
     test_missing_values()
     test_extreme_weights()
     test_all_missing()
+    test_all_invalid()
     print("\nAll edge case tests passed! ✨")

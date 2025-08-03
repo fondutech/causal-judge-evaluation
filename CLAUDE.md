@@ -238,17 +238,17 @@ Expected JSONL format:
 
 7. **Experiment Pipeline Data Flow**
    - Response files are modified in place to add evaluation scores
-   - `prepare_cje_data.py` reads from both response and logprob files
+   - `prepare_arena_data.py` reads from both response and logprob files
    - Judge/oracle scores stored in `metadata` field of response files
    - Log probabilities computed for BASE responses under all policies
    - Uses median of 3 logprob samples to handle API non-determinism
    - Final dataset combines everything for CJE analysis
 
 8. **Pre-computed Rewards in Arena Experiment**
-   - `prepare_cje_data.py` supports `--oracle-coverage` parameter (0.0 to 1.0)
+   - `prepare_arena_data.py` supports `--oracle-coverage` parameter (0.0 to 1.0)
    - When 1.0: Uses oracle labels directly as rewards
    - When < 1.0: Calibrates judge scores using random subset of oracle labels
-   - `run_cje_analysis.py` checks for pre-computed rewards first
+   - `analyze_dataset.py` checks for pre-computed rewards first
    - Base policy results included in output (marked as "observed" vs "counterfactual")
    - Enables ablation studies on oracle coverage without separate scripts
 
@@ -259,15 +259,15 @@ Expected JSONL format:
    - Ensures consistent, high-quality English prompts for evaluation
 
 10. **Ablation Study Framework**
-   - `prepare_ablation_data.py` creates datasets with varying oracle coverage (25%, 50%, 100%)
-   - `run_oracle_ablation.py` orchestrates experiments across estimators and datasets
-   - `run_cje_analysis.py` extended with `--estimator` flag (calibrated-ips, raw-ips)
+   - `create_oracle_coverage_variants.py` creates datasets with varying oracle coverage (25%, 50%, 100%)
+   - `analyze_oracle_coverage.py` orchestrates experiments across estimators and datasets
+   - `analyze_dataset.py` extended with `--estimator` flag (calibrated-ips, raw-ips)
    - Supports systematic comparison of estimation methods
    - Key finding: CalibratedIPS reduces variance by ~9x for extreme weight distributions
 
 11. **Multiple Estimator Support**
    - Added `RawIPS` estimator for standard importance sampling
-   - Extended `run_cje_analysis.py` to support estimator selection
+   - Extended `analyze_dataset.py` to support estimator selection
    - All estimators inherit from `BaseCJEEstimator` for consistency
    - Easy to add new estimators (DirectMethod, DoublyRobust planned)
 
@@ -357,10 +357,10 @@ calibrated_dataset, stats = calibrate_dataset(dataset, judge_field="judge_score"
 Enable debug logging in multiple ways:
 ```bash
 # Option 1: Command line flag
-poetry run python run_cje_analysis.py --data data.jsonl --debug
+poetry run python analyze_dataset.py --data data.jsonl --debug
 
 # Option 2: Environment variable
-LOG_LEVEL=DEBUG poetry run python run_cje_analysis.py --data data.jsonl
+LOG_LEVEL=DEBUG poetry run python analyze_dataset.py --data data.jsonl
 
 # Option 3: In Python
 import logging

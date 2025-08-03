@@ -44,19 +44,40 @@ def cross_fit_isotonic(
 # 1-a.  Mean-1 PAV projection on *sorted* weights
 # ---------------------------------------------------------------------
 def _pav_mean1_projection(w_sorted: np.ndarray) -> np.ndarray:
+    """
+    Pool-Adjacent-Violators projection to monotone non-decreasing vector with mean 1.
+
+    CRITICAL: Input MUST be sorted by its own values (ascending order).
+    Do NOT pass data sorted by external criteria (e.g., by different weights).
+
+    Parameters
+    ----------
+    w_sorted : np.ndarray
+        Weights sorted in ascending order BY THEIR OWN VALUES.
+
+    Returns
+    -------
+    np.ndarray
+        Monotone non-decreasing vector with exact mean 1.0 and reduced variance.
+    """
     n = len(w_sorted)
     if n == 1:
         return np.array([1.0])
 
-    w_norm = w_sorted / w_sorted.mean()                       # mean = 1
-    z = np.cumsum(w_norm - 1.0)                               # excess mass
-    y = isotonic_regression(z, increasing=False)              # PAV
+    # Verify input is actually sorted (with small tolerance for numerical error)
+    if not np.all(np.diff(w_sorted) >= -1e-12):
+        raise ValueError(
+            "_pav_mean1_projection requires input sorted in ascending order. "
+            "The input appears to be unsorted or sorted by external criteria."
+        )
+
+    w_norm = w_sorted / w_sorted.mean()  # mean = 1
+    z = np.cumsum(w_norm - 1.0)  # excess mass
+    y = isotonic_regression(z, increasing=False)  # PAV
     v = np.diff(np.concatenate(([0.0], y))) + 1.0
     v = np.clip(v, 0.0, None)
-    v *= n / v.sum()                                          # exact mean 1
+    v *= n / v.sum()  # exact mean 1
     return v
-
-
 
 
 # ---------------------------------------------------------------------
@@ -71,9 +92,9 @@ def calibrate_to_target_mean(
     """
     Monotone, mean-preserving calibration for importance weights.
 
-    • Uses mean-1 PAV projection cross-fitted across folds.  
+    • Uses mean-1 PAV projection cross-fitted across folds.
     • Runs a second mean-1 PAV projection on the merged vector to heal
-      fold boundaries (weights-only ⇒ no leakage).  
+      fold boundaries (weights-only ⇒ no leakage).
     • **Safeguard**: if the projection would *increase* variance, fall
       back to a simple mean-preserving rescale of the raw weights.
 
@@ -87,7 +108,7 @@ def calibrate_to_target_mean(
     n = len(weights)
     if n < 4:
         return weights * (target_mean / weights.mean())
-    
+
     logger.debug(
         f"calibrate_to_target_mean: n_samples={n}, "
         f"raw_mean={weights.mean():.3f}, raw_std={weights.std():.3f}, "
@@ -107,64 +128,49 @@ def calibrate_to_target_mean(
 
         # Use IsotonicRegression for monotone-safe weight → plateau mapping
         iso_map = IsotonicRegression(increasing=True, out_of_bounds="clip")
-        iso_map.fit(w_train[order], v_train)          # learn weight → plateau
-        prelim[test] = iso_map.predict(weights[test]) # monotone by construction
+        iso_map.fit(w_train[order], v_train)  # learn weight → plateau
+        prelim[test] = iso_map.predict(weights[test])  # monotone by construction
 
-    # ---------- global projection for fold reconciliation ----------
+    # ---------- global monotone fix-up (weights-only, no leakage) ----------
+    # This step ensures strict monotonicity across fold boundaries
     order_all = np.argsort(weights)
-    prelim_sorted = prelim[order_all]
-    final_sorted = _pav_mean1_projection(prelim_sorted)
+    iso = IsotonicRegression(increasing=True, out_of_bounds="clip")
+    iso.fit(np.arange(n), prelim[order_all])  # x = indices, y = preliminary values
+    final_sorted = iso.predict(np.arange(n))
     calibrated = np.empty_like(prelim)
     calibrated[order_all] = final_sorted
 
     # ---------- rescale to target_mean ----------
     calibrated *= target_mean / calibrated.mean()
 
-    # ---------- variance safeguard ----------
+    # ---------- log calibration statistics ----------
+    variance_ratio = calibrated.var() / weights.var() if weights.var() > 0 else 1.0
     logger.debug(
         f"After calibration: mean={calibrated.mean():.6f}, var={calibrated.var():.6f}, "
-        f"variance_ratio={calibrated.var() / weights.var():.3f}"
+        f"variance_ratio={variance_ratio:.3f}"
     )
-    
-    if calibrated.var() > weights.var():
-        # Fall back to vanilla rescale (identity in shape, unbiased)
-        logger.info(
-            f"Variance safeguard triggered: calibrated_var={calibrated.var():.6f} > "
-            f"raw_var={weights.var():.6f}, falling back to vanilla rescale"
-        )
-        calibrated = weights * (target_mean / weights.mean())
 
     # ---------- final checks ----------
-    assert calibrated.min() >= 0.0
-    assert abs(calibrated.mean() - target_mean) < 1e-12
-    
-    # Log monotonicity check for debugging but don't fail on numerical issues
-    order = np.argsort(weights)
-    w_sort = weights[order]
-    c_sort = calibrated[order]
-    
-    eps = 1e-8  # anything below this is 'numerically equal'
-    strict = np.diff(w_sort) > eps  # compare only meaningful increases
-    if strict.any():
-        diffs = np.diff(c_sort)[strict]
-        violations = diffs < -1e-8
-        if np.any(violations):
-            max_violation = -np.min(diffs[violations])
-            n_violations = violations.sum()
-            logger.debug(
-                f"Monotonicity check: {n_violations} small violations detected "
-                f"(max={max_violation:.2e}). This is expected with extreme weight distributions."
-            )
-            # Only warn if violations are large enough to matter
-            if max_violation > 1e-4:
-                logger.warning(
-                    f"Large monotonicity violation detected: {max_violation:.2e}. "
-                    f"This may indicate numerical issues."
-                )
-        else:
-            logger.debug(
-                f"Monotonicity check passed: {strict.sum()} strict pairs (ε={eps})"
-            )
+    # Assertions (disable in prod if desired)
+    assert calibrated.min() >= 0.0, f"Negative calibrated weight: {calibrated.min()}"
+    assert (
+        abs(calibrated.mean() - target_mean) < 1e-12
+    ), f"Mean not preserved: {calibrated.mean()} != {target_mean}"
+    # Note: Global isotonic fix-up may slightly increase variance to ensure monotonicity
+    # For very small datasets with nearly uniform weights, skip variance check
+    if weights.var() > 1e-10:
+        assert (
+            calibrated.var() <= weights.var() + 1e-8
+        ), f"Variance increased too much: {calibrated.var():.10f} > {weights.var():.10f} + 1e-8"
+
+    # Check monotonicity
+    sorted_idx = np.argsort(weights)
+    sorted_cal = calibrated[sorted_idx]
+    diffs = np.diff(sorted_cal)
+    min_diff = np.min(diffs) if len(diffs) > 0 else 0
+    assert (
+        min_diff >= -1e-12
+    ), f"Monotonicity violated: min_diff = {min_diff:.2e} < -1e-12"
 
     return calibrated
 
@@ -180,7 +186,7 @@ def compute_calibration_diagnostics(
 ) -> dict[str, float]:
     residuals = predictions - actuals
     return dict(
-        rmse=float(np.sqrt(np.mean(residuals ** 2))),
+        rmse=float(np.sqrt(np.mean(residuals**2))),
         mae=float(np.mean(np.abs(residuals))),
         coverage=float(np.mean(np.abs(residuals) <= coverage_threshold)),
         correlation=float(np.corrcoef(predictions, actuals)[0, 1]),

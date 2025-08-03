@@ -29,10 +29,10 @@ arena_10k_simplified/
 ├── pipeline_steps/              # Data preparation modules
 │   ├── prepare_arena_data.py    # Extract prompts from ChatBot Arena
 │   ├── generate_responses.py    # Generate responses for each policy
-│   ├── add_judge_scores.py      # Add lightweight evaluations
+│   ├── add_evaluations.py       # Add lightweight evaluations
 │   ├── add_oracle_labels.py     # Add high-quality evaluations
 │   ├── compute_logprobs.py      # Compute log probabilities
-│   └── prepare_cje_data.py      # Combine into CJE format
+│   └── prepare_arena_data.py    # Combine into CJE format
 │
 ├── test_pipeline.py             # Test pipeline (50 samples)
 ├── generate_arena_data.py       # Production pipeline (1000+ samples)
@@ -105,7 +105,7 @@ Policies (defined in `policy_config.py`):
 
 ### 3. Add Judge Scores
 ```bash
-python pipeline_steps/add_judge_scores.py \
+python pipeline_steps/add_evaluations.py \
     --input data/responses/base_responses.jsonl
 ```
 - Uses OpenAI API with structured outputs
@@ -133,7 +133,7 @@ python pipeline_steps/compute_logprobs.py \
 
 ### 6. Prepare CJE Dataset
 ```bash
-python pipeline_steps/prepare_cje_data.py \
+python pipeline_steps/prepare_arena_data.py \
     --responses-dir data/responses \
     --logprobs-dir data/logprobs \
     --output data/cje_dataset.jsonl \
