@@ -109,6 +109,16 @@ def calibrate_to_target_mean(
     if n < 4:
         return weights * (target_mean / weights.mean())
 
+    # If weights are essentially uniform (e.g., all 1.0), just rescale to target mean
+    # This happens when base and target policies are identical
+    weight_range = weights.max() - weights.min()
+    if weight_range < 1e-6 or weights.var() < 1e-6:
+        logger.debug(
+            f"Weights are essentially uniform (range={weight_range:.2e}, var={weights.var():.2e}). "
+            f"Skipping calibration, just rescaling to target_mean={target_mean}"
+        )
+        return np.full_like(weights, target_mean)
+
     logger.debug(
         f"calibrate_to_target_mean: n_samples={n}, "
         f"raw_mean={weights.mean():.3f}, raw_std={weights.std():.3f}, "
@@ -158,7 +168,7 @@ def calibrate_to_target_mean(
     ), f"Mean not preserved: {calibrated.mean()} != {target_mean}"
     # Note: Global isotonic fix-up may slightly increase variance to ensure monotonicity
     # For very small datasets with nearly uniform weights, skip variance check
-    if weights.var() > 1e-10:
+    if weights.var() > 1e-6:
         assert (
             calibrated.var() <= weights.var() + 1e-8
         ), f"Variance increased too much: {calibrated.var():.10f} > {weights.var():.10f} + 1e-8"
