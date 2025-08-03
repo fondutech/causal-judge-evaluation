@@ -24,6 +24,10 @@ from cje_simplified import PrecomputedSampler, CalibratedIPS
 # Load precomputed data
 sampler = PrecomputedSampler.from_jsonl("data.jsonl")
 
+# Check data quality
+print(f"Total samples: {sampler.n_samples}")
+print(f"Valid samples (with all log probs): {sampler.n_valid_samples}")
+
 # Run calibrated IPS estimation  
 estimator = CalibratedIPS(sampler)
 results = estimator.fit_and_estimate()
@@ -76,6 +80,11 @@ Key requirements:
 - `base_policy_logprob`: Log probability under base/behavior policy
 - `target_policy_logprobs`: Log probabilities under each target policy
 - Failed computations stored as `null` (no fallback values)
+
+**Important**: Samples with missing log probabilities (`null` values) are automatically filtered during analysis. The system will warn you if many samples are filtered:
+- Warning when >10% of samples are filtered
+- Error logged when >50% of samples are filtered
+- Use `sampler.n_valid_samples` to check how many samples will be used
 
 ## Computing Log Probabilities
 

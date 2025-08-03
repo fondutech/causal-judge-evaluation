@@ -226,7 +226,19 @@ Expected JSONL format:
    - DatasetLoader automatically puts non-core fields into metadata
    - Enables fields like `judge_score` and `oracle_label` to be accessed uniformly
 
-6. **Unified Evaluation System**
+6. **Improved Data Filtering Transparency**
+   - `PrecomputedSampler` now warns when samples are filtered due to missing log probs
+   - Added `n_valid_samples` property to distinguish from `n_samples` (total)
+   - Comprehensive warnings at different thresholds (>10%, >50% filtered)
+   - Clear error messages when all samples are invalid
+
+7. **Fixed Isotonic Regression Monotonicity**
+   - Corrected misuse of `_pav_mean1_projection` in global monotone fix-up
+   - Now properly uses `IsotonicRegression` for reconciling fold boundaries
+   - Added safety check to prevent future misuse of PAV projection
+   - Guarantees monotonicity even for extreme weight distributions (e.g., Pareto)
+
+8. **Unified Evaluation System**
    - Single `FireworksEvaluator` class for both judges and oracles
    - Judges and oracles differ only in model choice
    - Judge model: `gpt-4.1-nano-2025-04-14` (OpenAI's lightweight model for cost-effective evaluation)
@@ -236,23 +248,23 @@ Expected JSONL format:
    - Minimal scripts: `add_judge_scores.py` and `add_oracle_labels.py`
    - Oracle labels all responses for validation purposes
 
-7. **Experiment Pipeline Data Flow**
+9. **Experiment Pipeline Data Flow**
    - Response files are modified in place to add evaluation scores
-   - `prepare_arena_data.py` reads from both response and logprob files
+   - `prepare_cje_data.py` reads from both response and logprob files
    - Judge/oracle scores stored in `metadata` field of response files
    - Log probabilities computed for BASE responses under all policies
    - Uses median of 3 logprob samples to handle API non-determinism
    - Final dataset combines everything for CJE analysis
 
-8. **Pre-computed Rewards in Arena Experiment**
-   - `prepare_arena_data.py` supports `--oracle-coverage` parameter (0.0 to 1.0)
+10. **Pre-computed Rewards in Arena Experiment**
+   - `prepare_cje_data.py` supports `--oracle-coverage` parameter (0.0 to 1.0)
    - When 1.0: Uses oracle labels directly as rewards
    - When < 1.0: Calibrates judge scores using random subset of oracle labels
    - `analyze_dataset.py` checks for pre-computed rewards first
    - Base policy results included in output (marked as "observed" vs "counterfactual")
    - Enables ablation studies on oracle coverage without separate scripts
 
-9. **Language Filtering in Arena Data**
+11. **Language Filtering in Arena Data**
    - `prepare_arena_data.py` now uses the `language` field from ChatBot Arena dataset
    - Filters for English conversations only: ["English", "english", "en", "EN"]
    - Replaced character-based detection with direct field checking
