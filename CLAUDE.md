@@ -96,7 +96,7 @@ Note: `reward` field is added during analysis, not data generation.
 3. **Explicit Failures**: Use `None` for failures, never magic values
 4. **Metadata Collection**: Non-core fields go in metadata automatically
 5. **Transparent Filtering**: Use `sampler.n_valid_samples` to see samples after filtering
-6. **Isotonic Calibration**: Handles uniform weights and edge cases automatically
+6. **Weight Calibration**: Variance can increase when uniform weights need structure (this is correct)
 
 ## ⚠️ Common Pitfalls
 
