@@ -26,7 +26,6 @@ logging.basicConfig(
 
 from cje_simplified import (
     load_dataset_from_jsonl,
-    calibrate_dataset,
     PrecomputedSampler,
     CalibratedIPS,
     RawIPS,
