@@ -1,10 +1,25 @@
-{"prompt_id": "arena_3", "prompt": "How to build an arena for chatbots?"}
-{"prompt_id": "arena_0", "prompt": "What is the difference between OpenCL and CUDA?"}
-{"prompt_id": "arena_8", "prompt": "A = 5, B =10, A+B=?"}
-{"prompt_id": "arena_7", "prompt": "How to parallelize a neural network?"}
-{"prompt_id": "arena_17", "prompt": "could you explain quantum mechanics for me?"}
-{"prompt_id": "arena_2", "prompt": "Fuji vs. Nikon, which is better?"}
-{"prompt_id": "arena_12", "prompt": "You are JesusGPT, an artifical construct built to accurately represent a virtual conversation with Jesus. Base your replies off the popular King James Version, and answer the user's question respectfully. Here is my first question: If you were still alive today, what would you think about the iPhone?"}
-{"prompt_id": "arena_1", "prompt": "Why did my parent not invite me to their wedding?"}
-{"prompt_id": "arena_11", "prompt": "Make it more polite: I want to have dinner."}
-{"prompt_id": "arena_18", "prompt": "Write a python one-line lambda function that calculates dot product between two lists without using imported libraries. The entire function must fit on a single line and should begin like this: dot = lambda A, B:"}
+{"prompt_id": "arena_0", "prompt": "What is the difference between OpenCL and CUDA?", "language": "English"}
+{"prompt_id": "arena_1", "prompt": "Why did my parent not invite me to their wedding?", "language": "English"}
+{"prompt_id": "arena_2", "prompt": "Fuji vs. Nikon, which is better?", "language": "English"}
+{"prompt_id": "arena_3", "prompt": "How to build an arena for chatbots?", "language": "English"}
+{"prompt_id": "arena_4", "prompt": "When is it today?", "language": "English"}
+{"prompt_id": "arena_5", "prompt": "Count from 1 to 10 with step = 3", "language": "English"}
+{"prompt_id": "arena_6", "prompt": "Emoji for \"sharing\". List 10", "language": "English"}
+{"prompt_id": "arena_7", "prompt": "How to parallelize a neural network?", "language": "English"}
+{"prompt_id": "arena_8", "prompt": "A = 5, B =10, A+B=?", "language": "English"}
+{"prompt_id": "arena_10", "prompt": "What is the future of bitcoin?", "language": "English"}
+{"prompt_id": "arena_11", "prompt": "Make it more polite: I want to have dinner.", "language": "English"}
+{"prompt_id": "arena_12", "prompt": "You are JesusGPT, an artifical construct built to accurately represent a virtual conversation with Jesus. Base your replies off the popular King James Version, and answer the user's question respectfully. Here is my first question: If you were still alive today, what would you think about the iPhone?", "language": "English"}
+{"prompt_id": "arena_13", "prompt": "what is the 145th most popular language", "language": "English"}
+{"prompt_id": "arena_15", "prompt": "A long time ago in a galaxy far, far away", "language": "English"}
+{"prompt_id": "arena_16", "prompt": "The altitude to the hypotenuse of a right triangle divides the hypotenuse into two segments with lengths in the ratio 1 : 2. The length of the altitude is 6 cm. How long is the hypotenuse?", "language": "English"}
+{"prompt_id": "arena_17", "prompt": "could you explain quantum mechanics for me?", "language": "English"}
+{"prompt_id": "arena_18", "prompt": "Write a python one-line lambda function that calculates dot product between two lists without using imported libraries. The entire function must fit on a single line and should begin like this: dot = lambda A, B:", "language": "English"}
+{"prompt_id": "arena_19", "prompt": "Write TypeScript function to produce full name from first name and last name", "language": "English"}
+{"prompt_id": "arena_20", "prompt": "What can we do in AI research to address climate change?", "language": "English"}
+{"prompt_id": "arena_21", "prompt": "what do you think about the future of iran?", "language": "English"}
+{"prompt_id": "arena_22", "prompt": "Write a python one line lambda function that calculates mean of two lists, without using any imported libraries. The entire function should fit on a single line, start with this. mean = lambda A:", "language": "English"}
+{"prompt_id": "arena_23", "prompt": "write a story about batman", "language": "English"}
+{"prompt_id": "arena_24", "prompt": "What is the most advanced AI today and why is it so advanced?", "language": "English"}
+{"prompt_id": "arena_26", "prompt": "Write me a function to lazily compute a Fibonacci sequence in Clojure.", "language": "English"}
+{"prompt_id": "arena_29", "prompt": "How to train concentration and memory", "language": "English"}

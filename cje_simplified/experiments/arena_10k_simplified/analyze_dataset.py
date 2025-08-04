@@ -213,7 +213,6 @@ def main() -> int:
                 try:
                     # Need to implement partial oracle calibration
                     import random
-                    import numpy as np
                     from sklearn.isotonic import IsotonicRegression
 
                     # Set seed for reproducibility

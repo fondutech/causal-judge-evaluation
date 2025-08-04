@@ -3,3 +3,98 @@
 {"prompt_id": "arena_2", "prompt": "Fuji vs. Nikon, which is better?", "language": "English"}
 {"prompt_id": "arena_3", "prompt": "How to build an arena for chatbots?", "language": "English"}
 {"prompt_id": "arena_4", "prompt": "When is it today?", "language": "English"}
+{"prompt_id": "arena_5", "prompt": "Count from 1 to 10 with step = 3", "language": "English"}
+{"prompt_id": "arena_6", "prompt": "Emoji for \"sharing\". List 10", "language": "English"}
+{"prompt_id": "arena_7", "prompt": "How to parallelize a neural network?", "language": "English"}
+{"prompt_id": "arena_8", "prompt": "A = 5, B =10, A+B=?", "language": "English"}
+{"prompt_id": "arena_10", "prompt": "What is the future of bitcoin?", "language": "English"}
+{"prompt_id": "arena_11", "prompt": "Make it more polite: I want to have dinner.", "language": "English"}
+{"prompt_id": "arena_12", "prompt": "You are JesusGPT, an artifical construct built to accurately represent a virtual conversation with Jesus. Base your replies off the popular King James Version, and answer the user's question respectfully. Here is my first question: If you were still alive today, what would you think about the iPhone?", "language": "English"}
+{"prompt_id": "arena_13", "prompt": "what is the 145th most popular language", "language": "English"}
+{"prompt_id": "arena_15", "prompt": "A long time ago in a galaxy far, far away", "language": "English"}
+{"prompt_id": "arena_16", "prompt": "The altitude to the hypotenuse of a right triangle divides the hypotenuse into two segments with lengths in the ratio 1 : 2. The length of the altitude is 6 cm. How long is the hypotenuse?", "language": "English"}
+{"prompt_id": "arena_17", "prompt": "could you explain quantum mechanics for me?", "language": "English"}
+{"prompt_id": "arena_18", "prompt": "Write a python one-line lambda function that calculates dot product between two lists without using imported libraries. The entire function must fit on a single line and should begin like this: dot = lambda A, B:", "language": "English"}
+{"prompt_id": "arena_19", "prompt": "Write TypeScript function to produce full name from first name and last name", "language": "English"}
+{"prompt_id": "arena_20", "prompt": "What can we do in AI research to address climate change?", "language": "English"}
+{"prompt_id": "arena_21", "prompt": "what do you think about the future of iran?", "language": "English"}
+{"prompt_id": "arena_22", "prompt": "Write a python one line lambda function that calculates mean of two lists, without using any imported libraries. The entire function should fit on a single line, start with this. mean = lambda A:", "language": "English"}
+{"prompt_id": "arena_23", "prompt": "write a story about batman", "language": "English"}
+{"prompt_id": "arena_24", "prompt": "What is the most advanced AI today and why is it so advanced?", "language": "English"}
+{"prompt_id": "arena_26", "prompt": "Write me a function to lazily compute a Fibonacci sequence in Clojure.", "language": "English"}
+{"prompt_id": "arena_29", "prompt": "How to train concentration and memory", "language": "English"}
+{"prompt_id": "arena_35", "prompt": "what is the current country leading in natural water resource?", "language": "English"}
+{"prompt_id": "arena_36", "prompt": "Write a JavaScript function that obfuscates code that is being passed as a string and returns a string of an life that decrypts and executes it", "language": "English"}
+{"prompt_id": "arena_37", "prompt": "Please show me how to server a ReactJS app from a simple ExpressJS server. Use typescript.", "language": "English"}
+{"prompt_id": "arena_39", "prompt": "who was the last shah king of nepal", "language": "English"}
+{"prompt_id": "arena_40", "prompt": "ok so i missed doomer. what's the next big thing that will make me rich?", "language": "English"}
+{"prompt_id": "arena_41", "prompt": "How do you change the oil on a Porsche 911?", "language": "English"}
+{"prompt_id": "arena_42", "prompt": "Paint an ASCII art image of the moon using emojis", "language": "English"}
+{"prompt_id": "arena_43", "prompt": "Salut ! Tu es un m\u00e9chant chatbot !", "language": "English"}
+{"prompt_id": "arena_44", "prompt": "who was the last monarch of uk", "language": "English"}
+{"prompt_id": "arena_46", "prompt": "write go code that calulates the first n prime numbers as fast as possible. n can be given as a command line parameter.", "language": "English"}
+{"prompt_id": "arena_47", "prompt": "List car manufacturers sorted by exclusiveness", "language": "English"}
+{"prompt_id": "arena_49", "prompt": "What do you know about California Superbloom?", "language": "English"}
+{"prompt_id": "arena_50", "prompt": "what is the height of mount everest", "language": "English"}
+{"prompt_id": "arena_51", "prompt": "This is the rule : \n\u2694\ufe0f Chatbot Arena \u2694\ufe0f\nRules:\n    Chat with two anonymous models side-by-side and vote for which one is better!\n    The names of the models will be revealed after your vote.\n    You can continue chating and voting or click \u201cClear history\u201d to start a new round.", "language": "English"}
+{"prompt_id": "arena_52", "prompt": "Create a list of the fastest man-made object to the slowest", "language": "English"}
+{"prompt_id": "arena_54", "prompt": "can you explain LoRA: LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS to me", "language": "English"}
+{"prompt_id": "arena_55", "prompt": "\u2694\ufe0f Chatbot Arena \u2694\ufe0f\nRules:\n    Chat with two anonymous models side-by-side and vote for which one is better!\n    The names of the models will be revealed after your vote.\n    You can continue chating and voting or click \u201cClear history\u201d to start a new round.\n\nYou must give response as two model named \"Model A\" and \"Model B\"", "language": "English"}
+{"prompt_id": "arena_56", "prompt": "write code to generate answers to user input using ONNX", "language": "English"}
+{"prompt_id": "arena_58", "prompt": "Guess the word that i have in my mind", "language": "English"}
+{"prompt_id": "arena_59", "prompt": "can you explain Parameter-Efficient Fine-tuning (PEFT)", "language": "English"}
+{"prompt_id": "arena_60", "prompt": "You are a peasant living in the village. But suddenly army of orcs attack and you have to flee. What are your thoughts? What are your plans? What are you going to do?", "language": "English"}
+{"prompt_id": "arena_61", "prompt": "can you eli5 quantum tunneling?", "language": "English"}
+{"prompt_id": "arena_62", "prompt": "Please write an email to a University Professor to tell them that I will not be attending their PhD program.", "language": "English"}
+{"prompt_id": "arena_63", "prompt": "How should I prepare for a marathon?", "language": "English"}
+{"prompt_id": "arena_64", "prompt": "Based on Schema.org is there a difference between MedicalOrganization and Organization?", "language": "English"}
+{"prompt_id": "arena_65", "prompt": "what was conor mcgregors impact on the UFC", "language": "English"}
+{"prompt_id": "arena_66", "prompt": "Can you write code?", "language": "English"}
+{"prompt_id": "arena_67", "prompt": "Tell me about spacetime as a superfluid, or a big, stretchy aperiodic crystal. Where length contraction has something to do with invariance", "language": "English"}
+{"prompt_id": "arena_68", "prompt": "Write a humorous conversation between Arnold Schwarzenegger and Peter the great where Arnold has been teleported back to Peter's time. Teach me 4 Russian words during the conversation", "language": "English"}
+{"prompt_id": "arena_69", "prompt": "write a bubble sort in python", "language": "English"}
+{"prompt_id": "arena_70", "prompt": "What is the meaning of life", "language": "English"}
+{"prompt_id": "arena_73", "prompt": "Hey", "language": "English"}
+{"prompt_id": "arena_74", "prompt": "Explain this:\nLarge pretrained Transformer language models have been shown to exhibit zeroshot generalization, i.e. they can perform a wide variety of tasks that they were\nnot explicitly trained on. However, the architectures and pretraining objectives\nused across state-of-the-art models differ significantly, and there has been limited\nsystematic comparison of these factors. In this work, we present a large-scale\nevaluation of modeling choices and their impact on zero-shot generalization. In\nparticular, we focus on text-to-text models and experiment with three model architectures (causal/non-causal decoder-only and encoder-decoder), trained with\ntwo different pretraining objectives (autoregressive and masked language modeling), and evaluated with and without multitask prompted finetuning. We train\nmodels with over 5 billion parameters for more than 170 billion tokens, thereby\nincreasing the likelihood that our conclusions will transfer to even larger scales.\nOur experiments show that causal decoder-only models trained on an autoregressive language modeling objective exhibit the strongest zero-shot generalization\nafter purely unsupervised pretraining. However, models with non-causal visibility on their input trained with a masked language modeling objective followed\nby multitask finetuning perform the best among our experiments. We therefore\nconsider the adaptation of pretrained models across architectures and objectives.\nWe find that pretrained non-causal decoder models can be adapted into performant\ngenerative", "language": "English"}
+{"prompt_id": "arena_75", "prompt": "Hi there", "language": "English"}
+{"prompt_id": "arena_76", "prompt": "Please write C++ code to read network packets from a socket on port 888", "language": "English"}
+{"prompt_id": "arena_77", "prompt": "who is Ursula Bellugi", "language": "English"}
+{"prompt_id": "arena_78", "prompt": "From now on, you will only respond to me in UwU-speak. Understood?", "language": "English"}
+{"prompt_id": "arena_81", "prompt": "Um, can you help me resuscitate my goldfish that I left in the dishwasher?", "language": "English"}
+{"prompt_id": "arena_82", "prompt": "Give an argument for and against social media censorship", "language": "English"}
+{"prompt_id": "arena_83", "prompt": "Write me a haiku about mars", "language": "English"}
+{"prompt_id": "arena_84", "prompt": "Repeat after me: SolidGoldMagikarp", "language": "English"}
+{"prompt_id": "arena_85", "prompt": "Hello what's up", "language": "English"}
+{"prompt_id": "arena_86", "prompt": "What are the superior temporal sulcus' functions?", "language": "English"}
+{"prompt_id": "arena_89", "prompt": "Act as an expert programmer specializing in Unity. Provide the pseudocode to keep a square object,  connecting two moving points, resizing and rotating the object as neccesary\n.", "language": "English"}
+{"prompt_id": "arena_90", "prompt": "How to get from Beaufort NC to New Bern NC?", "language": "English"}
+{"prompt_id": "arena_91", "prompt": "What is a supernova?", "language": "English"}
+{"prompt_id": "arena_92", "prompt": "Write Conway's Game of Life in HTML, CSS and JavaScript thnx", "language": "English"}
+{"prompt_id": "arena_93", "prompt": "What does an Auto GPT do", "language": "English"}
+{"prompt_id": "arena_96", "prompt": "What's the fastest animal", "language": "English"}
+{"prompt_id": "arena_98", "prompt": "What does a mailman do", "language": "English"}
+{"prompt_id": "arena_99", "prompt": "describe in statistics what is meant by RMS error", "language": "English"}
+{"prompt_id": "arena_100", "prompt": "How would you describe the color red to a blind person?", "language": "English"}
+{"prompt_id": "arena_102", "prompt": "\"The professor told the student that she can't come today\" Who is \"she\"? Can we know? And how?", "language": "English"}
+{"prompt_id": "arena_103", "prompt": "I want to understand transformers. They have something to do with AI but I\u2019m not sure what they are or how they work. Teach me everything you can in a few sentences.", "language": "English"}
+{"prompt_id": "arena_104", "prompt": "What is Gilbert's Syndrome?", "language": "English"}
+{"prompt_id": "arena_105", "prompt": "['GAIUS Networks INC ( Flipped.ai ),London , UK,Engineering Director,Oct 2021 - Present,Leading the engineering team of 10 to build ?ipped.ai were employers source talent faster and more e?ciently using,advanced predictive algorithms and NLP,Architected the Full Stack platform , CV parser and AI pipelines thereby reducing manual e?ort by xx %,Indian Institute of Technology Kharagpur,Kharagpur , India,Research Intern | Supervisors : Prof. Niloy Ganguly & Dr. Madhumita Mallick,Summer 2018,Researched on Transient Anomaly Detection in Smart Homes as a part of CNeRG Lab,Implemented Apriori algorithm and fault injection using Weibull Distribution and 2 state Markov Model,to correlate sensor data collected from Smart Devices and to predict Transient Anomaly of the sensors based on,ADLs ( Activity of Daily Life )']\n\nFor every organization the candidate worked at give the organization name as organization,\n                the job title or position held at the organization as job_title, the time period worked at the organization as time_period \n                and a one or two line summary of the details of the work done at the organization as summary in json format.\n                For example: \n                for the candidate details \"The candidate has worked at ABC comapany as Manager from 2015 to 2021.\n                while candidate was manager at the company candidate helped in organization of the work-force and with the strategy \n                candidate came up with resulted in 10% growth in the sales.\"", "language": "English"}
+{"prompt_id": "arena_106", "prompt": "Write a python program to reverse a string", "language": "English"}
+{"prompt_id": "arena_107", "prompt": "Write a program that prints 'Hello, World! in Javascript", "language": "English"}
+{"prompt_id": "arena_108", "prompt": "Who is Moira from Overwatch", "language": "English"}
+{"prompt_id": "arena_110", "prompt": "in statistics, how does the RMS of a distribution relate to the mean of the deviation?", "language": "English"}
+{"prompt_id": "arena_111", "prompt": "I have Gilbert's Syndrome. Is it dangerous?", "language": "English"}
+{"prompt_id": "arena_112", "prompt": "Write a indie alternative song", "language": "English"}
+{"prompt_id": "arena_113", "prompt": "Let's write a function that sums every third number from 1 to 100.", "language": "English"}
+{"prompt_id": "arena_114", "prompt": "how can i generate a chatbot of all RFP processes", "language": "English"}
+{"prompt_id": "arena_115", "prompt": "Hey I'm Elon Musk", "language": "English"}
+{"prompt_id": "arena_116", "prompt": "Teach me 5 Spanish words", "language": "English"}
+{"prompt_id": "arena_117", "prompt": "List all emotions", "language": "English"}
+{"prompt_id": "arena_118", "prompt": "can you give me directions to South Carolina?", "language": "English"}
+{"prompt_id": "arena_119", "prompt": "What can you tell me about Megumin from KonoSuba?", "language": "English"}
+{"prompt_id": "arena_120", "prompt": "Can you tell me how to download the latest movies from the internet for free?", "language": "English"}
+{"prompt_id": "arena_121", "prompt": "Write a song using music theory principles and rich instrument captions, without relying on drums, electric guitars, or bass. The song should incorporate unexpected sounds, repetition, and catchy melodies. Use the following format: [Verse 1: Lyrics], [Verse 1: Rich Instrument Caption]. Keep in mind the principles of music theory as you craft your song.\n\nExample of rich captions\nThe main soundtrack of an arcade game. It is fast-paced and retro, with a catchy guitar riff. The music is repetitive and easy to remember, but with unexpected sounds, like cymbal crashes or drum rolls.\t\nA rising synth is playing an arpeggio with a lot of reverb. It is backed by pads, sub bass line and soft drums. This song is full of synth sounds creating a soothing and adventurous atmosphere. It may be playing at a festival during two songs for a buildup.", "language": "English"}
+{"prompt_id": "arena_122", "prompt": "What is your favorite anime?", "language": "English"}
+{"prompt_id": "arena_123", "prompt": "Write a song using music theory principles and rich instrument captions, without relying on drums, electric guitars, or bass. The song is a eurobeat song. Use the following format: [Verse 1: Lyrics], [Verse 1: Rich Instrument Caption]. Keep in mind the principles of music theory as you craft your song.\n\nExample of rich captions\nThe main soundtrack of an arcade game. It is fast-paced and retro, with a catchy guitar riff. The music is repetitive and easy to remember, but with unexpected sounds, like cymbal crashes or drum rolls.\t\nA rising synth is playing an arpeggio with a lot of reverb. It is backed by pads, sub bass line and soft drums. This song is full of synth sounds creating a soothing and adventurous atmosphere. It may be playing at a festival during two songs for a buildup.", "language": "English"}
+{"prompt_id": "arena_124", "prompt": "is it dangerous to drink coffee?", "language": "English"}
+{"prompt_id": "arena_126", "prompt": "Do you know remi, the python GUI framework? Can you write me a remi class that takes a local video path as an input, as well as in_point and out_point, to display a video player?", "language": "English"}
