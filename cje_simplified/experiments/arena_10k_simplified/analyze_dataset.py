@@ -66,6 +66,12 @@ def main() -> int:
         help="Use oracle labels directly as rewards (skip calibration)",
     )
     parser.add_argument(
+        "--oracle-coverage",
+        type=float,
+        default=1.0,
+        help="Fraction of oracle labels to use for calibration (0.0-1.0). Default: 1.0",
+    )
+    parser.add_argument(
         "--judge-field",
         default="judge_score",
         help="Field containing judge scores",
@@ -182,22 +188,121 @@ def main() -> int:
             calibrated_dataset = dataset
 
         else:
-            print("\n2. Calibrating judge scores to oracle labels...")
-            # Judge calibration workflow
-            try:
-                calibrated_dataset, cal_result = calibrate_dataset(
-                    dataset,
-                    judge_field=args.judge_field,
-                    oracle_field=args.oracle_field,
-                    k_folds=args.n_folds,
-                )
-                print(f"   ✓ Calibrated using {cal_result.n_oracle} oracle samples")
-                print(f"   ✓ Calibration RMSE: {cal_result.calibration_rmse:.3f}")
-                print(f"   ✓ Coverage (±0.1): {cal_result.coverage_at_01:.1%}")
+            # Decide between direct oracle use or calibration based on coverage
+            if args.oracle_coverage == 1.0:
+                print("\n2. Using oracle labels directly as rewards (100% coverage)...")
+                # Direct oracle workflow - assign oracle labels as rewards
+                oracle_count = 0
+                for sample in dataset.samples:
+                    if args.oracle_field in sample.metadata:
+                        sample.reward = float(sample.metadata[args.oracle_field])
+                        oracle_count += 1
 
-            except ValueError as e:
-                print(f"\n❌ Calibration failed: {e}")
-                raise ValueError("No rewards found and calibration failed")
+                if oracle_count == 0:
+                    raise ValueError(
+                        f"No oracle labels found in field '{args.oracle_field}'"
+                    )
+
+                print(f"   ✓ Assigned {oracle_count} oracle labels as rewards")
+                calibrated_dataset = dataset
+            else:
+                print(
+                    f"\n2. Calibrating judge scores using {args.oracle_coverage:.0%} oracle coverage..."
+                )
+                # Judge calibration workflow with partial oracle coverage
+                try:
+                    # Need to implement partial oracle calibration
+                    import random
+                    import numpy as np
+                    from sklearn.isotonic import IsotonicRegression
+
+                    # Set seed for reproducibility
+                    random.seed(42)
+                    np.random.seed(42)
+
+                    # Extract samples with both judge and oracle
+                    samples_with_both = []
+                    for i, sample in enumerate(dataset.samples):
+                        if (
+                            args.judge_field in sample.metadata
+                            and args.oracle_field in sample.metadata
+                        ):
+                            samples_with_both.append(i)
+
+                    if not samples_with_both:
+                        raise ValueError(
+                            "No samples have both judge scores and oracle labels"
+                        )
+
+                    # Select subset for calibration
+                    n_oracle = max(
+                        2, int(len(samples_with_both) * args.oracle_coverage)
+                    )
+                    calibration_indices = sorted(
+                        random.sample(
+                            samples_with_both, min(n_oracle, len(samples_with_both))
+                        )
+                    )
+
+                    # Extract arrays for calibration
+                    judge_scores = []
+                    oracle_labels = []
+                    for idx in calibration_indices:
+                        sample = dataset.samples[idx]
+                        judge_scores.append(sample.metadata[args.judge_field])
+                        oracle_labels.append(sample.metadata[args.oracle_field])
+
+                    # Fit isotonic regression
+                    iso_reg = IsotonicRegression(out_of_bounds="clip")
+                    iso_reg.fit(judge_scores, oracle_labels)
+
+                    # Apply calibration to all samples with judge scores
+                    calibrated_count = 0
+                    for sample in dataset.samples:
+                        if args.judge_field in sample.metadata:
+                            judge_score = sample.metadata[args.judge_field]
+                            sample.reward = float(iso_reg.predict([judge_score])[0])
+                            calibrated_count += 1
+
+                    calibrated_dataset = dataset
+
+                    # Report calibration quality
+                    all_judge = []
+                    all_oracle = []
+                    for sample in dataset.samples:
+                        if (
+                            args.judge_field in sample.metadata
+                            and args.oracle_field in sample.metadata
+                            and sample.reward is not None
+                        ):
+                            all_judge.append(sample.reward)
+                            all_oracle.append(sample.metadata[args.oracle_field])
+
+                    if all_judge:
+                        rmse = np.sqrt(
+                            np.mean(
+                                [(j - o) ** 2 for j, o in zip(all_judge, all_oracle)]
+                            )
+                        )
+                        coverage = sum(
+                            1
+                            for j, o in zip(all_judge, all_oracle)
+                            if abs(j - o) <= 0.1
+                        ) / len(all_judge)
+
+                        print(
+                            f"   ✓ Calibrated {calibrated_count} samples using {len(calibration_indices)} oracle labels"
+                        )
+                        print(f"   ✓ Calibration RMSE: {rmse:.3f}")
+                        print(f"   ✓ Coverage (±0.1): {coverage:.1%}")
+                    else:
+                        print(
+                            f"   ✓ Calibrated {calibrated_count} samples using {len(calibration_indices)} oracle labels"
+                        )
+
+                except Exception as e:
+                    print(f"\n❌ Calibration failed: {e}")
+                    raise ValueError(f"Calibration failed: {e}")
 
     # Step 3: Run CJE estimation (requires rewards)
     print(f"\n3. Running CJE estimation with {args.estimator}...")
@@ -503,13 +608,8 @@ def main() -> int:
                 "consistency_flag": diag.consistency_flag,
             }
 
-        # Add calibration stats if available
-        if not args.use_oracle and "cal_result" in locals():
-            results_data["calibration"] = {
-                "n_oracle": cal_result.n_oracle,
-                "calibration_rmse": float(cal_result.calibration_rmse),
-                "coverage_at_01": float(cal_result.coverage_at_01),
-            }
+        # Note: Calibration stats are now reported during calibration step
+        # Could be enhanced to save these statistics if needed
 
         # Add visualization info if plots were generated
         if _viz_available and args.plot_dir and not args.no_plots:

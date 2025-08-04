@@ -2,15 +2,16 @@
 """
 Production pipeline for preparing Arena experiment data.
 
-This script runs the complete data preparation pipeline for CJE experiments:
+This script runs the data generation pipeline for CJE experiments:
 1. Extract prompts from ChatBot Arena dataset
 2. Generate responses using different policies
 3. Add judge scores (lightweight evaluation)
 4. Add oracle labels (high-quality evaluation)
 5. Compute log probabilities
-6. Prepare CJE dataset with calibration
+6. Combine into a single dataset file
 
-The prepared data can then be used for ablation studies and analysis.
+The prepared data can then be analyzed with analyze_dataset.py,
+which handles calibration and CJE estimation.
 """
 
 import argparse
@@ -121,12 +122,6 @@ def main() -> None:
         help="Maximum tokens per response (default: 256)",
     )
     parser.add_argument(
-        "--oracle-coverage",
-        type=float,
-        default=0.5,
-        help="Fraction of samples to use for oracle calibration (default: 0.5)",
-    )
-    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -137,17 +132,11 @@ def main() -> None:
         action="store_true",
         help="Skip steps where output files already exist",
     )
-    parser.add_argument(
-        "--skip-analysis",
-        action="store_true",
-        help="Skip the final CJE analysis step",
-    )
     args = parser.parse_args()
 
     print("🚀 Starting Arena experiment data preparation...")
     print(f"   Samples: {args.n_samples}")
     print(f"   Max tokens: {args.max_tokens}")
-    print(f"   Oracle coverage: {args.oracle_coverage:.0%}")
     print(f"   Output directory: {args.data_dir}")
 
     # Setup data directory
@@ -254,7 +243,7 @@ def main() -> None:
 
     # Step 6: Prepare CJE dataset
     print("\n" + "=" * 60)
-    print("Step 6: Prepare CJE dataset with calibration")
+    print("Step 6: Combine data into CJE dataset")
     print("=" * 60)
 
     cje_dataset_file = data_dir / "cje_dataset.jsonl"
@@ -263,50 +252,15 @@ def main() -> None:
         f"python pipeline_steps/prepare_cje_data.py "
         f"--responses-dir {data_dir}/responses "
         f"--logprobs-dir {data_dir}/logprobs "
-        f"--output {cje_dataset_file} "
-        f"--oracle-coverage {args.oracle_coverage}",
+        f"--output {cje_dataset_file}",
         skip_if_exists=cje_dataset_file if args.skip_existing else None,
     )
 
-    # Step 7: Run CJE analysis (optional)
-    if not args.skip_analysis:
-        print("\n" + "=" * 60)
-        print("Step 7: Run CJE analysis")
-        print("=" * 60)
-
-        results_file = data_dir / "cje_results.json"
-
-        run_command(
-            f"python analyze_dataset.py "
-            f"--data {cje_dataset_file} "
-            f"--n-folds 5 "
-            f"--output {results_file}",
-            skip_if_exists=results_file if args.skip_existing else None,
-        )
-
-        # Print summary if analysis was run
-        if results_file.exists():
-            with open(results_file) as f:
-                results_data = json.load(f)
-                print("\n📊 CJE Results Summary:")
-                print(f"  Best policy: {results_data['best_policy']}")
-                print(
-                    f"  Effective sample size: {results_data['weight_diagnostics']['effective_sample_size']:.0f}"
-                )
-                for policy, stats in results_data["estimation"]["policies"].items():
-                    print(
-                        f"  {policy}: {stats['estimate']:.3f} ± {stats['standard_error']:.3f}"
-                    )
-
-    print("\n✅ Data preparation completed successfully!")
+    print("\n✅ Data generation completed successfully!")
     print(f"📁 Output directory: {data_dir}")
-    print("\nNext steps:")
-    print(
-        f"  1. Run ablation studies: python analyze_oracle_coverage.py --data-dir {data_dir}"
-    )
-    print(
-        f"  2. Analyze specific datasets: python analyze_dataset.py --data {cje_dataset_file}"
-    )
+    print(f"📊 Dataset file: {cje_dataset_file}")
+    print("\nNext step:")
+    print(f"  poetry run python analyze_dataset.py --data {cje_dataset_file}")
 
 
 if __name__ == "__main__":
