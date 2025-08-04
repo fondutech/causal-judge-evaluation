@@ -29,8 +29,8 @@ arena_10k_simplified/
 ├── pipeline_steps/              # Data preparation modules
 │   ├── prepare_arena_data.py    # Extract prompts from ChatBot Arena
 │   ├── generate_responses.py    # Generate responses for each policy
-│   ├── add_evaluations.py       # Add lightweight evaluations
-│   ├── add_oracle_labels.py     # Add high-quality evaluations
+│   ├── add_evaluations.py       # Add cheap llm as judge evaluations
+│   ├── add_oracle_labels.py     # Add high-quality evaluations from high quality model
 │   ├── compute_logprobs.py      # Compute log probabilities
 │   └── prepare_arena_data.py    # Combine into CJE format
 │
