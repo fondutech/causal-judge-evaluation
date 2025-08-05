@@ -9,6 +9,7 @@ The `cje_simplified/` directory is a clean reimplementation focusing on:
 - Type safety with Pydantic models  
 - Explicit error handling (no magic fallbacks)
 - Simple, composable abstractions
+- YAGNI (You Aren't Gonna Need It) - avoid premature abstraction
 
 ## 📁 Repository Structure
 
@@ -89,6 +90,16 @@ Expected JSONL format:
 
 Note: `reward` field is added during analysis, not data generation.
 
+## 🤖 Template Handling
+
+For Fireworks models, templates are auto-detected:
+```python
+# Just pass None for template_config
+result = compute_chat_logprob(chat, model)  # Auto-detects for Fireworks
+```
+
+Don't create complex abstractions for template selection - let the tools handle it.
+
 ## 🏗️ Key Architectural Decisions
 
 1. **Clean Separation**: Data generation vs analysis are separate steps
@@ -111,5 +122,24 @@ Note: `reward` field is added during analysis, not data generation.
 - Magic numbers as fallbacks
 - Classes with multiple responsibilities
 - Calibration during data generation
+- Unnecessary abstractions (if it's only used once, inline it)
+- String-based dispatch when direct calls would suffice
+
+## 🎨 Design Principles
+
+1. **YAGNI (You Aren't Gonna Need It)**
+   - Don't create abstractions for single use cases
+   - Inline code that's only called from one place
+   - Remove layers that don't add value
+
+2. **Explicit is Better than Implicit**
+   - No magic strings or hidden behavior
+   - Clear function signatures and return types
+   - Obvious data flow
+
+3. **Fail Fast and Clearly**
+   - Return None or raise exceptions, never magic values
+   - Helpful error messages that guide users
+   - Don't hide failures
 
 Remember: The goal is to be **simple, correct, and maintainable**.
