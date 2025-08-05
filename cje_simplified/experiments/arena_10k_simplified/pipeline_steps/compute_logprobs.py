@@ -19,7 +19,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 sys.path.append(str(Path(__file__).parent.parent))  # Add arena_10k_simplified to path
 
 from cje_simplified import compute_chat_logprob
-from policy_config import POLICIES, get_policy_config
+from policy_config import POLICIES, get_policy_config, POLICY_NAMES
 
 
 def compute_median_logprob(
@@ -298,7 +298,7 @@ def main() -> None:
     parser.add_argument(
         "--policies",
         nargs="+",
-        default=["base", "clone", "unhelpful"],
+        default=POLICY_NAMES,
         help="List of policies to compute log probs for (default: all)",
     )
     parser.add_argument(

@@ -17,6 +17,9 @@ from typing import Dict, Any
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent.parent.parent))
+sys.path.append(str(Path(__file__).parent))  # Add arena_10k_simplified to path
+
+from policy_config import POLICY_NAMES
 
 
 def run_command(cmd: str, check: bool = True) -> subprocess.CompletedProcess:
@@ -68,7 +71,7 @@ def create_test_prompts(output_dir: Path, n_samples: int = 50) -> None:
 
 def verify_responses(responses_dir: Path, n_samples: int = 50) -> None:
     """Verify that responses were generated correctly."""
-    policies = ["base", "clone", "unhelpful"]
+    policies = POLICY_NAMES
 
     for policy in policies:
         file_path = responses_dir / f"{policy}_responses.jsonl"
@@ -110,7 +113,7 @@ def verify_evaluation_scores(responses_dir: Path) -> None:
 
 def verify_logprobs(logprobs_dir: Path, n_samples: int = 50) -> None:
     """Verify that log probabilities were computed."""
-    policies = ["base", "clone", "unhelpful"]
+    policies = POLICY_NAMES
 
     for policy in policies:
         file_path = logprobs_dir / f"{policy}_logprobs.jsonl"
@@ -158,10 +161,13 @@ def verify_cje_dataset(dataset_file: Path, n_samples: int = 50) -> None:
             assert "judge_score" in metadata
             assert "oracle_label" in metadata
 
-            # Check target policies
+            # Check target policies (all policies except base)
             target_logprobs = data["target_policy_logprobs"]
-            assert "clone" in target_logprobs
-            assert "unhelpful" in target_logprobs
+            expected_targets = [p for p in POLICY_NAMES if p != "base"]
+            for policy in expected_targets:
+                assert (
+                    policy in target_logprobs
+                ), f"Missing {policy} in target_policy_logprobs"
 
     print("✅ CJE dataset verified")
 
@@ -216,14 +222,14 @@ def main() -> None:
         verify_responses(test_dir / "responses", n_samples=args.n_samples)
 
         # Step 3: Add judge scores
-        for policy in ["base", "clone", "unhelpful"]:
+        for policy in POLICY_NAMES:
             run_command(
                 f"python pipeline_steps/add_judge_scores.py "
                 f"--input {test_dir}/responses/{policy}_responses.jsonl"
             )
 
         # Step 4: Add oracle labels
-        for policy in ["base", "clone", "unhelpful"]:
+        for policy in POLICY_NAMES:
             run_command(
                 f"python pipeline_steps/add_oracle_labels.py "
                 f"--input {test_dir}/responses/{policy}_responses.jsonl"
