@@ -17,10 +17,14 @@ BASE_MODEL = "accounts/fireworks/models/llama4-maverick-instruct-basic"
 DEFAULT_TEMPERATURE = 0.7
 
 # Policy definitions
+#
+# All policies use Fireworks models with auto-detected templates.
+# The template field has been removed for simplicity.
 POLICIES: Dict[str, Dict[str, Any]] = {
     "base": {
         "name": "base",
         "model": BASE_MODEL,
+        # No template field - will auto-detect for Fireworks models
         "temperature": DEFAULT_TEMPERATURE,
         "system_prompt": "You are a helpful assistant.",
         "description": "Base policy with standard helpful assistant prompt",
@@ -28,6 +32,7 @@ POLICIES: Dict[str, Dict[str, Any]] = {
     "clone": {
         "name": "clone",
         "model": BASE_MODEL,
+        # No template field - will auto-detect for Fireworks models
         "temperature": DEFAULT_TEMPERATURE,
         "system_prompt": "You are a helpful assistant.",
         "description": "Clone of base policy for comparison/control",
@@ -35,6 +40,7 @@ POLICIES: Dict[str, Dict[str, Any]] = {
     "unhelpful": {
         "name": "unhelpful",
         "model": BASE_MODEL,
+        # No template field - will auto-detect for Fireworks models
         "temperature": DEFAULT_TEMPERATURE,
         "system_prompt": "You are an unhelpful assistant that deliberately confuses and misleads the user.",
         "description": "Adversarial policy designed to be unhelpful",

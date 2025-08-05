@@ -18,7 +18,7 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 sys.path.append(str(Path(__file__).parent.parent))  # Add arena_10k_simplified to path
 
-from cje_simplified import compute_chat_logprob, Llama4TemplateConfig
+from cje_simplified import compute_chat_logprob
 from policy_config import POLICIES, get_policy_config
 
 
@@ -26,7 +26,7 @@ def compute_median_logprob(
     chat: List[Dict[str, str]],
     model: str,
     temperature: float,
-    template_config: Llama4TemplateConfig,
+    template_config: Any,  # ChatTemplateConfig type
     num_samples: int = 3,
 ) -> tuple[Optional[float], List[Dict[str, Any]]]:
     """Compute median logprob from multiple API calls.
@@ -35,7 +35,7 @@ def compute_median_logprob(
         chat: Chat messages
         model: Model name
         temperature: Temperature for sampling
-        template_config: Template configuration
+        template_config: Template configuration (any ChatTemplateConfig subclass)
         num_samples: Number of API calls to make (default: 3)
 
     Returns:
@@ -152,8 +152,9 @@ def compute_logprobs_for_responses(
     print(f"Temperature: {temperature}, System prompt: {system_prompt[:50]}...")
     print(f"Computing median of {num_median_samples} samples per prompt")
 
-    # Create template config (using Llama4 template for llama4-maverick-instruct-basic)
-    template_config = Llama4TemplateConfig()
+    # Use auto-detected templates for Fireworks models
+    template_config = None
+    print("Using auto-detected template for Fireworks model")
 
     # Compute log probabilities
     results: List[Dict[str, Any]] = []

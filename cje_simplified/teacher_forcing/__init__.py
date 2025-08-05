@@ -17,8 +17,9 @@ from .api import (
 from .templates import (
     ChatTemplateConfig,
     Llama3TemplateConfig,
-    Llama4TemplateConfig,
     HuggingFaceTemplateConfig,
+    FireworksTemplateConfig,
+    FireworksTemplateError,
 )
 
 # Chat utilities
@@ -35,8 +36,9 @@ __all__ = [
     # Template configurations
     "ChatTemplateConfig",
     "Llama3TemplateConfig",
-    "Llama4TemplateConfig",
     "HuggingFaceTemplateConfig",
+    "FireworksTemplateConfig",
+    "FireworksTemplateError",
     # Chat support
     "compute_chat_logprob",
     "convert_chat_to_completions",

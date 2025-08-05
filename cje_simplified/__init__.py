@@ -91,6 +91,7 @@ try:
         plot_weight_summary,
         plot_calibration_comparison,
     )
+
     _viz_available = True
 except ImportError:
     _viz_available = False
@@ -102,7 +103,6 @@ from .teacher_forcing import (
     compute_total_logprob,
     ChatTemplateConfig,
     Llama3TemplateConfig,
-    Llama4TemplateConfig,
     HuggingFaceTemplateConfig,
     compute_chat_logprob,
     convert_chat_to_completions,
@@ -154,7 +154,6 @@ __all__ = [
     # Chat support
     "ChatTemplateConfig",
     "Llama3TemplateConfig",
-    "Llama4TemplateConfig",
     "HuggingFaceTemplateConfig",
     "compute_chat_logprob",
     "convert_chat_to_completions",
@@ -162,9 +161,11 @@ __all__ = [
 
 # Add visualization exports if available
 if _viz_available:
-    __all__.extend([
-        "plot_weight_distributions",
-        "plot_ess_comparison",
-        "plot_weight_summary",
-        "plot_calibration_comparison",
-    ])
+    __all__.extend(
+        [
+            "plot_weight_distributions",
+            "plot_ess_comparison",
+            "plot_weight_summary",
+            "plot_calibration_comparison",
+        ]
+    )

@@ -1,39 +1,39 @@
 {
-  "timestamp": "2025-08-03T14:25:37.077840",
+  "timestamp": "2025-08-04T22:10:48.354423",
   "dataset": {
     "path": "test_e2e_data/cje_dataset.jsonl",
-    "n_samples": 100,
+    "n_samples": 5,
     "target_policies": [
       "clone",
       "unhelpful"
     ]
   },
-  "workflow": "pre_computed_rewards",
+  "workflow": "judge_calibration",
   "estimation": {
     "estimator": "calibrated-ips",
     "estimator_config": {},
     "n_folds": 2,
     "policies": {
       "base": {
-        "estimate": 0.42996726190476153,
-        "standard_error": 0.024398880926797765,
-        "ci_lower": 0.3821454552882379,
-        "ci_upper": 0.47778906852128517,
+        "estimate": 0.30999999999999994,
+        "standard_error": 0.13638181696985854,
+        "ci_lower": 0.04269163873907722,
+        "ci_upper": 0.5773083612609227,
         "type": "observed",
-        "n_samples": 100
+        "n_samples": 5
       },
       "clone": {
-        "estimate": 0.4183364498285391,
-        "standard_error": 0.02650804326346324,
-        "ci_lower": 0.3663816397315216,
-        "ci_upper": 0.47029125992555665,
+        "estimate": 0.30891861609752136,
+        "standard_error": 0.12098116278435356,
+        "ci_lower": 0.07179989423241087,
+        "ci_upper": 0.5460373379626319,
         "type": "counterfactual"
       },
       "unhelpful": {
-        "estimate": 0.33888659475094296,
-        "standard_error": 0.036795169163619315,
-        "ci_lower": 0.2667693883851903,
-        "ci_upper": 0.4110038011166956,
+        "estimate": 0.30999999999999994,
+        "standard_error": 0.12198360545581524,
+        "ci_lower": 0.07091652660225842,
+        "ci_upper": 0.5490834733977414,
         "type": "counterfactual"
       }
     }
@@ -43,7 +43,7 @@
     "best_policy": {
       "mean_weight": 1.0,
       "max_weight": 1.0,
-      "effective_sample_size": 100.0,
+      "effective_sample_size": 5.0,
       "effective_sample_size_fraction": 1.0
     },
     "all_policies": {
@@ -58,24 +58,24 @@
         "consistency_flag": "GOOD"
       },
       "clone": {
-        "mean_weight": 0.9999999999999999,
-        "max_weight": 2.3771600669620656,
-        "min_weight": 0.09266022159963404,
-        "median_weight": 0.9143927629878702,
-        "ess_fraction": 0.6993339718410775,
+        "mean_weight": 1.0,
+        "max_weight": 1.039323050999225,
+        "min_weight": 0.9901692372501938,
+        "median_weight": 0.9901692372501938,
+        "ess_fraction": 0.9996135737979633,
         "extreme_weight_count": 0,
         "zero_weight_count": 0,
         "consistency_flag": "GOOD"
       },
       "unhelpful": {
-        "mean_weight": 1.0000000000000002,
-        "max_weight": 5.17450807502291,
-        "min_weight": 0.0,
-        "median_weight": 2.7717988274824095e-07,
-        "ess_fraction": 0.22935901272070908,
-        "extreme_weight_count": 74,
-        "zero_weight_count": 3,
-        "consistency_flag": "CRITICAL"
+        "mean_weight": 1.0,
+        "max_weight": 1.0,
+        "min_weight": 1.0,
+        "median_weight": 1.0,
+        "ess_fraction": 1.0,
+        "extreme_weight_count": 0,
+        "zero_weight_count": 0,
+        "consistency_flag": "GOOD"
       }
     }
   }

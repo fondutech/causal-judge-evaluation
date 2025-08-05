@@ -11,13 +11,15 @@ class HuggingFaceTemplateConfig(ChatTemplateConfig):
     formatting automatically.
     """
 
-    def __init__(self, tokenizer_name: str):
+    def __init__(self, tokenizer_name: str, hf_token: str = None):
         """Initialize with HuggingFace model/tokenizer name.
 
         Args:
             tokenizer_name: HuggingFace model ID (e.g., "meta-llama/Llama-3.2-3B-Instruct")
+            hf_token: Optional HuggingFace API token for accessing gated models
         """
         self.tokenizer_name = tokenizer_name
+        self.hf_token = hf_token
         self._tokenizer = None
         self._init_tokenizer()
 
@@ -26,7 +28,10 @@ class HuggingFaceTemplateConfig(ChatTemplateConfig):
         try:
             from transformers import AutoTokenizer
 
-            self._tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_name)
+            # Pass token if provided for gated model access
+            self._tokenizer = AutoTokenizer.from_pretrained(
+                self.tokenizer_name, token=self.hf_token
+            )
         except ImportError:
             raise ImportError(
                 "transformers library required for HuggingFace template support. "

@@ -9,7 +9,12 @@ import logging
 
 from ..data.models import LogProbResult, LogProbStatus
 from .api import compute_total_logprob
-from .templates import ChatTemplateConfig, HuggingFaceTemplateConfig
+from .templates import (
+    ChatTemplateConfig,
+    HuggingFaceTemplateConfig,
+    FireworksTemplateConfig,
+    FireworksTemplateError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +43,10 @@ def convert_chat_to_completions(
             f"Got role='{chat[-1]['role']}'"
         )
 
-    # Use HuggingFace template if that's what we have
-    if isinstance(template_config, HuggingFaceTemplateConfig):
+    # Use apply_chat_template for HuggingFace and Fireworks configs
+    if isinstance(
+        template_config, (HuggingFaceTemplateConfig, FireworksTemplateConfig)
+    ):
         # Full prompt = context + assistant reply
         prompt_plus_reply = template_config.apply_chat_template(
             chat, add_generation_prompt=False
@@ -82,7 +89,7 @@ def convert_chat_to_completions(
 def compute_chat_logprob(
     chat: List[Dict[str, str]],
     model: str,
-    template_config: ChatTemplateConfig,
+    template_config: Optional[ChatTemplateConfig] = None,
     api_key: Optional[str] = None,
     temperature: float = 1.0,
     system_prompt: Optional[str] = None,
@@ -95,7 +102,7 @@ def compute_chat_logprob(
     Args:
         chat: Chat messages (last must be assistant)
         model: Model name (e.g., "accounts/fireworks/models/llama-v3-8b-instruct")
-        template_config: Chat template configuration for the model
+        template_config: Chat template configuration (auto-detected if None)
         api_key: API key (uses env var if not provided)
         temperature: Sampling temperature (default: 1.0)
         system_prompt: Optional system prompt to prepend
@@ -122,6 +129,32 @@ def compute_chat_logprob(
     # Add system prompt if provided
     if system_prompt and (not chat or chat[0]["role"] != "system"):
         chat = [{"role": "system", "content": system_prompt}] + chat
+
+    # Auto-detect template if not provided
+    if template_config is None:
+        # Check if it's a Fireworks model
+        if model.startswith("accounts/fireworks/models/"):
+            try:
+                template_config = FireworksTemplateConfig(model)
+                logger.debug(f"Auto-detected Fireworks template for {model}")
+            except FireworksTemplateError as e:
+                # Return error with helpful message
+                return LogProbResult(
+                    value=None,
+                    status=LogProbStatus.API_ERROR,
+                    error=str(e),
+                )
+        else:
+            # For non-Fireworks models, require explicit template
+            return LogProbResult(
+                value=None,
+                status=LogProbStatus.API_ERROR,
+                error=(
+                    f"No template config provided for model '{model}'. "
+                    "For Fireworks models, templates are auto-detected. "
+                    "For other models, please provide an explicit template_config."
+                ),
+            )
 
     # Validate chat format
     if not chat or chat[-1]["role"] != "assistant":
