@@ -46,9 +46,6 @@ class CalibratedIPS(BaseCJEEstimator):
         )
         super().__init__(sampler, config)
 
-        # Storage for calibrated weights
-        self._calibrated_weights: Dict[str, np.ndarray] = {}
-
     def fit(self) -> None:
         """Fit weight calibration for all target policies."""
 
@@ -73,8 +70,7 @@ class CalibratedIPS(BaseCJEEstimator):
                 random_seed=self.config.random_seed,
             )
 
-            # Cache results
-            self._calibrated_weights[policy] = calibrated
+            # Cache calibrated weights in base class storage
             self._weights_cache[policy] = calibrated
 
         self._fitted = True
@@ -88,7 +84,7 @@ class CalibratedIPS(BaseCJEEstimator):
         n_samples_used = {}
 
         for policy in self.sampler.target_policies:
-            if policy not in self._calibrated_weights:
+            if policy not in self._weights_cache:
                 # No valid data for this policy
                 estimates.append(np.nan)
                 standard_errors.append(np.nan)
@@ -97,7 +93,7 @@ class CalibratedIPS(BaseCJEEstimator):
 
             # Get data and weights for this policy
             data = self.sampler.get_data_for_policy(policy)
-            weights = self._calibrated_weights[policy]
+            weights = self._weights_cache[policy]
 
             if len(data) != len(weights):
                 raise ValueError(f"Data/weight mismatch for {policy}")

@@ -81,6 +81,8 @@ from .utils import (
     create_weight_summary_table,
     detect_api_nondeterminism,
     WeightDiagnostics,
+    # Extreme weights analysis
+    analyze_extreme_weights,
 )
 
 # Import visualization utilities if available
@@ -90,6 +92,11 @@ try:
         plot_ess_comparison,
         plot_weight_summary,
         plot_calibration_comparison,
+        plot_weight_calibration,
+        plot_weight_calibration_summary,
+        # Improved visualization
+        plot_weight_calibration_analysis,
+        plot_weight_diagnostics_summary,
     )
 
     _viz_available = True
@@ -138,6 +145,7 @@ __all__ = [
     "create_weight_summary_table",
     "detect_api_nondeterminism",
     "WeightDiagnostics",
+    "analyze_extreme_weights",
     # Calibration - isotonic regression
     "cross_fit_isotonic",
     "calibrate_to_target_mean",
@@ -167,5 +175,10 @@ if _viz_available:
             "plot_ess_comparison",
             "plot_weight_summary",
             "plot_calibration_comparison",
+            "plot_weight_calibration",
+            "plot_weight_calibration_summary",
+            # Improved visualization
+            "plot_weight_calibration_analysis",
+            "plot_weight_diagnostics_summary",
         ]
     )

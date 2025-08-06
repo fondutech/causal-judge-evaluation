@@ -31,14 +31,14 @@ from cje_simplified import (
     RawIPS,
     diagnose_weights,
     create_weight_summary_table,
+    analyze_extreme_weights,
 )
 
 # Import visualization if available
 try:
     from cje_simplified import (
-        plot_weight_distributions,
-        plot_ess_comparison,
-        plot_weight_summary,
+        plot_weight_calibration_analysis,
+        plot_weight_diagnostics_summary,
         plot_calibration_comparison,
     )
 
@@ -116,6 +116,18 @@ def main() -> int:
         "--estimator-config",
         type=json.loads,
         help='JSON config for estimator (e.g., \'{"k_folds": 10, "clip_weight": 50}\')',
+    )
+    parser.add_argument(
+        "--extreme-threshold-high",
+        type=float,
+        default=100.0,
+        help="Weights above this are considered extreme (default: 100.0)",
+    )
+    parser.add_argument(
+        "--extreme-threshold-low",
+        type=float,
+        default=0.01,
+        help="Weights below this are considered extreme (default: 0.01)",
     )
 
     args = parser.parse_args()
@@ -477,7 +489,11 @@ def main() -> int:
 
         # Base policy has uniform weights (no importance sampling)
         base_diag = diagnose_weights(
-            np.ones(len(base_rewards)), "base", expected_weight=1.0
+            np.ones(len(base_rewards)),
+            "base",
+            expected_weight=1.0,
+            extreme_threshold_high=args.extreme_threshold_high,
+            extreme_threshold_low=args.extreme_threshold_low,
         )
         all_weight_diagnostics["base"] = base_diag
 
@@ -487,7 +503,13 @@ def main() -> int:
             if weights is not None:
                 # Expected weight is 1.0 for clone, None for others
                 expected = 1.0 if policy == "clone" else None
-                diag = diagnose_weights(weights, policy, expected)
+                diag = diagnose_weights(
+                    weights,
+                    policy,
+                    expected,
+                    extreme_threshold_high=args.extreme_threshold_high,
+                    extreme_threshold_low=args.extreme_threshold_low,
+                )
                 all_weight_diagnostics[policy] = diag
 
         # Print summary table
@@ -517,6 +539,63 @@ def main() -> int:
             ess = float(len(base_rewards))
             ess_frac = 1.0
 
+        # Generate extreme weights analysis
+        print(f"\n6. Analyzing extreme weights...")
+
+        # Collect raw and calibrated weights for analysis
+        analysis_raw_weights = {}
+        analysis_cal_weights = {}
+
+        for policy in sampler.target_policies:
+            # Get raw weights (works for both CalibratedIPS and RawIPS)
+            raw_weights = estimator.get_raw_weights(policy)
+            if raw_weights is not None:
+                analysis_raw_weights[policy] = raw_weights
+
+            # Get calibrated/final weights
+            cal_weights = estimator.get_weights(policy)
+            if cal_weights is not None:
+                analysis_cal_weights[policy] = cal_weights
+
+        # Generate extreme weights report
+        if analysis_raw_weights:
+            try:
+                # Use same directory as plots for the report
+                report_dir = None
+                if not args.no_plots:
+                    if args.plot_dir:
+                        report_dir = Path(args.plot_dir)
+                    else:
+                        report_dir = Path(args.data).parent / "plots"
+                    report_dir.mkdir(parents=True, exist_ok=True)
+
+                json_report, text_report = analyze_extreme_weights(
+                    dataset=calibrated_dataset,
+                    sampler=sampler,
+                    raw_weights_dict=analysis_raw_weights,
+                    calibrated_weights_dict=analysis_cal_weights,
+                    n_extreme=5,
+                    output_dir=report_dir,
+                    near_zero_threshold=args.extreme_threshold_low,
+                )
+
+                # Print summary of findings
+                print(f"   ✓ Analyzed {len(analysis_raw_weights)} policies")
+                for policy in analysis_raw_weights.keys():
+                    if policy in json_report.get("per_policy_analysis", {}):
+                        stats = json_report["per_policy_analysis"][policy]["statistics"]
+                        print(
+                            f"   ✓ {policy}: {stats['n_clipped_high']} clipped, {stats['n_near_zero']} near-zero"
+                        )
+
+                if report_dir:
+                    print(
+                        f"   ✓ Saved detailed report to {report_dir}/extreme_weights_analysis.txt"
+                    )
+
+            except Exception as e:
+                print(f"   ⚠️  Could not generate extreme weights analysis: {e}")
+
         # Generate visualizations by default (unless --no-plots is specified)
         if _viz_available and not args.no_plots:
             # Default plot_dir to same directory as data file
@@ -526,45 +605,82 @@ def main() -> int:
                 # Default to plots/ subdirectory next to the data file
                 plot_dir = Path(args.data).parent / "plots"
 
-            print(f"\n6. Generating visualizations in {plot_dir}/...")
+            print(f"\n7. Generating visualizations in {plot_dir}/...")
             plot_dir.mkdir(parents=True, exist_ok=True)
 
             # Collect weights for visualization
             weights_dict = {}
+            raw_weights_dict = {}
+            calibrated_weights_dict = {}
 
-            # Base policy (uniform weights)
+            # Base policy (uniform weights) - only for backward compatibility plots
             weights_dict["base"] = np.ones(len(base_rewards))
 
-            # Target policies
+            # Target policies only for calibration plots (not base)
             for policy in sampler.target_policies:
+                # Get calibrated/final weights
                 weights = estimator.get_weights(policy)
                 if weights is not None:
                     weights_dict[policy] = weights
+                    calibrated_weights_dict[policy] = weights
+
+                # Get raw weights (works for both estimator types)
+                raw_weights = estimator.get_raw_weights(policy)
+                if raw_weights is not None:
+                    raw_weights_dict[policy] = raw_weights
+                else:
+                    # Fall back to calibrated weights if raw not available
+                    raw_weights_dict[policy] = weights
 
             # Generate plots
             try:
-                # Weight distributions
-                fig = plot_weight_distributions(weights_dict)
-                fig.savefig(
-                    plot_dir / "weight_distributions.png", dpi=150, bbox_inches="tight"
-                )
-                print(
-                    f"   ✓ Saved weight distributions to {plot_dir}/weight_distributions.png"
-                )
+                import matplotlib.pyplot as plt
 
-                # ESS comparison
-                fig = plot_ess_comparison(weights_dict)
-                fig.savefig(
-                    plot_dir / "ess_comparison.png", dpi=150, bbox_inches="tight"
-                )
-                print(f"   ✓ Saved ESS comparison to {plot_dir}/ess_comparison.png")
+                # NEW IMPROVED VISUALIZATIONS (2 comprehensive plots)
+                if raw_weights_dict and calibrated_weights_dict:
+                    # 1. Comprehensive weight calibration analysis (6 panels per policy)
+                    fig = plot_weight_calibration_analysis(
+                        raw_weights_dict, calibrated_weights_dict
+                    )
+                    fig.savefig(
+                        plot_dir / "weight_calibration_analysis.png",
+                        dpi=150,
+                        bbox_inches="tight",
+                    )
+                    print(
+                        f"   ✓ NEW: Comprehensive calibration analysis → "
+                        f"{plot_dir}/weight_calibration_analysis.png"
+                    )
+                    plt.close(fig)
 
-                # Weight summary
-                fig = plot_weight_summary(weights_dict)
-                fig.savefig(
-                    plot_dir / "weight_summary.png", dpi=150, bbox_inches="tight"
-                )
-                print(f"   ✓ Saved weight summary to {plot_dir}/weight_summary.png")
+                    # 2. Cross-policy diagnostics summary dashboard
+                    # Prepare estimates for the summary
+                    estimates_dict = {}
+                    for i, policy in enumerate(sampler.target_policies):
+                        if i < len(results.estimates):
+                            estimates_dict[policy] = {
+                                "mean": results.estimates[i],
+                                "ci_lower": (
+                                    ci_lower[i] if "ci_lower" in locals() else 0
+                                ),
+                                "ci_upper": (
+                                    ci_upper[i] if "ci_upper" in locals() else 0
+                                ),
+                            }
+
+                    fig = plot_weight_diagnostics_summary(
+                        raw_weights_dict, calibrated_weights_dict, estimates_dict
+                    )
+                    fig.savefig(
+                        plot_dir / "weight_diagnostics_summary.png",
+                        dpi=150,
+                        bbox_inches="tight",
+                    )
+                    print(
+                        f"   ✓ NEW: Cross-policy summary dashboard → "
+                        f"{plot_dir}/weight_diagnostics_summary.png"
+                    )
+                    plt.close(fig)
 
                 # Calibration comparison (if calibration was performed)
                 if (
@@ -607,8 +723,6 @@ def main() -> int:
                             )
 
                 # Close all figures to free memory
-                import matplotlib.pyplot as plt
-
                 plt.close("all")
 
             except Exception as e:
@@ -624,9 +738,9 @@ def main() -> int:
         return 1
 
     # Final success message
-    steps_completed = 5  # base steps
-    if _viz_available and args.plot_dir and not args.no_plots:
-        steps_completed = 6
+    steps_completed = 6  # base steps (including extreme weights)
+    if _viz_available and not args.no_plots:
+        steps_completed = 7
     print(f"\n✓ Analysis complete! ({steps_completed} steps)")
 
     # Write results to file if requested

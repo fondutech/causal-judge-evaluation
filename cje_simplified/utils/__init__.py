@@ -12,14 +12,18 @@ from .weight_diagnostics import (
     WeightDiagnostics,
 )
 
+from .extreme_weights_analysis import (
+    analyze_extreme_weights,
+)
+
 # Import visualization functions if matplotlib is available
 try:
     from .visualization import (
-        plot_weight_distributions,
-        plot_ess_comparison,
-        plot_weight_summary,
+        plot_weight_calibration_analysis,
+        plot_weight_diagnostics_summary,
         plot_calibration_comparison,
     )
+
     _visualization_available = True
 except ImportError:
     _visualization_available = False
@@ -30,13 +34,16 @@ __all__ = [
     "create_weight_summary_table",
     "detect_api_nondeterminism",
     "WeightDiagnostics",
+    # Extreme weights analysis
+    "analyze_extreme_weights",
 ]
 
 if _visualization_available:
-    __all__.extend([
-        # Visualization
-        "plot_weight_distributions",
-        "plot_ess_comparison", 
-        "plot_weight_summary",
-        "plot_calibration_comparison",
-    ])
+    __all__.extend(
+        [
+            # Visualization
+            "plot_weight_calibration_analysis",
+            "plot_weight_diagnostics_summary",
+            "plot_calibration_comparison",
+        ]
+    )

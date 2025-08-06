@@ -53,6 +53,20 @@ class BaseCJEEstimator(ABC):
         """
         return self._weights_cache.get(target_policy)
 
+    def get_raw_weights(self, target_policy: str) -> Optional[np.ndarray]:
+        """Get raw (uncalibrated) importance weights for a target policy.
+
+        Computes raw weights directly from the sampler. These are the
+        importance weights p_target/p_base without any calibration.
+
+        Args:
+            target_policy: Name of target policy
+
+        Returns:
+            Array of raw weights or None if not available.
+        """
+        return self.sampler.compute_importance_weights(target_policy)
+
     @property
     def is_fitted(self) -> bool:
         """Check if estimator has been fitted."""

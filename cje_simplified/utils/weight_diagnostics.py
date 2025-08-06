@@ -16,7 +16,7 @@ class WeightDiagnostics:
     mean_weight: float
     median_weight: float
     ess_fraction: float  # Effective Sample Size as fraction of N
-    extreme_weight_count: int  # Weights > 100 or < 0.01
+    extreme_weight_count: int  # Weights beyond thresholds
     zero_weight_count: int  # Exactly zero weights
     consistency_flag: str  # "GOOD", "WARNING", "CRITICAL"
 
@@ -71,6 +71,8 @@ def diagnose_weights(
     weights: np.ndarray,
     policy_name: str = "Unknown",
     expected_weight: Optional[float] = None,
+    extreme_threshold_high: float = 100.0,
+    extreme_threshold_low: float = 0.01,
 ) -> WeightDiagnostics:
     """Compute comprehensive weight diagnostics.
 
@@ -78,6 +80,8 @@ def diagnose_weights(
         weights: Array of importance weights
         policy_name: Name of the policy
         expected_weight: Expected mean weight (e.g., 1.0 for identical policies)
+        extreme_threshold_high: Weights above this are considered extreme (default: 100.0)
+        extreme_threshold_low: Weights below this are considered extreme (default: 0.01)
 
     Returns:
         WeightDiagnostics object with detailed statistics
@@ -107,7 +111,11 @@ def diagnose_weights(
 
     # Count problematic weights
     extreme_count = int(
-        np.sum((weights > 100) | (weights < 0.01) | ~np.isfinite(weights))
+        np.sum(
+            (weights > extreme_threshold_high)
+            | (weights < extreme_threshold_low)
+            | ~np.isfinite(weights)
+        )
     )
     zero_count = int(np.sum(weights == 0.0))
 
