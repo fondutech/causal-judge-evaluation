@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 import pandas as pd
 
+from policy_config import POLICY_NAMES
+
 
 ABLATION_CONFIG: Dict[str, Any] = {
     "oracle_fractions": [0.25, 0.50, 1.00],
@@ -214,7 +216,7 @@ def main() -> None:
     print("=" * 80)
 
     # Group by oracle fraction and estimator for cleaner display
-    for policy in ["base", "clone", "unhelpful"]:
+    for policy in POLICY_NAMES:
         print(f"\n{policy.upper()} Policy:")
         print("Oracle %  | Estimator      | Estimate ± SE      | 95% CI Width")
         print("-" * 65)

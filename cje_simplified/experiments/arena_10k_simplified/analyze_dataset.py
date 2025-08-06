@@ -379,6 +379,96 @@ def main() -> int:
         best_policy = all_policies[best_idx]
         print(f"\n   🏆 Best policy: {best_policy}")
 
+        # Compare to oracle ground truth if available
+        if args.oracle_field in dataset.samples[0].metadata:
+            print(f"\n   📊 Oracle Ground Truth Comparison:")
+
+            # Try to load oracle labels for each policy from response files
+            oracle_means = {}
+            responses_dir = Path(args.data).parent / "responses"
+
+            # Compute oracle mean for base policy from dataset
+            base_oracle_labels = [
+                s.metadata[args.oracle_field]
+                for s in dataset.samples
+                if args.oracle_field in s.metadata
+            ]
+            if base_oracle_labels:
+                oracle_means["base"] = sum(base_oracle_labels) / len(base_oracle_labels)
+
+            # Try to load oracle labels for target policies from their response files
+            for policy in target_policies:
+                response_file = responses_dir / f"{policy}_responses.jsonl"
+                if response_file.exists():
+                    try:
+                        oracle_labels = []
+                        with open(response_file, "r") as f:
+                            for line in f:
+                                data = json.loads(line)
+                                if (
+                                    "metadata" in data
+                                    and args.oracle_field in data["metadata"]
+                                ):
+                                    oracle_labels.append(
+                                        data["metadata"][args.oracle_field]
+                                    )
+                        if oracle_labels:
+                            oracle_means[policy] = sum(oracle_labels) / len(
+                                oracle_labels
+                            )
+                    except Exception:
+                        pass  # Silently skip if can't load
+
+            # If we couldn't load target policy oracle labels, note it
+            if len(oracle_means) == 1:
+                # Only have base policy oracle labels
+                print(f"   Base Policy (Observed):")
+                print(f"     CJE Estimate: {base_mean:.3f}")
+                print(f"     Oracle Mean:  {oracle_means['base']:.3f}")
+                print(f"     Error:        {base_mean - oracle_means['base']:+.3f}")
+                print(
+                    f"\n   Note: Oracle labels for target policies not available in response files."
+                )
+                print(f"   CJE uses importance weighting on base policy responses.")
+            else:
+                # Have oracle labels for multiple policies - show full comparison
+                print(
+                    f"   {'Policy':<12} {'CJE Estimate':>12} {'Oracle Mean':>12} {'Error':>10}"
+                )
+                print(f"   {'-'*46}")
+
+                # Show base policy
+                oracle_val = oracle_means.get("base", 0.0)
+                error = base_mean - oracle_val
+                print(
+                    f"   {'base':<12} {base_mean:>12.3f} {oracle_val:>12.3f} {error:>+10.3f}"
+                )
+
+                # Show target policies
+                for policy, estimate in zip(target_policies, results.estimates):
+                    if policy in oracle_means:
+                        oracle_val = oracle_means[policy]
+                        error = estimate - oracle_val
+                        print(
+                            f"   {policy:<12} {estimate:>12.3f} {oracle_val:>12.3f} {error:>+10.3f}"
+                        )
+                    else:
+                        print(
+                            f"   {policy:<12} {estimate:>12.3f} {'N/A':>12} {'N/A':>10}"
+                        )
+
+                # Check if CJE identified the correct best policy
+                if all(p in oracle_means for p in all_policies):
+                    oracle_best = max(oracle_means.items(), key=lambda x: x[1])[0]
+                    if oracle_best == best_policy:
+                        print(
+                            f"\n   ✅ CJE correctly identified {best_policy} as the best policy"
+                        )
+                    else:
+                        print(
+                            f"\n   ❌ CJE selected {best_policy}, but oracle shows {oracle_best} is best"
+                        )
+
         # Show weight diagnostics for all policies
         print(f"\n5. Weight diagnostics:")
 
@@ -430,7 +520,6 @@ def main() -> int:
         # Generate visualizations if requested
         if _viz_available and args.plot_dir and not args.no_plots:
             print("\n6. Generating visualizations...")
-            from pathlib import Path
 
             plot_dir = Path(args.plot_dir)
             plot_dir.mkdir(parents=True, exist_ok=True)

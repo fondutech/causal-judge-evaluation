@@ -25,6 +25,8 @@ from typing import Optional
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
+from policy_config import POLICY_NAMES
+
 
 def run_command(
     cmd: str, check: bool = True, skip_if_exists: Optional[Path] = None
@@ -187,7 +189,7 @@ def main() -> None:
     print("=" * 60)
 
     # Check if all response files exist
-    policies = ["base", "clone", "unhelpful"]
+    policies = POLICY_NAMES
     all_responses_exist = all(
         (data_dir / "responses" / f"{policy}_responses.jsonl").exists()
         for policy in policies
