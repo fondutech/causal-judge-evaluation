@@ -70,6 +70,10 @@ Required keys:
 source /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/set_secrets.sh
 ```
 
+## 🧾 Command Best Practices
+
+- Run "source set_secrets.sh" in the same line as other commands when they depend on api keys
+
 ## 📊 Data Format
 
 Expected JSONL format:

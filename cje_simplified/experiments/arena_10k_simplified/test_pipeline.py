@@ -191,6 +191,12 @@ def main() -> None:
         default=50,
         help="Number of samples to test (default: 50)",
     )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=0,
+        help="Save progress every N samples (0 to disable batching)",
+    )
     args = parser.parse_args()
 
     print("🧪 Starting end-to-end pipeline test...")
@@ -212,13 +218,16 @@ def main() -> None:
 
         # Step 2: Generate responses (with fixed seed)
         # Note: Using max-tokens=50 for faster testing (enough for 1-2 sentences)
-        run_command(
+        cmd = (
             f"python pipeline_steps/generate_responses.py "
             f"--prompts {test_dir}/prompts.jsonl "
             f"--output-dir {test_dir}/responses "
             f"--max-responses {args.n_samples} "
             f"--max-tokens 50"
         )
+        if args.batch_size > 0:
+            cmd += f" --batch-size {args.batch_size}"
+        run_command(cmd)
         verify_responses(test_dir / "responses", n_samples=args.n_samples)
 
         # Step 3: Add judge scores
@@ -237,11 +246,14 @@ def main() -> None:
         verify_evaluation_scores(test_dir / "responses")
 
         # Step 5: Compute log probabilities
-        run_command(
+        cmd = (
             f"python pipeline_steps/compute_logprobs.py "
             f"--responses-dir {test_dir}/responses "
             f"--output-dir {test_dir}/logprobs"
         )
+        if args.batch_size > 0:
+            cmd += f" --batch-size {args.batch_size}"
+        run_command(cmd)
         verify_logprobs(test_dir / "logprobs", n_samples=args.n_samples)
 
         # Step 6: Prepare CJE dataset

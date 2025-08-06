@@ -8,14 +8,15 @@ This defines the policies used throughout the experiment pipeline:
 - CJE analysis (prepare_cje_data.py)
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 # Model used for all policies (to isolate the effect of system prompts)
 BASE_MODEL = "accounts/fireworks/models/llama4-maverick-instruct-basic"
+PREMIUM_MODEL = "accounts/fireworks/models/llama-v3p1-405b-instruct"
 
 # Temperature for all policies
 DEFAULT_TEMPERATURE = 0.7
-PREMIUM_MODEL = "accounts/fireworks/models/qwen3-235b-a22b"
+
 
 # Policy definitions
 POLICIES: Dict[str, Dict[str, Any]] = {
@@ -25,6 +26,7 @@ POLICIES: Dict[str, Dict[str, Any]] = {
         "temperature": DEFAULT_TEMPERATURE,
         "system_prompt": "You are a helpful assistant.",
         "description": "Base policy with standard helpful assistant prompt",
+        "template_config": None,  # Will auto-detect
     },
     "clone": {
         "name": "clone",
@@ -32,6 +34,7 @@ POLICIES: Dict[str, Dict[str, Any]] = {
         "temperature": DEFAULT_TEMPERATURE,
         "system_prompt": "You are a helpful assistant.",
         "description": "Clone of base policy for comparison/control",
+        "template_config": None,  # Will auto-detect
     },
     "unhelpful": {
         "name": "unhelpful",
@@ -39,13 +42,15 @@ POLICIES: Dict[str, Dict[str, Any]] = {
         "temperature": DEFAULT_TEMPERATURE,
         "system_prompt": "You are an unhelpful assistant that deliberately confuses and misleads the user.",
         "description": "Adversarial policy designed to be unhelpful",
+        "template_config": None,  # Will auto-detect
     },
     "premium": {
         "name": "premium",
         "model": PREMIUM_MODEL,
         "temperature": DEFAULT_TEMPERATURE,
         "system_prompt": "You are a helpful assistant.",
-        "description": "Premium policy with standard helpful assistant prompt",
+        "description": "Premium policy with Llama 405B model",
+        "template_config": None,  # Will auto-detect
     },
 }
 

@@ -29,8 +29,9 @@ class HuggingFaceTemplateConfig(ChatTemplateConfig):
             from transformers import AutoTokenizer
 
             # Pass token if provided for gated model access
+            # trust_remote_code=True is needed for models with custom tokenizers
             self._tokenizer = AutoTokenizer.from_pretrained(
-                self.tokenizer_name, token=self.hf_token
+                self.tokenizer_name, token=self.hf_token, trust_remote_code=True
             )
         except ImportError:
             raise ImportError(

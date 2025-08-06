@@ -45,6 +45,7 @@ python-dotenv = "^1.1.0"
 labelbox = "^7.0.0"
 langchain = "^0.3.27"
 langchain-fireworks = "^0.3.0"
+blobfile = "^3.0.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.3"

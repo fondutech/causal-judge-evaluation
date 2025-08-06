@@ -132,11 +132,34 @@ def main() -> None:
         action="store_true",
         help="Skip steps where output files already exist",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force overwrite existing files (opposite of --skip-existing)",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=20,
+        help="Save progress every N samples for resilience (default: 20, set to 0 to disable)",
+    )
     args = parser.parse_args()
+
+    # Check for conflicting flags
+    if args.skip_existing and args.force:
+        parser.error("Cannot use both --skip-existing and --force")
+
+    # If --force is set, disable skip_existing
+    if args.force:
+        args.skip_existing = False
 
     print("🚀 Starting Arena experiment data preparation...")
     print(f"   Samples: {args.n_samples}")
     print(f"   Max tokens: {args.max_tokens}")
+    print(f"   Batch size: {args.batch_size if args.batch_size > 0 else 'disabled'}")
+    print(
+        f"   Mode: {'Force overwrite' if args.force else 'Skip existing' if args.skip_existing else 'Normal'}"
+    )
     print(f"   Output directory: {args.data_dir}")
 
     # Setup data directory
@@ -173,13 +196,16 @@ def main() -> None:
     if args.skip_existing and all_responses_exist:
         print("⏭️  Skipping response generation (all files exist)")
     else:
-        run_command(
+        cmd = (
             f"python pipeline_steps/generate_responses.py "
             f"--prompts {data_dir}/prompts.jsonl "
             f"--output-dir {data_dir}/responses "
             f"--max-responses {args.n_samples} "
             f"--max-tokens {args.max_tokens}"
         )
+        if args.batch_size > 0:
+            cmd += f" --batch-size {args.batch_size}"
+        run_command(cmd)
 
     # Step 3: Add judge scores
     print("\n" + "=" * 60)
@@ -235,11 +261,14 @@ def main() -> None:
     if args.skip_existing and all_logprobs_exist:
         print("⏭️  Skipping logprob computation (all files exist)")
     else:
-        run_command(
+        cmd = (
             f"python pipeline_steps/compute_logprobs.py "
             f"--responses-dir {data_dir}/responses "
             f"--output-dir {data_dir}/logprobs"
         )
+        if args.batch_size > 0:
+            cmd += f" --batch-size {args.batch_size}"
+        run_command(cmd)
 
     # Step 6: Prepare CJE dataset
     print("\n" + "=" * 60)
