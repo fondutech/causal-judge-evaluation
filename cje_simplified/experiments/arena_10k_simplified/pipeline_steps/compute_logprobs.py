@@ -2,8 +2,7 @@
 """
 Compute log probabilities for responses using teacher forcing.
 
-This uses the Fireworks API to compute log P(response|prompt) for each
-response under different models, properly handling chat templates and system prompts.
+Simplified version with single API call per sample.
 """
 
 import json
@@ -12,7 +11,6 @@ import shutil
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-import statistics
 
 import sys
 
@@ -21,87 +19,6 @@ sys.path.append(str(Path(__file__).parent.parent))  # Add arena_10k_simplified t
 
 from cje_simplified import compute_chat_logprob
 from policy_config import POLICIES, get_policy_config, POLICY_NAMES
-
-
-def compute_median_logprob(
-    chat: List[Dict[str, str]],
-    model: str,
-    temperature: float,
-    template_config: Any,  # ChatTemplateConfig type
-    num_samples: int = 3,
-) -> tuple[Optional[float], List[Dict[str, Any]]]:
-    """Compute median logprob from multiple API calls.
-
-    Args:
-        chat: Chat messages
-        model: Model name
-        temperature: Temperature for sampling
-        template_config: Template configuration (any ChatTemplateConfig subclass)
-        num_samples: Number of API calls to make (default: 3)
-
-    Returns:
-        Tuple of (median_logprob, sample_history)
-        Returns (None, sample_history) if all attempts fail
-    """
-    valid_logprobs = []
-    sample_history = []
-
-    for i in range(num_samples):
-        attempt_start = time.time()
-
-        try:
-            result = compute_chat_logprob(
-                chat=chat,
-                model=model,
-                temperature=temperature,
-                template_config=template_config,
-            )
-
-            sample_result: Dict[str, Any] = {
-                "sample": i + 1,
-                "timestamp": attempt_start,
-                "duration": time.time() - attempt_start,
-                "success": False,
-                "logprob": None,
-                "error": None,
-            }
-
-            if result.is_valid and result.value is not None:
-                # Check for positive logprobs (likely an error)
-                if result.value > 0:
-                    sample_result["error"] = f"Positive logprob: {result.value}"
-                    sample_result["logprob"] = float(result.value)
-                else:
-                    # Valid negative logprob
-                    sample_result["success"] = True
-                    sample_result["logprob"] = float(result.value)
-                    valid_logprobs.append(result.value)
-            else:
-                sample_result["error"] = result.error or "Unknown error"
-
-            sample_history.append(sample_result)
-
-        except Exception as e:
-            sample_result = {
-                "sample": i + 1,
-                "timestamp": attempt_start,
-                "duration": time.time() - attempt_start,
-                "success": False,
-                "logprob": None,
-                "error": str(e),
-            }
-            sample_history.append(sample_result)
-
-        # Brief pause between API calls
-        if i < num_samples - 1:
-            time.sleep(0.2)
-
-    # Calculate median if we have valid values
-    if valid_logprobs:
-        median_value = statistics.median(valid_logprobs)
-        return median_value, sample_history
-    else:
-        return None, sample_history
 
 
 def load_existing_logprobs(output_file: str) -> Dict[str, Dict]:
@@ -138,22 +55,18 @@ def compute_logprobs_for_responses(
     output_file: str,
     max_samples: Optional[int] = None,
     policy_name: str = "base",
-    max_retries: int = 3,
-    num_median_samples: int = 3,
     batch_size: Optional[int] = None,
 ) -> List[Dict]:
     """Compute log probabilities for BASE policy responses under a given policy's model.
 
-    This is used for CJE - we always compute log P(base_response | prompt) under
-    different policy models to estimate importance weights.
+    Simplified to use single API call per sample.
 
     Args:
         base_responses_file: Path to BASE policy responses JSONL file
         output_file: Where to save log probabilities
         max_samples: Limit number of samples to process
         policy_name: Name of the policy whose model to use for computing log probs
-        max_retries: Maximum number of retries for failed computations (default: 3)
-        num_median_samples: Number of samples for median computation (default: 3)
+        batch_size: Save progress every N samples (for resume capability)
 
     Returns:
         List of dictionaries with log probability results
@@ -203,7 +116,6 @@ def compute_logprobs_for_responses(
         print(f"  🔄 Continuing with {len(responses)} remaining computations")
     print(f"Using {policy_name} policy model: {model}")
     print(f"Temperature: {temperature}, System prompt: {system_prompt[:50]}...")
-    print(f"Computing median of {num_median_samples} samples per prompt")
     if batch_size:
         print(f"Batch size: {batch_size} (saving progress incrementally)")
 
@@ -231,6 +143,8 @@ def compute_logprobs_for_responses(
     results: List[Dict[str, Any]] = (
         list(existing_logprobs.values()) if batch_size else []
     )
+    failed_count = 0
+    successful_count = 0
 
     try:
         for i, data in enumerate(responses):
@@ -244,71 +158,63 @@ def compute_logprobs_for_responses(
                 {"role": "assistant", "content": response},
             ]
 
-            # Compute median logprob with retries
-            retry_count = 0
-            final_logprob = None
-            last_error = None
-            all_attempts: List[Dict[str, Any]] = (
-                []
-            )  # Track all attempts including retries
+            # Single API call with simple retry logic
+            start_time = time.time()
 
-            while retry_count < max_retries:
-                # Get median from multiple samples
-                median_logprob, sample_history = compute_median_logprob(
+            # Simple retry with exponential backoff
+            max_retries = 3
+            retry_delay = 1.0  # Initial delay in seconds
+
+            for attempt in range(max_retries):
+                result = compute_chat_logprob(
                     chat=chat,
                     model=model,
                     temperature=temperature,
                     template_config=template_config,
-                    num_samples=num_median_samples,
                 )
 
-                # Record this retry attempt
-                retry_attempt = {
-                    "retry": retry_count + 1,
-                    "median_logprob": median_logprob,
-                    "samples": sample_history,
-                    "valid_samples": sum(1 for s in sample_history if s["success"]),
-                }
-                all_attempts.append(retry_attempt)
-
-                if median_logprob is not None:
-                    # Success!
-                    final_logprob = median_logprob
-                    print(
-                        f"  [{i + 1}/{len(responses)}] {data['prompt_id']}: "
-                        f"median={median_logprob:.3f} "
-                        f"(from {retry_attempt['valid_samples']} valid samples)"
-                    )
+                # Break if successful
+                if result.is_valid and result.value is not None:
                     break
-                else:
-                    # All samples failed
-                    errors = [s["error"] for s in sample_history if s["error"]]
-                    last_error = "; ".join(set(errors))  # Unique errors
-                    retry_count += 1
 
-                    if retry_count < max_retries:
-                        print(
-                            f"  Retry {retry_count}/{max_retries} for {data['prompt_id']}: "
-                            f"all {num_median_samples} samples failed"
-                        )
-                        time.sleep(1)  # Longer pause before retry
+                # On failure, retry unless it's the last attempt
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Double the delay for next attempt
+                    if attempt == 0:  # Only print on first retry
+                        print(f"    Retrying after error: {result.error}")
+
+            duration = time.time() - start_time
 
             # Record result
-            result = {
+            if result.is_valid and result.value is not None:
+                logprob = result.value
+                error = None
+                successful_count += 1
+                print(
+                    f"  [{i + 1}/{len(responses)}] {data['prompt_id']}: {logprob:.3f} ({duration:.1f}s)"
+                )
+            else:
+                logprob = None
+                error = result.error or "Unknown error"
+                failed_count += 1
+                print(
+                    f"  [{i + 1}/{len(responses)}] {data['prompt_id']}: FAILED - {error}"
+                )
+
+            output_record = {
                 "prompt_id": data["prompt_id"],
                 "prompt": prompt,
                 "response": response,
                 "source_policy": "base",  # Always computing base responses
                 "eval_model": model,
-                "logprob": final_logprob,
-                "error": last_error if final_logprob is None else None,
-                "retries": retry_count if retry_count > 0 else None,
-                "attempt_history": all_attempts if all_attempts else None,
+                "logprob": logprob,
+                "error": error,
             }
 
             # Save immediately if using batching
             if batch_size and output_f:
-                output_f.write(json.dumps(result) + "\n")
+                output_f.write(json.dumps(output_record) + "\n")
                 output_f.flush()  # Ensure written to disk
                 # Save progress message every batch_size computations
                 if (i + 1) % batch_size == 0:
@@ -317,10 +223,7 @@ def compute_logprobs_for_responses(
                         f"  💾 Progress saved: {total_so_far} total log probs ({i + 1} new this run)"
                     )
             else:
-                results.append(result)
-
-            if final_logprob is None:
-                print(f"  ❌ Failed after {retry_count} retries: {last_error}")
+                results.append(output_record)
 
     finally:
         # Always close file if using batching
@@ -340,43 +243,21 @@ def compute_logprobs_for_responses(
         # Save all results at once (original behavior)
         print(f"\nSaving results to {output_file}")
         with open(output_file, "w") as f:
-            for result in results:
-                f.write(json.dumps(result) + "\n")
+            for record in results:
+                f.write(json.dumps(record) + "\n")
 
-        # Print summary statistics
-    successful = sum(1 for r in results if r["logprob"] is not None)
+    # Print summary
     print(f"\nSummary:")
-    print(f"  Successful: {successful}/{len(results)}")
+    print(f"  Successful: {successful_count}/{len(responses)}")
+    print(f"  Failed: {failed_count}/{len(responses)}")
 
-    if successful > 0:
+    if successful_count > 0:
         logprobs = [r["logprob"] for r in results if r["logprob"] is not None]
-        print(f"  Mean logprob: {sum(logprobs) / len(logprobs):.3f}")
-        print(f"  Min logprob: {min(logprobs):.3f}")
-        print(f"  Max logprob: {max(logprobs):.3f}")
-
-    # Analyze retries
-    retried = [r for r in results if r.get("retries")]
-    if retried:
-        print(f"  Samples requiring retries: {len(retried)}")
-
-    # Analyze sample variance
-    print("\nSample variance analysis:")
-    for result in results[:3]:  # Show first 3 for brevity
-        if result.get("attempt_history"):
-            prompt_id = result["prompt_id"]
-            # Get all successful logprobs from all attempts
-            all_logprobs = []
-            for attempt in result["attempt_history"]:
-                for sample in attempt["samples"]:
-                    if sample["success"]:
-                        all_logprobs.append(sample["logprob"])
-
-            if len(all_logprobs) > 1:
-                variance = statistics.stdev(all_logprobs)
-                print(
-                    f"  {prompt_id}: range=[{min(all_logprobs):.2f}, {max(all_logprobs):.2f}], "
-                    f"stdev={variance:.2f}, median={result['logprob']:.2f}"
-                )
+        mean_logprob = sum(logprobs) / len(logprobs)
+        min_logprob = min(logprobs)
+        max_logprob = max(logprobs)
+        print(f"  Mean logprob: {mean_logprob:.3f}")
+        print(f"  Range: [{min_logprob:.3f}, {max_logprob:.3f}]")
 
     return results
 
@@ -386,7 +267,7 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Compute log probabilities for responses"
+        description="Compute log probabilities for responses (simplified single-sample version)"
     )
     parser.add_argument(
         "--responses-dir",
@@ -404,12 +285,6 @@ def main() -> None:
         nargs="+",
         default=POLICY_NAMES,
         help="List of policies to compute log probs for (default: all)",
-    )
-    parser.add_argument(
-        "--num-median-samples",
-        type=int,
-        default=2,
-        help="Number of samples for median computation (default: 2, sufficient for v3p3 model)",
     )
     parser.add_argument(
         "--batch-size",
@@ -440,7 +315,6 @@ def main() -> None:
             output_file=str(output_file),
             max_samples=args.max_samples,
             policy_name=policy,
-            num_median_samples=args.num_median_samples,
             batch_size=args.batch_size if args.batch_size > 0 else None,
         )
 
