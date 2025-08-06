@@ -56,7 +56,7 @@ poetry run python analyze_dataset.py --data data/cje_dataset.jsonl --oracle-cove
 ## Policies
 
 Policies are dynamically discovered from `policy_config.py`:
-- **base**: Standard helpful assistant (llama4-maverick)
+- **base**: Standard helpful assistant (llama-v3p3-70b-instruct)
 - **clone**: Identical to base (control)
 - **unhelpful**: Deliberately poor responses
 - **premium**: High-quality model (llama-v3p1-405b-instruct)
@@ -71,6 +71,12 @@ The pipeline saves progress incrementally to handle interruptions:
 - Uses atomic writes (temp file + rename) to prevent corruption
 - Automatically resumes from last saved position
 - Detects and skips corrupted lines during resume
+
+### Retry Logic
+Log probability computation includes automatic retry for transient failures:
+- 3 attempts with exponential backoff (1s, 2s, 4s delays)
+- Handles network issues, rate limits, and temporary API errors
+- Single API call per sample (simplified from median-of-3 approach)
 
 ### Resume Example
 ```bash
