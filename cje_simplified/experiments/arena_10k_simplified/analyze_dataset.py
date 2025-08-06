@@ -99,7 +99,7 @@ def main() -> int:
     parser.add_argument(
         "--plot-dir",
         type=str,
-        help="Directory to save visualization plots (requires matplotlib)",
+        help="Directory to save visualization plots (defaults to same dir as data file)",
     )
     parser.add_argument(
         "--no-plots",
@@ -517,11 +517,16 @@ def main() -> int:
             ess = float(len(base_rewards))
             ess_frac = 1.0
 
-        # Generate visualizations if requested
-        if _viz_available and args.plot_dir and not args.no_plots:
-            print("\n6. Generating visualizations...")
+        # Generate visualizations by default (unless --no-plots is specified)
+        if _viz_available and not args.no_plots:
+            # Default plot_dir to same directory as data file
+            if args.plot_dir:
+                plot_dir = Path(args.plot_dir)
+            else:
+                # Default to plots/ subdirectory next to the data file
+                plot_dir = Path(args.data).parent / "plots"
 
-            plot_dir = Path(args.plot_dir)
+            print(f"\n6. Generating visualizations in {plot_dir}/...")
             plot_dir.mkdir(parents=True, exist_ok=True)
 
             # Collect weights for visualization
