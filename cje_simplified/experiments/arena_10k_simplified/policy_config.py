@@ -11,7 +11,7 @@ This defines the policies used throughout the experiment pipeline:
 from typing import Dict, Any, List, Optional
 
 # Model used for all policies (to isolate the effect of system prompts)
-BASE_MODEL = "accounts/fireworks/models/llama4-maverick-instruct-basic"
+BASE_MODEL = "accounts/fireworks/models/llama-v3p3-70b-instruct"
 PREMIUM_MODEL = "accounts/fireworks/models/llama-v3p1-405b-instruct"
 
 # Temperature for all policies

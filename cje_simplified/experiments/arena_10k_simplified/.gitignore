@@ -4,6 +4,10 @@ data/**/*.jsonl
 test_e2e_data/
 test_batch/
 
+# Analysis outputs
+analysis/
+*.json
+
 # Temp files from batch saving
 *.tmp
 

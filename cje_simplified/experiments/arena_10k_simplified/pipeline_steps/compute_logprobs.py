@@ -408,8 +408,8 @@ def main() -> None:
     parser.add_argument(
         "--num-median-samples",
         type=int,
-        default=3,
-        help="Number of samples for median computation (default: 3)",
+        default=2,
+        help="Number of samples for median computation (default: 2, sufficient for v3p3 model)",
     )
     parser.add_argument(
         "--batch-size",
