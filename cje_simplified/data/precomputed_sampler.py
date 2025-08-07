@@ -184,67 +184,84 @@ class PrecomputedSampler:
 
         return policy_data
 
-    def compute_importance_weights(
-        self, target_policy: str, clip_weight: float = 100.0
-    ) -> np.ndarray:
-        """Compute importance weights for a target policy.
+    def compute_raw_weights(self, target_policy: str) -> np.ndarray:
+        """Compute raw importance weights WITHOUT any clipping.
+
+        Returns truly raw weights: exp(log_p_target - log_p_base)
+        Only handles numerical overflow protection, no artificial clipping.
 
         Args:
             target_policy: Name of target policy
-            clip_weight: Maximum weight value (for variance control)
 
         Returns:
-            Array of importance weights
+            Array of raw importance weights
         """
         if target_policy not in self.target_policies:
             raise ValueError(f"Unknown target policy: {target_policy}")
 
         weights = []
-        n_clipped_high = 0
-        max_unclipped_ratio = -float("inf")
-
         for record in self.formatted_data:
             base_logp = record["base_policy_logprob"]
             target_logp = record["target_policy_logprobs"][target_policy]
 
             # Compute weight with overflow protection
             log_ratio = target_logp - base_logp
-            if log_ratio > 50:  # exp(50) is huge
-                weight = clip_weight
-                n_clipped_high += 1
-                max_unclipped_ratio = max(max_unclipped_ratio, log_ratio)
-            elif log_ratio < -50:  # exp(-50) is tiny
-                weight = 0.0
+
+            # Practical thresholds for importance weights:
+            # - log_ratio > 100 means target is 10^43 times more likely (unrealistic)
+            # - log_ratio < -100 means target is 10^-43 times as likely (effectively 0)
+            # These are still very extreme but prevent numerical overflow
+            if log_ratio > 100:
+                weight = np.exp(100)  # ~2.7e43, extreme but manageable
+            elif log_ratio < -100:
+                weight = 0.0  # Effectively zero weight
             else:
-                raw_weight = np.exp(log_ratio)
-                if raw_weight > clip_weight:
-                    weight = clip_weight
-                    n_clipped_high += 1
-                    max_unclipped_ratio = max(max_unclipped_ratio, log_ratio)
-                else:
-                    weight = raw_weight
+                weight = np.exp(log_ratio)
 
             weights.append(weight)
 
-        weights_array = np.array(weights)
+        return np.array(weights)
 
-        # Log clipping statistics
-        if n_clipped_high > 0:
-            logger.info(
-                f"Weight clipping for policy '{target_policy}': "
-                f"{n_clipped_high} weights clipped to {clip_weight}"
-            )
-            if max_unclipped_ratio > -float("inf"):
-                logger.debug(
-                    f"Maximum unclipped weight would have been {np.exp(max_unclipped_ratio):.2e} "
-                    f"(log ratio={max_unclipped_ratio:.2f})"
+    def compute_importance_weights(
+        self, target_policy: str, clip_weight: Optional[float] = None
+    ) -> np.ndarray:
+        """Compute importance weights for a target policy with optional clipping.
+
+        Args:
+            target_policy: Name of target policy
+            clip_weight: Maximum weight value for variance control.
+                        If None (default), no clipping is applied.
+                        Set to a finite value (e.g., 100.0) to clip weights.
+
+        Returns:
+            Array of importance weights
+        """
+        # Get raw weights
+        raw_weights = self.compute_raw_weights(target_policy)
+
+        # Apply clipping if requested (and if it would actually clip anything)
+        if (
+            clip_weight is not None and clip_weight < 1e9
+        ):  # Only clip if reasonable threshold
+            weights_array = np.clip(raw_weights, 0, clip_weight)
+
+            # Log clipping statistics
+            n_clipped = np.sum(raw_weights > clip_weight)
+            if n_clipped > 0:
+                max_raw = np.max(raw_weights)
+                logger.info(
+                    f"Weight clipping for policy '{target_policy}': "
+                    f"{n_clipped}/{len(raw_weights)} weights clipped to {clip_weight} "
+                    f"(max raw weight: {max_raw:.2f})"
                 )
+        else:
+            weights_array = raw_weights
 
+        # Log statistics
         logger.debug(
             f"Weight statistics for '{target_policy}': "
             f"mean={weights_array.mean():.3f}, std={weights_array.std():.3f}, "
-            f"min={weights_array.min():.3f}, max={weights_array.max():.3f}, "
-            f"n_zero={np.sum(weights_array == 0)}, n_at_clip={np.sum(weights_array == clip_weight)}"
+            f"min={weights_array.min():.3f}, max={weights_array.max():.3f}"
         )
 
         return weights_array

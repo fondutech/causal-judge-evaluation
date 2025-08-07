@@ -79,7 +79,6 @@ from .utils import (
     # Weight diagnostics
     diagnose_weights,
     create_weight_summary_table,
-    detect_api_nondeterminism,
     WeightDiagnostics,
     # Extreme weights analysis
     analyze_extreme_weights,
@@ -137,7 +136,6 @@ __all__ = [
     # Diagnostics
     "diagnose_weights",
     "create_weight_summary_table",
-    "detect_api_nondeterminism",
     "WeightDiagnostics",
     "analyze_extreme_weights",
     # Calibration - isotonic regression

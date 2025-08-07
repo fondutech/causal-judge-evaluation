@@ -20,21 +20,47 @@ from policy_config import POLICY_NAMES
 ABLATION_CONFIG: Dict[str, Any] = {
     "oracle_fractions": [0.25, 0.50, 1.00],
     "estimators": [
-        {"name": "calibrated-ips", "display": "CalibratedIPS"},
-        {"name": "raw-ips", "display": "RawIPS"},
+        # CalibratedIPS variants (with and without pre-clipping)
+        {
+            "name": "calibrated-ips",
+            "display": "CalibIPS",
+            "config": {"clip_weight": 1e10},
+        },  # No pre-clip
+        {
+            "name": "calibrated-ips",
+            "display": "CalibIPS+clip100",
+            "config": {"clip_weight": 100.0},
+        },
+        # RawIPS variants
+        {
+            "name": "raw-ips",
+            "display": "RawIPS",
+            "config": {"clip_weight": 1e10},
+        },  # No clipping
+        {
+            "name": "raw-ips",
+            "display": "RawIPS+clip100",
+            "config": {"clip_weight": 100.0},
+        },
     ],
     "seeds": [42],  # Can add more seeds for multiple runs
 }
 
 
 def run_single_experiment(
-    data_file: Path, estimator: str, output_dir: Path, n_folds: int = 5
+    data_file: Path,
+    estimator: str,
+    output_dir: Path,
+    n_folds: int = 5,
+    estimator_config: Optional[Dict[str, Any]] = None,
+    config_suffix: str = "",
 ) -> Dict[str, Any]:
     """Run a single CJE analysis experiment."""
 
-    # Create output filename
+    # Create output filename with config suffix
     data_name = data_file.stem
-    output_file = output_dir / f"{estimator}_{data_name}.json"
+    suffix = f"_{config_suffix}" if config_suffix else ""
+    output_file = output_dir / f"{estimator}{suffix}_{data_name}.json"
 
     # Run analysis
     cmd = [
@@ -51,6 +77,10 @@ def run_single_experiment(
         "--output",
         str(output_file),
     ]
+
+    # Add estimator config if provided
+    if estimator_config:
+        cmd.extend(["--estimator-config", json.dumps(estimator_config)])
 
     print(f"  Running: {' '.join(cmd[-6:])}")
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -78,7 +108,8 @@ def extract_metrics(result: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]
         frac_str = "1.00"
 
     metrics = {
-        "estimator": result["estimation"]["estimator"],
+        "estimator": result.get("estimator_display", result["estimation"]["estimator"]),
+        "estimator_type": result["estimation"]["estimator"],
         "oracle_fraction": float(frac_str),
         "n_samples": result["dataset"]["n_samples"],
     }
@@ -142,8 +173,50 @@ def main() -> None:
         action="store_true",
         help="Prepare ablation datasets before running experiments",
     )
+    parser.add_argument(
+        "--no-clipping",
+        action="store_true",
+        help="Run RawIPS without weight clipping (sets clip_weight to 1e10)",
+    )
+    parser.add_argument(
+        "--clip-weight",
+        type=float,
+        help="Override default clip weight for RawIPS (default: 100.0)",
+    )
 
     args = parser.parse_args()
+
+    # Override config based on arguments
+    if args.no_clipping:
+        # Only unclipped versions
+        ABLATION_CONFIG["estimators"] = [
+            {
+                "name": "calibrated-ips",
+                "display": "CalibIPS",
+                "config": {"clip_weight": 1e10},
+            },
+            {"name": "raw-ips", "display": "RawIPS", "config": {"clip_weight": 1e10}},
+        ]
+    elif args.clip_weight is not None:
+        # Use custom clip weight for all
+        ABLATION_CONFIG["estimators"] = [
+            {
+                "name": "calibrated-ips",
+                "display": f"CalibIPS",
+                "config": {"clip_weight": 1e10},
+            },
+            {
+                "name": "calibrated-ips",
+                "display": f"CalibIPS+clip{args.clip_weight:.0f}",
+                "config": {"clip_weight": args.clip_weight},
+            },
+            {"name": "raw-ips", "display": f"RawIPS", "config": {"clip_weight": 1e10}},
+            {
+                "name": "raw-ips",
+                "display": f"RawIPS+clip{args.clip_weight:.0f}",
+                "config": {"clip_weight": args.clip_weight},
+            },
+        ]
 
     print("Oracle Coverage Ablation Study")
     print("=" * 50)
@@ -190,15 +263,32 @@ def main() -> None:
 
             print(f"\nOracle fraction: {frac:.0%}, Seed: {seed}")
 
-            for estimator_config in ABLATION_CONFIG["estimators"]:
-                estimator = estimator_config["name"]
-                print(f"  Estimator: {estimator_config['display']}")
+            for i, estimator_info in enumerate(ABLATION_CONFIG["estimators"]):
+                estimator = estimator_info["name"]
+                config = estimator_info.get("config", {})
+                display_name = estimator_info["display"]
+                print(f"  Estimator: {display_name}")
+
+                # Create a unique suffix for configurations with same estimator name
+                config_suffix = (
+                    f"config{i}"
+                    if i > 0
+                    and estimator == ABLATION_CONFIG["estimators"][i - 1].get("name")
+                    else ""
+                )
 
                 result = run_single_experiment(
-                    data_file, estimator, args.output_dir, args.n_folds
+                    data_file,
+                    estimator,
+                    args.output_dir,
+                    args.n_folds,
+                    estimator_config=config,
+                    config_suffix=config_suffix,
                 )
 
                 if result:
+                    # Add display name to result for tracking
+                    result["estimator_display"] = display_name
                     results.append(result)
 
     # Create summary
@@ -223,10 +313,10 @@ def main() -> None:
 
         for oracle_frac in sorted(df["oracle_fraction"].unique()):
             for estimator in ABLATION_CONFIG["estimators"]:
-                est_name = estimator["name"]
+                display_name = estimator["display"]
                 row = df[
                     (df["oracle_fraction"] == oracle_frac)
-                    & (df["estimator"] == est_name)
+                    & (df["estimator"] == display_name)
                 ]
 
                 if not row.empty:
@@ -235,7 +325,7 @@ def main() -> None:
                     ci_width = row[f"{policy}_ci_width"].values[0]
 
                     print(
-                        f"{oracle_frac:6.1%}   | {estimator['display']:14} | "
+                        f"{oracle_frac:6.1%}   | {display_name:14} | "
                         f"{estimate:.3f} ± {se:.3f}    | {ci_width:.3f}"
                     )
 
@@ -251,10 +341,10 @@ def main() -> None:
 
         for oracle_frac in sorted(df["oracle_fraction"].unique()):
             for estimator in ABLATION_CONFIG["estimators"]:
-                est_name = estimator["name"]
+                display_name = estimator["display"]
                 row = df[
                     (df["oracle_fraction"] == oracle_frac)
-                    & (df["estimator"] == est_name)
+                    & (df["estimator"] == display_name)
                 ]
 
                 if not row.empty:
@@ -262,7 +352,7 @@ def main() -> None:
                     max_w = row[f"{policy}_max_weight"].values[0]
 
                     print(
-                        f"{oracle_frac:6.1%}   | {estimator['display']:14} | "
+                        f"{oracle_frac:6.1%}   | {display_name:14} | "
                         f"{ess:5.1f}%  | {max_w:8.1f}"
                     )
 

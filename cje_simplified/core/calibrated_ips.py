@@ -26,7 +26,8 @@ class CalibratedIPS(BaseCJEEstimator):
     Args:
         sampler: PrecomputedSampler with data
         k_folds: Number of cross-fitting folds (default 5, minimum 2)
-        clip_weight: Maximum weight value for variance control (default 100)
+        clip_weight: Maximum weight value before calibration (default 1e10, i.e., no clipping)
+                    Note: Calibration will still control variance through isotonic regression
         random_seed: Random seed for reproducibility
     """
 
@@ -34,7 +35,7 @@ class CalibratedIPS(BaseCJEEstimator):
         self,
         sampler: PrecomputedSampler,
         k_folds: int = 5,
-        clip_weight: float = 100.0,
+        clip_weight: float = 1e10,  # Default: no clipping, let calibration handle extremes
         random_seed: int = 42,
     ):
         # Create config
@@ -50,8 +51,10 @@ class CalibratedIPS(BaseCJEEstimator):
         """Fit weight calibration for all target policies."""
 
         for policy in self.sampler.target_policies:
-            # Get raw weights
-            raw_weights = self.sampler.compute_importance_weights(policy)
+            # Get raw weights (with optional pre-clipping)
+            raw_weights = self.sampler.compute_importance_weights(
+                policy, clip_weight=self.config.clip_weight
+            )
             if raw_weights is None:
                 continue
 
