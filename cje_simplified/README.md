@@ -201,6 +201,49 @@ Key features:
 - Cross-fitting prevents overfitting to oracle labels
 - Handles partial labeling (e.g., 25% oracle subset)
 
+## Running Ablation Studies
+
+### Oracle Coverage Ablations
+
+Compare estimator performance with different amounts of oracle labels:
+
+```bash
+cd cje_simplified/experiments/arena_10k_simplified
+
+# Run ablations with default settings (25%, 50%, 100% oracle coverage)
+poetry run python analyze_oracle_coverage.py --prepare-data
+
+# Run without weight clipping to see true variance
+poetry run python analyze_oracle_coverage.py --no-clipping
+
+# Use custom clip weight
+poetry run python analyze_oracle_coverage.py --clip-weight 50
+```
+
+This will:
+- Test multiple oracle coverage levels (25%, 50%, 100%)
+- Compare CalibratedIPS vs RawIPS estimators
+- Test with and without weight clipping
+- Generate a summary table showing estimates, confidence intervals, and ESS
+
+### Arena Experiment Pipeline
+
+Run full experiments on ChatBot Arena data:
+
+```bash
+cd cje_simplified/experiments/arena_10k_simplified
+
+# Prepare prompts from ChatBot Arena (filters inappropriate content)
+poetry run python pipeline_steps/prepare_arena_data.py --n-samples 1000
+
+# Generate responses and compute log probabilities
+poetry run python pipeline_steps/generate_responses.py --model llama-3.2-3b
+
+# Create CJE dataset and analyze
+poetry run python generate_arena_data.py --n-samples 1000
+poetry run python analyze_dataset.py --data data/cje_dataset.jsonl
+```
+
 ## Weight Diagnostics
 
 Debug importance weights to catch common issues:
