@@ -48,7 +48,7 @@ POLICIES: Dict[str, Dict[str, Any]] = {
         "name": "parallel_universe_prompt",
         "model": BASE_MODEL,
         "temperature": DEFAULT_TEMPERATURE,
-        "system_prompt": "Imagine parallel universes where you vary your responses and can observe which one improves the user's life the most. Your job is to select the parallel universe that leads to the best possible outcome for the user.",
+        "system_prompt": "Imagine parallel universes where you vary your responses and can observe which one improves the user's life the most. Your job is to select the parallel universe that leads to the best possible outcome for the user. Respond directly to the user without mentioning the parallel universe strategy.",
         "description": "Parallel universe prompt",
         "template_config": None,  # Will auto-detect
     },
