@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Run CJE analysis on prepared Arena data using the new architecture.
+Run CJE analysis on prepared Arena data
 
 This shows how to use the decoupled loading and calibration approach:
 1. Load dataset (rewards optional)
@@ -636,7 +636,6 @@ def main() -> int:
             try:
                 import matplotlib.pyplot as plt
 
-                # NEW IMPROVED VISUALIZATIONS (2 comprehensive plots)
                 if raw_weights_dict and calibrated_weights_dict:
                     # 1. Comprehensive weight calibration analysis (6 panels per policy)
                     fig = plot_weight_calibration_analysis(
@@ -648,7 +647,7 @@ def main() -> int:
                         bbox_inches="tight",
                     )
                     print(
-                        f"   ✓ NEW: Comprehensive calibration analysis → "
+                        f"   ✓ Comprehensive calibration analysis → "
                         f"{plot_dir}/weight_calibration_analysis.png"
                     )
                     plt.close(fig)
@@ -677,7 +676,7 @@ def main() -> int:
                         bbox_inches="tight",
                     )
                     print(
-                        f"   ✓ NEW: Cross-policy summary dashboard → "
+                        f"   ✓ Cross-policy summary dashboard → "
                         f"{plot_dir}/weight_diagnostics_summary.png"
                     )
                     plt.close(fig)
