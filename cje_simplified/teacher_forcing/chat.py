@@ -8,7 +8,7 @@ from typing import List, Dict, Optional, Tuple
 import logging
 
 from ..data.models import LogProbResult, LogProbStatus
-from .api import compute_total_logprob
+from .api import compute_teacher_forced_logprob
 from .templates import (
     ChatTemplateConfig,
     HuggingFaceTemplateConfig,
@@ -182,8 +182,9 @@ def compute_chat_logprob(
     # Make two API calls for teacher forcing
     try:
         # Get log P(prompt + reply)
-        full_result = compute_total_logprob(
-            text=prompt_plus_reply,
+        full_result = compute_teacher_forced_logprob(
+            prompt="",
+            response=prompt_plus_reply,
             model=model,
             api_key=api_key,
             temperature=temperature,
@@ -192,8 +193,9 @@ def compute_chat_logprob(
             return full_result
 
         # Get log P(prompt only)
-        prefix_result = compute_total_logprob(
-            text=prompt_only,
+        prefix_result = compute_teacher_forced_logprob(
+            prompt="",
+            response=prompt_only,
             model=model,
             api_key=api_key,
             temperature=temperature,

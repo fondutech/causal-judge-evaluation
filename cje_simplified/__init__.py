@@ -98,9 +98,7 @@ except ImportError:
 
 # Teacher forcing
 from .teacher_forcing import (
-    RobustTeacherForcing,
     compute_teacher_forced_logprob,
-    compute_total_logprob,
     ChatTemplateConfig,
     Llama3TemplateConfig,
     HuggingFaceTemplateConfig,
@@ -116,9 +114,7 @@ __all__ = [
     "CalibratedIPS",
     "RawIPS",
     "PrecomputedSampler",
-    "RobustTeacherForcing",
     "compute_teacher_forced_logprob",
-    "compute_total_logprob",
     # Data models
     "Sample",
     "Dataset",

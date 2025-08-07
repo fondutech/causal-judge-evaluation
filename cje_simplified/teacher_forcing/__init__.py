@@ -8,9 +8,7 @@ This module provides:
 
 # API implementations
 from .api import (
-    RobustTeacherForcing,
     compute_teacher_forced_logprob,
-    compute_total_logprob,
 )
 
 # Template configurations
@@ -30,9 +28,7 @@ from .chat import (
 
 __all__ = [
     # Fireworks teacher forcing
-    "RobustTeacherForcing",
     "compute_teacher_forced_logprob",
-    "compute_total_logprob",
     # Template configurations
     "ChatTemplateConfig",
     "Llama3TemplateConfig",
