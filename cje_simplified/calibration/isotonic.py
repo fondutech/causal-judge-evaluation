@@ -12,6 +12,10 @@ from sklearn.model_selection import KFold
 
 logger = logging.getLogger(__name__)
 
+# Tolerance constants for readability
+MEAN_TOL = 1e-12
+VAR_TOL = 1.001
+
 
 # ---------------------------------------------------------------------
 # 0.  Generic isotonic cross-fit  (unchanged)
@@ -81,13 +85,95 @@ def _pav_mean1_projection(w_sorted: np.ndarray) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------
-# 1-b.  Calibrated-DML weight calibration with variance safeguard
+# 1-b.  Variance-safe blending utility
+# ---------------------------------------------------------------------
+def variance_safe_blend(
+    raw_weights: np.ndarray,
+    calibrated_weights: np.ndarray,
+    target_mean: float = 1.0,
+    max_variance_ratio: float = 1.0,
+) -> np.ndarray:
+    """Blend raw and calibrated weights to ensure variance constraint.
+
+    This preserves monotonicity if calibrated_weights is monotone in raw_weights.
+    The blend is: w = alpha * calibrated + (1-alpha) * raw_normalized
+
+    Args:
+        raw_weights: Original uncalibrated weights
+        calibrated_weights: Isotonic calibrated weights
+        target_mean: Target mean for final weights
+        max_variance_ratio: Maximum allowed var(output)/var(raw)
+
+    Returns:
+        Blended weights with mean=target_mean and var <= var(raw) * max_variance_ratio
+    """
+    raw = raw_weights.astype(float)
+    cal = calibrated_weights.astype(float)
+
+    # Normalize both to mean=1 for clean blending
+    raw_norm = raw / (raw.mean() + 1e-12)
+    cal_norm = cal / (cal.mean() + 1e-12)
+
+    raw_var = raw_norm.var()
+    cal_var = cal_norm.var()
+    target_var = raw_var * max_variance_ratio
+
+    # If calibrated already satisfies constraint, use it
+    if cal_var <= target_var:
+        result = cal_norm
+    else:
+        # Binary search for optimal blend
+        # alpha=1 -> calibrated, alpha=0 -> raw
+        lo, hi = 0.0, 1.0
+        best_alpha = 0.0
+
+        for _ in range(30):  # More iterations for precision
+            alpha = 0.5 * (lo + hi)
+            blend = alpha * cal_norm + (1 - alpha) * raw_norm
+            blend_var = blend.var()
+
+            if blend_var <= target_var:
+                best_alpha = alpha
+                lo = alpha  # Can increase alpha
+            else:
+                hi = alpha  # Must decrease alpha
+
+        result = best_alpha * cal_norm + (1 - best_alpha) * raw_norm
+
+        # Log the blend for transparency
+        logger.debug(
+            f"Variance-safe blend: alpha={best_alpha:.3f}, "
+            f"var_ratio={result.var()/raw_var:.3f}"
+        )
+
+    # Scale to target mean
+    result *= target_mean / (result.mean() + 1e-12)
+
+    # Verify constraints (with small tolerance for numerical precision)
+    assert abs(result.mean() - target_mean) < MEAN_TOL, "Mean not preserved"
+    # Note: Due to the final rescaling for mean, variance might slightly exceed target
+    # This is acceptable as long as it's within numerical tolerance
+    final_var_ratio = result.var() / raw_var
+    if (
+        final_var_ratio > max_variance_ratio * 1.01
+    ):  # 1% tolerance for numerical precision
+        logger.warning(
+            f"Variance constraint slightly exceeded due to mean rescaling: "
+            f"ratio={final_var_ratio:.4f} (target={max_variance_ratio})"
+        )
+
+    return result
+
+
+# ---------------------------------------------------------------------
+# 1-c.  Calibrated-DML weight calibration with variance safeguard
 # ---------------------------------------------------------------------
 def calibrate_to_target_mean(
     weights: np.ndarray,
     target_mean: float = 1.0,
     k_folds: int = 3,
     random_seed: int = 42,
+    enforce_variance_nonincrease: bool = True,  # Default: prevent variance explosion
 ) -> np.ndarray:
     """
     Monotone, mean-preserving calibration for importance weights.
@@ -95,15 +181,19 @@ def calibrate_to_target_mean(
     • Uses mean-1 PAV projection cross-fitted across folds.
     • Runs a second mean-1 PAV projection on the merged vector to heal
       fold boundaries (weights-only ⇒ no leakage).
-    • **Safeguard**: if the projection would *increase* variance, fall
-      back to a simple mean-preserving rescale of the raw weights.
+    • **Default safeguard**: Blends with raw weights if calibration would
+      increase variance, preventing pathological variance explosion.
 
     Guarantees
     ----------
     * output ≥ 0
     * exact sample mean == target_mean
-    * variance never exceeds raw variance
+    * variance never exceeds raw variance (when enforce_variance_nonincrease=True)
     * global monotonicity in the rank order of raw weights
+
+    Note: enforce_variance_nonincrease defaults to True to prevent the common
+    case of 10x-40x variance explosions with poor overlap. Set to False only
+    if you specifically want pure isotonic calibration without variance control.
     """
     n = len(weights)
     if n < 4:
@@ -153,26 +243,44 @@ def calibrate_to_target_mean(
     # ---------- rescale to target_mean ----------
     calibrated *= target_mean / calibrated.mean()
 
+    # ---------- enforce variance constraint if requested ----------
+    if enforce_variance_nonincrease:
+        # Compare variance in normalized space (both with mean=1)
+        raw_normalized = weights * (target_mean / weights.mean())
+        raw_norm_var = raw_normalized.var()
+        cal_var = calibrated.var()
+
+        if cal_var > raw_norm_var * VAR_TOL:  # Small tolerance for numerical precision
+            logger.debug(
+                f"Applying variance-safe blend: raw_norm_var={raw_norm_var:.6f}, "
+                f"cal_var={cal_var:.6f}"
+            )
+            calibrated = variance_safe_blend(
+                raw_normalized, calibrated, target_mean, max_variance_ratio=1.0
+            )
+
     # ---------- log calibration statistics ----------
-    variance_ratio = calibrated.var() / weights.var() if weights.var() > 0 else 1.0
+    raw_normalized = weights * (target_mean / weights.mean())
+    raw_norm_var = raw_normalized.var()
+    norm_variance_ratio = calibrated.var() / (raw_norm_var + 1e-12)
+
     logger.debug(
         f"After calibration: mean={calibrated.mean():.6f}, var={calibrated.var():.6f}, "
-        f"variance_ratio={variance_ratio:.3f}"
+        f"norm_variance_ratio={norm_variance_ratio:.3f}"
     )
 
     # ---------- final checks ----------
     # Critical assertions
     assert calibrated.min() >= 0.0, f"Negative calibrated weight: {calibrated.min()}"
     assert (
-        abs(calibrated.mean() - target_mean) < 1e-12
+        abs(calibrated.mean() - target_mean) < MEAN_TOL
     ), f"Mean not preserved: {calibrated.mean()} != {target_mean}"
 
-    # Note: We do NOT assert variance reduction. Isotonic regression guarantees L2-optimality
-    # in population, but for finite samples (especially uniform inputs), variance can legitimately
-    # increase to match target structure. See van der Laan et al. (2024a).
+    # Note: With enforce_variance_nonincrease=True (default), we blend with raw weights
+    # to ensure variance doesn't exceed the normalized baseline. Without enforcement,
+    # isotonic can increase variance to achieve L2-optimality.
 
     # Calculate diagnostics for logging
-    var_ratio = calibrated.var() / (weights.var() + 1e-12)
     ess_before = (weights.sum() ** 2) / (weights**2).sum() if weights.sum() > 0 else 0
     ess_after = (
         (calibrated.sum() ** 2) / (calibrated**2).sum() if calibrated.sum() > 0 else 0
@@ -181,15 +289,14 @@ def calibrate_to_target_mean(
     # Log calibration diagnostics
     logger.debug(
         f"Weight calibration: var {weights.var():.3e} → {calibrated.var():.3e} "
-        f"(ratio: {var_ratio:.2f}), ESS {ess_before:.1f} → {ess_after:.1f}"
+        f"(norm_ratio: {norm_variance_ratio:.2f}), ESS {ess_before:.1f} → {ess_after:.1f}"
     )
 
-    # Warn only for truly suspicious cases
-    if var_ratio > 3.0 and weights.var() > 1e-3:
+    # Warn only for truly suspicious cases (relative to normalized baseline)
+    if norm_variance_ratio > 3.0 and raw_norm_var > 1e-3:
         logger.warning(
-            f"Large variance increase in weight calibration: {var_ratio:.1f}x. "
-            f"This may indicate poor overlap between policies or insufficient samples. "
-            f"Consider using more samples or different policies."
+            f"Large normalized variance after calibration: {norm_variance_ratio:.1f}x "
+            f"(may indicate poor overlap between policies)."
         )
 
     # Check monotonicity

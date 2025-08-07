@@ -26,6 +26,7 @@ class BaseCJEEstimator(ABC):
         self.config = calibration_config or WeightCalibrationConfig()
         self._fitted = False
         self._weights_cache: Dict[str, np.ndarray] = {}
+        self._diagnostics: Dict[str, Any] = {}  # Initialize diagnostics storage
 
     @abstractmethod
     def fit(self) -> None:

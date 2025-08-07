@@ -39,6 +39,12 @@ results = estimator.fit_and_estimate()
 # Analyze results
 print(f"Best policy: {sampler.target_policies[results.best_policy()]}")
 print(f"95% CI: {results.confidence_interval(0.95)}")
+
+# Access diagnostics (ESS, tail ratios, variance metrics)
+diagnostics = results.metadata.get('diagnostics', {})
+for policy in sampler.target_policies:
+    diag = diagnostics.get(policy, {})
+    print(f"{policy}: ESS={diag.get('weights', {}).get('ess_fraction', 0):.1%}")
 ```
 
 ## Data Preparation Workflow
@@ -177,6 +183,38 @@ config = CustomTemplateConfig()
 prompt_only, prompt_plus_reply = convert_chat_for_teacher_forcing(
     chat, template_config=config
 )
+```
+
+## Weight Diagnostics and Variance Control
+
+The library now includes comprehensive diagnostics to assess estimation reliability:
+
+### Diagnostics
+- **Effective Sample Size (ESS)**: Measures overlap quality between policies
+- **Tail Weight Ratios**: Detects extreme weights that can destabilize estimates
+- **Mass Concentration**: Shows if a few samples dominate the estimate
+- **Variance Metrics**: Tracks variance reduction from calibration
+
+### Variance-Safe Calibration
+CalibratedIPS now defaults to variance-safe calibration, preventing pathological variance explosions:
+
+```python
+# Default: variance-safe calibration
+estimator = CalibratedIPS(sampler)  # enforce_variance_nonincrease=True by default
+
+# Optional: pure isotonic calibration (may increase variance)
+estimator = CalibratedIPS(sampler, enforce_variance_nonincrease=False)
+```
+
+### Accessing Diagnostics
+```python
+# From results
+diagnostics = results.metadata['diagnostics']
+
+# Or directly from estimator
+diag = estimator.get_diagnostics('policy_name')
+print(f"ESS: {diag['weights']['ess_fraction']:.1%}")
+print(f"Status: {diag['status']}")  # green/amber/red
 ```
 
 ## Judge Score Calibration
