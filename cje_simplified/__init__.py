@@ -88,15 +88,9 @@ from .utils import (
 # Import visualization utilities if available
 try:
     from .utils import (
-        plot_weight_distributions,
-        plot_ess_comparison,
-        plot_weight_summary,
-        plot_calibration_comparison,
-        plot_weight_calibration,
-        plot_weight_calibration_summary,
-        # Improved visualization
         plot_weight_calibration_analysis,
         plot_weight_diagnostics_summary,
+        plot_calibration_comparison,
     )
 
     _viz_available = True
@@ -171,14 +165,8 @@ __all__ = [
 if _viz_available:
     __all__.extend(
         [
-            "plot_weight_distributions",
-            "plot_ess_comparison",
-            "plot_weight_summary",
-            "plot_calibration_comparison",
-            "plot_weight_calibration",
-            "plot_weight_calibration_summary",
-            # Improved visualization
             "plot_weight_calibration_analysis",
             "plot_weight_diagnostics_summary",
+            "plot_calibration_comparison",
         ]
     )

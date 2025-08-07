@@ -54,8 +54,8 @@ def analyze_extreme_weights(
     }
 
     # Track extreme samples across policies
-    all_extreme_high = {}  # sample_id -> list of policies
-    all_extreme_low = {}  # sample_id -> list of policies
+    all_extreme_high: Dict[str, List[str]] = {}  # sample_id -> list of policies
+    all_extreme_low: Dict[str, List[str]] = {}  # sample_id -> list of policies
 
     # Analyze each policy
     for policy_name in raw_weights_dict.keys():
@@ -70,7 +70,7 @@ def analyze_extreme_weights(
         # Calculate statistics
         finite_raw = raw_weights[np.isfinite(raw_weights) & (raw_weights > 0)]
 
-        policy_analysis = {
+        policy_analysis: Dict[str, Any] = {
             "statistics": {
                 "raw_weight_range": (
                     [float(np.min(finite_raw)), float(np.max(finite_raw))]

@@ -628,7 +628,7 @@ def main() -> int:
                 raw_weights = estimator.get_raw_weights(policy)
                 if raw_weights is not None:
                     raw_weights_dict[policy] = raw_weights
-                else:
+                elif weights is not None:
                     # Fall back to calibrated weights if raw not available
                     raw_weights_dict[policy] = weights
 

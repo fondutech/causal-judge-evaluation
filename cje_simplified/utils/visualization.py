@@ -109,7 +109,9 @@ def plot_weight_calibration_analysis(
     return fig
 
 
-def _plot_transformation_scatter(ax, raw_weights, cal_weights):
+def _plot_transformation_scatter(
+    ax: Any, raw_weights: np.ndarray, cal_weights: np.ndarray
+) -> None:
     """Panel A: Raw to calibrated transformation scatter plot."""
     # Filter valid weights
     finite_mask = np.isfinite(raw_weights) & (raw_weights > 0)
@@ -123,7 +125,7 @@ def _plot_transformation_scatter(ax, raw_weights, cal_weights):
         cal_sorted = cal_finite[sort_idx]
 
         # Color by density
-        colors = plt.cm.viridis(np.linspace(0, 1, len(raw_sorted)))
+        colors = plt.cm.viridis(np.linspace(0, 1, len(raw_sorted)))  # type: ignore[attr-defined]
         scatter = ax.scatter(
             raw_sorted,
             cal_sorted,
@@ -164,7 +166,9 @@ def _plot_transformation_scatter(ax, raw_weights, cal_weights):
         ax.set_title("A. Transformation", fontsize=10)
 
 
-def _plot_distribution_overlay(ax, raw_weights, cal_weights):
+def _plot_distribution_overlay(
+    ax: Any, raw_weights: np.ndarray, cal_weights: np.ndarray
+) -> None:
     """Panel B: Distribution overlay comparing raw and calibrated."""
     # Create two y-axes for different scales
     ax2 = ax.twinx()
@@ -196,7 +200,9 @@ def _plot_distribution_overlay(ax, raw_weights, cal_weights):
     ax.grid(True, alpha=0.3)
 
 
-def _plot_metrics_comparison(ax, raw_weights, cal_weights):
+def _plot_metrics_comparison(
+    ax: Any, raw_weights: np.ndarray, cal_weights: np.ndarray
+) -> None:
     """Panel C: ESS and variance before/after comparison."""
     # Calculate metrics
     raw_ess = compute_ess(raw_weights)
@@ -277,7 +283,9 @@ def _plot_metrics_comparison(ax, raw_weights, cal_weights):
     ax.grid(True, alpha=0.3, axis="y")
 
 
-def _plot_percentile_analysis(ax, raw_weights, cal_weights):
+def _plot_percentile_analysis(
+    ax: Any, raw_weights: np.ndarray, cal_weights: np.ndarray
+) -> None:
     """Panel D: Weight by percentile rank analysis."""
     # Sort weights and get percentiles
     n = len(raw_weights)
@@ -320,7 +328,13 @@ def _plot_percentile_analysis(ax, raw_weights, cal_weights):
     ax.grid(True, alpha=0.3)
 
 
-def _plot_sample_diagnostics(ax, raw_weights, cal_weights, policy_name, sample_data):
+def _plot_sample_diagnostics(
+    ax: Any,
+    raw_weights: np.ndarray,
+    cal_weights: np.ndarray,
+    policy_name: str,
+    sample_data: Optional[Dict[str, Any]],
+) -> None:
     """Panel E: Extreme sample diagnostics."""
     ax.axis("off")
 
@@ -356,7 +370,9 @@ def _plot_sample_diagnostics(ax, raw_weights, cal_weights, policy_name, sample_d
     )
 
 
-def _plot_statistics_table(ax, raw_weights, cal_weights):
+def _plot_statistics_table(
+    ax: Any, raw_weights: np.ndarray, cal_weights: np.ndarray
+) -> None:
     """Panel F: Comprehensive statistics table."""
     ax.axis("off")
 
@@ -427,7 +443,7 @@ def _plot_statistics_table(ax, raw_weights, cal_weights):
 def plot_weight_diagnostics_summary(
     raw_weights_dict: Dict[str, np.ndarray],
     calibrated_weights_dict: Dict[str, np.ndarray],
-    estimates: Optional[Dict[str, float]] = None,
+    estimates: Optional[Dict[str, Any]] = None,
     save_path: Optional[Path] = None,
     figsize: tuple = (16, 10),
 ) -> plt.Figure:
@@ -436,7 +452,8 @@ def plot_weight_diagnostics_summary(
     Args:
         raw_weights_dict: Dict mapping policy names to raw weight arrays
         calibrated_weights_dict: Dict mapping policy names to calibrated weight arrays
-        estimates: Optional dict of policy estimates with confidence intervals
+        estimates: Optional dict of policy estimates with mean and confidence intervals
+            Expected structure: {policy_name: {"mean": float, "ci_lower": float, "ci_upper": float}}
         save_path: Optional path to save figure
         figsize: Figure size
 
@@ -492,7 +509,9 @@ def plot_weight_diagnostics_summary(
     return fig
 
 
-def _plot_ess_comparison_grouped(ax, raw_dict, cal_dict):
+def _plot_ess_comparison_grouped(
+    ax: Any, raw_dict: Dict[str, np.ndarray], cal_dict: Dict[str, np.ndarray]
+) -> None:
     """Panel A: Grouped bar chart comparing raw vs calibrated ESS."""
     policies = list(raw_dict.keys())
     n_policies = len(policies)
@@ -537,7 +556,9 @@ def _plot_ess_comparison_grouped(ax, raw_dict, cal_dict):
     ax.grid(True, alpha=0.3, axis="y")
 
 
-def _plot_variance_reduction_heatmap(ax, raw_dict, cal_dict):
+def _plot_variance_reduction_heatmap(
+    ax: Any, raw_dict: Dict[str, np.ndarray], cal_dict: Dict[str, np.ndarray]
+) -> None:
     """Panel B: Heatmap showing variance reduction metrics."""
     policies = list(raw_dict.keys())
     metrics = ["ESS Gain", "Var Reduce", "Range Compress"]
@@ -586,7 +607,9 @@ def _plot_variance_reduction_heatmap(ax, raw_dict, cal_dict):
     plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
 
-def _plot_policy_estimates(ax, estimates, policies):
+def _plot_policy_estimates(
+    ax: Any, estimates: Optional[Dict[str, Any]], policies: List[str]
+) -> None:
     """Panel C: Policy estimates with confidence intervals."""
     if not estimates:
         ax.text(0.5, 0.5, "No estimates provided", ha="center", va="center")
@@ -631,7 +654,9 @@ def _plot_policy_estimates(ax, estimates, policies):
     ax.grid(True, alpha=0.3, axis="x")
 
 
-def _plot_weight_distribution_violins(ax, raw_dict, cal_dict):
+def _plot_weight_distribution_violins(
+    ax: Any, raw_dict: Dict[str, np.ndarray], cal_dict: Dict[str, np.ndarray]
+) -> None:
     """Panel D: Violin plots comparing weight distributions."""
     policies = list(raw_dict.keys())
 
@@ -692,7 +717,9 @@ def _plot_weight_distribution_violins(ax, raw_dict, cal_dict):
     ax.grid(True, alpha=0.3, axis="y")
 
 
-def _plot_extreme_weights_summary(ax, raw_dict, cal_dict):
+def _plot_extreme_weights_summary(
+    ax: Any, raw_dict: Dict[str, np.ndarray], cal_dict: Dict[str, np.ndarray]
+) -> None:
     """Panel E: Summary of extreme weights across policies."""
     ax.axis("off")
 
@@ -729,7 +756,9 @@ def _plot_extreme_weights_summary(ax, raw_dict, cal_dict):
     ax.set_title("E. Extreme Weights", pad=20)
 
 
-def _plot_weight_quality_indicators(ax, raw_dict, cal_dict):
+def _plot_weight_quality_indicators(
+    ax: Any, raw_dict: Dict[str, np.ndarray], cal_dict: Dict[str, np.ndarray]
+) -> None:
     """Panel F: Weight quality indicators."""
     policies = list(raw_dict.keys())
 
@@ -785,7 +814,9 @@ def _plot_weight_quality_indicators(ax, raw_dict, cal_dict):
     ax.grid(True, alpha=0.3, axis="y")
 
 
-def _plot_summary_statistics(ax, raw_dict, cal_dict):
+def _plot_summary_statistics(
+    ax: Any, raw_dict: Dict[str, np.ndarray], cal_dict: Dict[str, np.ndarray]
+) -> None:
     """Panel G: Summary statistics table."""
     ax.axis("off")
 
