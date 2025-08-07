@@ -183,7 +183,7 @@ class JudgeCalibrator:
         if self._final_calibrator is None:
             raise RuntimeError("Must call fit_transform() before transform()")
 
-        return self._final_calibrator.predict(judge_scores)
+        return np.asarray(self._final_calibrator.predict(judge_scores))
 
 
 def calibrate_judge_scores(

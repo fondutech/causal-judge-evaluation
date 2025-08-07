@@ -183,9 +183,13 @@ def calibrate_from_raw_data(
         metadata = record_copy.get("metadata", {})
         metadata[judge_field] = judge_scores[i]
         if oracle_mask[i]:
-            metadata[oracle_field] = oracle_labels[oracle_mask_array][
-                : np.sum(oracle_mask_array[: i + 1])
-            ][-1]
+            # Find the index of this oracle label
+            oracle_idx = np.sum(oracle_mask_array[: i + 1]) - 1
+            metadata[oracle_field] = (
+                float(oracle_labels_array[oracle_idx])
+                if oracle_labels_array is not None
+                else None
+            )
         record_copy["metadata"] = metadata
 
         calibrated_data.append(record_copy)

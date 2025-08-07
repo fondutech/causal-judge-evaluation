@@ -162,7 +162,7 @@ def variance_safe_blend(
             f"ratio={final_var_ratio:.4f} (target={max_variance_ratio})"
         )
 
-    return result
+    return np.asarray(result)
 
 
 # ---------------------------------------------------------------------
@@ -197,7 +197,7 @@ def calibrate_to_target_mean(
     """
     n = len(weights)
     if n < 4:
-        return weights * (target_mean / weights.mean())
+        return np.asarray(weights * (target_mean / weights.mean()))
 
     # If weights are essentially uniform (e.g., all 1.0), just rescale to target mean
     # This happens when base and target policies are identical

@@ -134,13 +134,13 @@ class RawIPS(BaseCJEEstimator):
             n_samples_used[policy] = n
 
         return EstimationResult(
-            target_policies=self.sampler.target_policies,
             estimates=np.array(estimates),
             standard_errors=np.array(standard_errors),
             n_samples_used=n_samples_used,
             method="raw_ips",  # Consistent lowercase snake case
             metadata={
                 "estimator": "RawIPS",
+                "target_policies": self.sampler.target_policies,
                 "clip_weight": self.clip_weight,
                 "diagnostics": self._diagnostics,  # Include diagnostics
             },

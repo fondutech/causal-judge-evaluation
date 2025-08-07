@@ -166,6 +166,12 @@ class CalibratedIPS(BaseCJEEstimator):
 
             # Get data and weights for this policy
             data = self.sampler.get_data_for_policy(policy)
+            if data is None:
+                estimates.append(np.nan)
+                standard_errors.append(np.nan)
+                n_samples_used[policy] = 0
+                continue
+
             weights = self._weights_cache[policy]
 
             if len(data) != len(weights):
@@ -185,7 +191,7 @@ class CalibratedIPS(BaseCJEEstimator):
 
             estimates.append(estimate)
             standard_errors.append(se)
-            n_samples_used[policy] = len(data)
+            n_samples_used[policy] = len(data) if data else 0
 
         return EstimationResult(
             estimates=np.array(estimates),
