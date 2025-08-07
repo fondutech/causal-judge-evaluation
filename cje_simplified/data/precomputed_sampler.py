@@ -161,28 +161,30 @@ class PrecomputedSampler:
         - reward: float
         - base_policy_logprob: base policy log prob
         - policy_logprob: target policy log prob
+
+        Note: Returns data from formatted_data to ensure consistency with weights.
         """
         if target_policy not in self.target_policies:
             return None
 
-        # Use Dataset's filter method to get valid samples
-        valid_samples = self.dataset.filter_valid_samples(target_policy)
-        if not valid_samples:
-            return None
-
+        # Use the same formatted_data that was used for weights to ensure consistency
         policy_data = []
-        for sample in valid_samples:
-            policy_data.append(
-                {
-                    "reward": sample.reward,
-                    "base_policy_logprob": sample.base_policy_logprob,
-                    "policy_logprob": sample.target_policy_logprobs[target_policy],
-                    "prompt": sample.prompt,
-                    "response": sample.response,
-                }
-            )
+        for record in self.formatted_data:
+            # Check if this record has the target policy logprob
+            if target_policy in record["target_policy_logprobs"]:
+                policy_data.append(
+                    {
+                        "reward": record["reward"],
+                        "base_policy_logprob": record["base_policy_logprob"],
+                        "policy_logprob": record["target_policy_logprobs"][
+                            target_policy
+                        ],
+                        "prompt": record["context"],
+                        "response": record["response"],
+                    }
+                )
 
-        return policy_data
+        return policy_data if policy_data else None
 
     def compute_raw_weights(self, target_policy: str) -> np.ndarray:
         """Compute raw importance weights WITHOUT any clipping.
