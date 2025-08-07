@@ -11,6 +11,13 @@ The `cje_simplified/` directory is a clean reimplementation focusing on:
 - Simple, composable abstractions
 - YAGNI (You Aren't Gonna Need It) - avoid premature abstraction
 
+## 📝 Documentation Principles
+
+- Keep documentation minimal and focused on core concepts
+- Avoid adding implementation details that will become outdated
+- Focus on principles and patterns rather than specific code
+- Update README.md for user-facing changes, keep CLAUDE.md for timeless guidance
+
 ## 📁 Repository Structure
 
 ```

@@ -19,7 +19,7 @@ pip install numpy scipy scikit-learn openai
 ## Quick Start
 
 ```python
-from cje_simplified import PrecomputedSampler, CalibratedIPS
+from cje_simplified import PrecomputedSampler, CalibratedIPS, RawIPS
 
 # Load precomputed data
 sampler = PrecomputedSampler.from_jsonl("data.jsonl")
@@ -28,8 +28,12 @@ sampler = PrecomputedSampler.from_jsonl("data.jsonl")
 print(f"Total samples: {sampler.n_samples}")
 print(f"Valid samples (with all log probs): {sampler.n_valid_samples}")
 
-# Run calibrated IPS estimation  
-estimator = CalibratedIPS(sampler)
+# Option 1: Calibrated IPS (recommended - handles extreme weights via calibration)
+estimator = CalibratedIPS(sampler, clip_weight=1e10)  # No pre-clipping by default
+results = estimator.fit_and_estimate()
+
+# Option 2: Raw IPS (standard importance sampling with clipping)
+estimator = RawIPS(sampler, clip_weight=100.0)  # Clips weights at 100
 results = estimator.fit_and_estimate()
 
 # Analyze results
@@ -202,16 +206,12 @@ Key features:
 Debug importance weights to catch common issues:
 
 ```python
-from cje_simplified import diagnose_weights, detect_api_nondeterminism
+from cje_simplified import diagnose_weights
 
 # Get weight diagnostics
 weights = estimator.get_weights("pi_cot")
 diag = diagnose_weights(weights, "pi_cot")
 print(diag.summary())
-
-# Check for API non-determinism
-api_check = detect_api_nondeterminism(sampler)
-print(f"Non-determinism detected: {api_check['detected']}")
 ```
 
 ## Library Structure
