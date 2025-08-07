@@ -19,6 +19,33 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 sys.path.append(str(Path(__file__).parent.parent))  # Add arena_10k_simplified to path
 
 
+def is_moderation_flagged(moderation_data: Dict[str, Any]) -> bool:
+    """Check if OpenAI moderation scores indicate problematic content.
+
+    Note: The 'flagged' field is unreliable (always False in the dataset),
+    so we check the actual scores instead.
+
+    Args:
+        moderation_data: OpenAI moderation API response
+
+    Returns:
+        True if any moderation score exceeds 0.3 (30% confidence)
+    """
+    if not moderation_data:
+        # If no moderation data, don't filter
+        return False
+
+    # Check scores directly since 'flagged' is unreliable
+    # Threshold of 0.3 filters ~0.28% of prompts (the most problematic ones)
+    scores = moderation_data.get("category_scores", {})
+
+    for score in scores.values():
+        if score > 0.3:
+            return True
+
+    return False
+
+
 def is_problematic_prompt(prompt: str) -> bool:
     """Check if a prompt is likely to cause oracle scoring failures.
 
@@ -89,14 +116,21 @@ def prepare_arena_prompts(
     # Extract unique prompts (key insight from old codebase)
     prompts = []
     seen = set()
+    n_moderation_filtered = 0
 
     for i, row in enumerate(dataset):
         conv_id = row.get("conversation_id", f"conv_{i}")
         conversation = row.get("conversation_a", [])
         language = row.get("language", "unknown")
+        openai_moderation = row.get("openai_moderation", None)
 
         # Skip non-English conversations
         if language not in ["English", "english", "en", "EN"]:
+            continue
+
+        # Check OpenAI moderation flag
+        if is_moderation_flagged(openai_moderation):
+            n_moderation_filtered += 1
             continue
 
         # Extract first user turn only
@@ -132,6 +166,10 @@ def prepare_arena_prompts(
             break
 
     print(f"Extracted {len(prompts):,} unique English prompts")
+    if n_moderation_filtered > 0:
+        print(
+            f"  Filtered {n_moderation_filtered:,} prompts flagged by OpenAI moderation"
+        )
 
     # Sample if needed
     random.seed(seed)

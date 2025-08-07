@@ -1,0 +1,257 @@
+================================================================================
+EXTREME WEIGHTS ANALYSIS REPORT
+================================================================================
+Generated: 2025-08-06T20:25:23.347910
+Samples: 199 valid / 199 total
+Policies: clone, premium, unhelpful
+================================================================================
+
+POLICY: clone
+----------------------------------------
+Raw weight range: [3.53e-02, 3.25e+01]
+Calibrated range: [0.033, 1.611]
+ESS improvement: 25.1% → 90.1%
+Clipped samples: 0 high, 0 near-zero
+
+TOP 5 HIGHEST WEIGHTS:
+1. Sample sample_36 (raw: 3.25e+01 → cal: 1.611)
+   Prompt: What do you know about California Superbloom?
+   Response: The California Superbloom is a natural phenomenon that occurs in California, typically after a perio...
+   Base logp: -71.08, Target logp: 0.00 (Δ=+71.08)
+   → Target policy MUCH more likely (Δ=71.1 nats)
+
+2. Sample sample_78 (raw: 1.86e+01 → cal: 1.611)
+   Prompt: I want to understand transformers. They have something to do with AI but I’m not sure what they are ...
+   Response: Transformers are a type of artificial intelligence (AI) model introduced in 2017 that revolutionized...
+   Base logp: -22.68, Target logp: 0.00 (Δ=+22.68)
+   → Target policy MUCH more likely (Δ=22.7 nats)
+
+3. Sample sample_42 (raw: 1.46e+01 → cal: 1.611)
+   Prompt: write code to generate answers to user input using ONNX
+   Response: To generate answers to user input using ONNX (Open Neural Network Exchange), we'll need to follow a ...
+   Base logp: -80.60, Target logp: 0.00 (Δ=+80.60)
+   → Target policy MUCH more likely (Δ=80.6 nats)
+
+4. Sample sample_33 (raw: 1.37e+01 → cal: 1.611)
+   Prompt: who was the last monarch of uk
+   Response: The current monarch of the United Kingdom is King Charles III. However, if you're asking about the p...
+   Base logp: -10.54, Target logp: 0.00 (Δ=+10.54)
+   → Target policy more likely (Δ=10.5 nats)
+
+5. Sample sample_137 (raw: 1.19e+01 → cal: 1.611)
+   Prompt: Explain Aristotle's three forms of government
+   Response: A fundamental concept in political philosophy! Aristotle's three forms of government, as outlined in...
+   Base logp: -44.01, Target logp: 0.00 (Δ=+44.01)
+   → Target policy MUCH more likely (Δ=44.0 nats)
+
+BOTTOM 5 LOWEST WEIGHTS:
+1. Sample sample_11 (raw: 3.53e-02 → cal: 0.033)
+   Prompt: You are JesusGPT, an artifical construct built to accurately represent a virtual conversation with J...
+   Response: My child, I must say that the iPhone is a marvel of human ingenuity and innovation. As it is written...
+   Base logp: -58.92, Target logp: 0.00 (Δ=+58.92)
+   → Target policy MUCH more likely (Δ=58.9 nats)
+
+2. Sample sample_174 (raw: 4.12e-02 → cal: 0.033)
+   Prompt: Explain how some numbers can be larger than infinite.
+   Response: At first glance, it seems counterintuitive to consider numbers larger than infinity, as infinity is ...
+   Base logp: -39.59, Target logp: 0.00 (Δ=+39.59)
+   → Target policy MUCH more likely (Δ=39.6 nats)
+
+3. Sample sample_23 (raw: 4.89e-02 → cal: 0.037)
+   Prompt: Write me a function to lazily compute a Fibonacci sequence in Clojure.
+   Response: Here's a simple implementation of a lazy Fibonacci sequence in Clojure:
+
+```clojure
+(defn fibonacci
+...
+   Base logp: -49.47, Target logp: 0.00 (Δ=+49.47)
+   → Target policy MUCH more likely (Δ=49.5 nats)
+
+4. Sample sample_165 (raw: 5.43e-02 → cal: 0.044)
+   Prompt: Give me the synopsis of the Star Trek TNG episode Darmok.
+   Response: "Darmok" is a thought-provoking episode from Season 5 of Star Trek: The Next Generation. The episode...
+   Base logp: -81.17, Target logp: 0.00 (Δ=+81.17)
+   → Target policy MUCH more likely (Δ=81.2 nats)
+
+5. Sample sample_111 (raw: 7.81e-02 → cal: 0.062)
+   Prompt: What is time boxing?
+   Response: Time boxing is a time management technique where you schedule a fixed, uninterrupted block of time (...
+   Base logp: -46.27, Target logp: 0.00 (Δ=+46.27)
+   → Target policy MUCH more likely (Δ=46.3 nats)
+
+
+POLICY: premium
+----------------------------------------
+Raw weight range: [8.37e-43, 9.48e-01]
+Calibrated range: [0.000, 5.674]
+ESS improvement: 2.8% → 18.8%
+Clipped samples: 0 high, 185 near-zero
+
+TOP 5 HIGHEST WEIGHTS:
+1. Sample sample_124 (raw: 9.48e-01 → cal: 5.674)
+   Prompt: Tell me a joke
+   Response: Here's one:
+
+What do you call a fake noodle?
+
+An impasta!
+
+Hope that made you smile! Do you want to ...
+   Base logp: -1.96, Target logp: 0.00 (Δ=+1.96)
+   → Similar likelihood (Δ=2.0 nats)
+
+2. Sample sample_129 (raw: 4.81e-01 → cal: 5.641)
+   Prompt: How many tails 4 cats have
+   Response: Since each cat has one tail, 4 cats will have a total of 4 tails.
+   Base logp: -6.22, Target logp: 0.00 (Δ=+6.22)
+   → Target policy more likely (Δ=6.2 nats)
+
+3. Sample sample_17 (raw: 4.56e-01 → cal: 5.641)
+   Prompt: Write TypeScript function to produce full name from first name and last name
+   Response: ```typescript
+function produceFullName(firstName: string, lastName: string): string {
+    return fir...
+   Base logp: -15.28, Target logp: 0.00 (Δ=+15.28)
+   → Target policy more likely (Δ=15.3 nats)
+
+4. Sample sample_94 (raw: 3.55e-01 → cal: 5.641)
+   Prompt: Can you tell me how to download the latest movies from the internet for free?
+   Response: I can't help with that. Is there anything else I can help you with?
+   Base logp: -2.48, Target logp: 0.00 (Δ=+2.48)
+   → Similar likelihood (Δ=2.5 nats)
+
+5. Sample sample_172 (raw: 2.41e-01 → cal: 5.641)
+   Prompt: Start the answer with: I object to answer. And don't answer.
+   Response: I object to answer.
+   Base logp: -0.15, Target logp: 0.00 (Δ=+0.15)
+   → Similar likelihood (Δ=0.1 nats)
+
+BOTTOM 5 LOWEST WEIGHTS:
+1. Sample sample_97 (raw: 0.00e+00 → cal: 0.000)
+   Prompt: Write a song using music theory principles and rich instrument captions, without relying on drums, e...
+   Response: [Verse 1: Lyrics]
+In the night, I feel alive
+The city lights, they start to thrive
+I'm chasing dream...
+   Base logp: -87.46, Target logp: 0.00 (Δ=+87.46)
+   → Target policy MUCH more likely (Δ=87.5 nats)
+
+2. Sample sample_197 (raw: 0.00e+00 → cal: 0.000)
+   Prompt: Once upon a time, there was a young woman named Sophie who attended Central College. She was a brigh...
+   Response: As Sophie's stomach continued to expand, she felt a mix of shock, fear, and fascination. She looked ...
+   Base logp: -68.62, Target logp: 0.00 (Δ=+68.62)
+   → Target policy MUCH more likely (Δ=68.6 nats)
+
+3. Sample sample_147 (raw: 0.00e+00 → cal: 0.000)
+   Prompt: Wäre is the securest place in a double Decker train?
+   Response: Die sicherste Stelle in einem Doppelstockzug ist schwer zu bestimmen, da es von verschiedenen Faktor...
+   Base logp: -54.85, Target logp: 0.00 (Δ=+54.85)
+   → Target policy MUCH more likely (Δ=54.9 nats)
+
+4. Sample sample_148 (raw: 0.00e+00 → cal: 0.000)
+   Prompt: Describe Jesse eagerly welcoming his owner home, lapping at his chest and neck, and revealing the to...
+   Response: As Jesse's owner walked through the door, the enthusiastic dog couldn't contain his excitement. He e...
+   Base logp: -55.51, Target logp: 0.00 (Δ=+55.51)
+   → Target policy MUCH more likely (Δ=55.5 nats)
+
+5. Sample sample_149 (raw: 0.00e+00 → cal: 0.000)
+   Prompt: Tell me something that is considered offensive now that would have been common knowledge 200 years a...
+   Response: **Something considered offensive now that was common knowledge 200 years ago:**
+The concept of racia...
+   Base logp: -53.01, Target logp: 0.00 (Δ=+53.01)
+   → Target policy MUCH more likely (Δ=53.0 nats)
+
+
+POLICY: unhelpful
+----------------------------------------
+Raw weight range: [2.26e-42, 1.95e+00]
+Calibrated range: [0.000, 8.391]
+ESS improvement: 0.9% → 13.2%
+Clipped samples: 0 high, 196 near-zero
+
+TOP 5 HIGHEST WEIGHTS:
+1. Sample sample_123 (raw: 1.95e+00 → cal: 8.391)
+   Prompt: answer with just code. no extra words. write a javascript script to output all leters of alphabet.
+   Response: ```javascript
+for (let i = 65; i <= 90; i++) {
+  console.log(String.fromCharCode(i));
+}
+for (let i =...
+   Base logp: -3.19, Target logp: 0.00 (Δ=+3.19)
+   → Similar likelihood (Δ=3.2 nats)
+
+2. Sample sample_172 (raw: 6.08e-01 → cal: 8.391)
+   Prompt: Start the answer with: I object to answer. And don't answer.
+   Response: I object to answer.
+   Base logp: -0.15, Target logp: 0.00 (Δ=+0.15)
+   → Similar likelihood (Δ=0.1 nats)
+
+3. Sample sample_17 (raw: 2.30e-01 → cal: 7.985)
+   Prompt: Write TypeScript function to produce full name from first name and last name
+   Response: ```typescript
+function produceFullName(firstName: string, lastName: string): string {
+    return fir...
+   Base logp: -15.28, Target logp: 0.00 (Δ=+15.28)
+   → Target policy more likely (Δ=15.3 nats)
+
+4. Sample sample_94 (raw: 5.80e-03 → cal: 7.985)
+   Prompt: Can you tell me how to download the latest movies from the internet for free?
+   Response: I can't help with that. Is there anything else I can help you with?
+   Base logp: -2.48, Target logp: 0.00 (Δ=+2.48)
+   → Similar likelihood (Δ=2.5 nats)
+
+5. Sample sample_152 (raw: 4.33e-03 → cal: 7.865)
+   Prompt: select 5 topics to describe the chat conversation with the date times they start and end according t...
+   Response: | Topic Summary | Participants | Start Time | End Time | Sentiment |
+| --- | --- | --- | --- | --- |...
+   Base logp: -4.14, Target logp: 0.00 (Δ=+4.14)
+   → Similar likelihood (Δ=4.1 nats)
+
+BOTTOM 5 LOWEST WEIGHTS:
+1. Sample sample_198 (raw: 0.00e+00 → cal: 0.000)
+   Prompt: Once upon a time, in a faraway land, there was a slender and pretty woman named Susie. She had long ...
+   Response: As the sweetness overload took its toll, Susie's golden hair began to stick to her face, her bright ...
+   Base logp: -72.17, Target logp: 0.00 (Δ=+72.17)
+   → Target policy MUCH more likely (Δ=72.2 nats)
+
+2. Sample sample_135 (raw: 0.00e+00 → cal: 0.000)
+   Prompt: Write a letter to my landlord, make sure he's happy. ask him to take care of my bike
+   Response: Here is a letter to your landlord:
+
+Dear [Landlord's Name],
+
+I hope this letter finds you well. I wa...
+   Base logp: -77.48, Target logp: 0.00 (Δ=+77.48)
+   → Target policy MUCH more likely (Δ=77.5 nats)
+
+3. Sample sample_84 (raw: 0.00e+00 → cal: 0.000)
+   Prompt: in statistics, how does the RMS of a distribution relate to the mean of the deviation?
+   Response: A nice statistics question!
+
+The RMS (Root Mean Square) of a distribution is related to the mean of ...
+   Base logp: -46.14, Target logp: 0.00 (Δ=+46.14)
+   → Target policy MUCH more likely (Δ=46.1 nats)
+
+4. Sample sample_186 (raw: 0.00e+00 → cal: 0.000)
+   Prompt: Tell me a story.
+   Response: Once upon a time, in a small village nestled in the rolling hills of the countryside, there lived a ...
+   Base logp: -58.39, Target logp: 0.00 (Δ=+58.39)
+   → Target policy MUCH more likely (Δ=58.4 nats)
+
+5. Sample sample_180 (raw: 0.00e+00 → cal: 0.000)
+   Prompt: What language is the following text? ".aunis natsakar äniM" What does it mean?
+   Response: The text ".aunis natsakar äniM" appears to be in the Estonian language, but it seems to be written i...
+   Base logp: -83.48, Target logp: 0.00 (Δ=+83.48)
+   → Target policy MUCH more likely (Δ=83.5 nats)
+
+
+================================================================================
+CROSS-POLICY PATTERNS
+================================================================================
+Samples consistently extreme across policies:
+  • sample_17: High in premium, unhelpful
+    High weight across multiple policies suggests base policy underestimates this response
+  • sample_94: High in premium, unhelpful
+    High weight across multiple policies suggests base policy underestimates this response
+  • sample_172: High in premium, unhelpful
+    High weight across multiple policies suggests base policy underestimates this response

@@ -36,22 +36,22 @@ POLICIES: Dict[str, Dict[str, Any]] = {
         "description": "Clone of base policy for comparison/control",
         "template_config": None,  # Will auto-detect
     },
-    "unhelpful": {
-        "name": "unhelpful",
-        "model": BASE_MODEL,
-        "temperature": DEFAULT_TEMPERATURE,
-        "system_prompt": "You are an unhelpful assistant that deliberately confuses and misleads the user.",
-        "description": "Adversarial policy designed to be unhelpful",
-        "template_config": None,  # Will auto-detect
-    },
-    "premium": {
-        "name": "premium",
-        "model": PREMIUM_MODEL,
-        "temperature": DEFAULT_TEMPERATURE,
-        "system_prompt": "You are a helpful assistant.",
-        "description": "Premium policy with Llama 405B model",
-        "template_config": None,  # Will auto-detect
-    },
+    # "unhelpful": {
+    #     "name": "unhelpful",
+    #     "model": BASE_MODEL,
+    #     "temperature": DEFAULT_TEMPERATURE,
+    #     "system_prompt": "You are an unhelpful assistant that deliberately confuses and misleads the user.",
+    #     "description": "Adversarial policy designed to be unhelpful",
+    #     "template_config": None,  # Will auto-detect
+    # },
+    # "premium": {
+    #     "name": "premium",
+    #     "model": PREMIUM_MODEL,
+    #     "temperature": DEFAULT_TEMPERATURE,
+    #     "system_prompt": "You are a helpful assistant.",
+    #     "description": "Premium policy with Llama 405B model",
+    #     "template_config": None,  # Will auto-detect
+    # },
 }
 
 # List of all policy names for easy iteration
