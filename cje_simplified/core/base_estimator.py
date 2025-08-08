@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any
 import numpy as np
 
 from ..data.models import Dataset, EstimationResult, WeightCalibrationConfig
-from ..data import PrecomputedSampler
+from ..data.precomputed_sampler import PrecomputedSampler
 
 
 class BaseCJEEstimator(ABC):
@@ -66,7 +66,8 @@ class BaseCJEEstimator(ABC):
         Returns:
             Array of raw weights or None if not available.
         """
-        return self.sampler.compute_raw_weights(target_policy)
+        # Use compute_importance_weights with clip_weight=None for raw weights
+        return self.sampler.compute_importance_weights(target_policy, clip_weight=None)
 
     @property
     def is_fitted(self) -> bool:

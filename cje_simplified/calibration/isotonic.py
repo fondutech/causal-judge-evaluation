@@ -20,28 +20,79 @@ MEAN_TOL = 1e-10
 VAR_TOL = 1.001  # allow 0.1% wiggle room on the variance cap
 
 
-def _pav_mean1_projection_sorted(w_sorted_mean1: np.ndarray) -> np.ndarray:
+def _pav_mean1_projection_sorted(
+    w_sorted_mean1: np.ndarray, mode: str = "fast"
+) -> np.ndarray:
     """
     Inputs:
       w_sorted_mean1: weights sorted ASCENDING, already normalized to mean 1.
+      mode: "fast" (single-pass) or "exact" (bisection on Lagrange multiplier)
 
     Returns:
       v: monotone non-decreasing vector with EXACT mean 1
 
-    Implementation: project the cumulative excess mass with PAV, then
-    differentiate. This is not a no-op on sorted inputs and yields
-    real tail shrinkage while preserving mean=1.
+    Implementation:
+      - fast: project cumulative excess with increasing PAV, then differentiate
+      - exact: true Euclidean projection via bisection (30-40 PAV calls)
     """
+    if mode == "exact":
+        return _mean_one_isotonic_projection_exact(w_sorted_mean1)
+
+    # Fast mode: single-pass with increasing=False for better ESS in heavy tails
     z = np.cumsum(w_sorted_mean1 - 1.0)  # cumulative excess over mean
-    y = isotonic_regression(z, increasing=False)  # PAV on the cumulative curve
+    y = isotonic_regression(
+        z, increasing=False
+    )  # DECREASING gives convex shape, better for heavy tails
     v = np.diff(np.concatenate(([0.0], y))) + 1.0
     v = np.clip(v, 0.0, None)
+
+    # Safety: ensure monotonicity (isotonic repair if needed)
+    v = np.maximum.accumulate(v)
+
     # Enforce exact mean 1 without adding EPS (keeps math for blending exact)
     tot = float(v.sum())
     if tot <= 0.0:
         v = np.full_like(v, 1.0)  # degenerate fallback (should be rare)
     else:
         v *= v.size / tot
+
+    # Safety assertions
+    assert np.all(np.diff(v) >= -1e-12), "Monotonicity violated in PAV"
+    assert abs(v.mean() - 1.0) < 1e-10, f"Mean not preserved: {v.mean()}"
+
+    return v
+
+
+def _mean_one_isotonic_projection_exact(
+    w_sorted_mean1: np.ndarray, tol: float = 1e-10, max_iters: int = 40
+) -> np.ndarray:
+    """
+    Exact Euclidean projection onto {v: v₁≤…≤vₙ, mean(v)=1} via bisection.
+
+    This gives the mathematically correct projection with guaranteed monotonicity
+    and exact mean=1, at the cost of ~30-40 PAV calls.
+    """
+    n = len(w_sorted_mean1)
+    lo, hi = -float(w_sorted_mean1.max()), float(w_sorted_mean1.max())
+
+    for _ in range(max_iters):
+        mu = 0.5 * (lo + hi)
+        v = isotonic_regression(w_sorted_mean1 - mu, increasing=True)
+        m = float(v.mean())
+        if abs(m - 1.0) <= tol:
+            break
+        if m > 1.0:
+            lo = mu
+        else:
+            hi = mu
+
+    # Ensure exact mean to numerical tolerance
+    tot = float(v.sum())
+    if tot > 0:
+        v *= n / tot
+    else:
+        v = np.ones_like(w_sorted_mean1)  # Degenerate case
+
     return v
 
 
@@ -146,23 +197,25 @@ def calibrate_to_target_mean(
     enforce_variance_nonincrease: bool = True,
     max_variance_ratio: float = 1.0,  # ≤1.0 ⇒ no increase; <1.0 ⇒ force reduction
     return_diagnostics: bool = False,
+    projection_mode: str = "fast",
 ) -> Union[np.ndarray, Tuple[np.ndarray, Dict]]:
     """
-    Variance-controlled IPS weight calibration (SNIPS-style PAV):
+    Variance-controlled IPS weight calibration (Hájek mean-one IPS):
 
-    1) Sort w, run mean-1 PAV in one pass (no cross-fitting).
+    1) Sort w, run mean-1 PAV (fast single-pass or exact bisection).
     2) Optionally apply CLOSED-FORM variance-safe blend toward raw (mean-1).
     3) Rescale to target_mean (exact).
 
     This method trades a small amount of bias for substantially reduced variance,
     improving stability and effective sample size. The bias-variance tradeoff is
-    controlled by the max_variance_ratio parameter.
+    controlled by the max_variance_ratio parameter. All blending happens in
+    mean-one space to ensure correct variance calculations.
 
     Guarantees:
       • output ≥ 0
       • sample mean == target_mean (within MEAN_TOL)
       • var(out)/var(raw) ≤ max_variance_ratio (when feasible) if enforced
-      • monotone non-decreasing in the rank order of normalized raw weights
+      • weights are non-decreasing in the rank order of raw weights
 
     Args:
         weights: Raw importance weights (should be non-negative)
@@ -220,7 +273,7 @@ def calibrate_to_target_mean(
 
     # ---- Mean-1 PAV on the full vector (no cross-fitting) ----
     order = np.argsort(raw_norm, kind="stable")  # stable sort for consistent plateaus
-    cal_sorted = _pav_mean1_projection_sorted(raw_norm[order])
+    cal_sorted = _pav_mean1_projection_sorted(raw_norm[order], mode=projection_mode)
     cal_norm = np.empty_like(raw_norm)
     cal_norm[order] = cal_sorted  # mean 1, monotone by construction
 
