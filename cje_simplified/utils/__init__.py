@@ -5,7 +5,7 @@ This module contains:
 - Visualization: Plotting utilities for weight diagnostics
 """
 
-from .weight_diagnostics import (
+from .diagnostics import (
     diagnose_weights,
     create_weight_summary_table,
     WeightDiagnostics,

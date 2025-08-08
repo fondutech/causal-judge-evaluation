@@ -1,14 +1,20 @@
-"""Comprehensive diagnostic utilities for CJE estimators.
+"""Comprehensive weight diagnostics for importance sampling.
 
-This module provides diagnostic functions for weight-based estimators,
-focusing on overlap, balance, and reliability metrics.
+This module provides:
+- Core metric calculations (ESS, tail ratios, etc.)
+- Diagnostic computation (both dict and dataclass interfaces)
+- Formatting and visualization utilities
 """
 
 import numpy as np
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from dataclasses import dataclass
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+# ========== Core Metrics (Pure Functions) ==========
 
 
 def effective_sample_size(weights: np.ndarray) -> float:
@@ -20,6 +26,14 @@ def effective_sample_size(weights: np.ndarray) -> float:
     s = weights.sum()
     s2 = np.sum(weights**2)
     return float((s * s) / np.maximum(s2, 1e-12))
+
+
+def compute_ess(weights: np.ndarray) -> float:
+    """Compute Effective Sample Size (ESS) from importance weights.
+
+    Alias for effective_sample_size() - kept for backward compatibility.
+    """
+    return effective_sample_size(weights)
 
 
 def tail_weight_ratio(
@@ -58,10 +72,53 @@ def mass_concentration(weights: np.ndarray, top_pct: float = 0.01) -> float:
     return float(sorted_weights[:k].sum() / weights.sum())
 
 
+# ========== Data Models ==========
+
+
+@dataclass
+class WeightDiagnostics:
+    """Container for weight diagnostic results (public API)."""
+
+    policy_name: str
+    min_weight: float
+    max_weight: float
+    mean_weight: float
+    median_weight: float
+    ess_fraction: float  # Effective Sample Size as fraction of N
+    extreme_weight_count: int  # Weights beyond thresholds
+    zero_weight_count: int  # Exactly zero weights
+    consistency_flag: str  # "GOOD", "WARNING", "CRITICAL"
+
+    def summary(self) -> str:
+        """Format diagnostics as readable summary."""
+        flag_emoji = {"GOOD": "✅", "WARNING": "⚠️", "CRITICAL": "❌"}
+        emoji = flag_emoji.get(self.consistency_flag, "❓")
+
+        lines = [
+            f"{emoji} {self.policy_name} Weight Diagnostics:",
+            f"  ESS: {self.ess_fraction:.1%} (Effective Sample Size)",
+            f"  Range: {self.min_weight:.2e} to {self.max_weight:.2e}",
+            f"  Mean: {self.mean_weight:.4f}, Median: {self.median_weight:.4f}",
+        ]
+
+        if self.extreme_weight_count > 0:
+            lines.append(f"  Extreme weights: {self.extreme_weight_count}")
+        if self.zero_weight_count > 0:
+            lines.append(f"  Zero weights: {self.zero_weight_count}")
+
+        if self.consistency_flag != "GOOD":
+            lines.append(f"  Status: {self.consistency_flag}")
+
+        return "\n".join(lines)
+
+
+# ========== Main Diagnostic Functions ==========
+
+
 def weight_diagnostics(
     weights: np.ndarray, n_total: Optional[int] = None, n_valid: Optional[int] = None
 ) -> Dict[str, Any]:
-    """Comprehensive weight diagnostics.
+    """Comprehensive weight diagnostics (internal use, returns dict).
 
     Args:
         weights: Importance weights (should have mean ≈ 1)
@@ -117,6 +174,116 @@ def weight_diagnostics(
     return diagnostics
 
 
+def diagnose_weights(
+    weights: np.ndarray,
+    policy_name: str = "Unknown",
+    expected_weight: Optional[float] = None,
+    extreme_threshold_high: float = 100.0,
+    extreme_threshold_low: float = 0.01,
+) -> WeightDiagnostics:
+    """Compute weight diagnostics (public API, returns dataclass).
+
+    Args:
+        weights: Array of importance weights
+        policy_name: Name of the policy
+        expected_weight: Expected mean weight (e.g., 1.0 for identical policies)
+        extreme_threshold_high: Weights above this are considered extreme
+        extreme_threshold_low: Weights below this are considered extreme
+
+    Returns:
+        WeightDiagnostics dataclass with detailed statistics
+    """
+    if len(weights) == 0:
+        return WeightDiagnostics(
+            policy_name=policy_name,
+            min_weight=0.0,
+            max_weight=0.0,
+            mean_weight=0.0,
+            median_weight=0.0,
+            ess_fraction=0.0,
+            extreme_weight_count=0,
+            zero_weight_count=0,
+            consistency_flag="CRITICAL",
+        )
+
+    # Get comprehensive diagnostics using internal function
+    dict_result = weight_diagnostics(weights)
+    w = dict_result["weights"]
+
+    # Count problematic weights
+    extreme_count = int(
+        np.sum(
+            (weights > extreme_threshold_high)
+            | (weights < extreme_threshold_low)
+            | ~np.isfinite(weights)
+        )
+    )
+    zero_count = int(np.sum(weights == 0.0))
+
+    # Determine consistency flag
+    consistency_flag = "GOOD"
+    ess_fraction = w["ess_fraction"]
+
+    # Critical issues
+    if ess_fraction < 0.01:  # < 1% ESS
+        consistency_flag = "CRITICAL"
+    elif extreme_count > len(weights) * 0.5:  # > 50% extreme weights
+        consistency_flag = "CRITICAL"
+    # Check expected weight (e.g., for identical policies)
+    elif expected_weight is not None and abs(w["mean"] - expected_weight) > 0.1:
+        consistency_flag = "CRITICAL"
+    # Warning conditions
+    elif ess_fraction < 0.1:  # < 10% ESS
+        consistency_flag = "WARNING"
+    elif extreme_count > len(weights) * 0.1:  # > 10% extreme weights
+        consistency_flag = "WARNING"
+
+    return WeightDiagnostics(
+        policy_name=policy_name,
+        min_weight=w["min"],
+        max_weight=w["max"],
+        mean_weight=w["mean"],
+        median_weight=w["p50"],
+        ess_fraction=ess_fraction,
+        extreme_weight_count=extreme_count,
+        zero_weight_count=zero_count,
+        consistency_flag=consistency_flag,
+    )
+
+
+# ========== Status Evaluation ==========
+
+
+def evaluate_status(diagnostics: Dict[str, Any]) -> str:
+    """Evaluate diagnostic status (green/amber/red).
+
+    Advisory thresholds - tune based on domain experience.
+
+    Args:
+        diagnostics: Output from weight_diagnostics()
+
+    Returns:
+        Status string: 'green', 'amber', or 'red'
+    """
+    weights = diagnostics.get("weights", {})
+    balance = diagnostics.get("balance", {})
+
+    # Extract key metrics
+    ess_frac = weights.get("ess_fraction", 0)
+    tail_ratio = weights.get("tail_ratio_99_5", np.inf)
+    asamd = balance.get("avg_asamd", 0)
+
+    # Green thresholds (conservative)
+    if ess_frac >= 0.30 and tail_ratio <= 100 and asamd <= 0.05:
+        return "green"
+
+    # Amber thresholds (acceptable)
+    if ess_frac >= 0.20 and tail_ratio <= 500 and asamd <= 0.10:
+        return "amber"
+
+    return "red"
+
+
 def standardized_diffs(features: np.ndarray, weights: np.ndarray) -> Dict[str, Any]:
     """Compute standardized differences for balance assessment.
 
@@ -148,34 +315,36 @@ def standardized_diffs(features: np.ndarray, weights: np.ndarray) -> Dict[str, A
     }
 
 
-def evaluate_status(diagnostics: Dict[str, Any]) -> str:
-    """Evaluate diagnostic status (green/amber/red).
+# ========== Formatting Utilities ==========
 
-    Advisory thresholds - tune based on domain experience.
+
+def create_weight_summary_table(all_diagnostics: Dict[str, WeightDiagnostics]) -> str:
+    """Create a summary table of weight diagnostics for multiple policies.
 
     Args:
-        diagnostics: Output from weight_diagnostics()
+        all_diagnostics: Dict mapping policy names to WeightDiagnostics
 
     Returns:
-        Status string: 'green', 'amber', or 'red'
+        Formatted table as string
     """
-    weights = diagnostics.get("weights", {})
-    balance = diagnostics.get("balance", {})
+    if not all_diagnostics:
+        return "No weight diagnostics available."
 
-    # Extract key metrics
-    ess_frac = weights.get("ess_fraction", 0)
-    tail_ratio = weights.get("tail_ratio_99_5", np.inf)
-    asamd = balance.get("avg_asamd", 0)
+    lines = [
+        "Weight Summary",
+        "-" * 70,
+        f"{'Policy':<20} {'ESS':>10} {'Mean Weight':>15} {'Status':<10}",
+        "-" * 70,
+    ]
 
-    # Green thresholds (conservative)
-    if ess_frac >= 0.30 and tail_ratio <= 100 and asamd <= 0.05:
-        return "green"
+    for policy_name, diag in all_diagnostics.items():
+        status_str = diag.consistency_flag
+        lines.append(
+            f"{policy_name:<20} {diag.ess_fraction:>10.1%} "
+            f"{diag.mean_weight:>15.4f} {status_str:<10}"
+        )
 
-    # Amber thresholds (acceptable)
-    if ess_frac >= 0.20 and tail_ratio <= 500 and asamd <= 0.10:
-        return "amber"
-
-    return "red"
+    return "\n".join(lines)
 
 
 def format_diagnostic_summary(diagnostics: Dict[str, Any]) -> str:

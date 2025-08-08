@@ -7,8 +7,8 @@ from pathlib import Path
 from datetime import datetime
 import logging
 
-# Import compute_ess from weight_diagnostics instead of duplicating
-from .weight_diagnostics import compute_ess
+# Import compute_ess from diagnostics module
+from .diagnostics import compute_ess
 
 logger = logging.getLogger(__name__)
 

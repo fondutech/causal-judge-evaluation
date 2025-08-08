@@ -9,7 +9,7 @@ import matplotlib.patches as mpatches
 from matplotlib.patches import Rectangle
 
 # Import shared utilities
-from .weight_diagnostics import compute_ess, diagnose_weights
+from .diagnostics import compute_ess, diagnose_weights
 
 
 def plot_weight_calibration_analysis(
