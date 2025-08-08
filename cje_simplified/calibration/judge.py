@@ -9,10 +9,8 @@ from typing import Optional, Tuple, Dict
 from sklearn.isotonic import IsotonicRegression
 from dataclasses import dataclass
 
-from .isotonic import (
-    cross_fit_isotonic,
-    compute_calibration_diagnostics,
-)
+# Note: cross_fit_isotonic and compute_calibration_diagnostics removed with legacy code
+# Using sklearn.isotonic.IsotonicRegression directly for judge calibration
 
 
 @dataclass
@@ -120,46 +118,29 @@ class JudgeCalibrator:
         # Initialize calibrated scores
         calibrated_scores = np.copy(judge_scores)
 
-        # Cross-fit calibration on oracle subset
-        if n_oracle < n_total:
-            # Standard case: calibrate on oracle subset
-            # Get cross-fitted predictions for oracle samples
-            oracle_calibrated = cross_fit_isotonic(
-                oracle_scores,
-                oracle_y,
-                k_folds=self.k_folds,
-                random_seed=self.random_seed,
-            )
-            calibrated_scores[oracle_mask] = oracle_calibrated
+        # Simple isotonic regression calibration (no cross-fitting)
+        # Fit isotonic regression on oracle subset
+        self._final_calibrator = IsotonicRegression(out_of_bounds="clip")
+        self._final_calibrator.fit(oracle_scores, oracle_y)
 
-            # Fit final model on all oracle data for calibrating non-oracle samples
-            self._final_calibrator = IsotonicRegression(out_of_bounds="clip")
-            self._final_calibrator.fit(oracle_scores, oracle_y)
+        # Apply calibration to all samples
+        calibrated_scores = self._final_calibrator.predict(judge_scores)
 
-            # Calibrate non-oracle samples
-            non_oracle_mask = ~oracle_mask
-            if np.any(non_oracle_mask):
-                calibrated_scores[non_oracle_mask] = self._final_calibrator.predict(
-                    judge_scores[non_oracle_mask]
-                )
-        else:
-            # All data has labels: just cross-fit everything
-            calibrated_scores = cross_fit_isotonic(
-                judge_scores,
-                oracle_y,
-                k_folds=self.k_folds,
-                random_seed=self.random_seed,
-            )
-
-            # Still fit a final model for potential future predictions
-            self._final_calibrator = IsotonicRegression(out_of_bounds="clip")
-            self._final_calibrator.fit(judge_scores, oracle_y)
-
-        # Compute diagnostics on oracle subset using shared utility
+        # Compute diagnostics on oracle subset
         oracle_cal_scores = calibrated_scores[oracle_mask]
-        diagnostics = compute_calibration_diagnostics(
-            oracle_cal_scores, oracle_y, coverage_threshold=0.1
-        )
+
+        # Calculate RMSE
+        errors = oracle_cal_scores - oracle_y
+        rmse = float(np.sqrt(np.mean(errors**2)))
+
+        # Calculate coverage at ±0.1
+        abs_errors = np.abs(errors)
+        coverage_01 = float(np.mean(abs_errors <= 0.1))
+
+        diagnostics = {
+            "rmse": rmse,
+            "coverage_01": coverage_01,
+        }
 
         return CalibrationResult(
             calibrated_scores=calibrated_scores,

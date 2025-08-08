@@ -333,9 +333,8 @@ def main() -> int:
 
         estimator: Union[CalibratedIPS, RawIPS]
         if args.estimator == "calibrated-ips":
-            # Use n_folds from command line if provided
-            k_folds = estimator_config.get("k_folds", args.n_folds)
-            estimator = CalibratedIPS(sampler, k_folds=k_folds)
+            # Updated API: no more k_folds, uses optimized single-pass
+            estimator = CalibratedIPS(sampler)
         elif args.estimator == "raw-ips":
             # Use clip_weight from config or default
             clip_weight = estimator_config.get("clip_weight", 100.0)

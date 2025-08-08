@@ -62,9 +62,7 @@ def load_dataset_from_jsonl(
 # Calibration
 from .calibration import (
     # Isotonic regression utilities
-    cross_fit_isotonic,
     calibrate_to_target_mean,
-    compute_calibration_diagnostics,
     # Judge calibration
     JudgeCalibrator,
     calibrate_judge_scores,
@@ -135,9 +133,7 @@ __all__ = [
     "WeightDiagnostics",
     "analyze_extreme_weights",
     # Calibration - isotonic regression
-    "cross_fit_isotonic",
     "calibrate_to_target_mean",
-    "compute_calibration_diagnostics",
     # Judge calibration
     "JudgeCalibrator",
     "calibrate_judge_scores",

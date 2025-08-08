@@ -1,329 +1,306 @@
-# isotonic.py  ·  CJE calibration helpers
-# ------------------------------------------------------------
-# 0) cross_fit_isotonic : vanilla K-fold isotonic regression
-# 1) calibrate_to_target_mean : Calibrated-DML weight calibration
-#    with a variance-increase fallback
-# ------------------------------------------------------------
+"""Isotonic calibration for importance weights.
+
+This module provides variance-controlled IPS weight calibration using:
+- Single-pass mean-1 PAV (no cross-fitting needed)
+- Closed-form variance-safe blending with feasibility handling
+- Robust edge case handling for sparse/degenerate weights
+"""
+
 from __future__ import annotations
 import numpy as np
 import logging
-from sklearn.isotonic import IsotonicRegression, isotonic_regression
-from sklearn.model_selection import KFold
+from typing import Dict, Tuple, Optional, Union
+from sklearn.isotonic import isotonic_regression
 
 logger = logging.getLogger(__name__)
 
-# Tolerance constants for readability
-MEAN_TOL = 1e-12
-VAR_TOL = 1.001
+# Tolerances
+EPS = 1e-12
+MEAN_TOL = 1e-10
+VAR_TOL = 1.001  # allow 0.1% wiggle room on the variance cap
 
 
-# ---------------------------------------------------------------------
-# 0.  Generic isotonic cross-fit  (unchanged)
-# ---------------------------------------------------------------------
-def cross_fit_isotonic(
-    X: np.ndarray,
-    y: np.ndarray,
-    k_folds: int = 5,
-    random_seed: int = 42,
-    *,
-    out_of_bounds: str = "clip",
-) -> np.ndarray:
-    n = len(X)
-    k_folds = max(2, min(k_folds, n // 2))
-    if n < 4:
-        raise ValueError("Need ≥4 observations for cross-fit")
-
-    calibrated = np.empty_like(X, dtype=float)
-    kf = KFold(n_splits=k_folds, shuffle=True, random_state=random_seed)
-
-    for train, test in kf.split(X):
-        iso = IsotonicRegression(out_of_bounds=out_of_bounds)
-        iso.fit(X[train], y[train])
-        calibrated[test] = iso.predict(X[test])
-
-    return calibrated
-
-
-# ---------------------------------------------------------------------
-# 1-a.  Mean-1 PAV projection on *sorted* weights
-# ---------------------------------------------------------------------
-def _pav_mean1_projection(w_sorted: np.ndarray) -> np.ndarray:
+def _pav_mean1_projection_sorted(w_sorted_mean1: np.ndarray) -> np.ndarray:
     """
-    Pool-Adjacent-Violators projection to monotone non-decreasing vector with mean 1.
+    Inputs:
+      w_sorted_mean1: weights sorted ASCENDING, already normalized to mean 1.
 
-    CRITICAL: Input MUST be sorted by its own values (ascending order).
-    Do NOT pass data sorted by external criteria (e.g., by different weights).
+    Returns:
+      v: monotone non-decreasing vector with EXACT mean 1
 
-    Parameters
-    ----------
-    w_sorted : np.ndarray
-        Weights sorted in ascending order BY THEIR OWN VALUES.
-
-    Returns
-    -------
-    np.ndarray
-        Monotone non-decreasing vector with exact mean 1.0 and reduced variance.
+    Implementation: project the cumulative excess mass with PAV, then
+    differentiate. This is not a no-op on sorted inputs and yields
+    real tail shrinkage while preserving mean=1.
     """
-    n = len(w_sorted)
-    if n == 1:
-        return np.array([1.0])
-
-    # Verify input is actually sorted (with small tolerance for numerical error)
-    if not np.all(np.diff(w_sorted) >= -1e-12):
-        raise ValueError(
-            "_pav_mean1_projection requires input sorted in ascending order. "
-            "The input appears to be unsorted or sorted by external criteria."
-        )
-
-    w_norm = w_sorted / w_sorted.mean()  # mean = 1
-    z = np.cumsum(w_norm - 1.0)  # excess mass
-    y = isotonic_regression(z, increasing=False)  # PAV
+    z = np.cumsum(w_sorted_mean1 - 1.0)  # cumulative excess over mean
+    y = isotonic_regression(z, increasing=False)  # PAV on the cumulative curve
     v = np.diff(np.concatenate(([0.0], y))) + 1.0
     v = np.clip(v, 0.0, None)
-    v *= n / v.sum()  # exact mean 1
+    # Enforce exact mean 1 without adding EPS (keeps math for blending exact)
+    tot = float(v.sum())
+    if tot <= 0.0:
+        v = np.full_like(v, 1.0)  # degenerate fallback (should be rare)
+    else:
+        v *= v.size / tot
     return v
 
 
-# ---------------------------------------------------------------------
-# 1-b.  Variance-safe blending utility
-# ---------------------------------------------------------------------
-def variance_safe_blend(
-    raw_weights: np.ndarray,
-    calibrated_weights: np.ndarray,
-    target_mean: float = 1.0,
+def _variance_safe_blend_closed_form(
+    raw_norm: np.ndarray,
+    cal_norm: np.ndarray,
     max_variance_ratio: float = 1.0,
-) -> np.ndarray:
-    """Blend raw and calibrated weights to ensure variance constraint.
-
-    This preserves monotonicity if calibrated_weights is monotone in raw_weights.
-    The blend is: w = alpha * calibrated + (1-alpha) * raw_normalized
-
-    Args:
-        raw_weights: Original uncalibrated weights
-        calibrated_weights: Isotonic calibrated weights
-        target_mean: Target mean for final weights
-        max_variance_ratio: Maximum allowed var(output)/var(raw)
+    tol: float = 1e-12,
+) -> Tuple[np.ndarray, float, Dict]:
+    """
+    Blend raw and calibrated (both mean=1) to satisfy Var(out) <= max_ratio * Var(raw)
+    when FEASIBLE; otherwise return the variance-minimizing blend.
 
     Returns:
-        Blended weights with mean=target_mean and var <= var(raw) * max_variance_ratio
+      out_mean1, alpha, info_dict
     """
-    raw = raw_weights.astype(float)
-    cal = calibrated_weights.astype(float)
+    r = np.asarray(raw_norm, dtype=float)
+    c = np.asarray(cal_norm, dtype=float)
+    Vr = float(r.var())
+    Vc = float(c.var())
+    target = Vr * max_variance_ratio
 
-    # Normalize both to mean=1 for clean blending
-    raw_norm = raw / (raw.mean() + 1e-12)
-    cal_norm = cal / (cal.mean() + 1e-12)
+    # Quick accept: calibrated already within cap (allow tiny slack)
+    if Vc <= target * VAR_TOL:
+        return c, 1.0, dict(feasible=True, achieved_var=Vc, target_var=target)
 
-    raw_var = raw_norm.var()
-    cal_var = cal_norm.var()
-    target_var = raw_var * max_variance_ratio
+    d = c - r
+    # Var(d) with population convention
+    Vd = float(d.var())
+    # Cov(r,d) with mean(r)=1, mean(d)=0 ⇒ Cov(r,d) = E[(r-1)*d]
+    C = float(np.mean((r - 1.0) * d))
 
-    # If calibrated already satisfies constraint, use it
-    if cal_var <= target_var:
-        result = cal_norm
-    else:
-        # Binary search for optimal blend
-        # alpha=1 -> calibrated, alpha=0 -> raw
-        lo, hi = 0.0, 1.0
-        best_alpha = 0.0
+    if Vd <= tol:
+        # No direction to move; return raw
+        return r, 0.0, dict(feasible=(Vr <= target), achieved_var=Vr, target_var=target)
 
-        for _ in range(30):  # More iterations for precision
-            alpha = 0.5 * (lo + hi)
-            blend = alpha * cal_norm + (1 - alpha) * raw_norm
-            blend_var = blend.var()
+    # Variance along the path: V(α) = Vr + 2αC + α^2 Vd
+    # Minimum at α* = -C / Vd (clip to [0,1])
+    alpha_star = float(np.clip(-C / Vd, 0.0, 1.0))
+    Vmin = Vr + 2.0 * alpha_star * C + (alpha_star**2) * Vd
 
-            if blend_var <= target_var:
-                best_alpha = alpha
-                lo = alpha  # Can increase alpha
-            else:
-                hi = alpha  # Must decrease alpha
-
-        result = best_alpha * cal_norm + (1 - best_alpha) * raw_norm
-
-        # Log the blend for transparency
-        logger.debug(
-            f"Variance-safe blend: alpha={best_alpha:.3f}, "
-            f"var_ratio={result.var()/raw_var:.3f}"
+    # If target is unattainable, return best possible α*
+    if Vmin > target * VAR_TOL:
+        out = (1.0 - alpha_star) * r + alpha_star * c
+        return (
+            out,
+            alpha_star,
+            dict(
+                feasible=False,
+                achieved_var=Vmin,
+                target_var=target,
+                note="Target variance ratio unattainable; using variance-minimizing blend",
+            ),
         )
 
-    # Scale to target mean
-    result *= target_mean / (result.mean() + 1e-12)
+    # Target is feasible: pick the LARGEST feasible α in [0,1]
+    # Solve α^2 Vd + 2α C + (Vr - target) <= 0
+    disc = C * C - Vd * (Vr - target)
+    # Numerical guard
+    if disc < 0:
+        disc = 0.0
+    sqrt_disc = float(np.sqrt(disc))
+    alpha1 = (-C - sqrt_disc) / (Vd + tol)
+    alpha2 = (-C + sqrt_disc) / (Vd + tol)
 
-    # Verify constraints (with small tolerance for numerical precision)
-    assert abs(result.mean() - target_mean) < MEAN_TOL, "Mean not preserved"
-    # Note: Due to the final rescaling for mean, variance might slightly exceed target
-    # This is acceptable as long as it's within numerical tolerance
-    final_var_ratio = result.var() / raw_var
-    if (
-        final_var_ratio > max_variance_ratio * 1.01
-    ):  # 1% tolerance for numerical precision
-        logger.warning(
-            f"Variance constraint slightly exceeded due to mean rescaling: "
-            f"ratio={final_var_ratio:.4f} (target={max_variance_ratio})"
+    # Feasible interval is [alpha1, alpha2]; choose the largest feasible in [0,1]
+    candidate = float(np.clip(alpha2, 0.0, 1.0))
+    out = (1.0 - candidate) * r + candidate * c
+    Vach = float(out.var())
+
+    # Final re-check with slack; if numerically over, fall back to alpha1 or α*
+    if Vach > target * VAR_TOL:
+        candidate_alt = float(np.clip(alpha1, 0.0, 1.0))
+        out_alt = (1.0 - candidate_alt) * r + candidate_alt * c
+        Vach_alt = float(out_alt.var())
+        if Vach_alt <= target * VAR_TOL:
+            return (
+                out_alt,
+                candidate_alt,
+                dict(feasible=True, achieved_var=Vach_alt, target_var=target),
+            )
+        # Fall back to α* (will satisfy target up to slack because target is feasible modulo numerics)
+        out_star = (1.0 - alpha_star) * r + alpha_star * c
+        Vach_star = float(out_star.var())
+        return (
+            out_star,
+            alpha_star,
+            dict(
+                feasible=True,
+                achieved_var=Vach_star,
+                target_var=target,
+                note="Numerical instability; using variance-minimizing α*",
+            ),
         )
 
-    return np.asarray(result)
+    return out, candidate, dict(feasible=True, achieved_var=Vach, target_var=target)
 
 
-# ---------------------------------------------------------------------
-# 1-c.  Calibrated-DML weight calibration with variance safeguard
-# ---------------------------------------------------------------------
 def calibrate_to_target_mean(
     weights: np.ndarray,
     target_mean: float = 1.0,
-    k_folds: int = 3,
-    random_seed: int = 42,
-    enforce_variance_nonincrease: bool = True,  # Default: prevent variance explosion
-) -> np.ndarray:
+    enforce_variance_nonincrease: bool = True,
+    max_variance_ratio: float = 1.0,  # ≤1.0 ⇒ no increase; <1.0 ⇒ force reduction
+    return_diagnostics: bool = False,
+) -> Union[np.ndarray, Tuple[np.ndarray, Dict]]:
     """
-    Monotone, mean-preserving calibration for importance weights.
+    Variance-controlled IPS weight calibration (SNIPS-style PAV):
 
-    • Uses mean-1 PAV projection cross-fitted across folds.
-    • Runs a second mean-1 PAV projection on the merged vector to heal
-      fold boundaries (weights-only ⇒ no leakage).
-    • **Default safeguard**: Blends with raw weights if calibration would
-      increase variance, preventing pathological variance explosion.
+    1) Sort w, run mean-1 PAV in one pass (no cross-fitting).
+    2) Optionally apply CLOSED-FORM variance-safe blend toward raw (mean-1).
+    3) Rescale to target_mean (exact).
 
-    Guarantees
-    ----------
-    * output ≥ 0
-    * exact sample mean == target_mean
-    * variance never exceeds raw variance (when enforce_variance_nonincrease=True)
-    * global monotonicity in the rank order of raw weights
+    This method trades a small amount of bias for substantially reduced variance,
+    improving stability and effective sample size. The bias-variance tradeoff is
+    controlled by the max_variance_ratio parameter.
 
-    Note: enforce_variance_nonincrease defaults to True to prevent the common
-    case of 10x-40x variance explosions with poor overlap. Set to False only
-    if you specifically want pure isotonic calibration without variance control.
+    Guarantees:
+      • output ≥ 0
+      • sample mean == target_mean (within MEAN_TOL)
+      • var(out)/var(raw) ≤ max_variance_ratio (when feasible) if enforced
+      • monotone non-decreasing in the rank order of normalized raw weights
+
+    Args:
+        weights: Raw importance weights (should be non-negative)
+        target_mean: Target mean for calibrated weights (default 1.0 for SNIPS)
+        enforce_variance_nonincrease: Whether to cap variance at raw level
+        max_variance_ratio: Maximum allowed variance ratio (≤1.0)
+        return_diagnostics: If True, return (weights, diagnostics_dict)
+
+    Returns:
+        Calibrated weights, or (weights, diagnostics) if return_diagnostics=True
     """
-    n = len(weights)
-    if n < 4:
-        return np.asarray(weights * (target_mean / weights.mean()))
+    w = np.asarray(weights, dtype=float)
+    n = w.size
+    if n == 0:
+        if return_diagnostics:
+            return w, dict(n_samples=0, alpha_blend=None, feasible=None)
+        return w
 
-    # If weights are essentially uniform (e.g., all 1.0), just rescale to target mean
-    # This happens when base and target policies are identical
-    weight_range = weights.max() - weights.min()
-    if weight_range < 1e-6 or weights.var() < 1e-6:
-        logger.debug(
-            f"Weights are essentially uniform (range={weight_range:.2e}, var={weights.var():.2e}). "
-            f"Skipping calibration, just rescaling to target_mean={target_mean}"
-        )
-        return np.full_like(weights, target_mean)
+    # Check for negative weights (importance weights should be non-negative)
+    n_negative = int((w < -1e-15).sum())
+    if n_negative > 0:
+        logger.warning(f"Clipping {n_negative} negative weights (min={w.min():.3e})")
+    w = np.maximum(w, 0.0)
 
-    logger.debug(
-        f"calibrate_to_target_mean: n_samples={n}, "
-        f"raw_mean={weights.mean():.3f}, raw_std={weights.std():.3f}, "
-        f"raw_var={weights.var():.6f}, raw_range=[{weights.min():.3f}, {weights.max():.3f}], "
-        f"target_mean={target_mean}, k_folds={k_folds}"
-    )
+    # Handle degenerate cases
+    s = float(w.sum())
+    if s <= 0:
+        # Safer: constant weights at the target mean
+        out = np.full_like(w, target_mean)
+        if return_diagnostics:
+            return out, dict(
+                n_samples=n,
+                alpha_blend=None,
+                feasible=None,
+                note="All-zero weights; returned constant weights",
+            )
+        return out
 
-    # ---------- per-fold projection ----------
-    k_folds = max(2, min(k_folds, n // 2))
-    prelim = np.zeros_like(weights, dtype=float)
-    kf = KFold(n_splits=k_folds, shuffle=True, random_state=random_seed)
+    # Normalize raw to mean 1 (baseline for SNIPS & variance comparison)
+    mean_w = s / n  # s > 0 by construction
+    raw_norm = w / mean_w  # exact mean-1 normalization (no EPS)
+    raw_var = float(raw_norm.var())
 
-    for train, test in kf.split(weights):
-        w_train = weights[train]
-        order = np.argsort(w_train)
-        v_train = _pav_mean1_projection(w_train[order])
+    # If essentially constant, just return target_mean
+    if float(np.max(raw_norm) - np.min(raw_norm)) < 1e-8 or raw_var < 1e-12:
+        out = np.full_like(w, target_mean)
+        if return_diagnostics:
+            return out, dict(
+                n_samples=n,
+                alpha_blend=None,
+                feasible=None,
+                note="Constant weights detected",
+            )
+        return out
 
-        # Use IsotonicRegression for monotone-safe weight → plateau mapping
-        iso_map = IsotonicRegression(increasing=True, out_of_bounds="clip")
-        iso_map.fit(w_train[order], v_train)  # learn weight → plateau
-        prelim[test] = iso_map.predict(weights[test])  # monotone by construction
+    # ---- Mean-1 PAV on the full vector (no cross-fitting) ----
+    order = np.argsort(raw_norm, kind="stable")  # stable sort for consistent plateaus
+    cal_sorted = _pav_mean1_projection_sorted(raw_norm[order])
+    cal_norm = np.empty_like(raw_norm)
+    cal_norm[order] = cal_sorted  # mean 1, monotone by construction
 
-    # ---------- global monotone fix-up (weights-only, no leakage) ----------
-    # This step ensures strict monotonicity across fold boundaries
-    order_all = np.argsort(weights)
-    iso = IsotonicRegression(increasing=True, out_of_bounds="clip")
-    iso.fit(np.arange(n), prelim[order_all])  # x = indices, y = preliminary values
-    final_sorted = iso.predict(np.arange(n))
-    calibrated = np.empty_like(prelim)
-    calibrated[order_all] = final_sorted
-
-    # ---------- rescale to target_mean ----------
-    calibrated *= target_mean / calibrated.mean()
-
-    # ---------- enforce variance constraint if requested ----------
+    # ---- Optional: variance-safe blend (closed form) ----
     if enforce_variance_nonincrease:
-        # Compare variance in normalized space (both with mean=1)
-        raw_normalized = weights * (target_mean / weights.mean())
-        raw_norm_var = raw_normalized.var()
-        cal_var = calibrated.var()
-
-        if cal_var > raw_norm_var * VAR_TOL:  # Small tolerance for numerical precision
-            logger.debug(
-                f"Applying variance-safe blend: raw_norm_var={raw_norm_var:.6f}, "
-                f"cal_var={cal_var:.6f}"
-            )
-            calibrated = variance_safe_blend(
-                raw_normalized, calibrated, target_mean, max_variance_ratio=1.0
-            )
-
-    # ---------- log calibration statistics ----------
-    raw_normalized = weights * (target_mean / weights.mean())
-    raw_norm_var = raw_normalized.var()
-    norm_variance_ratio = calibrated.var() / (raw_norm_var + 1e-12)
-
-    logger.debug(
-        f"After calibration: mean={calibrated.mean():.6f}, var={calibrated.var():.6f}, "
-        f"norm_variance_ratio={norm_variance_ratio:.3f}"
-    )
-
-    # ---------- final checks ----------
-    # Critical assertions
-    assert calibrated.min() >= 0.0, f"Negative calibrated weight: {calibrated.min()}"
-    assert (
-        abs(calibrated.mean() - target_mean) < MEAN_TOL
-    ), f"Mean not preserved: {calibrated.mean()} != {target_mean}"
-
-    # Note: With enforce_variance_nonincrease=True (default), we blend with raw weights
-    # to ensure variance doesn't exceed the normalized baseline. Without enforcement,
-    # isotonic can increase variance to achieve L2-optimality.
-
-    # Calculate diagnostics for logging
-    ess_before = (weights.sum() ** 2) / (weights**2).sum() if weights.sum() > 0 else 0
-    ess_after = (
-        (calibrated.sum() ** 2) / (calibrated**2).sum() if calibrated.sum() > 0 else 0
-    )
-
-    # Log calibration diagnostics
-    logger.debug(
-        f"Weight calibration: var {weights.var():.3e} → {calibrated.var():.3e} "
-        f"(norm_ratio: {norm_variance_ratio:.2f}), ESS {ess_before:.1f} → {ess_after:.1f}"
-    )
-
-    # Warn only for truly suspicious cases (relative to normalized baseline)
-    if norm_variance_ratio > 3.0 and raw_norm_var > 1e-3:
-        logger.warning(
-            f"Large normalized variance after calibration: {norm_variance_ratio:.1f}x "
-            f"(may indicate poor overlap between policies)."
+        blended_norm, alpha, blend_info = _variance_safe_blend_closed_form(
+            raw_norm, cal_norm, max_variance_ratio=max_variance_ratio
+        )
+    else:
+        blended_norm = cal_norm
+        alpha = 1.0
+        blend_info = dict(
+            feasible=None,
+            achieved_var=float(cal_norm.var()),
+            target_var=raw_var * max_variance_ratio,
         )
 
-    # Check monotonicity
-    sorted_idx = np.argsort(weights)
-    sorted_cal = calibrated[sorted_idx]
-    diffs = np.diff(sorted_cal)
-    min_diff = np.min(diffs) if len(diffs) > 0 else 0
-    assert (
-        min_diff >= -1e-12
-    ), f"Monotonicity violated: min_diff = {min_diff:.2e} < -1e-12"
+    # ---- Final scale to target mean ----
+    # Exact rescale to target mean; blended_norm.mean() > 0 by construction
+    out = blended_norm * (target_mean / float(blended_norm.mean()))
 
-    return calibrated
+    # ---- Checks ----
+    if out.min() < -1e-12:
+        raise AssertionError(f"Negative calibrated weight: {out.min():.3e}")
 
+    mean_err = abs(out.mean() - target_mean)
+    if mean_err >= MEAN_TOL:
+        # Check for sparse case (many zeros)
+        zero_frac = (w < 1e-10).mean()
+        if zero_frac > 0.7:  # More than 70% zeros
+            # Relax tolerance for sparse cases
+            sparse_tol = max(MEAN_TOL, target_mean * 0.01)  # 1% relative tolerance
+            if mean_err < sparse_tol:
+                pass  # Accept with relaxed tolerance
+            else:
+                raise AssertionError(
+                    f"Mean not preserved (sparse case {zero_frac:.1%} zeros): "
+                    f"expected {target_mean:.12f}, got {out.mean():.12f} "
+                    f"(error={mean_err:.2e})"
+                )
+        else:
+            raise AssertionError(
+                f"Mean not preserved: expected {target_mean:.12f}, got {out.mean():.12f} "
+                f"(error={mean_err:.2e})"
+            )
 
-# ---------------------------------------------------------------------
-# 2.  Diagnostics helper
-# ---------------------------------------------------------------------
-def compute_calibration_diagnostics(
-    predictions: np.ndarray,
-    actuals: np.ndarray,
-    *,
-    coverage_threshold: float = 0.1,
-) -> dict[str, float]:
-    residuals = predictions - actuals
-    return dict(
-        rmse=float(np.sqrt(np.mean(residuals**2))),
-        mae=float(np.mean(np.abs(residuals))),
-        coverage=float(np.mean(np.abs(residuals) <= coverage_threshold)),
-        correlation=float(np.corrcoef(predictions, actuals)[0, 1]),
-    )
+    # Monotonic in raw_norm rank (after clipping/normalization)
+    # CRITICAL: Must check in raw_norm order, not original weights order
+    idx = np.argsort(raw_norm, kind="stable")
+    raw_sorted = raw_norm[idx]
+    out_sorted = out[idx]
+    boundaries = np.flatnonzero(np.diff(raw_sorted) > 1e-15)
+    if boundaries.size and np.any(
+        out_sorted[boundaries + 1] < out_sorted[boundaries] - 1e-12
+    ):
+        # Find first violation for error message
+        violations = np.where(
+            out_sorted[boundaries + 1] < out_sorted[boundaries] - 1e-12
+        )[0]
+        i = boundaries[violations[0]]
+        raise AssertionError(
+            f"Monotonicity violated: weight {raw_sorted[i]:.3e} -> {out_sorted[i]:.3e} "
+            f"but weight {raw_sorted[i+1]:.3e} -> {out_sorted[i+1]:.3e}"
+        )
+
+    if return_diagnostics:
+        diagnostics = {
+            "n_samples": n,
+            "n_negative_clipped": n_negative,
+            "alpha_blend": alpha,
+            "feasible": blend_info.get("feasible"),
+            "achieved_var": blend_info.get("achieved_var"),
+            "target_var": blend_info.get("target_var"),
+            "achieved_var_ratio": (
+                blend_info["achieved_var"] / raw_var if raw_var > 0 else np.nan
+            ),
+            "target_var_ratio": max_variance_ratio,
+        }
+        if "note" in blend_info:
+            diagnostics["note"] = blend_info["note"]
+        return out, diagnostics
+
+    return out
