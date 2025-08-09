@@ -18,8 +18,7 @@ from .extreme_weights_analysis import (
 # Import visualization functions if matplotlib is available
 try:
     from .visualization import (
-        plot_weight_calibration_analysis,
-        plot_weight_diagnostics_summary,
+        plot_weight_dashboard,
         plot_calibration_comparison,
     )
 
@@ -40,8 +39,7 @@ if _visualization_available:
     __all__.extend(
         [
             # Visualization
-            "plot_weight_calibration_analysis",
-            "plot_weight_diagnostics_summary",
+            "plot_weight_dashboard",
             "plot_calibration_comparison",
         ]
     )

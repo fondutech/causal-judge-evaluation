@@ -37,8 +37,7 @@ from cje_simplified import (
 # Import visualization if available
 try:
     from cje_simplified import (
-        plot_weight_calibration_analysis,
-        plot_weight_diagnostics_summary,
+        plot_weight_dashboard,
         plot_calibration_comparison,
     )
 
@@ -636,89 +635,73 @@ def main() -> int:
                 import matplotlib.pyplot as plt
 
                 if raw_weights_dict and calibrated_weights_dict:
-                    # 1. Comprehensive weight calibration analysis (6 panels per policy)
-                    fig = plot_weight_calibration_analysis(
-                        raw_weights_dict, calibrated_weights_dict
-                    )
-                    fig.savefig(
-                        plot_dir / "weight_calibration_analysis.png",
-                        dpi=150,
-                        bbox_inches="tight",
+                    # Generate weight diagnostics dashboard
+                    fig, viz_metrics = plot_weight_dashboard(
+                        raw_weights_dict,
+                        calibrated_weights_dict,
+                        n_samples=sampler.n_valid_samples,
+                        save_path=plot_dir / "weight_dashboard",
                     )
                     print(
-                        f"   ✓ Comprehensive calibration analysis → "
-                        f"{plot_dir}/weight_calibration_analysis.png"
+                        f"   ✓ Weight diagnostics dashboard → "
+                        f"{plot_dir}/weight_dashboard.png"
                     )
                     plt.close(fig)
 
-                    # 2. Cross-policy diagnostics summary dashboard
-                    # Prepare estimates for the summary
-                    estimates_dict = {}
-                    for i, policy in enumerate(sampler.target_policies):
-                        if i < len(results.estimates):
-                            estimates_dict[policy] = {
-                                "mean": results.estimates[i],
-                                "ci_lower": (
-                                    ci_lower[i] if "ci_lower" in locals() else 0
-                                ),
-                                "ci_upper": (
-                                    ci_upper[i] if "ci_upper" in locals() else 0
-                                ),
-                            }
+                # Calibration comparison - generate whenever we have judge scores and oracle labels
+                judge_scores = []
+                oracle_labels = []
+                for s in dataset.samples:
+                    if (
+                        args.judge_field in s.metadata
+                        and args.oracle_field in s.metadata
+                    ):
+                        judge_scores.append(s.metadata[args.judge_field])
+                        oracle_labels.append(s.metadata[args.oracle_field])
 
-                    fig = plot_weight_diagnostics_summary(
-                        raw_weights_dict, calibrated_weights_dict, estimates_dict
-                    )
-                    fig.savefig(
-                        plot_dir / "weight_diagnostics_summary.png",
-                        dpi=150,
-                        bbox_inches="tight",
-                    )
-                    print(
-                        f"   ✓ Cross-policy summary dashboard → "
-                        f"{plot_dir}/weight_diagnostics_summary.png"
-                    )
-                    plt.close(fig)
+                if judge_scores and oracle_labels:
+                    # Collect calibrated scores to show the transformation
+                    # We want to show calibration whenever rewards differ from raw judge scores
+                    calibrated_preds = []
 
-                # Calibration comparison (if calibration was performed)
-                if (
-                    not args.use_oracle
-                    and "cal_result" in locals()
-                    and not rewards_exist
-                ):
-                    # Extract judge scores and oracle labels
-                    judge_scores = []
-                    oracle_labels = []
-                    for s in dataset.samples:
+                    # Collect rewards for samples that have both judge and oracle
+                    for s in calibrated_dataset.samples:
                         if (
                             args.judge_field in s.metadata
                             and args.oracle_field in s.metadata
                         ):
-                            judge_scores.append(s.metadata[args.judge_field])
-                            oracle_labels.append(s.metadata[args.oracle_field])
+                            # Check if this sample has a reward (calibrated score)
+                            if s.reward is not None:
+                                calibrated_preds.append(s.reward)
 
-                    if judge_scores and oracle_labels:
-                        # Get calibrated predictions
-                        calibrated_preds = [
-                            s.reward
-                            for s in calibrated_dataset.samples
-                            if s.reward is not None
-                        ]
+                    # Only show calibrated if they differ from judge scores
+                    # (i.e., we actually applied calibration)
+                    if len(calibrated_preds) == len(judge_scores):
+                        # Check if calibration was actually applied
+                        # (rewards differ from judge scores)
+                        if np.allclose(calibrated_preds, judge_scores, rtol=1e-5):
+                            # No calibration was applied, rewards are same as judge scores
+                            calibrated_preds = None
+                    else:
+                        # Length mismatch, skip calibrated
+                        calibrated_preds = None
 
-                        if len(calibrated_preds) == len(judge_scores):
-                            fig = plot_calibration_comparison(
-                                judge_scores=np.array(judge_scores),
-                                oracle_labels=np.array(oracle_labels),
-                                calibrated_scores=np.array(calibrated_preds),
-                            )
-                            fig.savefig(
-                                plot_dir / "calibration_comparison.png",
-                                dpi=150,
-                                bbox_inches="tight",
-                            )
-                            print(
-                                f"   ✓ Saved calibration comparison to {plot_dir}/calibration_comparison.png"
-                            )
+                    # Generate calibration plot
+                    fig = plot_calibration_comparison(
+                        judge_scores=np.array(judge_scores),
+                        oracle_labels=np.array(oracle_labels),
+                        calibrated_scores=(
+                            np.array(calibrated_preds) if calibrated_preds else None
+                        ),
+                    )
+                    fig.savefig(
+                        plot_dir / "calibration_comparison.png",
+                        dpi=150,
+                        bbox_inches="tight",
+                    )
+                    print(
+                        f"   ✓ Calibration comparison → {plot_dir}/calibration_comparison.png"
+                    )
 
                 # Close all figures to free memory
                 plt.close("all")

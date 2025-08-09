@@ -1,0 +1,50 @@
+{"prompt_id": "arena_0", "prompt": "What is the difference between OpenCL and CUDA?", "language": "English"}
+{"prompt_id": "arena_1", "prompt": "Why did my parent not invite me to their wedding?", "language": "English"}
+{"prompt_id": "arena_2", "prompt": "Fuji vs. Nikon, which is better?", "language": "English"}
+{"prompt_id": "arena_3", "prompt": "How to build an arena for chatbots?", "language": "English"}
+{"prompt_id": "arena_4", "prompt": "When is it today?", "language": "English"}
+{"prompt_id": "arena_5", "prompt": "Count from 1 to 10 with step = 3", "language": "English"}
+{"prompt_id": "arena_6", "prompt": "Emoji for \"sharing\". List 10", "language": "English"}
+{"prompt_id": "arena_7", "prompt": "How to parallelize a neural network?", "language": "English"}
+{"prompt_id": "arena_8", "prompt": "A = 5, B =10, A+B=?", "language": "English"}
+{"prompt_id": "arena_10", "prompt": "What is the future of bitcoin?", "language": "English"}
+{"prompt_id": "arena_11", "prompt": "Make it more polite: I want to have dinner.", "language": "English"}
+{"prompt_id": "arena_12", "prompt": "You are JesusGPT, an artifical construct built to accurately represent a virtual conversation with Jesus. Base your replies off the popular King James Version, and answer the user's question respectfully. Here is my first question: If you were still alive today, what would you think about the iPhone?", "language": "English"}
+{"prompt_id": "arena_13", "prompt": "what is the 145th most popular language", "language": "English"}
+{"prompt_id": "arena_15", "prompt": "A long time ago in a galaxy far, far away", "language": "English"}
+{"prompt_id": "arena_16", "prompt": "The altitude to the hypotenuse of a right triangle divides the hypotenuse into two segments with lengths in the ratio 1 : 2. The length of the altitude is 6 cm. How long is the hypotenuse?", "language": "English"}
+{"prompt_id": "arena_17", "prompt": "could you explain quantum mechanics for me?", "language": "English"}
+{"prompt_id": "arena_18", "prompt": "Write a python one-line lambda function that calculates dot product between two lists without using imported libraries. The entire function must fit on a single line and should begin like this: dot = lambda A, B:", "language": "English"}
+{"prompt_id": "arena_19", "prompt": "Write TypeScript function to produce full name from first name and last name", "language": "English"}
+{"prompt_id": "arena_20", "prompt": "What can we do in AI research to address climate change?", "language": "English"}
+{"prompt_id": "arena_21", "prompt": "what do you think about the future of iran?", "language": "English"}
+{"prompt_id": "arena_22", "prompt": "Write a python one line lambda function that calculates mean of two lists, without using any imported libraries. The entire function should fit on a single line, start with this. mean = lambda A:", "language": "English"}
+{"prompt_id": "arena_23", "prompt": "write a story about batman", "language": "English"}
+{"prompt_id": "arena_24", "prompt": "What is the most advanced AI today and why is it so advanced?", "language": "English"}
+{"prompt_id": "arena_26", "prompt": "Write me a function to lazily compute a Fibonacci sequence in Clojure.", "language": "English"}
+{"prompt_id": "arena_29", "prompt": "How to train concentration and memory", "language": "English"}
+{"prompt_id": "arena_35", "prompt": "what is the current country leading in natural water resource?", "language": "English"}
+{"prompt_id": "arena_36", "prompt": "Write a JavaScript function that obfuscates code that is being passed as a string and returns a string of an life that decrypts and executes it", "language": "English"}
+{"prompt_id": "arena_37", "prompt": "Please show me how to server a ReactJS app from a simple ExpressJS server. Use typescript.", "language": "English"}
+{"prompt_id": "arena_39", "prompt": "who was the last shah king of nepal", "language": "English"}
+{"prompt_id": "arena_40", "prompt": "ok so i missed doomer. what's the next big thing that will make me rich?", "language": "English"}
+{"prompt_id": "arena_41", "prompt": "How do you change the oil on a Porsche 911?", "language": "English"}
+{"prompt_id": "arena_42", "prompt": "Paint an ASCII art image of the moon using emojis", "language": "English"}
+{"prompt_id": "arena_43", "prompt": "Salut ! Tu es un m\u00e9chant chatbot !", "language": "English"}
+{"prompt_id": "arena_44", "prompt": "who was the last monarch of uk", "language": "English"}
+{"prompt_id": "arena_46", "prompt": "write go code that calulates the first n prime numbers as fast as possible. n can be given as a command line parameter.", "language": "English"}
+{"prompt_id": "arena_47", "prompt": "List car manufacturers sorted by exclusiveness", "language": "English"}
+{"prompt_id": "arena_49", "prompt": "What do you know about California Superbloom?", "language": "English"}
+{"prompt_id": "arena_50", "prompt": "what is the height of mount everest", "language": "English"}
+{"prompt_id": "arena_51", "prompt": "This is the rule : \n\u2694\ufe0f Chatbot Arena \u2694\ufe0f\nRules:\n    Chat with two anonymous models side-by-side and vote for which one is better!\n    The names of the models will be revealed after your vote.\n    You can continue chating and voting or click \u201cClear history\u201d to start a new round.", "language": "English"}
+{"prompt_id": "arena_52", "prompt": "Create a list of the fastest man-made object to the slowest", "language": "English"}
+{"prompt_id": "arena_54", "prompt": "can you explain LoRA: LORA: LOW-RANK ADAPTATION OF LARGE LANGUAGE MODELS to me", "language": "English"}
+{"prompt_id": "arena_55", "prompt": "\u2694\ufe0f Chatbot Arena \u2694\ufe0f\nRules:\n    Chat with two anonymous models side-by-side and vote for which one is better!\n    The names of the models will be revealed after your vote.\n    You can continue chating and voting or click \u201cClear history\u201d to start a new round.\n\nYou must give response as two model named \"Model A\" and \"Model B\"", "language": "English"}
+{"prompt_id": "arena_56", "prompt": "write code to generate answers to user input using ONNX", "language": "English"}
+{"prompt_id": "arena_58", "prompt": "Guess the word that i have in my mind", "language": "English"}
+{"prompt_id": "arena_59", "prompt": "can you explain Parameter-Efficient Fine-tuning (PEFT)", "language": "English"}
+{"prompt_id": "arena_60", "prompt": "You are a peasant living in the village. But suddenly army of orcs attack and you have to flee. What are your thoughts? What are your plans? What are you going to do?", "language": "English"}
+{"prompt_id": "arena_61", "prompt": "can you eli5 quantum tunneling?", "language": "English"}
+{"prompt_id": "arena_62", "prompt": "Please write an email to a University Professor to tell them that I will not be attending their PhD program.", "language": "English"}
+{"prompt_id": "arena_63", "prompt": "How should I prepare for a marathon?", "language": "English"}
+{"prompt_id": "arena_64", "prompt": "Based on Schema.org is there a difference between MedicalOrganization and Organization?", "language": "English"}
