@@ -715,3 +715,221 @@ def plot_calibration_comparison(
         fig.savefig(save_path.with_suffix(".png"), dpi=150, bbox_inches="tight")
 
     return fig
+
+
+def plot_policy_estimates(
+    estimates: Dict[str, float],
+    standard_errors: Dict[str, float],
+    oracle_values: Optional[Dict[str, float]] = None,
+    base_policy: str = "base",
+    figsize: tuple = (10, 6),
+    save_path: Optional[Path] = None,
+) -> plt.Figure:
+    """Create forest plot of policy performance estimates with confidence intervals.
+
+    A clean, publication-quality forest plot showing:
+    - Point estimates with 95% confidence intervals
+    - Base policy as reference (vertical line)
+    - Oracle ground truth values if available (diamonds)
+    - Best policy highlighted in green
+
+    Args:
+        estimates: Point estimates for each policy
+        standard_errors: Standard errors for each policy
+        oracle_values: Optional oracle ground truth values
+        base_policy: Name of base policy (for reference line)
+        figsize: Figure size (width, height)
+        save_path: Optional path to save figure
+
+    Returns:
+        matplotlib Figure
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Sort policies: base first, then others by estimate value (descending)
+    all_policies = list(estimates.keys())
+    other_policies = [p for p in all_policies if p != base_policy]
+    other_policies.sort(key=lambda p: estimates[p], reverse=True)
+
+    # Arrange: base at top, then sorted others
+    if base_policy in estimates:
+        policies = [base_policy] + other_policies
+    else:
+        policies = other_policies
+
+    # Y positions (top to bottom)
+    y_positions = list(range(len(policies)))[::-1]
+
+    # Find best policy (highest estimate)
+    best_policy = max(estimates.keys(), key=lambda p: estimates[p])
+
+    # Plot each policy
+    for policy, y_pos in zip(policies, y_positions):
+        est = estimates[policy]
+        se = standard_errors[policy]
+
+        # Determine color
+        if policy == base_policy:
+            color = "#666666"  # Gray for base
+            marker_size = 8
+        elif policy == best_policy and policy != base_policy:
+            color = "#2ca02c"  # Green for best
+            marker_size = 10
+        else:
+            color = "#1f77b4"  # Blue for others
+            marker_size = 8
+
+        # Plot point estimate with 95% CI
+        ci_lower = est - 1.96 * se
+        ci_upper = est + 1.96 * se
+
+        # Error bar (confidence interval)
+        ax.plot(
+            [ci_lower, ci_upper], [y_pos, y_pos], color=color, linewidth=2, alpha=0.7
+        )
+
+        # Point estimate
+        ax.plot(
+            est,
+            y_pos,
+            marker="o",
+            markersize=marker_size,
+            color=color,
+            markeredgecolor="white",
+            markeredgewidth=1.5,
+        )
+
+        # Oracle value if available
+        if oracle_values and policy in oracle_values:
+            oracle_val = oracle_values[policy]
+            # Diamond marker for oracle
+            ax.plot(
+                oracle_val,
+                y_pos,
+                marker="D",
+                markersize=7,
+                color="#d62728",
+                alpha=0.7,
+                markeredgecolor="white",
+                markeredgewidth=1,
+                label="Oracle" if policy == policies[0] else "",
+            )
+
+            # Thin line connecting estimate to oracle
+            ax.plot(
+                [est, oracle_val],
+                [y_pos, y_pos],
+                color="#d62728",
+                linewidth=0.5,
+                alpha=0.3,
+            )
+
+    # Add reference line at base policy estimate
+    if base_policy in estimates:
+        ax.axvline(
+            estimates[base_policy],
+            color="#666666",
+            linestyle="--",
+            alpha=0.3,
+            linewidth=1,
+        )
+
+        # Add subtle text annotation for reference line
+        ax.text(
+            estimates[base_policy],
+            -0.5,
+            f"{base_policy} (reference)",
+            horizontalalignment="center",
+            fontsize=8,
+            color="#666666",
+            style="italic",
+        )
+
+    # Y-axis: policy names
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(policies)
+
+    # X-axis: performance scale
+    ax.set_xlabel("Estimated Performance", fontsize=11)
+
+    # Title
+    title = "Policy Performance Estimates (95% CI)"
+    if oracle_values:
+        # Calculate RMSE if we have oracle values
+        rmse_values = []
+        for policy in estimates:
+            if policy in oracle_values:
+                error = estimates[policy] - oracle_values[policy]
+                rmse_values.append(error**2)
+        if rmse_values:
+            rmse = np.sqrt(np.mean(rmse_values))
+            title += f"\nRMSE vs Oracle: {rmse:.3f}"
+    ax.set_title(title, fontsize=12, pad=15)
+
+    # Grid for easier reading
+    ax.grid(True, axis="x", alpha=0.2, linestyle="-", linewidth=0.5)
+    ax.set_axisbelow(True)
+
+    # Add legend if we have oracle values
+    if oracle_values:
+        # Create custom legend
+        from matplotlib.patches import Patch
+        from matplotlib.lines import Line2D
+
+        legend_elements = [
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="w",
+                markerfacecolor="#1f77b4",
+                markersize=8,
+                label="CJE Estimate",
+            ),
+            Line2D(
+                [0],
+                [0],
+                marker="D",
+                color="w",
+                markerfacecolor="#d62728",
+                markersize=7,
+                alpha=0.7,
+                label="Oracle Truth",
+            ),
+        ]
+        if best_policy != base_policy:
+            legend_elements.append(
+                Line2D(
+                    [0],
+                    [0],
+                    marker="o",
+                    color="w",
+                    markerfacecolor="#2ca02c",
+                    markersize=10,
+                    label="Best Policy",
+                )
+            )
+
+        ax.legend(
+            handles=legend_elements,
+            loc="best",
+            frameon=True,
+            fancybox=True,
+            shadow=False,
+            fontsize=9,
+        )
+
+    # Adjust layout to prevent label cutoff
+    plt.tight_layout()
+
+    # Add subtle box around plot area
+    for spine in ax.spines.values():
+        spine.set_edgecolor("#CCCCCC")
+        spine.set_linewidth(0.8)
+
+    # Save if requested
+    if save_path:
+        save_path = Path(save_path)
+        fig.savefig(save_path.with_suffix(".png"), dpi=150, bbox_inches="tight")
+
+    return fig

@@ -20,6 +20,7 @@ try:
     from .visualization import (
         plot_weight_dashboard,
         plot_calibration_comparison,
+        plot_policy_estimates,
     )
 
     _visualization_available = True
@@ -41,5 +42,6 @@ if _visualization_available:
             # Visualization
             "plot_weight_dashboard",
             "plot_calibration_comparison",
+            "plot_policy_estimates",
         ]
     )

@@ -87,6 +87,7 @@ try:
     from .utils import (
         plot_weight_dashboard,
         plot_calibration_comparison,
+        plot_policy_estimates,
     )
 
     _viz_available = True
@@ -156,5 +157,6 @@ if _viz_available:
         [
             "plot_weight_dashboard",
             "plot_calibration_comparison",
+            "plot_policy_estimates",
         ]
     )

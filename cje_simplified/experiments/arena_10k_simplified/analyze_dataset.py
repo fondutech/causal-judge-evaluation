@@ -39,6 +39,7 @@ try:
     from cje_simplified import (
         plot_weight_dashboard,
         plot_calibration_comparison,
+        plot_policy_estimates,
     )
 
     _viz_available = True
@@ -702,6 +703,43 @@ def main() -> int:
                     print(
                         f"   ✓ Calibration comparison → {plot_dir}/calibration_comparison.png"
                     )
+                    plt.close(fig)
+
+                # Generate policy estimates forest plot
+                if results:
+                    # Collect estimates and standard errors for all policies
+                    policy_estimates = {}
+                    policy_ses = {}
+                    base_policy = "base"  # Define base policy name
+
+                    # Add base policy
+                    policy_estimates[base_policy] = base_mean
+                    policy_ses[base_policy] = base_se
+
+                    # Add target policies
+                    for policy, estimate, se in zip(
+                        target_policies, results.estimates, results.standard_errors
+                    ):
+                        if not np.isnan(estimate):
+                            policy_estimates[policy] = estimate
+                            policy_ses[policy] = se
+
+                    # Use oracle_means if available (may have been loaded earlier)
+                    fig = plot_policy_estimates(
+                        estimates=policy_estimates,
+                        standard_errors=policy_ses,
+                        oracle_values=(
+                            oracle_means
+                            if "oracle_means" in locals() and oracle_means
+                            else None
+                        ),
+                        base_policy=base_policy,
+                        save_path=plot_dir / "policy_estimates.png",
+                    )
+                    print(
+                        f"   ✓ Policy estimates forest plot → {plot_dir}/policy_estimates.png"
+                    )
+                    plt.close(fig)
 
                 # Close all figures to free memory
                 plt.close("all")
@@ -721,7 +759,7 @@ def main() -> int:
     # Final success message
     steps_completed = 6  # base steps (including extreme weights)
     if _viz_available and not args.no_plots:
-        steps_completed = 7
+        steps_completed = 8  # includes 3 visualizations
     print(f"\n✓ Analysis complete! ({steps_completed} steps)")
 
     # Write results to file if requested
