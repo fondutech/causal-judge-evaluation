@@ -16,6 +16,10 @@ from tqdm import tqdm
 from pydantic import BaseModel, Field
 from langchain.chat_models import init_chat_model
 
+# Default models
+DEFAULT_JUDGE_MODEL = "gpt-5-nano-2025-08-07"
+DEFAULT_ORACLE_MODEL = "gpt-5-2025-08-07"
+
 
 # Data models
 @dataclass
@@ -73,7 +77,7 @@ class FireworksEvaluator:
             user_prompt_template or self._default_prompt_template()
         )
         self.temperature = temperature
-        
+
         # Determine provider based on model name
         if model.startswith("gpt") or model.startswith("o1") or model.startswith("o4"):
             # OpenAI model
@@ -89,16 +93,18 @@ class FireworksEvaluator:
             if not self.api_key:
                 raise ValueError("FIREWORKS_API_KEY required for Fireworks models")
             os.environ["FIREWORKS_API_KEY"] = self.api_key
-        
+
         # Initialize LangChain model
-        # Note: o4-mini models only support temperature=1.0
-        if model.startswith("o4"):
+        # Note: o4-mini and gpt-5 models only support temperature=1.0
+        if model.startswith("o4") or model.startswith("gpt-5"):
             actual_temperature = 1.0
             if temperature != 1.0:
-                print(f"Note: {model} only supports temperature=1.0, ignoring temperature={temperature}")
+                print(
+                    f"Note: {model} only supports temperature=1.0, ignoring temperature={temperature}"
+                )
         else:
             actual_temperature = temperature
-            
+
         self.llm = init_chat_model(
             model,
             model_provider=self.provider,
@@ -192,14 +198,14 @@ Provide your evaluation score (0-100):
         skip_failures: bool = False,
     ) -> BatchJudgeResult:
         """Score a batch of responses.
-        
+
         Args:
             prompts: List of prompts
             responses: List of responses
             show_progress: Whether to show progress bar
             desc: Description for progress bar
             skip_failures: If True, skip failed scorings and continue with the batch
-            
+
         Returns:
             BatchJudgeResult with scores and metadata
         """
@@ -210,9 +216,12 @@ Provide your evaluation score (0-100):
         metadata = []
         failed_indices = []
 
-        iterator = zip(enumerate(zip(prompts, responses)), range(len(prompts)))
         if show_progress:
-            iterator = tqdm(enumerate(zip(prompts, responses)), total=len(prompts), desc=desc)
+            iterator = tqdm(
+                enumerate(zip(prompts, responses)), total=len(prompts), desc=desc
+            )
+        else:
+            iterator = enumerate(zip(prompts, responses))
 
         for i, (prompt, response) in iterator:
             try:
@@ -233,12 +242,9 @@ Provide your evaluation score (0-100):
                     raise
 
         if failed_indices and skip_failures:
-            print(f"⚠️  Warning: {len(failed_indices)} out of {len(prompts)} scorings failed")
+            print(
+                f"⚠️  Warning: {len(failed_indices)} out of {len(prompts)} scorings failed"
+            )
             print(f"   Failed indices: {failed_indices}")
 
         return BatchJudgeResult(scores=scores, metadata=metadata if metadata else None)
-
-
-# Default models
-DEFAULT_JUDGE_MODEL = "gpt-4.1-nano-2025-04-14"
-DEFAULT_ORACLE_MODEL = "o4-mini-2025-04-16"
