@@ -74,6 +74,13 @@ IsotonicOutcomeModel
    :members:
    :show-inheritance:
 
+CalibratorBackedOutcomeModel
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: cje.core.outcome_models.CalibratorBackedOutcomeModel
+   :members:
+   :show-inheritance:
+
 LinearOutcomeModel
 ~~~~~~~~~~~~~~~~~~
 
