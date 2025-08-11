@@ -4,7 +4,7 @@ Core guidance for Claude Code when working with the CJE repository.
 
 ## 🎯 Project Philosophy
 
-The `cje_simplified/` directory is a clean reimplementation focusing on:
+The `cje/` directory is the production implementation focusing on:
 - Clear separation of concerns
 - Type safety with Pydantic models  
 - Explicit error handling (no magic fallbacks)
@@ -21,7 +21,7 @@ The `cje_simplified/` directory is a clean reimplementation focusing on:
 ## 📁 Repository Structure
 
 ```
-cje_simplified/           # ALL NEW WORK GOES HERE
+cje/                      # Production implementation
 ├── calibration/          # Calibration utilities
 ├── core/                 # Core abstractions
 ├── data/                 # Data models and loading  
@@ -33,7 +33,7 @@ cje_simplified/           # ALL NEW WORK GOES HERE
 ## 🚀 Quick Start
 
 ```python
-from cje_simplified import load_dataset_from_jsonl, calibrate_dataset, PrecomputedSampler, CalibratedIPS
+from cje import load_dataset_from_jsonl, calibrate_dataset, PrecomputedSampler, CalibratedIPS
 
 # Load data (no rewards required)
 dataset = load_dataset_from_jsonl("data.jsonl")
@@ -55,10 +55,10 @@ results = estimator.fit_and_estimate()
 
 ```bash
 # Run tests
-poetry run pytest cje_simplified/
+poetry run pytest cje/
 
 # Run experiments
-cd cje_simplified/experiments/arena_10k_simplified
+cd cje/experiments/arena_10k_simplified
 
 # Step 1: Generate data (no calibration)
 poetry run python generate_arena_data.py --n-samples 1000
@@ -131,7 +131,7 @@ Don't create complex abstractions for template selection - let the tools handle 
 
 ## 🚨 Red Flags in Code Review
 
-- Imports from `cje/` instead of `cje_simplified/`
+- Imports from old legacy paths
 - Magic numbers as fallbacks
 - Classes with multiple responsibilities
 - Calibration during data generation

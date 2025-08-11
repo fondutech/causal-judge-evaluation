@@ -9,21 +9,21 @@ Data Models
 Sample
 ~~~~~~
 
-.. autoclass:: cje_simplified.data.Sample
+.. autoclass:: cje.data.Sample
    :members:
    :show-inheritance:
 
 Dataset
 ~~~~~~~
 
-.. autoclass:: cje_simplified.data.Dataset
+.. autoclass:: cje.data.Dataset
    :members:
    :show-inheritance:
 
 EstimationResult
 ~~~~~~~~~~~~~~~~
 
-.. autoclass:: cje_simplified.data.EstimationResult
+.. autoclass:: cje.data.EstimationResult
    :members:
    :show-inheritance:
    
@@ -33,7 +33,7 @@ EstimationResult
 PrecomputedSampler
 ~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: cje_simplified.data.PrecomputedSampler
+.. autoclass:: cje.data.PrecomputedSampler
    :members:
    :show-inheritance:
    
@@ -48,14 +48,14 @@ Fresh Draws
 FreshDrawSample
 ~~~~~~~~~~~~~~~
 
-.. autoclass:: cje_simplified.data.FreshDrawSample
+.. autoclass:: cje.data.FreshDrawSample
    :members:
    :show-inheritance:
 
 FreshDrawDataset
 ~~~~~~~~~~~~~~~~
 
-.. autoclass:: cje_simplified.data.FreshDrawDataset
+.. autoclass:: cje.data.FreshDrawDataset
    :members:
    :show-inheritance:
    
@@ -65,9 +65,9 @@ FreshDrawDataset
 Data Loading
 ------------
 
-.. autofunction:: cje_simplified.load_dataset_from_jsonl
+.. autofunction:: cje.load_dataset_from_jsonl
 
-.. autofunction:: cje_simplified.data.add_rewards_to_existing_data
+.. autofunction:: cje.data.add_rewards_to_existing_data
 
 Factory Pattern
 ---------------
@@ -75,7 +75,7 @@ Factory Pattern
 DatasetFactory
 ~~~~~~~~~~~~~~
 
-.. autoclass:: cje_simplified.data.DatasetFactory
+.. autoclass:: cje.data.DatasetFactory
    :members:
    :show-inheritance:
    
@@ -85,6 +85,6 @@ DatasetFactory
 DatasetLoader
 ~~~~~~~~~~~~~
 
-.. autoclass:: cje_simplified.data.DatasetLoader
+.. autoclass:: cje.data.DatasetLoader
    :members:
    :show-inheritance:

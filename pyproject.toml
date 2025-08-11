@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "cje-simplified"
-version = "0.1.3"
-description = "Simplified Causal Judge Evaluation - Production-ready implementation"
+name = "causal-judge-evaluation"
+version = "0.2.0"
+description = "Causal Judge Evaluation - Unbiased LLM evaluation framework"
 authors = ["Eddie Landesberg <eddie@fondutech.com>"]
 license = "MIT"
-packages = [{ include = "cje_simplified" }]
+packages = [{ include = "cje" }]
 
 [tool.poetry.dependencies]
 python = ">=3.9,<3.13"
@@ -63,7 +63,7 @@ myst-parser = ">=2.0,<3.0"
 watchdog = "^6.0.0"
 pytest-xdist = "^3.7.0"
 
-# No CLI scripts defined yet for cje_simplified
+# CLI scripts can be defined here when needed
 
 [tool.black]
 line-length = 88

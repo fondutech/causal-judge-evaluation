@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from typing import List, Dict, Any
 
-from cje_simplified import (
+from cje import (
     Dataset,
     Sample,
     PrecomputedSampler,

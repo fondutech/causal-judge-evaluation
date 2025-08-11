@@ -18,7 +18,7 @@ import sys
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from cje_simplified import (
+from cje import (
     JudgeCalibrator,
     calibrate_judge_scores,
 )
@@ -121,7 +121,6 @@ def create_ablation_dataset(
         judge_scores=np.array(all_judges),
         oracle_labels=np.array(oracle_labels_for_calibration),
         oracle_mask=oracle_mask,
-        k_folds=5,
     )
 
     print(f"  Calibration RMSE: {diagnostics['rmse']:.3f}")

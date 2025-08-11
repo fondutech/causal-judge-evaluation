@@ -4,7 +4,7 @@ import numpy as np
 import logging
 from typing import Dict, Optional, Any
 
-from cje_simplified.data.precomputed_sampler import PrecomputedSampler
+from cje.data.precomputed_sampler import PrecomputedSampler
 
 from .base_estimator import BaseCJEEstimator
 from ..data.models import EstimationResult

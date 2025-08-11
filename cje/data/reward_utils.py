@@ -42,7 +42,7 @@ def add_rewards_to_existing_data(
         Path to output file
     """
     # Load data using the proper loading pattern
-    from cje_simplified import load_dataset_from_jsonl
+    from cje import load_dataset_from_jsonl
 
     # Load dataset with type safety
     dataset = load_dataset_from_jsonl(data_path)

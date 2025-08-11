@@ -10,7 +10,7 @@ All outcome models inherit from ``BaseOutcomeModel``:
 
 .. code-block:: python
 
-   from cje_simplified import BaseOutcomeModel
+   from cje import BaseOutcomeModel
    
    class MyOutcomeModel(BaseOutcomeModel):
        def _fit_single_model(self, prompts, responses, rewards, judge_scores):
@@ -37,7 +37,7 @@ Using a simple neural network:
 
    import torch
    import torch.nn as nn
-   from cje_simplified import BaseOutcomeModel
+   from cje import BaseOutcomeModel
    
    class NeuralOutcomeModel(BaseOutcomeModel):
        def __init__(self, n_folds=5, hidden_dim=64, epochs=100):
@@ -100,7 +100,7 @@ Using sentence embeddings:
 
    from sentence_transformers import SentenceTransformer
    from sklearn.ensemble import RandomForestRegressor
-   from cje_simplified import BaseOutcomeModel
+   from cje import BaseOutcomeModel
    import numpy as np
    
    class EmbeddingOutcomeModel(BaseOutcomeModel):
@@ -146,7 +146,7 @@ Model that learns prompt-specific patterns:
 .. code-block:: python
 
    from collections import defaultdict
-   from cje_simplified import BaseOutcomeModel
+   from cje import BaseOutcomeModel
    import numpy as np
    
    class PromptAwareOutcomeModel(BaseOutcomeModel):
@@ -230,7 +230,7 @@ Test custom models before production use:
 
 .. code-block:: python
 
-   from cje_simplified import DRCPOEstimator, create_synthetic_fresh_draws
+   from cje import DRCPOEstimator, create_synthetic_fresh_draws
    
    # Create test data
    test_dataset = create_test_dataset(n_samples=1000)

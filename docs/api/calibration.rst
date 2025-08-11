@@ -6,14 +6,14 @@ This section documents the calibration utilities.
 Judge Calibration
 -----------------
 
-.. autofunction:: cje_simplified.calibrate_dataset
+.. autofunction:: cje.calibrate_dataset
 
-.. autofunction:: cje_simplified.calibrate_judge_scores
+.. autofunction:: cje.calibrate_judge_scores
 
 JudgeCalibrator
 ~~~~~~~~~~~~~~~
 
-.. autoclass:: cje_simplified.calibration.JudgeCalibrator
+.. autoclass:: cje.calibration.JudgeCalibrator
    :members:
    :show-inheritance:
    
@@ -25,14 +25,14 @@ JudgeCalibrator
 CalibrationResult
 ~~~~~~~~~~~~~~~~~
 
-.. autoclass:: cje_simplified.calibration.CalibrationResult
+.. autoclass:: cje.calibration.CalibrationResult
    :members:
    :show-inheritance:
 
 Isotonic Calibration
 --------------------
 
-.. autofunction:: cje_simplified.calibrate_to_target_mean
+.. autofunction:: cje.calibrate_to_target_mean
 
 Weight Calibration
 ------------------
@@ -41,7 +41,7 @@ The isotonic weight calibration is used internally by CalibratedIPS:
 
 .. code-block:: python
 
-   from cje_simplified import calibrate_to_target_mean
+   from cje import calibrate_to_target_mean
    
    # Calibrate weights to have mean 1.0
    calibrated_weights = calibrate_to_target_mean(

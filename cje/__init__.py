@@ -7,7 +7,7 @@ A minimal implementation focused on the core CJE methodology:
 - Get unbiased policy performance estimates
 
 Example:
-    from cje_simplified import PrecomputedSampler, CalibratedIPS
+    from cje import PrecomputedSampler, CalibratedIPS
 
     # Load data
     sampler = PrecomputedSampler.from_jsonl("data.jsonl")

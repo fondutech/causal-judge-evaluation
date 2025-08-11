@@ -1,11 +1,7 @@
-CJE Simplified Documentation
-============================
+Causal Judge Evaluation Documentation
+======================================
 
-A minimal, production-ready implementation of Causal Judge Evaluation for unbiased LLM evaluation.
-
-.. warning::
-   This documentation covers the stable ``cje_simplified`` API only. 
-   The legacy ``cje`` module is deprecated and not documented here.
+Production-ready framework for unbiased LLM evaluation using causal inference.
 
 Quick Start
 -----------
@@ -22,7 +18,7 @@ Install and run your first evaluation:
 
 .. code-block:: python
 
-   from cje_simplified import (
+   from cje import (
        load_dataset_from_jsonl,
        PrecomputedSampler, 
        CalibratedIPS

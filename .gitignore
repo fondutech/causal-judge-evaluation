@@ -228,7 +228,7 @@ research_notes/
 *.draft.*
 
 # CJE test outputs (from e2e pipeline tests)
-cje_simplified/experiments/arena_10k_simplified/test_e2e_data/ablation_data/
-cje_simplified/experiments/arena_10k_simplified/test_e2e_data/ablation_results/
-cje_simplified/experiments/arena_10k_simplified/test_e2e_data/*.jsonl
-cje_simplified/experiments/arena_10k_simplified/test_e2e_data/logprobs/
+cje/experiments/arena_10k_simplified/test_e2e_data/ablation_data/
+cje/experiments/arena_10k_simplified/test_e2e_data/ablation_results/
+cje/experiments/arena_10k_simplified/test_e2e_data/*.jsonl
+cje/experiments/arena_10k_simplified/test_e2e_data/logprobs/

@@ -1,10 +1,10 @@
-# CJE Simplified
+# Causal Judge Evaluation (CJE)
 
-Production-ready implementation of Causal Judge Evaluation for unbiased LLM evaluation.
+Production-ready framework for unbiased LLM evaluation using causal inference.
 
 ## Overview
 
-CJE Simplified provides a clean, minimal implementation of the CJE methodology:
+CJE provides a clean, production-ready implementation for:
 - **Unbiased Estimation**: Corrects for distribution shift between policies
 - **Variance Control**: Isotonic calibration prevents weight explosion  
 - **Doubly Robust**: Optional DR estimation for better bias-variance tradeoff
@@ -21,7 +21,7 @@ pip install -e .
 ## Quick Start
 
 ```python
-from cje_simplified import (
+from cje import (
     load_dataset_from_jsonl,
     PrecomputedSampler,
     CalibratedIPS
@@ -65,7 +65,7 @@ print(f"Best policy: {results.best_policy()}")
 
 ### Computing Log Probabilities
 ```python
-from cje_simplified import compute_teacher_forced_logprob
+from cje import compute_teacher_forced_logprob
 
 result = compute_teacher_forced_logprob(
     prompt="What is 2+2?",
@@ -87,10 +87,10 @@ Full documentation available at: https://causal-judge-evaluation.readthedocs.io
 
 ```bash
 # Run all tests
-poetry run pytest cje_simplified/tests/
+poetry run pytest cje/tests/
 
 # Run specific test
-poetry run pytest cje_simplified/tests/test_pipeline.py -v
+poetry run pytest cje/tests/test_pipeline.py -v
 ```
 
 ## License

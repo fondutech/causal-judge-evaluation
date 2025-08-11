@@ -1,6 +1,6 @@
 """Integration test showing complete workflow."""
 
-from cje_simplified import (
+from cje import (
     PrecomputedSampler,
     CalibratedIPS,
     load_dataset_from_jsonl,

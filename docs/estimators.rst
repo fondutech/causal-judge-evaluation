@@ -34,7 +34,7 @@ Uses isotonic calibration to control weight variance:
 
 .. code-block:: python
 
-   from cje_simplified import CalibratedIPS
+   from cje import CalibratedIPS
    
    estimator = CalibratedIPS(
        sampler,
@@ -63,7 +63,7 @@ Standard importance sampling with optional weight clipping:
 
 .. code-block:: python
 
-   from cje_simplified import RawIPS
+   from cje import RawIPS
    
    estimator = RawIPS(
        sampler,
@@ -91,7 +91,7 @@ Combines outcome modeling with IPS correction:
 
 .. code-block:: python
 
-   from cje_simplified import DRCPOEstimator, create_synthetic_fresh_draws
+   from cje import DRCPOEstimator, create_synthetic_fresh_draws
    
    # Create estimator with cross-fitted outcome model
    dr_estimator = DRCPOEstimator(sampler, n_folds=5)
@@ -173,7 +173,7 @@ For DR estimation, you can implement custom outcome models:
 
 .. code-block:: python
 
-   from cje_simplified import BaseOutcomeModel
+   from cje import BaseOutcomeModel
    
    class MyOutcomeModel(BaseOutcomeModel):
        def _fit_single_model(self, prompts, responses, rewards, judge_scores):

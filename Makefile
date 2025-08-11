@@ -1,4 +1,4 @@
-# CJE Simplified Makefile
+# CJE Makefile
 
 .PHONY: docs docs-serve docs-clean test lint format help
 
@@ -14,14 +14,14 @@ docs-serve:  ## Serve documentation locally
 
 # Development commands
 test:  ## Run tests
-	poetry run pytest cje_simplified/tests/ -v
+	poetry run pytest cje/tests/ -v
 
 lint:  ## Run linting
-	poetry run black cje_simplified/
-	poetry run mypy cje_simplified/ --ignore-missing-imports
+	poetry run black cje/
+	poetry run mypy cje/ --ignore-missing-imports
 
 format:  ## Format code
-	poetry run black cje_simplified/
+	poetry run black cje/
 
 # Installation
 install:  ## Install package

@@ -95,7 +95,7 @@ Judge scores can be raw or calibrated:
 
 .. code-block:: python
 
-   from cje_simplified import calibrate_dataset
+   from cje import calibrate_dataset
    
    # Calibrate judge scores to oracle labels
    calibrated_dataset, stats = calibrate_dataset(
@@ -137,7 +137,7 @@ For testing, you can create synthetic data:
 
 .. code-block:: python
 
-   from cje_simplified import Sample, Dataset
+   from cje import Sample, Dataset
    import json
    
    samples = []

@@ -17,7 +17,7 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 sys.path.append(str(Path(__file__).parent.parent))  # Add arena_10k_simplified to path
 
-from cje_simplified import compute_chat_logprob
+from cje import compute_chat_logprob
 from policy_config import POLICIES, get_policy_config, POLICY_NAMES
 
 

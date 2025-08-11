@@ -7,10 +7,10 @@ sys.path.insert(0, os.path.abspath(".."))
 
 # -- Project information -----------------------------------------------------
 
-project = "CJE Simplified"
+project = "Causal Judge Evaluation"
 copyright = "2025, CJE Team"
 author = "CJE Team"
-release = "0.1.3"
+release = "0.2.0"
 
 # -- General configuration ---------------------------------------------------
 

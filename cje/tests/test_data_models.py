@@ -1,6 +1,6 @@
 """Test pydantic data models."""
 
-from cje_simplified.data.models import Sample, Dataset, WeightCalibrationConfig
+from cje.data.models import Sample, Dataset, WeightCalibrationConfig
 import numpy as np
 
 

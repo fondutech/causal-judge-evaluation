@@ -1,6 +1,6 @@
 """Test edge cases and different data situations."""
 
-from cje_simplified import PrecomputedSampler, CalibratedIPS
+from cje import PrecomputedSampler, CalibratedIPS
 
 
 def test_missing_values() -> None:

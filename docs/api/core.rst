@@ -6,7 +6,7 @@ This section documents the core estimation classes.
 Estimators
 ----------
 
-.. automodule:: cje_simplified.core
+.. automodule:: cje.core
    :members:
    :undoc-members:
    :show-inheritance:
@@ -14,7 +14,7 @@ Estimators
 CalibratedIPS
 ~~~~~~~~~~~~~
 
-.. autoclass:: cje_simplified.core.CalibratedIPS
+.. autoclass:: cje.core.CalibratedIPS
    :members:
    :inherited-members:
    :show-inheritance:
@@ -29,7 +29,7 @@ CalibratedIPS
 RawIPS
 ~~~~~~
 
-.. autoclass:: cje_simplified.core.RawIPS
+.. autoclass:: cje.core.RawIPS
    :members:
    :inherited-members:
    :show-inheritance:
@@ -41,7 +41,7 @@ RawIPS
 DRCPOEstimator
 ~~~~~~~~~~~~~~
 
-.. autoclass:: cje_simplified.core.DRCPOEstimator
+.. autoclass:: cje.core.DRCPOEstimator
    :members:
    :inherited-members:
    :show-inheritance:
@@ -57,7 +57,7 @@ Outcome Models
 BaseOutcomeModel
 ~~~~~~~~~~~~~~~~
 
-.. autoclass:: cje_simplified.core.outcome_models.BaseOutcomeModel
+.. autoclass:: cje.core.outcome_models.BaseOutcomeModel
    :members:
    :show-inheritance:
    
@@ -70,13 +70,13 @@ BaseOutcomeModel
 IsotonicOutcomeModel
 ~~~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: cje_simplified.core.outcome_models.IsotonicOutcomeModel
+.. autoclass:: cje.core.outcome_models.IsotonicOutcomeModel
    :members:
    :show-inheritance:
 
 LinearOutcomeModel
 ~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: cje_simplified.core.outcome_models.LinearOutcomeModel
+.. autoclass:: cje.core.outcome_models.LinearOutcomeModel
    :members:
    :show-inheritance:

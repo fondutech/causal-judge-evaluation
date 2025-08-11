@@ -1,7 +1,7 @@
 """Test custom outcome model implementation."""
 
 import numpy as np
-from cje_simplified import (
+from cje import (
     BaseOutcomeModel,
     LinearOutcomeModel,
     Dataset,

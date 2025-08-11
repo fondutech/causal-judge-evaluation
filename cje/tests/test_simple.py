@@ -1,6 +1,6 @@
 """Minimal tests without file I/O."""
 
-from cje_simplified import calibrate_judge_scores
+from cje import calibrate_judge_scores
 import numpy as np
 
 

@@ -1,6 +1,6 @@
 """Test the complete pipeline with simulated data."""
 
-from cje_simplified import (
+from cje import (
     PrecomputedSampler,
     CalibratedIPS,
     DatasetFactory,

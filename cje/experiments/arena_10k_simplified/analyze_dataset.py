@@ -24,7 +24,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
-from cje_simplified import (
+from cje import (
     load_dataset_from_jsonl,
     PrecomputedSampler,
     CalibratedIPS,
@@ -40,7 +40,7 @@ from cje_simplified import (
 
 # Import visualization if available
 try:
-    from cje_simplified import (
+    from cje import (
         plot_weight_dashboard,
         plot_calibration_comparison,
         plot_policy_estimates,
@@ -140,8 +140,8 @@ def main() -> int:
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
         # Also set debug for key modules
-        logging.getLogger("cje_simplified.calibration.isotonic").setLevel(logging.DEBUG)
-        logging.getLogger("cje_simplified.core.calibrated_ips").setLevel(logging.DEBUG)
+        logging.getLogger("cje.calibration.isotonic").setLevel(logging.DEBUG)
+        logging.getLogger("cje.core.calibrated_ips").setLevel(logging.DEBUG)
 
     print("Running CJE Analysis")
     print("=" * 50)

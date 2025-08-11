@@ -6,7 +6,7 @@ import numpy as np
 from typing import Dict, Any, List
 
 # Import from the simplified CJE library
-from cje_simplified import (
+from cje import (
     PrecomputedSampler,
     CalibratedIPS,
     load_dataset_from_jsonl,
@@ -14,10 +14,8 @@ from cje_simplified import (
     compute_teacher_forced_logprob,
     diagnose_weights,
     create_weight_summary_table,
-    detect_api_nondeterminism,
     calibrate_judge_scores,
     Llama3TemplateConfig,
-    Llama4TemplateConfig,
     HuggingFaceTemplateConfig,
     compute_chat_logprob,
     Dataset,
@@ -172,7 +170,7 @@ def workflow_1_oracle_labels() -> None:
 
     # Now ready for CJE estimation
     sampler = PrecomputedSampler(dataset)
-    estimator = CalibratedIPS(sampler, k_folds=2, random_seed=42)
+    estimator = CalibratedIPS(sampler)
     results = estimator.fit_and_estimate()
 
     print(f"\nEstimates: {results.estimates}")
@@ -197,7 +195,7 @@ def workflow_2_judge_calibration() -> None:
         dataset,
         judge_field="judge_score",
         oracle_field="oracle_label",
-        k_folds=2,  # Use 2 folds for small example
+        # Use 2 folds for small example
     )
 
     print(f"\nCalibration statistics:")
@@ -218,7 +216,7 @@ def workflow_2_judge_calibration() -> None:
 
     # Now ready for CJE estimation
     sampler = PrecomputedSampler(calibrated_dataset)
-    estimator = CalibratedIPS(sampler, k_folds=2, random_seed=42)
+    estimator = CalibratedIPS(sampler)
     results = estimator.fit_and_estimate()
 
     print(f"\nEstimates: {results.estimates}")
@@ -240,7 +238,7 @@ def workflow_3_pre_calibrated() -> None:
 
     # Can directly use for CJE estimation
     sampler = PrecomputedSampler(dataset)
-    estimator = CalibratedIPS(sampler, k_folds=2, random_seed=42)
+    estimator = CalibratedIPS(sampler)
     results = estimator.fit_and_estimate()
 
     print(f"\nEstimates: {results.estimates}")
@@ -313,7 +311,7 @@ def demonstrate_judge_calibration() -> None:
     calibrated_scores, stats = calibrate_judge_scores(
         judge_scores=raw_judge_scores,
         oracle_labels=oracle_labels,
-        k_folds=2,  # Use 2 folds for small example
+        # Use 2 folds for small example
     )
 
     print("Raw judge scores:      ", raw_judge_scores)
@@ -342,7 +340,7 @@ def advanced_diagnostics() -> None:
     # Use workflow 3 data for diagnostics
     dataset = load_dataset_from_jsonl("calibrated_data.jsonl")
     sampler = PrecomputedSampler(dataset)
-    estimator = CalibratedIPS(sampler, k_folds=2, clip_weight=100.0, random_seed=42)
+    estimator = CalibratedIPS(sampler, clip_weight=100.0)
     results = estimator.fit_and_estimate()
 
     # Weight diagnostics
@@ -361,17 +359,6 @@ def advanced_diagnostics() -> None:
 
     # Summary table
     print("\n" + create_weight_summary_table(all_diagnostics))
-
-    # Check for API non-determinism
-    print("\n=== API Non-determinism Check ===\n")
-    api_check = detect_api_nondeterminism(sampler, baseline_policy="pi_clone")
-    print(f"Non-determinism detected: {api_check['detected']}")
-    if "mean_weight" in api_check:
-        print(
-            f"Clone policy mean weight: {api_check['mean_weight']:.3f} "
-            f"(deviation: {api_check['deviation']:.3f})"
-        )
-    print(f"Recommendation: {api_check['recommendation']}")
 
 
 def main() -> None:

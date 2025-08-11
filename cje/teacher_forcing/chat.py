@@ -111,7 +111,7 @@ def compute_chat_logprob(
         LogProbResult with log P(assistant_reply | context)
 
     Example:
-        >>> from cje_simplified.teacher_forcing import HuggingFaceTemplateConfig
+        >>> from cje.teacher_forcing import HuggingFaceTemplateConfig
         >>>
         >>> chat = [
         ...     {"role": "user", "content": "What is 2+2?"},

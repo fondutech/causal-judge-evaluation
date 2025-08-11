@@ -23,7 +23,7 @@ Basic Usage
 
 .. code-block:: python
 
-   from cje_simplified import DRCPOEstimator, load_fresh_draws_from_jsonl
+   from cje import DRCPOEstimator, load_fresh_draws_from_jsonl
    
    # Create DR estimator
    dr = DRCPOEstimator(sampler, n_folds=5)
@@ -75,7 +75,7 @@ Create synthetic draws with controlled correlation:
 
 .. code-block:: python
 
-   from cje_simplified import create_synthetic_fresh_draws
+   from cje import create_synthetic_fresh_draws
    
    fresh_draws = create_synthetic_fresh_draws(
        dataset,
@@ -119,7 +119,7 @@ Implement custom outcome models by extending BaseOutcomeModel:
 
 .. code-block:: python
 
-   from cje_simplified import BaseOutcomeModel
+   from cje import BaseOutcomeModel
    import xgboost as xgb
    
    class XGBoostOutcomeModel(BaseOutcomeModel):

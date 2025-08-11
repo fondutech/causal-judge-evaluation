@@ -6,11 +6,11 @@ This section documents utility functions and diagnostics.
 Weight Diagnostics
 ------------------
 
-.. autofunction:: cje_simplified.diagnose_weights
+.. autofunction:: cje.diagnose_weights
 
-.. autofunction:: cje_simplified.create_weight_summary_table
+.. autofunction:: cje.create_weight_summary_table
 
-.. autoclass:: cje_simplified.utils.WeightDiagnostics
+.. autoclass:: cje.utils.WeightDiagnostics
    :members:
    :show-inheritance:
    
@@ -19,13 +19,13 @@ Weight Diagnostics
 Extreme Weights Analysis
 ------------------------
 
-.. autofunction:: cje_simplified.analyze_extreme_weights
+.. autofunction:: cje.analyze_extreme_weights
 
 This function analyzes samples with extreme weights to identify patterns:
 
 .. code-block:: python
 
-   from cje_simplified import analyze_extreme_weights
+   from cje import analyze_extreme_weights
    
    json_report, text_report = analyze_extreme_weights(
        dataset=dataset,
@@ -39,30 +39,30 @@ This function analyzes samples with extreme weights to identify patterns:
 Fresh Draw Utilities
 --------------------
 
-.. autofunction:: cje_simplified.create_synthetic_fresh_draws
+.. autofunction:: cje.create_synthetic_fresh_draws
 
-.. autofunction:: cje_simplified.load_fresh_draws_from_jsonl
+.. autofunction:: cje.load_fresh_draws_from_jsonl
 
-.. autofunction:: cje_simplified.save_fresh_draws_to_jsonl
+.. autofunction:: cje.save_fresh_draws_to_jsonl
 
-.. autofunction:: cje_simplified.validate_fresh_draws
+.. autofunction:: cje.validate_fresh_draws
 
 Visualization (Optional)
 ------------------------
 
 These functions are available if matplotlib is installed:
 
-.. autofunction:: cje_simplified.plot_weight_dashboard
+.. autofunction:: cje.plot_weight_dashboard
 
-.. autofunction:: cje_simplified.plot_calibration_comparison
+.. autofunction:: cje.plot_calibration_comparison
 
-.. autofunction:: cje_simplified.plot_policy_estimates
+.. autofunction:: cje.plot_policy_estimates
 
 Example usage:
 
 .. code-block:: python
 
-   from cje_simplified import plot_weight_dashboard
+   from cje import plot_weight_dashboard
    
    # Create weight diagnostics dashboard
    fig, metrics = plot_weight_dashboard(
@@ -75,23 +75,23 @@ Example usage:
 Teacher Forcing
 ---------------
 
-.. autofunction:: cje_simplified.compute_teacher_forced_logprob
+.. autofunction:: cje.compute_teacher_forced_logprob
 
-.. autofunction:: cje_simplified.compute_chat_logprob
+.. autofunction:: cje.compute_chat_logprob
 
-.. autofunction:: cje_simplified.convert_chat_to_completions
+.. autofunction:: cje.convert_chat_to_completions
 
 Template Configurations
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: cje_simplified.teacher_forcing.ChatTemplateConfig
+.. autoclass:: cje.teacher_forcing.ChatTemplateConfig
    :members:
    :show-inheritance:
 
-.. autoclass:: cje_simplified.teacher_forcing.Llama3TemplateConfig
+.. autoclass:: cje.teacher_forcing.Llama3TemplateConfig
    :members:
    :show-inheritance:
 
-.. autoclass:: cje_simplified.teacher_forcing.HuggingFaceTemplateConfig
+.. autoclass:: cje.teacher_forcing.HuggingFaceTemplateConfig
    :members:
    :show-inheritance:

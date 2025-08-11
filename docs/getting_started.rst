@@ -47,7 +47,7 @@ Let's compare GPT-3.5 vs GPT-4 using historical GPT-3.5 data:
 
 .. code-block:: python
 
-   from cje_simplified import (
+   from cje import (
        load_dataset_from_jsonl,
        calibrate_dataset,
        PrecomputedSampler,
@@ -110,7 +110,7 @@ For Fireworks models:
 
 .. code-block:: python
 
-   from cje_simplified import compute_teacher_forced_logprob
+   from cje import compute_teacher_forced_logprob
    
    result = compute_teacher_forced_logprob(
        prompt="What is 2+2?",
