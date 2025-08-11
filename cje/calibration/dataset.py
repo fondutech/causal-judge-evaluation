@@ -7,7 +7,6 @@ to match oracle labels, creating calibrated rewards for CJE analysis.
 from typing import Dict, List, Any, Optional, Tuple
 import numpy as np
 from ..data.models import Dataset, Sample
-from ..data.loaders import DatasetLoader, InMemoryDataSource
 from .judge import JudgeCalibrator, CalibrationResult
 
 
@@ -15,6 +14,8 @@ def calibrate_dataset(
     dataset: Dataset,
     judge_field: str = "judge_score",
     oracle_field: str = "oracle_label",
+    enable_cross_fit: bool = False,
+    n_folds: int = 5,
 ) -> Tuple[Dataset, CalibrationResult]:
     """Calibrate judge scores in a dataset to match oracle labels.
 
@@ -26,6 +27,8 @@ def calibrate_dataset(
         dataset: Dataset containing judge scores and oracle labels
         judge_field: Field name in metadata containing judge scores
         oracle_field: Field name in metadata containing oracle labels
+        enable_cross_fit: If True, also fits cross-fitted models for DR
+        n_folds: Number of CV folds (only used if enable_cross_fit=True)
 
     Returns:
         Tuple of (calibrated_dataset, calibration_result)
@@ -46,15 +49,21 @@ def calibrate_dataset(
     oracle_labels = []
     oracle_mask = []
 
-    for sample in dataset.samples:
-        # Look for judge score in metadata first, then as reward
-        if judge_field in sample.metadata:
-            judge_score = sample.metadata[judge_field]
-        elif judge_field == "reward":
-            judge_score = sample.reward
-        else:
-            raise ValueError(f"Judge field '{judge_field}' not found in sample")
+    # Forbid judge_field="reward" to avoid confusion
+    if judge_field == "reward":
+        raise ValueError(
+            "judge_field='reward' is not allowed to avoid confusion between "
+            "raw and calibrated values. Use a different field name in metadata."
+        )
 
+    for sample in dataset.samples:
+        # Look for judge score in metadata
+        if judge_field not in sample.metadata:
+            raise ValueError(
+                f"Judge field '{judge_field}' not found in sample metadata"
+            )
+
+        judge_score = sample.metadata[judge_field]
         judge_scores.append(float(judge_score))
 
         # Look for oracle label
@@ -77,9 +86,16 @@ def calibrate_dataset(
 
     # Calibrate judge scores
     calibrator = JudgeCalibrator()
-    result = calibrator.fit_transform(
-        judge_scores_array, oracle_labels_array, oracle_mask_array
-    )
+    if enable_cross_fit:
+        # Use cross-fitted calibration for DR support
+        result = calibrator.fit_cv(
+            judge_scores_array, oracle_labels_array, oracle_mask_array, n_folds
+        )
+    else:
+        # Use standard calibration (backward compatible)
+        result = calibrator.fit_transform(
+            judge_scores_array, oracle_labels_array, oracle_mask_array
+        )
 
     # Create new samples with calibrated rewards
     calibrated_samples = []
@@ -91,6 +107,10 @@ def calibrate_dataset(
         if oracle_mask[i]:
             new_metadata[oracle_field] = oracle_labels[oracle_idx]
             oracle_idx += 1
+
+        # Store fold ID if cross-fitting was used
+        if enable_cross_fit and result.fold_ids is not None:
+            new_metadata["cv_fold"] = int(result.fold_ids[i])
 
         calibrated_sample = Sample(
             prompt=sample.prompt,

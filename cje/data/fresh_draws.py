@@ -19,6 +19,9 @@ class FreshDrawSample(BaseModel):
     draw_idx: int = Field(
         ..., ge=0, description="Draw index for this prompt (0, 1, 2...)"
     )
+    fold_id: Optional[int] = Field(
+        None, description="CV fold assignment (should match logged data)"
+    )
 
     @field_validator("judge_score")
     def validate_judge_score(cls, v: float) -> float:
@@ -64,20 +67,24 @@ class FreshDrawDataset(BaseModel):
             prompt_id: The prompt ID to get scores for
 
         Returns:
-            Array of judge scores for this prompt
+            Array of judge scores for this prompt, sorted by draw_idx
         """
-        scores = [s.judge_score for s in self.samples if s.prompt_id == prompt_id]
+        # Sort by draw_idx for reproducibility
+        matching_samples = sorted(
+            [s for s in self.samples if s.prompt_id == prompt_id],
+            key=lambda s: s.draw_idx,
+        )
 
-        if not scores:
+        if not matching_samples:
             raise ValueError(f"No samples found for prompt_id '{prompt_id}'")
 
-        if len(scores) != self.draws_per_prompt:
+        if len(matching_samples) != self.draws_per_prompt:
             raise ValueError(
                 f"Expected {self.draws_per_prompt} draws for prompt '{prompt_id}', "
-                f"found {len(scores)}"
+                f"found {len(matching_samples)}"
             )
 
-        return np.array(scores)
+        return np.array([s.judge_score for s in matching_samples])
 
     def get_samples_for_prompt_id(self, prompt_id: str) -> List[FreshDrawSample]:
         """Get all samples for a specific prompt.

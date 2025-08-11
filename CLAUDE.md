@@ -119,8 +119,10 @@ Don't create complex abstractions for template selection - let the tools handle 
 4. **Metadata Collection**: Non-core fields go in metadata automatically
 5. **Transparent Filtering**: Use `sampler.n_valid_samples` to see samples after filtering
 6. **Weight Calibration**: Variance can increase when uniform weights need structure (this is correct)
-7. **Cross-fitting in Outcome Models**: Cross-fitting belongs in outcome models, not calibration
+7. **Three Isotonic Mappings**: Global f_all for rewards, cross-fitted f^(-k) for DR, mean-one PAV for weights
 8. **DR via Inheritance**: DR inherits from CalibratedIPS to reuse weight machinery
+9. **Mandatory prompt_id**: Required for DR to align logged data with fresh draws
+10. **Fold ID Remapping**: Automatic remapping to [0..K-1] for subset compatibility
 
 ## ⚠️ Common Pitfalls
 
@@ -145,6 +147,7 @@ Don't create complex abstractions for template selection - let the tools handle 
 - **Outcome models are composed**: Easy to swap different models
 - **Cross-fitting in outcome models**: Each model handles its own k-fold logic
 - **Fresh draws are separate**: Added via `add_fresh_draws()` after creation
+- **CalibratorBackedOutcomeModel**: Reuses cross-fitted calibrators from reward calibration
 
 ### Key Classes
 ```python
@@ -153,9 +156,23 @@ DREstimator(CalibratedIPS)  # Base DR with IPS correction
 └── DRCPOEstimator          # Default with isotonic outcome model
 
 # Outcome model hierarchy  
-BaseOutcomeModel (ABC)       # Handles cross-fitting infrastructure
-├── IsotonicOutcomeModel    # Default: g(x,a,s) = f(s)
-└── LinearOutcomeModel       # Example custom model
+BaseOutcomeModel (ABC)            # Handles cross-fitting infrastructure
+├── IsotonicOutcomeModel         # Default: g(x,a,s) = f(s)
+├── CalibratorBackedOutcomeModel # Reuses calibrator's f^(-k) models
+└── LinearOutcomeModel            # Example custom model
+```
+
+### Cross-Fitting for DR
+```python
+# Enable cross-fitting during calibration
+calibrated_dataset, result = calibrate_dataset(
+    dataset,
+    enable_cross_fit=True,  # Fits both f_all and f^(-k)
+    n_folds=5
+)
+
+# DR automatically uses CalibratorBackedOutcomeModel
+dr = DRCPOEstimator(sampler, calibrator=result.calibrator)
 ```
 
 ### Implementation Pattern

@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Any
 import logging
 
 from .calibrated_ips import CalibratedIPS
-from .outcome_models import IsotonicOutcomeModel
+from .outcome_models import IsotonicOutcomeModel, CalibratorBackedOutcomeModel
 from ..data.models import EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..data.fresh_draws import FreshDrawDataset
@@ -47,15 +47,41 @@ class DREstimator(CalibratedIPS):
         sampler: PrecomputedSampler,
         outcome_model: Optional[Any] = None,
         n_folds: int = 5,
+        calibrator: Optional[Any] = None,
         **kwargs: Any,
     ):
         super().__init__(sampler, **kwargs)
 
         self.n_folds = n_folds
+        self.calibrator = calibrator
 
-        # Use IsotonicOutcomeModel as default (always cross-fitted)
+        # Choose default outcome model based on available calibrator
         if outcome_model is None:
-            outcome_model = IsotonicOutcomeModel(n_folds=n_folds)
+            if calibrator is not None and hasattr(calibrator, "_fold_models"):
+                # We have a cross-fitted calibrator, use it for outcome model
+                logger.info(
+                    "Using CalibratorBackedOutcomeModel (reusing calibration models)"
+                )
+                outcome_model = CalibratorBackedOutcomeModel(
+                    calibrator, n_folds=n_folds
+                )
+            else:
+                # Check if any samples have cv_fold metadata
+                has_cv_fold = any(
+                    "cv_fold" in s.metadata
+                    for s in sampler.dataset.samples[
+                        : min(10, len(sampler.dataset.samples))
+                    ]
+                )
+
+                if has_cv_fold:
+                    logger.warning(
+                        "Samples have cv_fold metadata but no calibrator provided. "
+                        "Consider passing calibrator from calibrate_dataset() for optimal DR."
+                    )
+
+                # Fall back to standard isotonic outcome model
+                outcome_model = IsotonicOutcomeModel(n_folds=n_folds)
         self.outcome_model = outcome_model
 
         # Storage for fresh draws (added via add_fresh_draws)
@@ -153,8 +179,10 @@ class DREstimator(CalibratedIPS):
             else:
                 raise ValueError("All samples must have judge scores for DR")
 
-            # Get fold assignment for this sample
-            if self.fold_assignments is not None:
+            # Get fold assignment - prefer cv_fold from metadata (set by calibration)
+            if "cv_fold" in sample.metadata:
+                valid_fold_assignments.append(sample.metadata["cv_fold"])
+            elif self.fold_assignments is not None:
                 valid_fold_assignments.append(self.fold_assignments[idx])
 
         rewards_array = np.array(rewards)
@@ -174,6 +202,21 @@ class DREstimator(CalibratedIPS):
 
         # Store the valid indices for later use
         self._outcome_valid_indices = valid_indices_list
+
+        # Precompute prompt_id to fold mapping for O(1) lookup in estimate()
+        self._promptid_to_fold = {}
+        if fold_assignments_array is not None:
+            for idx, fold in zip(valid_indices_list, fold_assignments_array):
+                sample = self.sampler.dataset.samples[idx]
+                # Require prompt_id for DR
+                if "prompt_id" not in sample.metadata:
+                    raise ValueError(
+                        f"Sample at index {idx} missing 'prompt_id' in metadata. "
+                        f"DR estimation requires prompt_id for all samples to align with fresh draws."
+                    )
+                pid = str(sample.metadata["prompt_id"])
+                self._promptid_to_fold[pid] = int(fold)
+
         self._outcome_fitted = True
 
         logger.info(f"Fitted outcome model on {len(prompts)} logged samples")
@@ -223,30 +266,22 @@ class DREstimator(CalibratedIPS):
             logged_prompts = [d["prompt"] for d in data]
             logged_responses = [d["response"] for d in data]
             logged_scores = np.array([d.get("judge_score") for d in data])
-            logged_prompt_ids = [d.get("prompt_id") for d in data]
+            # Require prompt_ids for DR (no fallback to index)
+            logged_prompt_ids = []
+            for i, d in enumerate(data):
+                if "prompt_id" not in d:
+                    raise ValueError(
+                        f"Data entry {i} for policy '{policy}' missing 'prompt_id'. "
+                        f"DR estimation requires prompt_id to align with fresh draws."
+                    )
+                logged_prompt_ids.append(str(d["prompt_id"]))
 
-            # Get fold assignments for valid samples
-            # The data from get_data_for_policy is already filtered, we need to find which
-            # original indices these correspond to
+            # Get fold assignments using precomputed mapping (O(1) lookups)
             valid_fold_ids = []
-
-            # Map prompt_ids back to original indices to get fold assignments
-            for prompt_id in logged_prompt_ids:
-                # Find the original index for this prompt_id
-                for idx in self._outcome_valid_indices:
-                    sample = self.sampler.dataset.samples[idx]
-                    if sample.metadata.get("prompt_id") == prompt_id:
-                        # Found the matching sample
-                        position = self._outcome_valid_indices.index(idx)
-                        if (
-                            hasattr(self.outcome_model, "fold_assignments")
-                            and self.outcome_model.fold_assignments is not None
-                        ):
-                            valid_fold_ids.append(
-                                self.outcome_model.fold_assignments[position]
-                            )
-                        break
-
+            if self._promptid_to_fold:
+                for pid in logged_prompt_ids:
+                    fold = self._promptid_to_fold.get(pid, 0)
+                    valid_fold_ids.append(fold)
             valid_fold_ids = np.array(valid_fold_ids)
 
             # Verify we have the right number of fold assignments
@@ -284,12 +319,26 @@ class DREstimator(CalibratedIPS):
                     raise ValueError(f"Missing prompt_id for sample {i}")
                 fresh_scores = fresh_dataset.get_scores_for_prompt_id(prompt_id)
 
+                # Get fresh samples to validate fold assignments
+                fresh_samples = fresh_dataset.get_samples_for_prompt_id(prompt_id)
+
                 # Create dummy prompts/responses for outcome model interface
                 fresh_prompts = [logged_prompts[i]] * len(fresh_scores)
                 fresh_responses = [""] * len(fresh_scores)  # Not used in isotonic model
 
                 # Use same fold for all fresh draws from this prompt
                 fresh_fold_ids = np.full(len(fresh_scores), valid_fold_ids[i])
+
+                # Validate that fresh draws have matching fold assignments if available
+                for j, fresh_sample in enumerate(fresh_samples):
+                    if (
+                        fresh_sample.fold_id is not None
+                        and fresh_sample.fold_id != valid_fold_ids[i]
+                    ):
+                        logger.warning(
+                            f"Fold mismatch for prompt_id '{prompt_id}': "
+                            f"logged fold={valid_fold_ids[i]}, fresh fold={fresh_sample.fold_id}"
+                        )
 
                 # Get predictions for fresh draws
                 # Note: Our models need fold_ids for cross-fitting
@@ -309,6 +358,19 @@ class DREstimator(CalibratedIPS):
 
             g_fresh = np.array(g_fresh_all)
 
+            # Sanity check: weights should have mean approximately 1.0
+            weights_mean = weights.mean()
+            if not (0.9 <= weights_mean <= 1.1):
+                weights_min = weights.min()
+                weights_max = weights.max()
+                weights_std = weights.std()
+                logger.warning(
+                    f"Weights for policy '{policy}' deviate from expected mean=1.0: "
+                    f"mean={weights_mean:.3f}, std={weights_std:.3f}, "
+                    f"min={weights_min:.3e}, max={weights_max:.3e}. "
+                    f"This may indicate calibration issues or poor policy overlap."
+                )
+
             # DR estimate components
             dm_term = g_fresh.mean()  # Direct method term
             ips_correction = (weights * (logged_rewards - g_logged)).mean()
@@ -318,7 +380,7 @@ class DREstimator(CalibratedIPS):
             if_contributions = (
                 g_fresh + weights * (logged_rewards - g_logged) - dr_estimate
             )
-            se = np.std(if_contributions) / np.sqrt(len(if_contributions))
+            se = np.std(if_contributions, ddof=1) / np.sqrt(len(if_contributions))
 
             estimates.append(dr_estimate)
             standard_errors.append(se)
@@ -371,16 +433,15 @@ class DRCPOEstimator(DREstimator):
         sampler: PrecomputedSampler,
         outcome_model: Optional[Any] = None,
         n_folds: int = 5,
+        calibrator: Optional[Any] = None,
         **kwargs: Any,
     ):
-        # Default to IsotonicOutcomeModel if not specified
-        if outcome_model is None:
-            outcome_model = IsotonicOutcomeModel(n_folds=n_folds)
-
+        # Pass everything to parent - it will choose the right outcome model
         super().__init__(
             sampler=sampler,
             outcome_model=outcome_model,
             n_folds=n_folds,
+            calibrator=calibrator,
             **kwargs,
         )
 
