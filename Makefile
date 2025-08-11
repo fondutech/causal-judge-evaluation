@@ -1,50 +1,39 @@
-# CJE-Core Documentation Makefile
+# CJE Simplified Makefile
 
-.PHONY: docs docs-serve docs-watch docs-clean docs-linkcheck docs-pdf help
+.PHONY: docs docs-serve docs-clean test lint format help
 
 # Documentation commands
 docs:  ## Build documentation
-	cd docs && python build.py build
+	cd docs && poetry run sphinx-build -b html . _build/html
 
 docs-clean:  ## Clean and rebuild documentation
-	cd docs && python build.py build --clean
+	cd docs && rm -rf _build && poetry run sphinx-build -b html . _build/html
 
 docs-serve:  ## Serve documentation locally
-	cd docs && python build.py serve
-
-docs-watch:  ## Watch for changes and auto-rebuild
-	cd docs && python build.py watch
-
-docs-linkcheck:  ## Check external links
-	cd docs && python build.py linkcheck
-
-docs-pdf:  ## Build PDF documentation
-	cd docs && python build.py pdf
-
-docs-autodoc:  ## Generate autodoc stubs
-	cd docs && python build.py autodoc
+	cd docs/_build/html && python -m http.server 8000
 
 # Development commands
+test:  ## Run tests
+	poetry run pytest cje_simplified/tests/ -v
+
+lint:  ## Run linting
+	poetry run black cje_simplified/
+	poetry run mypy cje_simplified/ --ignore-missing-imports
+
+format:  ## Format code
+	poetry run black cje_simplified/
+
+# Installation
+install:  ## Install package
+	poetry install
+
 dev-setup:  ## Set up development environment
 	poetry install
 	pre-commit install
-
-test:  ## Run tests
-	poetry run pytest
-
-lint:  ## Run linting
-	poetry run black cje/ tests/
-	poetry run mypy cje/ --exclude ".*test.*" --ignore-missing-imports --no-strict-optional --no-warn-unused-ignores
-
-format:  ## Format code
-	poetry run black cje/ tests/
-
-mypy:  ## Run type checking
-	poetry run mypy cje/ --exclude ".*test.*" --ignore-missing-imports --no-strict-optional --no-warn-unused-ignores
 
 # Help
 help:  ## Show this help
 	@echo "Available commands:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-.DEFAULT_GOAL := help 
+.DEFAULT_GOAL := help

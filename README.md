@@ -1,75 +1,96 @@
-# Causal Judge Evaluation (CJE)
+# CJE Simplified
 
-Fast, accurate model evaluation using AI judges with causal inference.
+Production-ready implementation of Causal Judge Evaluation for unbiased LLM evaluation.
 
 ## Overview
 
-CJE solves the problem of evaluating LLM improvements by:
-- Using AI judges instead of expensive human evaluation
-- Applying causal inference to correct for judge biases
-- Achieving 70%+ variance reduction and 10× GPU efficiency
-- Providing calibrated uncertainty estimates
+CJE Simplified provides a clean, minimal implementation of the CJE methodology:
+- **Unbiased Estimation**: Corrects for distribution shift between policies
+- **Variance Control**: Isotonic calibration prevents weight explosion  
+- **Doubly Robust**: Optional DR estimation for better bias-variance tradeoff
+- **Production Ready**: Clean API, comprehensive tests, type hints throughout
 
 ## Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/yolandelandsberg/causal-judge-evaluation.git
+git clone https://github.com/fondutech/causal-judge-evaluation.git
 cd causal-judge-evaluation
-
-# Install with Poetry (recommended)
-make dev-setup
-
-# Or install directly
-poetry install
+pip install -e .
 ```
 
 ## Quick Start
 
 ```python
-from cje.config.unified import simple_config
-
-# Create and run evaluation
-config = simple_config(
-    dataset_name="./data/test.jsonl",
-    logging_model="gpt-3.5-turbo",
-    logging_provider="openai",
-    target_model="gpt-4",
-    target_provider="openai",
-    judge_model="gpt-4o",
-    judge_provider="openai",
-    estimator_name="DRCPO"
+from cje_simplified import (
+    load_dataset_from_jsonl,
+    PrecomputedSampler,
+    CalibratedIPS
 )
 
-results = config.run()
-print(f"Target policy estimate: {results['results']['DRCPO']['estimates'][0]:.3f}")
+# Load data with precomputed log probabilities
+dataset = load_dataset_from_jsonl("data.jsonl")
+
+# Create sampler and estimator
+sampler = PrecomputedSampler(dataset)
+estimator = CalibratedIPS(sampler)
+
+# Get unbiased policy estimates
+results = estimator.fit_and_estimate()
+print(f"Best policy: {results.best_policy()}")
 ```
 
 ## Key Features
 
-- **Multiple Estimators**: IPS, SNIPS, CalibratedIPS, DRCPO, MRDR
-- **Uncertainty Quantification**: Built-in support for judge uncertainty
-- **Provider Support**: OpenAI, Anthropic, Fireworks, Together, Google
-- **Efficient**: Teacher forcing for unbiased log probabilities
-- **Robust**: Automatic calibration and cross-fitting
+### Estimators
+- **CalibratedIPS** - Variance-controlled IPS with isotonic calibration (recommended)
+- **RawIPS** - Standard importance sampling with clipping
+- **DRCPOEstimator** - Doubly robust with cross-fitted outcome models
+
+### Data Format
+```json
+{
+  "prompt": "What is machine learning?",
+  "response": "Machine learning is...",
+  "base_policy_logprob": -35.704,
+  "target_policy_logprobs": {
+    "gpt4": -32.456,
+    "claude": -33.789
+  },
+  "metadata": {
+    "judge_score": 0.85,
+    "oracle_label": 0.90
+  }
+}
+```
+
+### Computing Log Probabilities
+```python
+from cje_simplified import compute_teacher_forced_logprob
+
+result = compute_teacher_forced_logprob(
+    prompt="What is 2+2?",
+    response="The answer is 4.",
+    model="accounts/fireworks/models/llama-v3p2-3b-instruct"
+)
+```
 
 ## Documentation
 
-- [Full Documentation](https://causal-judge-evaluation.readthedocs.io)
-- [API Reference](https://causal-judge-evaluation.readthedocs.io/api)
-- [Arena 10K Experiment](experiments/arena_10k_oracle/README.md)
+Full documentation available at: https://causal-judge-evaluation.readthedocs.io
 
-## Development
+- [Getting Started](docs/getting_started.rst)
+- [Data Format Guide](docs/data_format.rst)
+- [Estimators Guide](docs/estimators.rst)
+- [API Reference](docs/api/)
+
+## Testing
 
 ```bash
-# Run tests
-make test
+# Run all tests
+poetry run pytest cje_simplified/tests/
 
-# Run linting (required before commits)
-make lint
-
-# Build documentation
-make docs
+# Run specific test
+poetry run pytest cje_simplified/tests/test_pipeline.py -v
 ```
 
 ## License
