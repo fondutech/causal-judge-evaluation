@@ -139,7 +139,7 @@ class CalibratedIPS(BaseCJEEstimator):
                     "ess_uplift_ratio": ess_uplift_ratio,
                     "ess_raw": ess_raw,
                     "ess_calibrated": ess_cal,
-                    "mode": "variance_controlled_ips",
+                    "mode": "calibrated_ips",
                     "alpha_blend": calib_info.get("alpha_blend"),
                     "variance_cap_feasible": calib_info.get("feasible"),
                     "achieved_var_ratio": calib_info.get("achieved_var_ratio"),
@@ -230,7 +230,7 @@ class CalibratedIPS(BaseCJEEstimator):
             estimates=np.array(estimates),
             standard_errors=np.array(standard_errors),
             n_samples_used=n_samples_used,
-            method="variance_controlled_ips",
+            method="calibrated_ips",
             metadata={
                 "k_folds": self.config.k_folds,
                 "clip_weight": self.config.clip_weight,

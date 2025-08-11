@@ -119,6 +119,8 @@ Don't create complex abstractions for template selection - let the tools handle 
 4. **Metadata Collection**: Non-core fields go in metadata automatically
 5. **Transparent Filtering**: Use `sampler.n_valid_samples` to see samples after filtering
 6. **Weight Calibration**: Variance can increase when uniform weights need structure (this is correct)
+7. **Cross-fitting in Outcome Models**: Cross-fitting belongs in outcome models, not calibration
+8. **DR via Inheritance**: DR inherits from CalibratedIPS to reuse weight machinery
 
 ## ⚠️ Common Pitfalls
 
@@ -135,6 +137,39 @@ Don't create complex abstractions for template selection - let the tools handle 
 - Calibration during data generation
 - Unnecessary abstractions (if it's only used once, inline it)
 - String-based dispatch when direct calls would suffice
+
+## 🤖 Doubly Robust (DR) Design
+
+### Architecture
+- **DR inherits from CalibratedIPS**: Reuses all weight machinery
+- **Outcome models are composed**: Easy to swap different models
+- **Cross-fitting in outcome models**: Each model handles its own k-fold logic
+- **Fresh draws are separate**: Added via `add_fresh_draws()` after creation
+
+### Key Classes
+```python
+# Estimator hierarchy
+DREstimator(CalibratedIPS)  # Base DR with IPS correction
+└── DRCPOEstimator          # Default with isotonic outcome model
+
+# Outcome model hierarchy  
+BaseOutcomeModel (ABC)       # Handles cross-fitting infrastructure
+├── IsotonicOutcomeModel    # Default: g(x,a,s) = f(s)
+└── LinearOutcomeModel       # Example custom model
+```
+
+### Implementation Pattern
+Users only implement single-model logic:
+```python
+class CustomOutcomeModel(BaseOutcomeModel):
+    def _fit_single_model(self, prompts, responses, rewards, judge_scores):
+        # Train one model
+        
+    def _predict_single_model(self, model, prompts, responses, judge_scores):
+        # Predict with one model
+```
+
+The base class handles all cross-fitting complexity.
 
 ## 🎨 Design Principles
 

@@ -8,9 +8,9 @@ import numpy as np
 from typing import Optional, Tuple, Dict
 from sklearn.isotonic import IsotonicRegression
 from dataclasses import dataclass
+import logging
 
-# Note: cross_fit_isotonic and compute_calibration_diagnostics removed with legacy code
-# Using sklearn.isotonic.IsotonicRegression directly for judge calibration
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -21,6 +21,7 @@ class CalibrationResult:
     calibration_rmse: float  # RMSE on oracle subset
     coverage_at_01: float  # Fraction within ±0.1 of true label
     n_oracle: int  # Number of oracle samples used
+    calibrator: Optional["JudgeCalibrator"] = None  # The fitted calibrator
 
     def summary(self) -> str:
         """Format calibration results."""
@@ -35,16 +36,11 @@ class CalibrationResult:
 class JudgeCalibrator:
     """Calibrate judge scores to oracle labels using isotonic regression.
 
-    Uses cross-fitting on oracle subset to prevent overfitting, then
-    applies calibration to all data.
-
     Args:
-        k_folds: Number of cross-fitting folds for oracle data (default 5)
         random_seed: Random seed for reproducibility
     """
 
-    def __init__(self, k_folds: int = 5, random_seed: int = 42):
-        self.k_folds = max(2, k_folds)
+    def __init__(self, random_seed: int = 42):
         self.random_seed = random_seed
         self._final_calibrator: Optional[IsotonicRegression] = None
 
@@ -118,60 +114,51 @@ class JudgeCalibrator:
         # Initialize calibrated scores
         calibrated_scores = np.copy(judge_scores)
 
-        # Simple isotonic regression calibration (no cross-fitting)
-        # Fit isotonic regression on oracle subset
+        # Always fit the full model (for stable reward labels)
         self._final_calibrator = IsotonicRegression(out_of_bounds="clip")
         self._final_calibrator.fit(oracle_scores, oracle_y)
 
-        # Apply calibration to all samples
+        # Apply calibration to all samples using full model
         calibrated_scores = self._final_calibrator.predict(judge_scores)
 
         # Compute diagnostics on oracle subset
-        oracle_cal_scores = calibrated_scores[oracle_mask]
+        oracle_calibrated = calibrated_scores[oracle_mask]
+        rmse = np.sqrt(np.mean((oracle_calibrated - oracle_y) ** 2))
+        coverage_01 = np.mean(np.abs(oracle_calibrated - oracle_y) <= 0.1)
 
-        # Calculate RMSE
-        errors = oracle_cal_scores - oracle_y
-        rmse = float(np.sqrt(np.mean(errors**2)))
-
-        # Calculate coverage at ±0.1
-        abs_errors = np.abs(errors)
-        coverage_01 = float(np.mean(abs_errors <= 0.1))
-
-        diagnostics = {
-            "rmse": rmse,
-            "coverage_01": coverage_01,
-        }
+        # Log summary
+        logger.info(
+            f"Calibration complete: {n_oracle} oracle samples, "
+            f"RMSE={rmse:.3f}, coverage@0.1={coverage_01:.1%}"
+        )
 
         return CalibrationResult(
             calibrated_scores=calibrated_scores,
-            calibration_rmse=diagnostics["rmse"],
-            coverage_at_01=diagnostics["coverage"],
+            calibration_rmse=float(rmse),
+            coverage_at_01=float(coverage_01),
             n_oracle=n_oracle,
+            calibrator=self,
         )
 
-    def transform(self, judge_scores: np.ndarray) -> np.ndarray:
+    def predict(self, judge_scores: np.ndarray) -> np.ndarray:
         """Apply calibration to new judge scores.
 
         Args:
-            judge_scores: Raw judge scores to calibrate
+            judge_scores: Judge scores to calibrate
 
         Returns:
             Calibrated scores
-
-        Raises:
-            RuntimeError: If fit_transform() hasn't been called yet
         """
         if self._final_calibrator is None:
-            raise RuntimeError("Must call fit_transform() before transform()")
+            raise RuntimeError("Calibrator must be fitted before prediction")
 
-        return np.asarray(self._final_calibrator.predict(judge_scores))
+        return self._final_calibrator.predict(np.asarray(judge_scores))
 
 
 def calibrate_judge_scores(
     judge_scores: np.ndarray,
     oracle_labels: np.ndarray,
     oracle_mask: Optional[np.ndarray] = None,
-    k_folds: int = 5,
 ) -> Tuple[np.ndarray, Dict[str, float]]:
     """Convenience function for judge calibration.
 
@@ -179,7 +166,6 @@ def calibrate_judge_scores(
         judge_scores: Raw judge scores for all data
         oracle_labels: True labels for oracle subset
         oracle_mask: Optional boolean mask for oracle samples
-        k_folds: Number of cross-fitting folds
 
     Returns:
         Tuple of (calibrated_scores, diagnostics_dict)
@@ -194,7 +180,7 @@ def calibrate_judge_scores(
         print(f"Calibration RMSE: {stats['rmse']:.3f}")
         print(f"Coverage: {stats['coverage']:.1%}")
     """
-    calibrator = JudgeCalibrator(k_folds=k_folds)
+    calibrator = JudgeCalibrator()
     result = calibrator.fit_transform(judge_scores, oracle_labels, oracle_mask)
 
     diagnostics = {

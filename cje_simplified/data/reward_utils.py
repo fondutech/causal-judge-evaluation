@@ -68,7 +68,7 @@ def add_rewards_to_existing_data(
     judge_scores_array = np.array(judge_scores)
 
     # Apply calibration
-    calibrated_rewards = calibrator.transform(judge_scores_array)
+    calibrated_rewards = calibrator.predict(judge_scores_array)
 
     # Convert back to dict format and add rewards
     data = []

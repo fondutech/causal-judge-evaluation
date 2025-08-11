@@ -319,6 +319,62 @@ poetry run python generate_arena_data.py --n-samples 1000
 poetry run python analyze_dataset.py --data data/cje_dataset.jsonl
 ```
 
+## Doubly Robust (DR) Estimation
+
+DR estimation combines the direct method with IPS correction for better bias-variance tradeoffs:
+
+```python
+from cje_simplified import DRCPOEstimator, FreshDrawDataset
+
+# Create DR estimator (uses isotonic outcome model by default)
+dr_estimator = DRCPOEstimator(sampler, n_folds=5)
+
+# Add fresh draws (pre-generated samples from target policy)
+for policy in sampler.target_policies:
+    # Load real fresh draws from file
+    fresh_draws = load_fresh_draws_from_jsonl(f"{policy}_fresh.jsonl")
+    dr_estimator.add_fresh_draws(policy, fresh_draws)
+    
+    # Or create synthetic fresh draws for testing
+    fresh_draws = create_synthetic_fresh_draws(
+        dataset, 
+        target_policy=policy,
+        draws_per_prompt=10
+    )
+    dr_estimator.add_fresh_draws(policy, fresh_draws)
+
+# Run estimation
+results = dr_estimator.fit_and_estimate()
+```
+
+### Custom Outcome Models
+
+Implement your own outcome model by extending `BaseOutcomeModel`:
+
+```python
+from cje_simplified import BaseOutcomeModel
+
+class XGBoostOutcomeModel(BaseOutcomeModel):
+    def _fit_single_model(self, prompts, responses, rewards, judge_scores):
+        # Train XGBoost on features
+        features = self._extract_features(prompts, responses, judge_scores)
+        model = xgb.XGBRegressor()
+        model.fit(features, rewards)
+        return model
+    
+    def _predict_single_model(self, model, prompts, responses, judge_scores):
+        features = self._extract_features(prompts, responses, judge_scores)
+        return model.predict(features)
+
+# Use custom outcome model
+dr_estimator = DRCPOEstimator(
+    sampler, 
+    outcome_model=XGBoostOutcomeModel(n_folds=5)
+)
+```
+
+The base class handles all cross-fitting infrastructure - you only implement single-model logic.
+
 ## Weight Diagnostics
 
 Debug importance weights to catch common issues:
@@ -339,12 +395,15 @@ cje_simplified/
 ├── core/                    # Core estimation algorithms
 │   ├── base_estimator.py       # Base class for estimators
 │   ├── calibrated_ips.py       # Main CJE estimator with calibration
-│   └── raw_ips.py              # Standard IPS with clipping
+│   ├── raw_ips.py              # Standard IPS with clipping
+│   ├── dr_base.py              # Doubly Robust estimators
+│   └── outcome_models.py       # Cross-fitted outcome models for DR
 ├── data/                    # Data loading and preparation
 │   ├── models.py                # Pydantic data models
 │   ├── precomputed_sampler.py  # Sampler for prepared data
 │   ├── factory.py              # Dataset factory pattern
-│   └── loaders.py              # JSONL and source loaders
+│   ├── loaders.py              # JSONL and source loaders
+│   └── fresh_draws.py          # Fresh draw data models for DR
 ├── calibration/             # Calibration utilities
 │   ├── isotonic.py             # Isotonic regression with variance control
 │   ├── judge.py                # Judge score calibration

@@ -169,9 +169,11 @@ class PrecomputedSampler:
 
         # Use the same formatted_data that was used for weights to ensure consistency
         policy_data = []
-        for record in self.formatted_data:
+        for i, record in enumerate(self.formatted_data):
             # Check if this record has the target policy logprob
             if target_policy in record["target_policy_logprobs"]:
+                # Get the corresponding sample for metadata
+                sample = self.dataset.samples[self._get_sample_index(i)]
                 policy_data.append(
                     {
                         "reward": record["reward"],
@@ -181,10 +183,48 @@ class PrecomputedSampler:
                         ],
                         "prompt": record["context"],
                         "response": record["response"],
+                        "prompt_id": sample.metadata.get("prompt_id"),
+                        "judge_score": sample.metadata.get("judge_score"),
                     }
                 )
 
         return policy_data if policy_data else None
+
+    def _get_valid_indices(self, target_policy: str) -> np.ndarray:
+        """Get indices of valid samples for a target policy.
+
+        Returns indices into the original dataset.samples array.
+        """
+        valid_indices = []
+        for i, sample in enumerate(self.dataset.samples):
+            # Check if sample has valid data for this policy
+            if (
+                sample.base_policy_logprob is not None
+                and sample.target_policy_logprobs.get(target_policy) is not None
+            ):
+                valid_indices.append(i)
+        return np.array(valid_indices)
+
+    def _get_sample_index(self, formatted_index: int) -> int:
+        """Map from formatted_data index back to dataset.samples index.
+
+        This is needed because formatted_data filters out invalid samples.
+        """
+        # For now, assume a simple linear search
+        # In production, we'd maintain an index mapping
+        count = 0
+        for i, sample in enumerate(self.dataset.samples):
+            if sample.base_policy_logprob is not None:
+                # Check if all target policies have valid logprobs
+                all_valid = all(
+                    sample.target_policy_logprobs.get(p) is not None
+                    for p in self.target_policies
+                )
+                if all_valid:
+                    if count == formatted_index:
+                        return i
+                    count += 1
+        raise IndexError(f"Formatted index {formatted_index} out of range")
 
     def compute_raw_weights(self, target_policy: str) -> np.ndarray:
         """Compute raw importance weights WITHOUT any clipping.

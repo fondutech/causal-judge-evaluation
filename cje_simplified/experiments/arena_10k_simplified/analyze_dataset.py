@@ -29,6 +29,10 @@ from cje_simplified import (
     PrecomputedSampler,
     CalibratedIPS,
     RawIPS,
+    DRCPOEstimator,
+    create_synthetic_fresh_draws,
+    FreshDrawDataset,
+    FreshDrawSample,
     diagnose_weights,
     create_weight_summary_table,
     analyze_extreme_weights,
@@ -108,7 +112,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--estimator",
-        choices=["calibrated-ips", "raw-ips"],
+        choices=["calibrated-ips", "raw-ips", "dr-cpo"],
         default="calibrated-ips",
         help="Estimation method to use (default: calibrated-ips)",
     )
@@ -334,7 +338,7 @@ def main() -> int:
         # Initialize the selected estimator
         estimator_config = args.estimator_config or {}
 
-        estimator: Union[CalibratedIPS, RawIPS]
+        estimator: Union[CalibratedIPS, RawIPS, DRCPOEstimator]
         if args.estimator == "calibrated-ips":
             # Updated API: no more k_folds, uses optimized single-pass
             estimator = CalibratedIPS(sampler)
@@ -342,6 +346,64 @@ def main() -> int:
             # Use clip_weight from config or default
             clip_weight = estimator_config.get("clip_weight", 100.0)
             estimator = RawIPS(sampler, clip_weight=clip_weight)
+        elif args.estimator == "dr-cpo":
+            # DR-CPO estimator with cross-fitted isotonic outcome model
+            n_folds = estimator_config.get("n_folds", 5)
+            estimator = DRCPOEstimator(sampler, n_folds=n_folds)
+
+            # Try to load real fresh draws from response files
+            print("   Loading fresh draws for DR estimation...")
+            responses_dir = Path(args.data).parent / "responses"
+
+            for policy in sampler.target_policies:
+                response_file = responses_dir / f"{policy}_responses.jsonl"
+
+                if response_file.exists():
+                    # Load real fresh draws from file
+                    fresh_samples = []
+                    with open(response_file, "r") as f:
+                        for line in f:
+                            data = json.loads(line)
+                            # Create FreshDrawSample from the response data
+                            fresh_sample = FreshDrawSample(
+                                prompt_id=data["prompt_id"],
+                                target_policy=policy,
+                                response=data["response"],
+                                judge_score=data.get("metadata", {}).get(
+                                    "judge_score", 0.5
+                                ),
+                                draw_idx=0,  # Only one draw per prompt in these files
+                            )
+                            fresh_samples.append(fresh_sample)
+
+                    # Create FreshDrawDataset
+                    fresh_draws = FreshDrawDataset(
+                        target_policy=policy,
+                        draws_per_prompt=1,  # One response per prompt
+                        samples=fresh_samples,
+                    )
+                    estimator.add_fresh_draws(policy, fresh_draws)
+                    print(
+                        f"     ✓ Loaded {len(fresh_draws.samples)} real fresh draws for {policy}"
+                    )
+                else:
+                    # Fall back to synthetic fresh draws
+                    print(
+                        f"     ⚠️  No response file found for {policy}, using synthetic draws"
+                    )
+                    fresh_draws = create_synthetic_fresh_draws(
+                        calibrated_dataset,
+                        target_policy=policy,
+                        draws_per_prompt=estimator_config.get("draws_per_prompt", 10),
+                        score_correlation=estimator_config.get(
+                            "score_correlation", 0.9
+                        ),
+                        seed=42 + hash(policy) % 1000,
+                    )
+                    estimator.add_fresh_draws(policy, fresh_draws)
+                    print(
+                        f"     ✓ Added {len(fresh_draws.samples)} synthetic fresh draws for {policy}"
+                    )
         else:
             raise ValueError(f"Unknown estimator: {args.estimator}")
 

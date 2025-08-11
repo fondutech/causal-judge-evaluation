@@ -32,6 +32,26 @@ from .core import (
     LogProbStatus,
 )
 
+# Import DR estimators if available
+try:
+    from .core.dr_base import DREstimator, DRCPOEstimator
+    from .core.outcome_models import (
+        BaseOutcomeModel,
+        IsotonicOutcomeModel,
+        LinearOutcomeModel,
+    )
+    from .data.fresh_draws import FreshDrawSample, FreshDrawDataset
+    from .utils.fresh_draws import (
+        load_fresh_draws_from_jsonl,
+        validate_fresh_draws,
+        create_synthetic_fresh_draws,
+        save_fresh_draws_to_jsonl,
+    )
+
+    _dr_available = True
+except ImportError:
+    _dr_available = False
+
 # Data loading and preparation
 from .data import (
     PrecomputedSampler,
@@ -158,5 +178,27 @@ if _viz_available:
             "plot_weight_dashboard",
             "plot_calibration_comparison",
             "plot_policy_estimates",
+        ]
+    )
+
+# Add DR estimators if available
+if _dr_available:
+    __all__.extend(
+        [
+            # DR estimators
+            "DREstimator",
+            "DRCPOEstimator",
+            # Outcome models
+            "BaseOutcomeModel",
+            "IsotonicOutcomeModel",
+            "LinearOutcomeModel",
+            # Fresh draw data models
+            "FreshDrawSample",
+            "FreshDrawDataset",
+            # Fresh draw utilities
+            "load_fresh_draws_from_jsonl",
+            "validate_fresh_draws",
+            "create_synthetic_fresh_draws",
+            "save_fresh_draws_to_jsonl",
         ]
     )

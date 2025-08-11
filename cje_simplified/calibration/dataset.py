@@ -15,7 +15,6 @@ def calibrate_dataset(
     dataset: Dataset,
     judge_field: str = "judge_score",
     oracle_field: str = "oracle_label",
-    k_folds: int = 5,
 ) -> Tuple[Dataset, CalibrationResult]:
     """Calibrate judge scores in a dataset to match oracle labels.
 
@@ -27,7 +26,6 @@ def calibrate_dataset(
         dataset: Dataset containing judge scores and oracle labels
         judge_field: Field name in metadata containing judge scores
         oracle_field: Field name in metadata containing oracle labels
-        k_folds: Number of cross-fitting folds for calibration
 
     Returns:
         Tuple of (calibrated_dataset, calibration_result)
@@ -78,7 +76,7 @@ def calibrate_dataset(
         raise ValueError(f"No oracle labels found in field '{oracle_field}'")
 
     # Calibrate judge scores
-    calibrator = JudgeCalibrator(k_folds=k_folds)
+    calibrator = JudgeCalibrator()
     result = calibrator.fit_transform(
         judge_scores_array, oracle_labels_array, oracle_mask_array
     )
@@ -119,7 +117,6 @@ def calibrate_from_raw_data(
     judge_field: str = "judge_score",
     oracle_field: str = "oracle_label",
     reward_field: str = "reward",
-    k_folds: int = 5,
 ) -> Tuple[List[Dict[str, Any]], CalibrationResult]:
     """Calibrate judge scores in raw data to create calibrated rewards.
 
@@ -131,7 +128,6 @@ def calibrate_from_raw_data(
         judge_field: Field name containing judge scores
         oracle_field: Field name containing oracle labels
         reward_field: Field name to store calibrated rewards
-        k_folds: Number of cross-fitting folds
 
     Returns:
         Tuple of (calibrated_data, calibration_result)
@@ -168,7 +164,7 @@ def calibrate_from_raw_data(
         raise ValueError(f"No oracle labels found in field '{oracle_field}'")
 
     # Calibrate judge scores
-    calibrator = JudgeCalibrator(k_folds=k_folds)
+    calibrator = JudgeCalibrator()
     result = calibrator.fit_transform(
         judge_scores_array, oracle_labels_array, oracle_mask_array
     )
