@@ -1,4 +1,4 @@
-# CJE Simplified Tests
+# CJE Tests
 
 Simple tests to verify the pipeline works end-to-end.
 
@@ -6,21 +6,21 @@ Simple tests to verify the pipeline works end-to-end.
 
 ```bash
 # Run all tests
-poetry run pytest cje_simplified/tests/
+poetry run pytest cje/tests/
 
 # Or run individual tests:
-poetry run pytest cje_simplified/tests/test_simple.py      # Quick in-memory test
-poetry run pytest cje_simplified/tests/test_pipeline.py    # Full pipeline test
-poetry run pytest cje_simplified/tests/test_edge_cases.py  # Edge cases and error handling
-poetry run pytest cje_simplified/tests/test_integration.py # Integration with test data
+poetry run pytest cje/tests/test_simple.py      # Quick in-memory test
+poetry run pytest cje/tests/test_pipeline.py    # Full pipeline test
+poetry run pytest cje/tests/test_edge_cases.py  # Edge cases and error handling
+poetry run pytest cje/tests/test_integration.py # Integration with test data
 
 # Include slow tests (API-dependent tests)
-poetry run pytest --run-slow cje_simplified/tests/
+poetry run pytest --run-slow cje/tests/
 ```
 
 ## Test Data
 
-Run `poetry run python cje_simplified/tests/data/create_test_data.py` to generate test datasets:
+Run `poetry run python cje/tests/data/create_test_data.py` to generate test datasets:
 - `basic_test_data.jsonl` - Simple data with all fields
 - `missing_values_data.jsonl` - Data with some missing log probs
 - `extreme_weights_data.jsonl` - Edge cases for weight calculations
