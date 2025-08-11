@@ -26,6 +26,10 @@ poetry run python analyze_dataset.py --data data/cje_dataset.jsonl --oracle-cove
 - Calibrates judge scores to oracle labels (based on `--oracle-coverage`)
 - Runs CJE estimation with importance weight calibration
 - Outputs results and diagnostics
+- Generates visualizations (unless `--no-plots` specified):
+  - Weight diagnostics dashboard
+  - Judge calibration comparison
+  - Policy performance forest plot
 
 ## Directory Structure
 
@@ -52,6 +56,8 @@ poetry run python analyze_dataset.py --data data/cje_dataset.jsonl --oracle-cove
   - 1.0 = use oracle labels directly as rewards
   - <1.0 = calibrate judge scores using subset
 - `--estimator`: Choose between `calibrated-ips` (default) or `raw-ips`
+- `--plot-dir`: Directory for visualization outputs (default: `data/plots/`)
+- `--no-plots`: Disable visualization generation
 
 ## Policies
 

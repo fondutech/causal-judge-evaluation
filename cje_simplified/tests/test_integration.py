@@ -38,7 +38,7 @@ def test_end_to_end_pipeline() -> None:
     print(f"   ✓ Target policies: {sampler.target_policies}")
 
     print("\n3. Running CJE estimation...")
-    estimator = CalibratedIPS(sampler, k_folds=2)
+    estimator = CalibratedIPS(sampler)
     results = estimator.fit_and_estimate()
     print(f"   ✓ Estimate: {results.estimates[0]:.3f}")
     print(f"   ✓ Std Error: {results.standard_errors[0]:.3f}")

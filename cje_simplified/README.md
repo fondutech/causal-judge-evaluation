@@ -239,6 +239,43 @@ Key features:
 - Cross-fitting prevents overfitting to oracle labels
 - Handles partial labeling (e.g., 25% oracle subset)
 
+## Visualization
+
+The library includes comprehensive visualization capabilities:
+
+```python
+from cje_simplified import (
+    plot_weight_dashboard,
+    plot_calibration_comparison,
+    plot_policy_estimates
+)
+
+# 1. Weight diagnostics dashboard (6 panels)
+fig, metrics = plot_weight_dashboard(
+    raw_weights_dict,
+    calibrated_weights_dict,
+    save_path="weight_diagnostics.png"
+)
+
+# 2. Judge calibration quality
+fig = plot_calibration_comparison(
+    judge_scores=judge_scores,
+    oracle_labels=oracle_labels,
+    calibrated_scores=calibrated_scores,
+    save_path="calibration.png"
+)
+
+# 3. Policy performance forest plot (NEW)
+fig = plot_policy_estimates(
+    estimates={"base": 0.75, "improved": 0.82},
+    standard_errors={"base": 0.02, "improved": 0.03},
+    oracle_values={"base": 0.76, "improved": 0.80},  # Optional
+    save_path="policy_estimates.png"
+)
+```
+
+The forest plot provides a clean visualization of the main CJE output - policy performance estimates with confidence intervals, highlighting the best policy and optionally showing oracle ground truth.
+
 ## Running Ablation Studies
 
 ### Oracle Coverage Ablations
@@ -300,23 +337,31 @@ print(diag.summary())
 ```
 cje_simplified/
 ├── core/                    # Core estimation algorithms
-│   ├── calibrated_ips.py        # Main CJE estimator
-│   └── types.py                 # Result types and error handling
+│   ├── base_estimator.py       # Base class for estimators
+│   ├── calibrated_ips.py       # Main CJE estimator with calibration
+│   └── raw_ips.py              # Standard IPS with clipping
 ├── data/                    # Data loading and preparation
-│   ├── precomputed_sampler.py   # Load prepared data
-│   └── reward_utils.py          # Calibrate judge scores
+│   ├── models.py                # Pydantic data models
+│   ├── precomputed_sampler.py  # Sampler for prepared data
+│   ├── factory.py              # Dataset factory pattern
+│   └── loaders.py              # JSONL and source loaders
+├── calibration/             # Calibration utilities
+│   ├── isotonic.py             # Isotonic regression with variance control
+│   ├── judge.py                # Judge score calibration
+│   └── dataset.py              # Dataset-level calibration
 ├── teacher_forcing/         # Log probability computation
-│   ├── api/                     # API provider implementations
-│   │   └── fireworks.py         # Fireworks teacher forcing
-│   ├── templates/               # Chat template configurations  
-│   │   ├── base.py              # ChatTemplateConfig ABC
-│   │   ├── llama.py             # Llama template implementations
-│   │   └── huggingface.py       # HuggingFace auto-detection
-│   └── chat.py                  # Chat conversion utilities
-└── utils/                   # Utilities and diagnostics
-    ├── calibration_utils.py     # Shared isotonic regression
-    ├── judge_calibration.py     # Judge → KPI mapping
-    └── weight_diagnostics.py    # Debug importance weights
+│   ├── __init__.py             # Main API interface
+│   ├── api.py                  # Fireworks API implementation
+│   ├── templates.py            # Chat template configurations
+│   └── chat.py                 # Chat format conversion
+├── utils/                   # Utilities and diagnostics
+│   ├── diagnostics.py          # Weight diagnostics and ESS
+│   ├── visualization.py        # All plotting functions
+│   └── extreme_weights_analysis.py  # Analyze problematic samples
+├── experiments/             # Example experiments
+│   └── arena_10k_simplified/   # ChatBot Arena pipeline
+└── tests/                   # Test suite
+    └── data/                    # Test data generation
 ```
 
 ## Example
@@ -325,10 +370,10 @@ See `example_usage.py` for a complete working example.
 
 ## Key Benefits
 
-- **Simple**: ~1,700 lines of focused code
+- **Focused**: Core library is ~5,500 lines of well-structured code
 - **Robust**: Handles edge cases from Arena 10K analysis  
-- **Unbiased**: Proper calibration and cross-fitting
-- **Practical**: Clear diagnostics for debugging
+- **Unbiased**: Proper calibration with variance control
+- **Practical**: Clear diagnostics and visualizations for debugging
 
 ## References
 

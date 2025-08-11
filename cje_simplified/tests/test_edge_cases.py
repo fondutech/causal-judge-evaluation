@@ -46,7 +46,7 @@ def test_extreme_weights() -> None:
     ]
 
     sampler = PrecomputedSampler(data)
-    estimator = CalibratedIPS(sampler, k_folds=2)
+    estimator = CalibratedIPS(sampler)
     results = estimator.fit_and_estimate()
 
     # With such extreme weights, estimate should still be computed
@@ -77,7 +77,7 @@ def test_all_missing() -> None:
     print(f"  Loaded {sampler.n_samples} samples (after dropping invalid)")
 
     # Should still work with reduced sample size
-    estimator = CalibratedIPS(sampler, k_folds=2)
+    estimator = CalibratedIPS(sampler)
     results = estimator.fit_and_estimate()
     print(f"  ✓ Handled partial missing data: estimate = {results.estimates[0]:.3f}")
 

@@ -168,16 +168,19 @@ def main() -> int:
                 s.metadata[args.oracle_field]
                 for s in dataset.samples
                 if s.reward is not None
+                and s.metadata.get(args.oracle_field) is not None
             ]
-            rmse = np.sqrt(
-                np.mean([(r - o) ** 2 for r, o in zip(rewards, oracle_labels)])
-            )
-            abs_errors = [abs(r - o) for r, o in zip(rewards, oracle_labels)]
-            coverage_01 = sum(1 for e in abs_errors if e <= 0.1) / len(abs_errors)
+            # Only compute metrics if we have valid oracle labels
+            if oracle_labels and len(oracle_labels) == len(rewards):
+                rmse = np.sqrt(
+                    np.mean([(r - o) ** 2 for r, o in zip(rewards, oracle_labels)])
+                )
+                abs_errors = [abs(r - o) for r, o in zip(rewards, oracle_labels)]
+                coverage_01 = sum(1 for e in abs_errors if e <= 0.1) / len(abs_errors)
 
-            print(f"\n   Reward quality (vs oracle labels):")
-            print(f"   ✓ RMSE: {rmse:.3f}")
-            print(f"   ✓ Coverage (±0.1): {coverage_01:.1%}")
+                print(f"\n   Reward quality (vs oracle labels):")
+                print(f"   ✓ RMSE: {rmse:.3f}")
+                print(f"   ✓ Coverage (±0.1): {coverage_01:.1%}")
 
     else:
         # Fallback to old behavior for backward compatibility
@@ -403,6 +406,7 @@ def main() -> int:
                 s.metadata[args.oracle_field]
                 for s in dataset.samples
                 if args.oracle_field in s.metadata
+                and s.metadata[args.oracle_field] is not None
             ]
             if base_oracle_labels:
                 oracle_means["base"] = sum(base_oracle_labels) / len(base_oracle_labels)
