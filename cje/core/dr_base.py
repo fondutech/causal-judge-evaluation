@@ -262,6 +262,13 @@ class DREstimator(CalibratedIPS):
                 continue
             logged_rewards = np.array([d["reward"] for d in data])
 
+            # Sanity check: weights and logged data should be aligned
+            if len(weights) != len(logged_rewards):
+                raise ValueError(
+                    f"Weights and logged data length mismatch for policy '{policy}': "
+                    f"weights={len(weights)}, data={len(logged_rewards)}"
+                )
+
             # Get logged data for outcome model
             logged_prompts = [d["prompt"] for d in data]
             logged_responses = [d["response"] for d in data]

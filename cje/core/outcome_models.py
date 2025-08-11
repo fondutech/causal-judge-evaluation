@@ -186,6 +186,15 @@ class BaseOutcomeModel(ABC):
             )
 
         fold_ids = fold_ids.astype(int)
+
+        # Guard against unknown fold IDs
+        unknown_folds = set(np.unique(fold_ids)) - set(self.fold_models.keys())
+        if unknown_folds:
+            raise ValueError(
+                f"Unknown fold ids in predict(): {sorted(unknown_folds)}. "
+                f"Available folds: {sorted(self.fold_models.keys())}"
+            )
+
         predictions = np.zeros(n)
 
         # Predict each fold using its out-of-fold model
@@ -290,7 +299,8 @@ class LinearOutcomeModel(BaseOutcomeModel):
         from sklearn.linear_model import Ridge
 
         features = self._extract_features(prompts, responses, judge_scores)
-        model = Ridge(alpha=self.alpha)
+        # Use fit_intercept=False since we add bias column manually
+        model = Ridge(alpha=self.alpha, fit_intercept=False)
         model.fit(features, rewards)
         return model
 

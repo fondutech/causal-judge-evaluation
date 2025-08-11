@@ -25,6 +25,8 @@ class CalibrationResult:
     n_oracle: int  # Number of oracle samples used
     calibrator: Optional["JudgeCalibrator"] = None  # The fitted calibrator
     fold_ids: Optional[np.ndarray] = None  # CV fold assignment for each sample
+    oof_rmse: Optional[float] = None  # Out-of-fold RMSE (if cross-fitted)
+    oof_coverage_at_01: Optional[float] = None  # Out-of-fold coverage (if cross-fitted)
 
     def summary(self) -> str:
         """Format calibration results."""
@@ -309,6 +311,8 @@ class JudgeCalibrator:
             n_oracle=n_oracle,
             calibrator=self,
             fold_ids=self._fold_ids,
+            oof_rmse=rmse_oof,
+            oof_coverage_at_01=coverage_01_oof,
         )
 
     def predict_all(self, judge_scores: np.ndarray) -> np.ndarray:

@@ -5,6 +5,7 @@ to match oracle labels, creating calibrated rewards for CJE analysis.
 """
 
 from typing import Dict, List, Any, Optional, Tuple
+from copy import deepcopy
 import numpy as np
 from ..data.models import Dataset, Sample
 from .judge import JudgeCalibrator, CalibrationResult
@@ -195,8 +196,8 @@ def calibrate_from_raw_data(
         record_copy = record.copy()
         record_copy[reward_field] = float(result.calibrated_scores[i])
 
-        # Preserve original fields in metadata if it exists
-        metadata = record_copy.get("metadata", {})
+        # Deep copy metadata to avoid mutating caller's nested dict
+        metadata = deepcopy(record_copy.get("metadata", {}))
         metadata[judge_field] = judge_scores[i]
         if oracle_mask[i]:
             # Find the index of this oracle label
