@@ -1,4 +1,20 @@
-# Test data directories
-cje/experiments/arena_10k_simplified/test_e2e_clean/
-cje/experiments/arena_10k_simplified/test_e2e_data/
-cje/experiments/arena_10k_simplified/test_e2e_data copy/
+# Generated data files
+data/*.jsonl
+data/**/*.jsonl
+test_e2e_data/
+test_e2e_clean/
+test_e2e_data copy/
+test_batch/
+
+# Analysis outputs
+analysis/
+*.json
+
+# Temp files from batch saving
+*.tmp
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/

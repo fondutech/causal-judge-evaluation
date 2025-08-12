@@ -1,33 +1,47 @@
-"""Utility functions and helper classes."""
+"""Utility functions for diagnostics.
 
-from .generation import (
-    generate_with_logprobs,
-    compute_sequence_logp,
-    batch_generate_with_logprobs,
+This module contains:
+- Weight Diagnostics: Debug importance sampling issues
+- Visualization: Plotting utilities for weight diagnostics
+"""
+
+from .diagnostics import (
+    diagnose_weights,
+    create_weight_summary_table,
+    WeightDiagnostics,
 )
-from .checkpointing import (
-    CheckpointManager,
-    BatchProcessor,
-    create_jsonl_checkpoint_manager,
-    auto_enable_checkpointing,
-    cleanup_checkpoint_file,
+
+from .extreme_weights_analysis import (
+    analyze_extreme_weights,
 )
-from .teacher_forcing import (
-    RobustTeacherForcing,
-    compute_teacher_forced_logprob,
-)
-from .logprobs import safe_sum
+
+# Import visualization functions if matplotlib is available
+try:
+    from .visualization import (
+        plot_weight_dashboard,
+        plot_calibration_comparison,
+        plot_policy_estimates,
+    )
+
+    _visualization_available = True
+except ImportError:
+    _visualization_available = False
 
 __all__ = [
-    "generate_with_logprobs",
-    "compute_sequence_logp",
-    "batch_generate_with_logprobs",
-    "CheckpointManager",
-    "BatchProcessor",
-    "create_jsonl_checkpoint_manager",
-    "auto_enable_checkpointing",
-    "cleanup_checkpoint_file",
-    "RobustTeacherForcing",
-    "compute_teacher_forced_logprob",
-    "safe_sum",
+    # Weight diagnostics
+    "diagnose_weights",
+    "create_weight_summary_table",
+    "WeightDiagnostics",
+    # Extreme weights analysis
+    "analyze_extreme_weights",
 ]
+
+if _visualization_available:
+    __all__.extend(
+        [
+            # Visualization
+            "plot_weight_dashboard",
+            "plot_calibration_comparison",
+            "plot_policy_estimates",
+        ]
+    )
