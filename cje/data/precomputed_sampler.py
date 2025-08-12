@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Any, Union
 import numpy as np
 import logging
 
-from .models import Dataset, Sample
+from .models import Dataset
 from .factory import DatasetFactory
 
 logger = logging.getLogger(__name__)
@@ -87,10 +87,11 @@ class PrecomputedSampler:
         - target_policy_logprobs: dict of target log probs
         """
         formatted = []
+        self._formatted_to_dataset_idx = []  # Track mapping for O(1) lookup
         n_missing_base = 0
         n_missing_target = {policy: 0 for policy in self.target_policies}
 
-        for sample in self.dataset.samples:
+        for i, sample in enumerate(self.dataset.samples):
             # Skip samples without valid base log prob
             if sample.base_policy_logprob is None:
                 n_missing_base += 1
@@ -119,6 +120,7 @@ class PrecomputedSampler:
                     "target_policy_logprobs": valid_targets,
                 }
             )
+            self._formatted_to_dataset_idx.append(i)
 
         # Report filtering statistics
         n_total = len(self.dataset.samples)
@@ -210,39 +212,22 @@ class PrecomputedSampler:
 
         This is needed because formatted_data filters out invalid samples.
         """
-        # For now, assume a simple linear search
-        # In production, we'd maintain an index mapping
-        count = 0
-        for i, sample in enumerate(self.dataset.samples):
-            if sample.base_policy_logprob is not None:
-                # Check if all target policies have valid logprobs
-                all_valid = all(
-                    sample.target_policy_logprobs.get(p) is not None
-                    for p in self.target_policies
-                )
-                if all_valid:
-                    if count == formatted_index:
-                        return i
-                    count += 1
-        raise IndexError(f"Formatted index {formatted_index} out of range")
+        if formatted_index >= len(self._formatted_to_dataset_idx):
+            raise IndexError(f"Formatted index {formatted_index} out of range")
+        return self._formatted_to_dataset_idx[formatted_index]
 
-    def compute_raw_weights(self, target_policy: str) -> np.ndarray:
-        """Compute raw importance weights with numerical stability via log-shift.
-
-        Uses a scale-invariant log-shift to keep weights in a numerically safe range.
-        Since all our estimators normalize weights (SNIPS/mean-one), multiplying all
-        weights by a constant doesn't change estimates, but prevents numerical issues.
+    def compute_log_ratios(self, target_policy: str) -> np.ndarray:
+        """Compute log importance ratios (log p_target - log p_base).
 
         Args:
             target_policy: Name of target policy
 
         Returns:
-            Array of raw importance weights (shifted for stability)
+            Array of log ratios (may contain -inf for zero weights)
         """
         if target_policy not in self.target_policies:
             raise ValueError(f"Unknown target policy: {target_policy}")
 
-        # Vectorized log-ratio computation
         log_ratios = np.array(
             [
                 record["target_policy_logprobs"][target_policy]
@@ -252,67 +237,99 @@ class PrecomputedSampler:
             dtype=np.float64,
         )
 
-        # Handle non-finite values
-        n_nan = np.isnan(log_ratios).sum()
-        n_posinf = np.isposinf(log_ratios).sum()
-        n_neginf = np.isneginf(log_ratios).sum()
+        # NaN -> -inf (zero weight)
+        log_ratios[np.isnan(log_ratios)] = -np.inf
 
-        if n_nan > 0:
-            logger.warning(
-                f"{n_nan} NaN log-ratios for {target_policy}; setting to -inf (zero weight)."
-            )
-            log_ratios[np.isnan(log_ratios)] = -np.inf
+        return log_ratios
 
-        # Replace +inf with a large finite value
-        if n_posinf > 0:
-            finite_mask = np.isfinite(log_ratios)
-            if finite_mask.any():
-                finite_max = np.max(log_ratios[finite_mask])
-            else:
-                finite_max = 0.0
-            log_ratios[np.isposinf(log_ratios)] = finite_max + 100.0
+    def compute_raw_weights(self, target_policy: str) -> np.ndarray:
+        """Compute raw importance weights WITHOUT scaling.
+
+        Returns truly raw weights: exp(log_p_target - log_p_base)
+        Only guards against overflow to inf, no scaling applied.
+
+        Args:
+            target_policy: Name of target policy
+
+        Returns:
+            Array of raw importance weights
+        """
+        log_ratios = self.compute_log_ratios(target_policy)
+
+        # Clamp only to avoid overflow to inf, keep underflow (->0) natural
+        max_log = np.log(np.finfo(np.float64).max)  # ~709.78
+        clamped = np.minimum(log_ratios, max_log)
+
+        # Report extreme values
+        n_clamped = np.sum(log_ratios > max_log)
+        if n_clamped > 0:
             logger.debug(
-                f"{n_posinf} +inf log-ratios for {target_policy}; using finite max + 100"
+                f"Clamped {n_clamped} extreme log-ratios for {target_policy} "
+                f"(max was {np.max(log_ratios[np.isfinite(log_ratios)]):.1f}) to prevent overflow"
             )
 
-        # Apply log-shift for numerical stability
-        # Shift so the maximum weight is around exp(50) ≈ 5e21
-        # This keeps weights well within float64 range while preserving relative values
-        top_margin = 50.0
-        max_log_ratio = np.max(log_ratios) if log_ratios.size else 0.0
-        log_shift = max_log_ratio - top_margin
+        weights = np.exp(clamped)
 
-        # Compute shifted weights
-        shifted_log_ratios = log_ratios - log_shift
-        weights = np.exp(shifted_log_ratios)
-
-        # Clean up any residual non-finite values
-        bad_mask = ~np.isfinite(weights)
-        if bad_mask.any():
-            logger.warning(
-                f"{bad_mask.sum()} non-finite weights for {target_policy}; setting to 0."
-            )
-            weights[bad_mask] = 0.0
-
-        # Log diagnostics
-        n_zero = (weights == 0.0).sum()
-
-        # Log at INFO level if shift is significant (helps with debugging)
-        if abs(log_shift) > 100:
-            logger.info(
-                f"Applied large log-shift={log_shift:.1f} for {target_policy} to prevent overflow. "
-                f"This is scale-invariant and won't affect estimates."
-            )
-        elif n_zero > 0 or abs(log_shift) > 10:
-            logger.debug(
-                f"Weight computation for {target_policy}: log_shift={log_shift:.1f}, "
-                f"zero_weights={n_zero}/{len(weights)}, max_weight={weights.max():.2e}"
-            )
+        # Clean up non-finite values (from -inf log ratios)
+        weights[~np.isfinite(weights)] = 0.0
 
         return weights
 
+    def compute_hajek_weights(self, target_policy: str) -> np.ndarray:
+        """Compute mean-one (SNIPS/Hájek) weights using stable log-sum-exp.
+
+        These weights have mean exactly 1.0 and are computed in a numerically
+        stable way using the log-sum-exp trick.
+
+        Args:
+            target_policy: Name of target policy
+
+        Returns:
+            Array of Hájek weights with mean=1.0
+        """
+        log_ratios = self.compute_log_ratios(target_policy)
+        n = len(log_ratios)
+
+        # Handle all -inf case (all weights would be zero)
+        finite_mask = np.isfinite(log_ratios)
+        if not finite_mask.any():
+            logger.warning(
+                f"All log-ratios are -inf for {target_policy}; returning zeros"
+            )
+            return np.zeros_like(log_ratios)
+
+        # Log-sum-exp trick: subtract max for numerical stability
+        max_log = np.max(log_ratios[finite_mask])
+
+        # Compute stable exponentials
+        stable_exp = np.zeros_like(log_ratios)
+        stable_exp[finite_mask] = np.exp(log_ratios[finite_mask] - max_log)
+
+        # Sum of weights
+        sum_weights = stable_exp.sum()
+        if sum_weights == 0.0:
+            logger.warning(
+                f"Sum of weights is zero for {target_policy}; returning zeros"
+            )
+            return np.zeros_like(log_ratios)
+
+        # Normalize to mean=1: w_i = n * exp(lr_i) / sum(exp(lr))
+        hajek_weights = (n * stable_exp) / sum_weights
+
+        # Verify mean is 1.0 (within floating point precision)
+        actual_mean = hajek_weights.mean()
+        if abs(actual_mean - 1.0) > 1e-10:
+            logger.debug(
+                f"Hájek weights for {target_policy} have mean {actual_mean:.12f} (expected 1.0)"
+            )
+
+        return hajek_weights
+
     def compute_importance_weights(
-        self, target_policy: str, clip_weight: Optional[float] = None
+        self,
+        target_policy: str,
+        clip_weight: Optional[float] = None,
+        mode: str = "hajek",
     ) -> np.ndarray:
         """Compute importance weights for a target policy with optional clipping.
 
@@ -321,28 +338,29 @@ class PrecomputedSampler:
             clip_weight: Maximum weight value for variance control.
                         If None (default), no clipping is applied.
                         Set to a finite value (e.g., 100.0) to clip weights.
+            mode: "hajek" for mean-one weights (default), "raw" for unnormalized
 
         Returns:
             Array of importance weights
         """
-        # Get raw weights (already stabilized via log-shift)
-        raw_weights = self.compute_raw_weights(target_policy)
-
-        # Apply clipping if requested
-        if clip_weight is not None and np.isfinite(clip_weight):
-            weights_array = np.minimum(raw_weights, clip_weight)
-
-            # Log clipping statistics
-            n_clipped = np.sum(raw_weights > clip_weight)
-            if n_clipped > 0:
-                max_raw = np.max(raw_weights)
-                logger.info(
-                    f"Weight clipping for policy '{target_policy}': "
-                    f"{n_clipped}/{len(raw_weights)} weights clipped to {clip_weight} "
-                    f"(max raw weight: {max_raw:.2f})"
-                )
+        # Get weights based on mode
+        if mode == "hajek":
+            weights_array = self.compute_hajek_weights(target_policy)
+        elif mode == "raw":
+            weights_array = self.compute_raw_weights(target_policy)
         else:
-            weights_array = raw_weights
+            raise ValueError(f"Unknown mode: {mode}. Use 'hajek' or 'raw'")
+
+        # Apply clipping if requested (after Hájek normalization for interpretability)
+        if clip_weight is not None and np.isfinite(clip_weight):
+            n_clipped = np.sum(weights_array > clip_weight)
+            if n_clipped > 0:
+                max_weight = np.max(weights_array)
+                weights_array = np.minimum(weights_array, clip_weight)
+                logger.info(
+                    f"Clipped {n_clipped}/{len(weights_array)} weights for {target_policy} "
+                    f"to {clip_weight} (max was {max_weight:.2f})"
+                )
 
         # Log statistics
         logger.debug(

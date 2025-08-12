@@ -66,8 +66,10 @@ class BaseCJEEstimator(ABC):
         Returns:
             Array of raw weights or None if not available.
         """
-        # Use compute_importance_weights with clip_weight=None for raw weights
-        return self.sampler.compute_importance_weights(target_policy, clip_weight=None)
+        # Get truly raw weights (not Hajek normalized)
+        return self.sampler.compute_importance_weights(
+            target_policy, clip_weight=None, mode="raw"
+        )
 
     @property
     def is_fitted(self) -> bool:

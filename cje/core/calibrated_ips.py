@@ -6,7 +6,7 @@ substantially reduced variance (i.e., not strictly unbiased).
 """
 
 import numpy as np
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Union
 import logging
 
 from .base_estimator import BaseCJEEstimator
@@ -32,7 +32,7 @@ class CalibratedIPS(BaseCJEEstimator):
 
     Args:
         sampler: PrecomputedSampler with data
-        clip_weight: Maximum weight value before calibration (default 1e10)
+        clip_weight: Maximum weight value before calibration (default None = no clipping)
         enforce_variance_nonincrease: Prevent variance explosion (default True)
         max_variance_ratio: Maximum allowed variance ratio (default 1.0 = no increase)
         compute_diagnostics: Compute detailed weight diagnostics (default True)
@@ -41,7 +41,9 @@ class CalibratedIPS(BaseCJEEstimator):
     def __init__(
         self,
         sampler: PrecomputedSampler,
-        clip_weight: float = 1e10,  # Default: no clipping, let calibration handle extremes
+        clip_weight: Optional[
+            float
+        ] = None,  # Default: no clipping, let calibration handle extremes
         enforce_variance_nonincrease: bool = True,  # Default: prevent variance explosion
         max_variance_ratio: float = 1.0,  # ≤1.0 = no increase, <1.0 = force reduction
         compute_diagnostics: bool = True,  # compute detailed diagnostics

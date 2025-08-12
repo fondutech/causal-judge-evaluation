@@ -190,6 +190,8 @@ class WeightCalibrationConfig(BaseModel):
     """Configuration for weight calibration."""
 
     k_folds: int = Field(5, ge=2, description="Number of cross-fitting folds")
-    clip_weight: float = Field(100.0, gt=0, description="Maximum weight value")
+    clip_weight: Optional[float] = Field(
+        None, description="Maximum weight value (None = no clipping)"
+    )
     target_mean: float = Field(1.0, gt=0, description="Target mean for calibration")
     random_seed: int = Field(42, description="Random seed for reproducibility")
