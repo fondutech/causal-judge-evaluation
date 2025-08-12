@@ -192,6 +192,10 @@ class TMLEEstimator(DREstimator):
                 else 0.0
             )
 
+            # Store influence functions if requested (inherited from DREstimator)
+            if self.store_influence:
+                self._influence_functions[policy] = if_contrib
+
             estimates.append(psi)
             standard_errors.append(se)
             n_samples_used[policy] = len(rewards)
@@ -355,20 +359,26 @@ class TMLEEstimator(DREstimator):
         if hasattr(self.ips_estimator, "get_diagnostics"):
             ips_diagnostics = self.ips_estimator.get_diagnostics()
 
+        # Add influence functions to metadata if stored
+        metadata = {
+            "cross_fitted": True,
+            "n_folds": self.n_folds,
+            "fresh_draws_policies": list(self._fresh_draws.keys()),
+            "ips_diagnostics": ips_diagnostics,
+            "dr_diagnostics": dr_diagnostics_per_policy,
+            "dr_overview": dr_overview,
+            "dr_calibration_data": dr_calibration_data,
+        }
+
+        if self.store_influence:
+            metadata["dr_influence"] = self._influence_functions
+
         return EstimationResult(
             estimates=np.array(estimates, dtype=float),
             standard_errors=np.array(standard_errors, dtype=float),
             n_samples_used=n_samples_used,
             method="tmle",
-            metadata={
-                "cross_fitted": True,
-                "n_folds": self.n_folds,
-                "fresh_draws_policies": list(self._fresh_draws.keys()),
-                "ips_diagnostics": ips_diagnostics,
-                "dr_diagnostics": dr_diagnostics_per_policy,
-                "dr_overview": dr_overview,
-                "dr_calibration_data": dr_calibration_data,
-            },
+            metadata=metadata,
         )
 
     def _solve_logistic_fluctuation(

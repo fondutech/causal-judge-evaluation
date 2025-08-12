@@ -143,32 +143,35 @@ def add_fresh_draws_to_estimator(
 ) -> None:
     """Add fresh draws to a DR estimator for all target policies.
 
-    This helper reduces duplication across DR, MRDR, and TMLE estimators.
-    Uses the core library's load_fresh_draws_auto for robustness.
+    This helper loads fresh draws from files. It will fail if fresh draws
+    are not available - no synthetic fallback.
     """
     data_dir = Path(data_path).parent
 
     for policy in sampler.target_policies:
-        # Use core library's auto-loader with fallback to synthetic
+        # Try to load fresh draws - NO SYNTHETIC FALLBACK
         fresh_draws = load_fresh_draws_auto(
             data_dir=data_dir,
             policy=policy,
-            fallback_synthetic=True,
+            fallback_synthetic=False,  # NEVER create synthetic data
             dataset=dataset,
             config=estimator_config,
-            verbose=False,  # We'll handle our own printing
+            verbose=False,
         )
 
-        # Print status
-        if fresh_draws.draws_per_prompt == 1 and len(fresh_draws.samples) > 0:
-            # Likely real data (1 draw per prompt is typical for real responses)
-            print(f"     ✓ Loaded {len(fresh_draws.samples)} fresh draws for {policy}")
-        else:
-            # Likely synthetic (multiple draws per prompt)
-            print(
-                f"     ✓ Added {len(fresh_draws.samples)} synthetic fresh draws for {policy}"
+        if fresh_draws is None:
+            # Fail loudly - this is a critical error
+            raise ValueError(
+                f"No fresh draws found for policy '{policy}' in {data_dir}.\n"
+                f"DR/MRDR/TMLE require real fresh draws from teacher forcing.\n"
+                f"Either:\n"
+                f"  1. Generate fresh draws using generate_fresh_draws.py\n"
+                f"  2. Use --estimator calibrated-ips or raw-ips (no fresh draws needed)\n"
+                f"  3. Provide path to fresh draw files"
             )
 
+        # Print status - we know these are real draws now
+        print(f"     ✓ Loaded {len(fresh_draws.samples)} fresh draws for {policy}")
         estimator.add_fresh_draws(policy, fresh_draws)
 
 

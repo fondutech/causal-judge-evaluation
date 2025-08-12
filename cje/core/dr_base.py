@@ -107,8 +107,8 @@ class DREstimator(BaseCJEEstimator):
         self._fresh_draws: Dict[str, FreshDrawDataset] = {}
         self._outcome_fitted = False
 
-        # Influence function storage
-        self.store_influence = kwargs.pop("store_influence", False)
+        # Influence function storage (default True for richer diagnostics)
+        self.store_influence = kwargs.pop("store_influence", True)
         self._influence_functions: Dict[str, np.ndarray] = {}
 
         # Generate fold assignments for cross-fitting
@@ -459,6 +459,9 @@ class DREstimator(BaseCJEEstimator):
             # Store influence functions if requested
             if self.store_influence:
                 self._influence_functions[policy] = if_contributions
+                logger.debug(
+                    f"Stored {len(if_contributions)} influence values for {policy}"
+                )
 
             estimates.append(dr_estimate)
             standard_errors.append(se)
