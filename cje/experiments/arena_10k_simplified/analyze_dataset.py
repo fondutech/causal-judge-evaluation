@@ -986,7 +986,7 @@ def main() -> int:
                 if judge_scores and oracle_labels:
                     # Collect calibrated scores to show the transformation
                     # We want to show calibration whenever rewards differ from raw judge scores
-                    calibrated_preds = []
+                    calibrated_preds_list: List[float] = []
 
                     # Collect rewards for samples that have both judge and oracle
                     for s in calibrated_dataset.samples:
@@ -1003,19 +1003,19 @@ def main() -> int:
                                 and j_val is not None
                                 and o_val is not None
                             ):
-                                calibrated_preds.append(s.reward)
+                                calibrated_preds_list.append(s.reward)
 
                     # Only show calibrated if they differ from judge scores
                     # (i.e., we actually applied calibration)
-                    if len(calibrated_preds) == len(judge_scores):
+                    calibrated_preds: Optional[List[float]] = None
+                    if len(calibrated_preds_list) == len(judge_scores):
                         # Check if calibration was actually applied
                         # (rewards differ from judge scores)
-                        if np.allclose(calibrated_preds, judge_scores, rtol=1e-5):
-                            # No calibration was applied, rewards are same as judge scores
-                            calibrated_preds = None
-                    else:
-                        # Length mismatch, skip calibrated
-                        calibrated_preds = None
+                        if not np.allclose(
+                            calibrated_preds_list, judge_scores, rtol=1e-5
+                        ):
+                            # Calibration was applied, use the calibrated values
+                            calibrated_preds = calibrated_preds_list
 
                     # Generate calibration plot
                     fig = plot_calibration_comparison(

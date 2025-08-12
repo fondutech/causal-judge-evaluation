@@ -34,7 +34,7 @@ class JudgeScore:
 class BatchJudgeResult:
     """Result from batch scoring."""
 
-    scores: List[float]
+    scores: List[Optional[float]]
     metadata: Optional[List[Dict[str, Any]]] = None
     mean_score: float = 0.0
     std_score: float = 0.0
@@ -44,8 +44,8 @@ class BatchJudgeResult:
         # Filter out None values for statistics
         valid_scores = [s for s in self.scores if s is not None]
         if valid_scores:
-            self.mean_score = np.mean(valid_scores)
-            self.std_score = np.std(valid_scores)
+            self.mean_score = float(np.mean(valid_scores))
+            self.std_score = float(np.std(valid_scores))
 
 
 # Pydantic model for structured outputs
@@ -67,7 +67,7 @@ class FireworksEvaluator:
         self,
         model: str,
         system_prompt: str = "You are an AI evaluator. Rate responses from 0 to 100. Always provide a score, even if the response is incomplete or truncated.",
-        user_prompt_template: str = None,
+        user_prompt_template: Optional[str] = None,
         temperature: float = 0.0,
         api_key: Optional[str] = None,
     ):
@@ -212,7 +212,7 @@ Provide your evaluation score (0-100):
         if len(prompts) != len(responses):
             raise ValueError(f"Length mismatch: {len(prompts)} != {len(responses)}")
 
-        scores = []
+        scores: List[Optional[float]] = []
         metadata = []
         failed_indices = []
 

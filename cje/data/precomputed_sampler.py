@@ -323,7 +323,7 @@ class PrecomputedSampler:
                 f"Hájek weights for {target_policy} have mean {actual_mean:.12f} (expected 1.0)"
             )
 
-        return hajek_weights
+        return np.asarray(hajek_weights)
 
     def compute_importance_weights(
         self,
