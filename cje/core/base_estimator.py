@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
 import numpy as np
 
-from ..data.models import Dataset, EstimationResult, WeightCalibrationConfig
+from ..data.models import Dataset, EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
 
 
@@ -14,16 +14,13 @@ class BaseCJEEstimator(ABC):
     def __init__(
         self,
         sampler: PrecomputedSampler,
-        calibration_config: Optional[WeightCalibrationConfig] = None,
     ):
         """Initialize estimator.
 
         Args:
             sampler: Data sampler with precomputed log probabilities
-            calibration_config: Configuration for weight calibration
         """
         self.sampler = sampler
-        self.config = calibration_config or WeightCalibrationConfig()
         self._fitted = False
         self._weights_cache: Dict[str, np.ndarray] = {}
         self._diagnostics: Dict[str, Any] = {}  # Initialize diagnostics storage

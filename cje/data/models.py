@@ -184,12 +184,3 @@ class EstimationResult(BaseModel):
             "p_value": p_value,
             "significant": p_value < alpha,
         }
-
-
-class WeightCalibrationConfig(BaseModel):
-    """Configuration for weight calibration."""
-
-    clip_weight: Optional[float] = Field(
-        None, description="Maximum weight value (None = no clipping)"
-    )
-    target_mean: float = Field(1.0, gt=0, description="Target mean for calibration")

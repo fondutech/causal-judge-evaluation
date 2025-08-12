@@ -16,7 +16,6 @@ from .models import (
     Sample,
     Dataset,
     EstimationResult,
-    WeightCalibrationConfig,
     LogProbStatus,
     LogProbResult,
 )
@@ -35,7 +34,6 @@ __all__ = [
     "Sample",
     "Dataset",
     "EstimationResult",
-    "WeightCalibrationConfig",
     "LogProbStatus",
     "LogProbResult",
     # Utilities

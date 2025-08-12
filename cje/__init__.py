@@ -58,7 +58,6 @@ from .data import (
     Sample,
     Dataset,
     EstimationResult,
-    WeightCalibrationConfig,
     DatasetFactory,
     DatasetLoader,
     default_factory,
@@ -137,7 +136,6 @@ __all__ = [
     "Sample",
     "Dataset",
     "EstimationResult",
-    "WeightCalibrationConfig",
     # Data loading (SOLID-compliant)
     "DatasetFactory",
     "DatasetLoader",

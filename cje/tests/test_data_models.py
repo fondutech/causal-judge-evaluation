@@ -1,6 +1,6 @@
 """Test pydantic data models."""
 
-from cje.data.models import Sample, Dataset, WeightCalibrationConfig
+from cje.data.models import Sample, Dataset
 import numpy as np
 
 
@@ -69,16 +69,7 @@ def test_dataset() -> None:
     print("✓ Dataset created and tested")
 
 
-def test_config() -> None:
-    """Test configuration validation."""
-    config = WeightCalibrationConfig(clip_weight=50.0, target_mean=1.0)
-    assert config.clip_weight == 50.0
-    assert config.target_mean == 1.0
-    print("✓ Config validation works")
-
-
 if __name__ == "__main__":
     test_sample()
     test_dataset()
-    test_config()
     print("\nAll data model tests passed! ✨")

@@ -10,7 +10,7 @@ from typing import Dict, Optional, Any, Union
 import logging
 
 from .base_estimator import BaseCJEEstimator
-from ..data.models import EstimationResult, WeightCalibrationConfig
+from ..data.models import EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..calibration.isotonic import calibrate_to_target_mean
 from ..utils.diagnostics import weight_diagnostics, evaluate_status
@@ -48,15 +48,12 @@ class CalibratedIPS(BaseCJEEstimator):
         max_variance_ratio: float = 1.0,  # ≤1.0 = no increase, <1.0 = force reduction
         compute_diagnostics: bool = True,  # compute detailed diagnostics
     ):
-        # Create config
-        config = WeightCalibrationConfig(
-            clip_weight=clip_weight,
-            target_mean=1.0,
-        )
-        super().__init__(sampler, config)
+        super().__init__(sampler)
+        self.clip_weight = clip_weight
         self.enforce_variance_nonincrease = enforce_variance_nonincrease
         self.max_variance_ratio = max_variance_ratio
         self.compute_diagnostics = compute_diagnostics
+        self.target_mean = 1.0  # Always use SNIPS/Hajek normalization
 
     def fit(self) -> None:
         """Fit weight calibration for all target policies with comprehensive diagnostics."""
@@ -64,7 +61,7 @@ class CalibratedIPS(BaseCJEEstimator):
         for policy in self.sampler.target_policies:
             # Get raw weights (with optional pre-clipping)
             raw_weights = self.sampler.compute_importance_weights(
-                policy, clip_weight=self.config.clip_weight
+                policy, clip_weight=self.clip_weight
             )
             if raw_weights is None:
                 continue
@@ -82,7 +79,7 @@ class CalibratedIPS(BaseCJEEstimator):
             # Calibrate weights with optimized single-pass algorithm
             calibrated, calib_info = calibrate_to_target_mean(
                 raw_weights,
-                target_mean=self.config.target_mean,
+                target_mean=self.target_mean,
                 enforce_variance_nonincrease=self.enforce_variance_nonincrease,
                 max_variance_ratio=self.max_variance_ratio,
                 return_diagnostics=True,
@@ -108,7 +105,7 @@ class CalibratedIPS(BaseCJEEstimator):
                 # Calibration-specific diagnostics (compare on normalized scale)
                 raw_mean = float(raw_weights.mean())
                 raw_norm = (
-                    raw_weights * (self.config.target_mean / raw_mean)
+                    raw_weights * (self.target_mean / raw_mean)
                     if raw_mean
                     else raw_weights
                 )
@@ -131,7 +128,7 @@ class CalibratedIPS(BaseCJEEstimator):
                         float(1.0 - cal_var / raw_norm_var) if raw_norm_var > 0 else 0.0
                     ),
                     "mean_preserved": bool(
-                        abs(calibrated.mean() - self.config.target_mean) < 1e-10
+                        abs(calibrated.mean() - self.target_mean) < 1e-10
                     ),
                     "variance_safe": bool(
                         cal_var <= target_var * 1.001
@@ -147,7 +144,7 @@ class CalibratedIPS(BaseCJEEstimator):
                     "params": {
                         "enforce_variance": self.enforce_variance_nonincrease,
                         "max_variance_ratio": self.max_variance_ratio,
-                        "clip_weight": self.config.clip_weight,
+                        "clip_weight": self.clip_weight,
                     },
                 }
                 if "note" in calib_info:
@@ -232,7 +229,7 @@ class CalibratedIPS(BaseCJEEstimator):
             n_samples_used=n_samples_used,
             method="calibrated_ips",
             metadata={
-                "clip_weight": self.config.clip_weight,
+                "clip_weight": self.clip_weight,
                 "diagnostics": self._diagnostics,  # Include diagnostics
             },
         )
