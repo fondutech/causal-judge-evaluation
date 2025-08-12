@@ -168,11 +168,55 @@ class EstimationResult(BaseModel):
     def compare_policies(
         self, idx1: int, idx2: int, alpha: float = 0.05
     ) -> Dict[str, Any]:
-        """Compare two policies."""
+        """Compare two policies using influence functions when available."""
         diff = self.estimates[idx1] - self.estimates[idx2]
-        se_diff = np.sqrt(
-            self.standard_errors[idx1] ** 2 + self.standard_errors[idx2] ** 2
+
+        # Check if we have influence functions to account for covariance
+        influence_data = (
+            self.metadata.get("dr_influence")
+            or self.metadata.get("ips_influence")
+            or self.metadata.get("tmle_influence")
         )
+
+        if influence_data and "target_policies" in self.metadata:
+            # Use influence functions for correct variance estimation
+            policies = self.metadata["target_policies"]
+            if idx1 < len(policies) and idx2 < len(policies):
+                p1 = policies[idx1]
+                p2 = policies[idx2]
+
+                if p1 in influence_data and p2 in influence_data:
+                    # Compute variance of difference using influence functions
+                    if1 = influence_data[p1]
+                    if2 = influence_data[p2]
+
+                    # Ensure same length (should be aligned)
+                    if len(if1) == len(if2):
+                        diff_if = if1 - if2
+                        se_diff = float(np.std(diff_if, ddof=1) / np.sqrt(len(diff_if)))
+                    else:
+                        # Fall back to conservative estimate if lengths mismatch
+                        se_diff = np.sqrt(
+                            self.standard_errors[idx1] ** 2
+                            + self.standard_errors[idx2] ** 2
+                        )
+                else:
+                    # Fall back if policies not found
+                    se_diff = np.sqrt(
+                        self.standard_errors[idx1] ** 2
+                        + self.standard_errors[idx2] ** 2
+                    )
+            else:
+                # Fall back if indices out of range
+                se_diff = np.sqrt(
+                    self.standard_errors[idx1] ** 2 + self.standard_errors[idx2] ** 2
+                )
+        else:
+            # Conservative estimate ignoring covariance
+            se_diff = np.sqrt(
+                self.standard_errors[idx1] ** 2 + self.standard_errors[idx2] ** 2
+            )
+
         z_score = diff / se_diff if se_diff > 0 else 0
 
         from scipy import stats
@@ -185,6 +229,11 @@ class EstimationResult(BaseModel):
             "z_score": z_score,
             "p_value": p_value,
             "significant": p_value < alpha,
+            "used_influence": influence_data is not None
+            and se_diff
+            != np.sqrt(
+                self.standard_errors[idx1] ** 2 + self.standard_errors[idx2] ** 2
+            ),
         }
 
     def to_dict(self) -> Dict[str, Any]:

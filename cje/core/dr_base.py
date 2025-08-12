@@ -106,6 +106,10 @@ class DREstimator(BaseCJEEstimator):
         self._fresh_draws: Dict[str, FreshDrawDataset] = {}
         self._outcome_fitted = False
 
+        # Influence function storage
+        self.store_influence = kwargs.pop("store_influence", False)
+        self._influence_functions: Dict[str, np.ndarray] = {}
+
         # Generate fold assignments for cross-fitting
         n_samples = len(sampler.dataset.samples)
         self.fold_assignments = self._create_fold_assignments(n_samples, n_folds)
@@ -444,6 +448,10 @@ class DREstimator(BaseCJEEstimator):
             )
             se = np.std(if_contributions, ddof=1) / np.sqrt(len(if_contributions))
 
+            # Store influence functions if requested
+            if self.store_influence:
+                self._influence_functions[policy] = if_contributions
+
             estimates.append(dr_estimate)
             standard_errors.append(se)
             n_samples_used[policy] = len(data)
@@ -581,19 +589,26 @@ class DREstimator(BaseCJEEstimator):
         # Merge all diagnostics
         all_diagnostics = {"ips": ips_diagnostics, **dr_metadata}
 
+        # Build metadata
+        metadata = {
+            "diagnostics": all_diagnostics,
+            "target_policies": list(self.sampler.target_policies),
+            "weight_method": "calibrated" if self.use_calibrated_weights else "raw",
+            "dr_diagnostics": dr_diagnostics_per_policy,
+            "dr_overview": dr_overview,
+            "dr_calibration_data": dr_calibration_data,
+        }
+
+        # Add influence functions if stored
+        if self.store_influence:
+            metadata["dr_influence"] = self._influence_functions
+
         return EstimationResult(
             estimates=np.array(estimates),
             standard_errors=np.array(standard_errors),
             n_samples_used=n_samples_used,
             method="dr_base",
-            metadata={
-                "diagnostics": all_diagnostics,
-                "target_policies": self.sampler.target_policies,
-                "weight_method": "calibrated" if self.use_calibrated_weights else "raw",
-                "dr_diagnostics": dr_diagnostics_per_policy,
-                "dr_overview": dr_overview,
-                "dr_calibration_data": dr_calibration_data,
-            },
+            metadata=metadata,
         )
 
     def get_weights(self, policy: str) -> Optional[np.ndarray]:

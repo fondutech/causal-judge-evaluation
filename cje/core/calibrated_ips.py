@@ -47,13 +47,16 @@ class CalibratedIPS(BaseCJEEstimator):
         enforce_variance_nonincrease: bool = True,  # Default: prevent variance explosion
         max_variance_ratio: float = 1.0,  # ≤1.0 = no increase, <1.0 = force reduction
         compute_diagnostics: bool = True,  # compute detailed diagnostics
+        store_influence: bool = False,  # Store per-sample influence functions
     ):
         super().__init__(sampler)
         self.clip_weight = clip_weight
         self.enforce_variance_nonincrease = enforce_variance_nonincrease
         self.max_variance_ratio = max_variance_ratio
         self.compute_diagnostics = compute_diagnostics
+        self.store_influence = store_influence
         self.target_mean = 1.0  # Always use SNIPS/Hajek normalization
+        self._influence_functions: Dict[str, np.ndarray] = {}
 
     def fit(self) -> None:
         """Fit weight calibration for all target policies with comprehensive diagnostics."""
@@ -217,22 +220,38 @@ class CalibratedIPS(BaseCJEEstimator):
                 centered = weights * (rewards - estimate)
                 var_hat = float(np.var(centered, ddof=1))
                 se = np.sqrt(var_hat / n)
+
+                # Store influence functions if requested
+                if self.store_influence:
+                    # Influence function for mean-one Hajek estimator
+                    self._influence_functions[policy] = centered
             else:
                 se = 0.0
+                if self.store_influence:
+                    self._influence_functions[policy] = np.array([])
 
             estimates.append(estimate)
             standard_errors.append(se)
             n_samples_used[policy] = len(data) if data else 0
+
+        metadata = {
+            "clip_weight": self.clip_weight,
+            "diagnostics": self._diagnostics,  # Include diagnostics
+            "target_policies": list(
+                self.sampler.target_policies
+            ),  # For policy comparison
+        }
+
+        # Add influence functions if stored
+        if self.store_influence:
+            metadata["ips_influence"] = self._influence_functions
 
         return EstimationResult(
             estimates=np.array(estimates),
             standard_errors=np.array(standard_errors),
             n_samples_used=n_samples_used,
             method="calibrated_ips",
-            metadata={
-                "clip_weight": self.clip_weight,
-                "diagnostics": self._diagnostics,  # Include diagnostics
-            },
+            metadata=metadata,
         )
 
     def get_diagnostics(self, target_policy: Optional[str] = None) -> Dict[str, Any]:

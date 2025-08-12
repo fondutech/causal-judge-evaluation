@@ -271,15 +271,30 @@ def evaluate_status(diagnostics: Dict[str, Any]) -> str:
     # Extract key metrics
     ess_frac = weights.get("ess_fraction", 0)
     tail_ratio = weights.get("tail_ratio_99_5", np.inf)
-    asamd = balance.get("avg_asamd", 0)
 
-    # Green thresholds (conservative)
-    if ess_frac >= 0.30 and tail_ratio <= 100 and asamd <= 0.05:
-        return "green"
+    # Balance may not be populated (requires features)
+    # Default to None if not available
+    asamd = balance.get("avg_asamd", None) if balance else None
 
-    # Amber thresholds (acceptable)
-    if ess_frac >= 0.20 and tail_ratio <= 500 and asamd <= 0.10:
-        return "amber"
+    # Evaluate based on available metrics
+    if asamd is not None:
+        # Full evaluation with balance
+        # Green thresholds (conservative)
+        if ess_frac >= 0.30 and tail_ratio <= 100 and asamd <= 0.05:
+            return "green"
+
+        # Amber thresholds (acceptable)
+        if ess_frac >= 0.20 and tail_ratio <= 500 and asamd <= 0.10:
+            return "amber"
+    else:
+        # Weight-only evaluation (no balance metrics)
+        # Green thresholds (conservative, weight-only)
+        if ess_frac >= 0.30 and tail_ratio <= 100:
+            return "green"
+
+        # Amber thresholds (acceptable, weight-only)
+        if ess_frac >= 0.20 and tail_ratio <= 500:
+            return "amber"
 
     return "red"
 
