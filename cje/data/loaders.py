@@ -128,17 +128,9 @@ class DatasetLoader:
         return sorted(list(policies))
 
     def _convert_record_to_sample(self, record: Dict[str, Any]) -> Sample:
-        """Convert a single record to a Sample.
-
-        NOTE: Temporarily supports prompt_id in metadata for backward compatibility.
-        New data should always have prompt_id as a top-level field.
-        """
-        # Get prompt_id - check both top-level and metadata for backward compatibility
-        # TODO: Remove metadata fallback once all data is migrated
+        """Convert a single record to a Sample."""
+        # Get prompt_id - required top-level field
         prompt_id = record.get("prompt_id")
-        if prompt_id is None and "metadata" in record:
-            # Backward compatibility: check metadata for old data format
-            prompt_id = record.get("metadata", {}).get("prompt_id")
         if prompt_id is None:
             raise ValueError("Record missing required 'prompt_id' field")
 

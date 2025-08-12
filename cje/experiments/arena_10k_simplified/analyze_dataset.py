@@ -54,6 +54,70 @@ except ImportError:
     _viz_available = False
 
 
+def migrate_prompt_id_if_needed(filepath: str) -> None:
+    """Migrate prompt_id from metadata to top-level if needed.
+
+    This provides backward compatibility for old data format where
+    prompt_id was stored in metadata instead of as a top-level field.
+    """
+    import json
+    from pathlib import Path
+
+    path = Path(filepath)
+    if not path.exists():
+        return
+
+    # Check first line to see if migration is needed
+    with open(path, "r") as f:
+        first_line = f.readline()
+        if not first_line:
+            return
+
+        try:
+            first_record = json.loads(first_line)
+            # If prompt_id already at top level, no migration needed
+            if "prompt_id" in first_record:
+                return
+            # If no prompt_id in metadata either, skip
+            if "metadata" not in first_record or "prompt_id" not in first_record.get(
+                "metadata", {}
+            ):
+                return
+        except json.JSONDecodeError:
+            return
+
+    # Migration needed - read all lines and migrate
+    print(f"   ⚠️  Migrating prompt_id from metadata to top-level in {filepath}")
+    lines = []
+
+    with open(path, "r") as f:
+        for line in f:
+            if not line.strip():
+                lines.append(line)
+                continue
+
+            try:
+                data = json.loads(line)
+                # Move prompt_id if it's in metadata
+                if (
+                    "prompt_id" not in data
+                    and "metadata" in data
+                    and "prompt_id" in data["metadata"]
+                ):
+                    data["prompt_id"] = data["metadata"]["prompt_id"]
+                    del data["metadata"]["prompt_id"]
+
+                lines.append(json.dumps(data) + "\n")
+            except json.JSONDecodeError:
+                lines.append(line)
+
+    # Write back the migrated data
+    with open(path, "w") as f:
+        f.writelines(lines)
+
+    print(f"   ✓ Migration complete")
+
+
 def main() -> int:
     """Run complete CJE analysis workflow."""
     import argparse
@@ -151,6 +215,10 @@ def main() -> int:
 
     # Step 1: Load data (no rewards required)
     print("\n1. Loading dataset...")
+
+    # Migrate prompt_id if needed for backward compatibility
+    migrate_prompt_id_if_needed(args.data)
+
     dataset = load_dataset_from_jsonl(args.data)
     print(f"   ✓ Loaded {dataset.n_samples} samples")
     print(f"   ✓ Target policies: {dataset.target_policies}")
