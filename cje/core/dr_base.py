@@ -164,13 +164,6 @@ class DREstimator(BaseCJEEstimator):
 
     def _fit_outcome_model(self) -> None:
         """Fit the outcome model on logged data."""
-        # Collect logged data - only include samples that are valid for at least one policy
-        prompts = []
-        responses = []
-        rewards = []
-        judge_scores = []
-        valid_fold_assignments = []
-
         # Get indices of samples that are valid for at least one policy
         valid_for_any: set[int] = set()
         for policy in self.sampler.target_policies:
@@ -179,6 +172,40 @@ class DREstimator(BaseCJEEstimator):
 
         # Sort to maintain order
         valid_indices_list = sorted(valid_for_any)
+
+        # Upfront validation: Check all samples have judge scores
+        missing_judge_scores = []
+        invalid_judge_scores = []
+        for idx in valid_indices_list:
+            sample = self.sampler.dataset.samples[idx]
+            if "judge_score" not in sample.metadata:
+                missing_judge_scores.append((idx, sample.prompt_id))
+            elif sample.metadata["judge_score"] is None:
+                invalid_judge_scores.append((idx, sample.prompt_id))
+            elif not isinstance(sample.metadata["judge_score"], (int, float)):
+                invalid_judge_scores.append((idx, sample.prompt_id))
+
+        if missing_judge_scores:
+            example_ids = [str(pid) for _, pid in missing_judge_scores[:3]]
+            raise ValueError(
+                f"DR requires judge_score for all samples. Missing {len(missing_judge_scores)} scores. "
+                f"Example prompt_ids: {example_ids}. "
+                f"Run calibrate_dataset(..., enable_cross_fit=True) with judge_field specified."
+            )
+
+        if invalid_judge_scores:
+            example_ids = [str(pid) for _, pid in invalid_judge_scores[:3]]
+            raise ValueError(
+                f"DR requires numeric judge_score for all samples. {len(invalid_judge_scores)} invalid. "
+                f"Example prompt_ids: {example_ids}."
+            )
+
+        # Collect logged data
+        prompts = []
+        responses = []
+        rewards = []
+        judge_scores = []
+        valid_fold_assignments = []
 
         for idx in valid_indices_list:
             sample = self.sampler.dataset.samples[idx]
@@ -296,22 +323,28 @@ class DREstimator(BaseCJEEstimator):
                 logged_prompt_ids.append(str(d["prompt_id"]))
 
             # Get fold assignments using precomputed mapping (O(1) lookups)
+            # Strict mode: error if any prompt_id is missing fold assignment
             valid_fold_ids_list = []
             if self._promptid_to_fold:
+                unknown_pids = []
                 for pid in logged_prompt_ids:
-                    fold = self._promptid_to_fold.get(pid, 0)
-                    valid_fold_ids_list.append(fold)
-            valid_fold_ids = np.array(valid_fold_ids_list)
+                    if pid not in self._promptid_to_fold:
+                        unknown_pids.append(pid)
+                    else:
+                        valid_fold_ids_list.append(self._promptid_to_fold[pid])
 
-            # Verify we have the right number of fold assignments
-            if len(valid_fold_ids) != len(logged_prompts):
-                logger.warning(
-                    f"Could not find fold assignments for all samples in policy {policy}: "
-                    f"have {len(valid_fold_ids)} fold IDs for {len(logged_prompts)} samples"
+                if unknown_pids:
+                    raise ValueError(
+                        f"Missing fold assignments for {len(unknown_pids)} samples in policy '{policy}'. "
+                        f"Example prompt_ids: {unknown_pids[:3]}. "
+                        f"Ensure calibration was done with enable_cross_fit=True or provide explicit fold assignments."
+                    )
+            else:
+                raise ValueError(
+                    f"No fold assignments available for DR estimation. "
+                    f"Ensure calibration was done with enable_cross_fit=True."
                 )
-                # Fall back to using first fold for missing samples
-                while len(valid_fold_ids) < len(logged_prompts):
-                    valid_fold_ids = np.append(valid_fold_ids, 0)
+            valid_fold_ids = np.array(valid_fold_ids_list)
 
             # Get outcome model predictions for logged data (using cross-fitted models)
             # Both IsotonicOutcomeModel and BaseOutcomeModel-derived classes need fold_ids

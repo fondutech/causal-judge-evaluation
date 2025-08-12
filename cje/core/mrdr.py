@@ -34,21 +34,27 @@ class WeightedIsotonicOutcomeModel(BaseOutcomeModel):
         """Set the sample weights for training."""
         self.sample_weights = weights
 
+    def _get_fold_fit_kwargs(self, train_mask: np.ndarray) -> dict:
+        """Get fold-specific kwargs for training (subsets sample weights)."""
+        if self.sample_weights is None:
+            return {}
+        # Subset weights to match training fold
+        return {"sample_weight": self.sample_weights[train_mask]}
+
     def _fit_single_model(
         self,
         prompts: List[str],
         responses: List[str],
         rewards: np.ndarray,
         judge_scores: np.ndarray,
+        sample_weight: Optional[np.ndarray] = None,
     ) -> Any:
         """Fit a weighted isotonic regression model on training data."""
         model = IsotonicRegression(out_of_bounds="clip")
 
-        # Use sample weights if they've been set
-        if self.sample_weights is not None:
-            # Note: This assumes sample_weights are aligned with the training data
-            # In practice, MRDR would need to track indices properly
-            model.fit(judge_scores, rewards, sample_weight=self.sample_weights)
+        # Use provided sample weights (already subset by _get_fold_fit_kwargs)
+        if sample_weight is not None:
+            model.fit(judge_scores, rewards, sample_weight=sample_weight)
         else:
             model.fit(judge_scores, rewards)
         return model

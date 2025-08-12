@@ -140,8 +140,17 @@ class BaseOutcomeModel(ABC):
             train_rewards = rewards[train_mask]
             train_scores = judge_scores[train_mask]
 
+            # Allow subclasses to provide fold-specific kwargs (e.g., sample weights)
+            extra_kwargs = {}
+            if hasattr(self, "_get_fold_fit_kwargs"):
+                extra_kwargs = self._get_fold_fit_kwargs(train_mask_arr)
+
             model = self._fit_single_model(
-                train_prompts, train_responses, train_rewards, train_scores
+                train_prompts,
+                train_responses,
+                train_rewards,
+                train_scores,
+                **extra_kwargs,
             )
             self.fold_models[fold] = model
 

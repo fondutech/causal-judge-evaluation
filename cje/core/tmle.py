@@ -124,9 +124,18 @@ class TMLEEstimator(DREstimator):
             prompts = [d["prompt"] for d in data]
             responses = [d["response"] for d in data]
 
-            # Get fold assignments
+            # Get fold assignments - strict mode (no fallback)
+            unknown_pids = [
+                pid for pid in prompt_ids if pid not in self._promptid_to_fold
+            ]
+            if unknown_pids:
+                raise ValueError(
+                    f"Missing fold assignments for {len(unknown_pids)} samples in policy '{policy}'. "
+                    f"Example prompt_ids: {unknown_pids[:3]}. "
+                    f"Ensure calibration was done with enable_cross_fit=True."
+                )
             fold_ids = np.array(
-                [self._promptid_to_fold.get(pid, 0) for pid in prompt_ids], dtype=int
+                [self._promptid_to_fold[pid] for pid in prompt_ids], dtype=int
             )
 
             # 1) Get initial cross-fitted predictions on logged data
@@ -255,8 +264,18 @@ class TMLEEstimator(DREstimator):
             prompts = [d["prompt"] for d in data]
             responses = [d["response"] for d in data]
 
+            # Get fold assignments - strict mode (no fallback)
+            unknown_pids = [
+                pid for pid in prompt_ids if pid not in self._promptid_to_fold
+            ]
+            if unknown_pids:
+                raise ValueError(
+                    f"Missing fold assignments for {len(unknown_pids)} samples in policy '{policy}'. "
+                    f"Example prompt_ids: {unknown_pids[:3]}. "
+                    f"Ensure calibration was done with enable_cross_fit=True."
+                )
             fold_ids = np.array(
-                [self._promptid_to_fold.get(pid, 0) for pid in prompt_ids], dtype=int
+                [self._promptid_to_fold[pid] for pid in prompt_ids], dtype=int
             )
 
             # Get ORIGINAL predictions (not targeted) for honest R²
