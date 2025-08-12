@@ -35,6 +35,8 @@ from .core import (
 # Import DR estimators if available
 try:
     from .core.dr_base import DREstimator, DRCPOEstimator
+    from .core.mrdr import MRDREstimator
+    from .core.tmle import TMLEEstimator
     from .core.outcome_models import (
         BaseOutcomeModel,
         IsotonicOutcomeModel,
@@ -46,6 +48,7 @@ try:
         validate_fresh_draws,
         create_synthetic_fresh_draws,
         save_fresh_draws_to_jsonl,
+        load_fresh_draws_auto,
     )
 
     _dr_available = True
@@ -125,6 +128,12 @@ from .teacher_forcing import (
     convert_chat_to_completions,
 )
 
+# High-level analysis API
+from .analysis import analyze_dataset
+
+# Export utilities
+from .utils.export import export_results_json, export_results_csv
+
 __version__ = "0.1.3"
 
 __all__ = [
@@ -134,6 +143,8 @@ __all__ = [
     "RawIPS",
     "PrecomputedSampler",
     "compute_teacher_forced_logprob",
+    # High-level API
+    "analyze_dataset",
     # Data models
     "Sample",
     "Dataset",
@@ -163,6 +174,9 @@ __all__ = [
     "calibrate_from_raw_data",
     # Reward utilities
     "add_rewards_to_existing_data",
+    # Export utilities
+    "export_results_json",
+    "export_results_csv",
     # Chat support
     "ChatTemplateConfig",
     "Llama3TemplateConfig",
@@ -188,6 +202,8 @@ if _dr_available:
             # DR estimators
             "DREstimator",
             "DRCPOEstimator",
+            "MRDREstimator",
+            "TMLEEstimator",
             # Outcome models
             "BaseOutcomeModel",
             "IsotonicOutcomeModel",
@@ -200,5 +216,6 @@ if _dr_available:
             "validate_fresh_draws",
             "create_synthetic_fresh_draws",
             "save_fresh_draws_to_jsonl",
+            "load_fresh_draws_auto",
         ]
     )

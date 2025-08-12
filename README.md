@@ -22,26 +22,60 @@ pip install -e .
 
 ## Quick Start
 
+### Command Line Interface
+
+```bash
+# Analyze a dataset with default settings
+python -m cje analyze data.jsonl
+
+# Use specific estimator with options
+python -m cje analyze data.jsonl --estimator dr-cpo --oracle-coverage 0.5
+
+# Validate dataset format
+python -m cje validate data.jsonl
+
+# Export results to JSON
+python -m cje analyze data.jsonl --output results.json
+```
+
+### Python API
+
 ```python
+# High-level API (recommended)
+from cje import analyze_dataset
+
+results = analyze_dataset(
+    "data.jsonl",
+    estimator="calibrated-ips",
+    oracle_coverage=0.5
+)
+print(f"Best policy: {results.best_policy()}")
+
+# Lower-level API for more control
 from cje import (
     load_dataset_from_jsonl,
     PrecomputedSampler,
     CalibratedIPS
 )
 
-# Load data with precomputed log probabilities
 dataset = load_dataset_from_jsonl("data.jsonl")
-
-# Create sampler and estimator
 sampler = PrecomputedSampler(dataset)
 estimator = CalibratedIPS(sampler)
-
-# Get unbiased policy estimates
 results = estimator.fit_and_estimate()
-print(f"Best policy: {results.best_policy()}")
 ```
 
 ## Key Features
+
+### 🚀 New: Command Line Interface
+- `analyze` - Run CJE analysis on datasets
+- `validate` - Check dataset format and completeness
+- Export results to JSON/CSV formats
+- Support for all estimators and configurations
+
+### 🎯 New: High-Level API
+- `analyze_dataset()` - One-line analysis function
+- Automatic calibration and fresh draw handling
+- Smart defaults with full configurability
 
 ### Estimators
 - **CalibratedIPS** - Variance-controlled IPS with isotonic calibration (recommended)
@@ -86,11 +120,58 @@ result = compute_teacher_forced_logprob(
 )
 ```
 
+## CLI Usage
+
+### Available Commands
+
+#### `analyze` - Run CJE analysis
+```bash
+python -m cje analyze <dataset> [options]
+
+Options:
+  --estimator {calibrated-ips,raw-ips,dr-cpo,mrdr,tmle}
+                        Estimation method (default: calibrated-ips)
+  --oracle-coverage FLOAT
+                        Fraction of oracle labels for calibration (0.0-1.0)
+  --output PATH         Save results to JSON file
+  --fresh-draws-dir DIR Directory containing fresh draw responses (for DR)
+  --estimator-config JSON
+                        JSON config for estimator (e.g., '{"n_folds": 10}')
+  --judge-field FIELD   Metadata field with judge scores (default: judge_score)
+  --oracle-field FIELD  Metadata field with oracle labels (default: oracle_label)
+  -v, --verbose         Enable verbose output
+  -q, --quiet           Suppress non-essential output
+```
+
+#### `validate` - Check dataset format
+```bash
+python -m cje validate <dataset> [options]
+
+Options:
+  -v, --verbose         Show detailed validation results
+```
+
+### Export Formats
+
+```python
+from cje import analyze_dataset, export_results_json, export_results_csv
+
+# Analyze
+results = analyze_dataset("data.jsonl")
+
+# Export to JSON (includes full metadata and diagnostics)
+export_results_json(results, "results.json")
+
+# Export to CSV (tabular format for analysis)
+export_results_csv(results, "results.csv")
+```
+
 ## Documentation
 
 Full documentation available at: https://causal-judge-evaluation.readthedocs.io
 
 - [Getting Started](docs/getting_started.rst)
+- [CLI Reference](docs/cli.rst)
 - [Data Format Guide](docs/data_format.rst)
 - [Estimators Guide](docs/estimators.rst)
 - [API Reference](docs/api/)
@@ -101,8 +182,13 @@ Full documentation available at: https://causal-judge-evaluation.readthedocs.io
 # Run all tests
 poetry run pytest cje/tests/
 
-# Run specific test
-poetry run pytest cje/tests/test_pipeline.py -v
+# Run specific test suites
+poetry run pytest cje/tests/test_cli.py -v      # CLI tests
+poetry run pytest cje/tests/test_analysis.py -v # High-level API tests
+poetry run pytest cje/tests/test_export.py -v   # Export functionality
+
+# Run with coverage
+poetry run pytest cje/tests/ --cov=cje --cov-report=html
 ```
 
 ## License

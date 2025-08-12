@@ -205,6 +205,10 @@ target_samples.jsonl
 *_checkpoint.jsonl
 pi0_data*.jsonl
 
+# Test data - explicitly include for version control
+!cje/tests/data/
+!cje/tests/data/**/*.jsonl
+
 # API keys and credentials
 *.key
 *.pem

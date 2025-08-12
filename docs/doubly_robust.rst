@@ -104,10 +104,15 @@ The DR implementation uses inheritance and composition:
 
 .. code-block:: text
 
-   DREstimator (inherits from CalibratedIPS)
-   ├── Reuses all weight machinery
+   DREstimator (inherits from BaseCJEEstimator)
+   ├── Composes IPS estimator (CalibratedIPS or RawIPS)
    ├── Adds outcome modeling
    └── Composes outcome model (not inherited)
+   
+   Specific DR Estimators (inherit from DREstimator)
+   ├── DRCPOEstimator: Default with isotonic outcome model
+   ├── MRDREstimator: Policy-specific weighted models
+   └── TMLEEstimator: Targeted minimum loss estimation
    
    BaseOutcomeModel (abstract)
    ├── Handles cross-fitting infrastructure

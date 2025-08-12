@@ -164,6 +164,124 @@ def create_synthetic_fresh_draws(
     return dataset
 
 
+def load_fresh_draws_auto(
+    data_dir: Path,
+    policy: str,
+    fallback_synthetic: bool = True,
+    dataset: Optional[Dataset] = None,
+    config: Optional[Dict] = None,
+    verbose: bool = False,
+) -> FreshDrawDataset:
+    """
+    Automatically load fresh draws from files or create synthetic ones.
+
+    This function tries to load fresh draws from standard locations:
+    1. {data_dir}/{policy}_responses.jsonl
+    2. {data_dir}/responses/{policy}_responses.jsonl
+    3. {data_dir}/{policy}_fresh.jsonl
+
+    If no file is found and fallback_synthetic is True, creates synthetic draws.
+
+    Args:
+        data_dir: Directory to search for fresh draw files
+        policy: Target policy name
+        fallback_synthetic: Whether to create synthetic draws if file not found
+        dataset: Dataset for creating synthetic draws (required if fallback_synthetic)
+        config: Configuration for synthetic draws (draws_per_prompt, score_correlation)
+        verbose: Whether to log detailed information
+
+    Returns:
+        FreshDrawDataset for the specified policy
+
+    Raises:
+        FileNotFoundError: If no file found and fallback_synthetic is False
+        ValueError: If fallback_synthetic is True but dataset is None
+    """
+    # Standard file patterns to check
+    possible_files = [
+        data_dir / f"{policy}_responses.jsonl",
+        data_dir / "responses" / f"{policy}_responses.jsonl",
+        data_dir / f"{policy}_fresh.jsonl",
+        data_dir / "fresh_draws" / f"{policy}.jsonl",
+    ]
+
+    # Try to load from each possible location
+    for file_path in possible_files:
+        if file_path.exists():
+            if verbose:
+                logger.info(f"Loading fresh draws from {file_path}")
+
+            try:
+                # Load the file
+                fresh_samples = []
+                with open(file_path, "r") as f:
+                    for line in f:
+                        data = json.loads(line)
+
+                        # Handle different formats
+                        fresh_sample = FreshDrawSample(
+                            prompt_id=str(data.get("prompt_id")),
+                            target_policy=policy,
+                            response=data.get("response", ""),
+                            judge_score=data.get("judge_score")
+                            or data.get("metadata", {}).get("judge_score", 0.5),
+                            draw_idx=data.get("draw_idx", 0),
+                            fold_id=data.get("fold_id"),
+                        )
+                        fresh_samples.append(fresh_sample)
+
+                # Create dataset
+                fresh_dataset = FreshDrawDataset(
+                    target_policy=policy,
+                    draws_per_prompt=1,  # Will be updated based on actual data
+                    samples=fresh_samples,
+                )
+
+                # Update draws_per_prompt based on actual data
+                prompt_counts: Dict[str, int] = {}
+                for sample in fresh_samples:
+                    prompt_counts[sample.prompt_id] = (
+                        prompt_counts.get(sample.prompt_id, 0) + 1
+                    )
+                if prompt_counts:
+                    fresh_dataset.draws_per_prompt = max(prompt_counts.values())
+
+                if verbose:
+                    logger.info(
+                        f"Loaded {len(fresh_samples)} fresh draws for {policy} "
+                        f"({len(prompt_counts)} unique prompts)"
+                    )
+
+                return fresh_dataset
+
+            except Exception as e:
+                logger.warning(f"Failed to load {file_path}: {e}")
+                continue
+
+    # No file found - fall back to synthetic if requested
+    if fallback_synthetic:
+        if dataset is None:
+            raise ValueError("Dataset required for creating synthetic fresh draws")
+
+        if verbose:
+            logger.info(f"No fresh draw file found for {policy}, creating synthetic")
+
+        config = config or {}
+        return create_synthetic_fresh_draws(
+            dataset,
+            target_policy=policy,
+            draws_per_prompt=config.get("draws_per_prompt", 10),
+            score_correlation=config.get("score_correlation", 0.9),
+            seed=42 + hash(policy) % 1000,
+        )
+
+    else:
+        searched_paths = "\n  ".join(str(p) for p in possible_files)
+        raise FileNotFoundError(
+            f"No fresh draw file found for policy '{policy}'. Searched:\n  {searched_paths}"
+        )
+
+
 def save_fresh_draws_to_jsonl(
     datasets: Dict[str, FreshDrawDataset],
     path: str,

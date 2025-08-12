@@ -40,10 +40,53 @@ Core Workflow
 3. **Get Judge Scores**: Use an AI judge to evaluate response quality
 4. **Run CJE**: Get unbiased estimates of target policy performance
 
-Example: Comparing Models
--------------------------
+Quickest Start: Command Line
+-----------------------------
 
-Let's compare GPT-3.5 vs GPT-4 using historical GPT-3.5 data:
+The fastest way to get started is using the CLI:
+
+.. code-block:: bash
+
+   # Validate your data
+   python -m cje validate data.jsonl
+   
+   # Run analysis
+   python -m cje analyze data.jsonl
+   
+   # Save results
+   python -m cje analyze data.jsonl --output results.json
+
+The CLI will automatically handle calibration, weight computation, and estimation.
+
+Example: High-Level API
+------------------------
+
+The simplest way to analyze a dataset programmatically:
+
+.. code-block:: python
+
+   from cje import analyze_dataset
+   
+   # One-line analysis
+   results = analyze_dataset(
+       "data.jsonl",
+       estimator="calibrated-ips",
+       oracle_coverage=0.5  # Use 50% of oracle labels
+   )
+   
+   # Check results
+   print(f"Best policy: {results.best_policy()}")
+   print(f"Estimates: {results.estimates}")
+   print(f"Standard errors: {results.standard_errors}")
+   
+   # Export results
+   from cje import export_results_json
+   export_results_json(results, "results.json")
+
+Example: Detailed Workflow
+---------------------------
+
+For more control over the process:
 
 .. code-block:: python
 
