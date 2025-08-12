@@ -68,9 +68,17 @@ print(f"Best policy: {results.best_policy()}")
 ```
 
 ### Computing Log Probabilities
+
+**Note:** Teacher forcing (computing log probabilities for a given completion) requires specific API support:
+- **Fireworks AI** ✅ (Currently supported - full implementation via `compute_teacher_forced_logprob`)
+- **Together AI** 🔄 (Has API support but not yet integrated in CJE)
+- **OpenAI** ❌ (Does not support teacher forcing)
+- **Anthropic** ❌ (Does not support teacher forcing)
+
 ```python
 from cje import compute_teacher_forced_logprob
 
+# Works with Fireworks AI models
 result = compute_teacher_forced_logprob(
     prompt="What is 2+2?",
     response="The answer is 4.",
