@@ -23,7 +23,8 @@ Basic Usage
 
 .. code-block:: python
 
-   from cje import DRCPOEstimator, load_fresh_draws_from_jsonl
+   from cje import DRCPOEstimator
+   from cje.utils.fresh_draws import load_fresh_draws_from_jsonl
    
    # Create DR estimator
    dr = DRCPOEstimator(sampler, n_folds=5)
@@ -75,7 +76,7 @@ Create synthetic draws with controlled correlation:
 
 .. code-block:: python
 
-   from cje import create_synthetic_fresh_draws
+   from cje.utils.fresh_draws import create_synthetic_fresh_draws
    
    fresh_draws = create_synthetic_fresh_draws(
        dataset,

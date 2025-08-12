@@ -39,6 +39,7 @@ class LogProbResult(BaseModel):
 class Sample(BaseModel):
     """A single sample for CJE analysis."""
 
+    prompt_id: str = Field(..., description="Unique identifier for the prompt")
     prompt: str = Field(..., description="Input prompt/context")
     response: str = Field(..., description="Generated response")
     reward: Optional[float] = Field(
@@ -51,7 +52,8 @@ class Sample(BaseModel):
         ..., description="Log probs under target policies (None for failures)"
     )
     metadata: Dict[str, Any] = Field(
-        default_factory=dict, description="Optional metadata"
+        default_factory=dict,
+        description="Optional metadata (judge_score, oracle_label, etc.)",
     )
 
     @field_validator("base_policy_logprob")

@@ -6,11 +6,12 @@ This guide explains the data format requirements for CJE.
 Required Fields
 ---------------
 
-Each sample in your JSONL file must have these fields:
+Core fields required in every sample:
 
 .. code-block:: json
 
    {
+     "prompt_id": "unique_id_123",
      "prompt": "string",
      "response": "string", 
      "base_policy_logprob": -12.345,
@@ -20,8 +21,23 @@ Each sample in your JSONL file must have these fields:
      }
    }
 
+For evaluation, you need one of these approaches:
+
+**Option A: Pre-calibrated rewards**
+   Include a ``reward`` field (0-1 range) in each sample
+
+**Option B: Judge scores with oracle calibration** (recommended)
+   - ``judge_score`` in metadata for ALL samples
+   - ``oracle_label`` in metadata for calibration:
+     - Absolute minimum: 10 samples (will error below this)
+     - Recommended minimum: 50-100 samples for robust calibration
+     - Best practice: 100+ samples for production use
+
 Field Descriptions
 ------------------
+
+**prompt_id** (string)
+   Unique identifier for the prompt. Required for DR estimation, cross-validation, and analysis.
 
 **prompt** (string)
    The input prompt or question
@@ -37,20 +53,30 @@ Field Descriptions
    Dictionary mapping target policy names to their log probabilities.
    Use ``null`` for failed computations.
 
-Optional Fields
----------------
+Evaluation Fields
+-----------------
 
 **reward** (float, 0-1)
-   Pre-calibrated reward if already computed.
-   If not present, will be computed from judge scores.
+   Calibrated reward value. Either provided directly or computed from judge scores.
 
-**metadata** (dict)
-   Additional fields are automatically collected here:
+**metadata.judge_score** (float)
+   AI judge evaluation score. Required if ``reward`` not provided.
    
-   - ``judge_score``: AI judge evaluation score
-   - ``oracle_label``: Ground truth label for calibration
-   - ``prompt_id``: Unique identifier for the prompt
-   - Any other custom fields
+**metadata.oracle_label** (float)  
+   Ground truth label for calibration.
+   - Minimum: 10 samples (will error if fewer)
+   - Recommended: 50-100 samples for robust calibration
+   - Without oracle labels, calibration is not possible
+
+Optional Metadata
+-----------------
+
+Any additional fields in the data are automatically stored in ``metadata``:
+
+- ``response_length``: Length of generated response
+- ``generation_time``: Time to generate response
+- ``cv_fold``: Pre-assigned cross-validation fold (if using cross-fitting)
+- Any other custom fields
 
 Handling Missing Data
 ---------------------
@@ -76,35 +102,31 @@ Check how many samples remain after filtering:
    if sampler.n_valid_samples < sampler.n_samples * 0.5:
        print("Warning: >50% of samples filtered!")
 
-Judge Scores and Calibration
------------------------------
+Judge Calibration Example
+-------------------------
 
-Judge scores can be raw or calibrated:
-
-**Raw Judge Scores**
-
-.. code-block:: json
-
-   {
-     "metadata": {
-       "judge_score": 7.5  
-     }
-   }
-
-**Calibrated Rewards**
+Calibrating judge scores improves accuracy:
 
 .. code-block:: python
 
-   from cje import calibrate_dataset
+   from cje import load_dataset_from_jsonl, calibrate_dataset
+   
+   # Load data with judge scores and partial oracle labels
+   dataset = load_dataset_from_jsonl("data.jsonl")
    
    # Calibrate judge scores to oracle labels
    calibrated_dataset, stats = calibrate_dataset(
        dataset,
-       judge_field="judge_score",
-       oracle_field="human_rating"
+       judge_field="judge_score",    # Field with judge scores (all samples)
+       oracle_field="oracle_label"   # Field with oracle labels
    )
    
-   # Now samples have calibrated rewards
+   print(f"Calibration used {stats.n_oracle} oracle samples")
+   if stats.n_oracle < 50:
+       print(f"⚠️  Warning: Only {stats.n_oracle} oracle samples. Consider 50-100 for robust calibration.")
+   print(f"RMSE: {stats.calibration_rmse:.3f}")
+   
+   # Now all samples have calibrated rewards
    # sample.reward = calibrated score
 
 Example: Complete Sample
@@ -113,6 +135,7 @@ Example: Complete Sample
 .. code-block:: json
 
    {
+     "prompt_id": "qc_explain_001",
      "prompt": "Explain quantum computing to a 5-year-old",
      "response": "Quantum computing is like having a magic box...",
      "base_policy_logprob": -245.67,
@@ -122,7 +145,6 @@ Example: Complete Sample
        "claude": -201.89
      },
      "metadata": {
-       "prompt_id": "qc_explain_001",
        "judge_score": 8.5,
        "oracle_label": 0.85,
        "response_length": 127,
@@ -143,6 +165,7 @@ For testing, you can create synthetic data:
    samples = []
    for i in range(100):
        sample = Sample(
+           prompt_id=f"test_{i}",
            prompt=f"Question {i}",
            response=f"Answer {i}",
            base_policy_logprob=-10.0 - i*0.1,

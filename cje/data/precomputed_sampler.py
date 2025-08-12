@@ -185,7 +185,7 @@ class PrecomputedSampler:
                         ],
                         "prompt": record["context"],
                         "response": record["response"],
-                        "prompt_id": sample.metadata.get("prompt_id"),
+                        "prompt_id": sample.prompt_id,
                         "judge_score": sample.metadata.get("judge_score"),
                     }
                 )

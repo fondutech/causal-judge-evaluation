@@ -114,6 +114,7 @@ def calibrate_dataset(
             new_metadata["cv_fold"] = int(result.fold_ids[i])
 
         calibrated_sample = Sample(
+            prompt_id=sample.prompt_id,
             prompt=sample.prompt,
             response=sample.response,
             reward=float(result.calibrated_scores[i]),

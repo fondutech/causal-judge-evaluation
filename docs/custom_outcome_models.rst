@@ -230,7 +230,8 @@ Test custom models before production use:
 
 .. code-block:: python
 
-   from cje import DRCPOEstimator, create_synthetic_fresh_draws
+   from cje import DRCPOEstimator, PrecomputedSampler
+   from cje.utils.fresh_draws import create_synthetic_fresh_draws
    
    # Create test data
    test_dataset = create_test_dataset(n_samples=1000)

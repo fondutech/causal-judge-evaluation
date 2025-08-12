@@ -1,5 +1,7 @@
 # Causal Judge Evaluation (CJE)
 
+![CJE Logo](docs/img/CJE_logo.svg)
+
 Production-ready framework for unbiased LLM evaluation using causal inference.
 
 ## Overview

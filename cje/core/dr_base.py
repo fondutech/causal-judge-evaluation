@@ -208,13 +208,7 @@ class DREstimator(CalibratedIPS):
         if fold_assignments_array is not None:
             for idx, fold in zip(valid_indices_list, fold_assignments_array):
                 sample = self.sampler.dataset.samples[idx]
-                # Require prompt_id for DR
-                if "prompt_id" not in sample.metadata:
-                    raise ValueError(
-                        f"Sample at index {idx} missing 'prompt_id' in metadata. "
-                        f"DR estimation requires prompt_id for all samples to align with fresh draws."
-                    )
-                pid = str(sample.metadata["prompt_id"])
+                pid = str(sample.prompt_id)
                 self._promptid_to_fold[pid] = int(fold)
 
         self._outcome_fitted = True

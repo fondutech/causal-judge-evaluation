@@ -99,7 +99,8 @@ Combines outcome modeling with IPS correction:
 
 .. code-block:: python
 
-   from cje import DRCPOEstimator, calibrate_dataset, create_synthetic_fresh_draws
+   from cje import DRCPOEstimator, calibrate_dataset, PrecomputedSampler
+   from cje.utils.fresh_draws import create_synthetic_fresh_draws
    
    # Calibrate with cross-fitting for optimal DR
    calibrated_dataset, cal_result = calibrate_dataset(
@@ -149,6 +150,8 @@ Uses policy-specific weighted outcome models:
 .. code-block:: python
 
    from cje.core.mrdr import MRDREstimator
+   from cje import calibrate_dataset, PrecomputedSampler
+   from cje.utils.fresh_draws import create_synthetic_fresh_draws
    
    # Requires cross-fitted calibration
    calibrated_dataset, cal_result = calibrate_dataset(
@@ -197,6 +200,8 @@ Uses a targeting step to optimize bias-variance tradeoff:
 .. code-block:: python
 
    from cje.core.tmle import TMLEEstimator
+   from cje import calibrate_dataset, PrecomputedSampler
+   from cje.utils.fresh_draws import create_synthetic_fresh_draws
    
    # Requires cross-fitted calibration
    calibrated_dataset, cal_result = calibrate_dataset(

@@ -1,6 +1,11 @@
 Causal Judge Evaluation Documentation
 ======================================
 
+.. image:: img/CJE_logo.svg
+   :align: center
+   :alt: CJE Logo
+   :width: 400px
+
 Production-ready framework for unbiased LLM evaluation using causal inference.
 
 Quick Start

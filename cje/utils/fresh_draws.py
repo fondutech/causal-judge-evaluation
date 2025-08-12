@@ -3,18 +3,21 @@
 import json
 from pathlib import Path
 from typing import Dict, List, Optional
-from collections import defaultdict
 import numpy as np
 import logging
 
 from ..data.fresh_draws import FreshDrawSample, FreshDrawDataset
 from ..data.models import Dataset
+from ..data.loaders import FreshDrawLoader
 
 logger = logging.getLogger(__name__)
 
 
 def load_fresh_draws_from_jsonl(path: str) -> Dict[str, FreshDrawDataset]:
     """Load fresh draws from JSONL file, grouped by policy.
+
+    This function delegates to FreshDrawLoader in the data module
+    for consistency with other data loading operations.
 
     Expected JSONL format:
     {"prompt_id": "0", "target_policy": "premium", "judge_score": 0.85, "draw_idx": 0}
@@ -27,61 +30,7 @@ def load_fresh_draws_from_jsonl(path: str) -> Dict[str, FreshDrawDataset]:
     Returns:
         Dict mapping policy names to FreshDrawDataset objects
     """
-    path_obj = Path(path)
-    if not path_obj.exists():
-        raise FileNotFoundError(f"Fresh draws file not found: {path_obj}")
-
-    # Group samples by policy
-    samples_by_policy: Dict[str, List[FreshDrawSample]] = defaultdict(list)
-
-    with open(path_obj, "r") as f:
-        for line_num, line in enumerate(f, 1):
-            try:
-                data = json.loads(line)
-
-                # Create FreshDrawSample
-                sample = FreshDrawSample(
-                    prompt_id=data["prompt_id"],
-                    target_policy=data["target_policy"],
-                    judge_score=data["judge_score"],
-                    response=data.get("response"),  # Optional
-                    draw_idx=data.get("draw_idx", 0),  # Default to 0 if not provided
-                )
-
-                samples_by_policy[sample.target_policy].append(sample)
-
-            except (json.JSONDecodeError, KeyError, ValueError) as e:
-                logger.warning(f"Skipping invalid line {line_num}: {e}")
-
-    # Create FreshDrawDataset for each policy
-    datasets = {}
-    for policy, samples in samples_by_policy.items():
-        # Determine draws_per_prompt
-        prompt_counts: Dict[str, int] = defaultdict(int)
-        for sample in samples:
-            prompt_counts[sample.prompt_id] += 1
-
-        # Check consistency
-        unique_counts = set(prompt_counts.values())
-        if len(unique_counts) > 1:
-            logger.warning(
-                f"Inconsistent draws per prompt for policy '{policy}': {unique_counts}"
-            )
-
-        draws_per_prompt = max(prompt_counts.values()) if prompt_counts else 1
-
-        datasets[policy] = FreshDrawDataset(
-            target_policy=policy,
-            draws_per_prompt=draws_per_prompt,
-            samples=samples,
-        )
-
-        logger.info(
-            f"Loaded {len(samples)} fresh draws for policy '{policy}' "
-            f"({len(prompt_counts)} prompts, {draws_per_prompt} draws/prompt)"
-        )
-
-    return datasets
+    return FreshDrawLoader.load_from_jsonl(path)
 
 
 def validate_fresh_draws(
@@ -108,7 +57,7 @@ def validate_fresh_draws(
         raise ValueError(f"No valid logged samples for policy '{policy}'")
 
     # Get prompt IDs
-    logged_ids = {s.metadata.get("prompt_id") for s in valid_samples}
+    logged_ids = {s.prompt_id for s in valid_samples}
     fresh_ids = set(fresh_draws.get_prompt_ids())
 
     # Check coverage
@@ -184,7 +133,7 @@ def create_synthetic_fresh_draws(
 
     samples: List[FreshDrawSample] = []
     for sample in valid_samples:
-        prompt_id = sample.metadata.get("prompt_id", f"synthetic_{len(samples)}")
+        prompt_id = sample.prompt_id
         base_score = sample.metadata.get("judge_score", 0.5)
 
         for draw_idx in range(draws_per_prompt):

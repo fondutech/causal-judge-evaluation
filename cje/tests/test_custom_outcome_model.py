@@ -73,6 +73,7 @@ def create_test_dataset(n_samples: int = 100) -> Dataset:
         oracle_label = np.clip(oracle_label, 0, 1)
 
         sample = Sample(
+            prompt_id=f"test_{i}",
             prompt=f"Question {i}",
             response=f"Answer {i}",
             base_policy_logprob=-10.0 - i * 0.05,
@@ -81,7 +82,6 @@ def create_test_dataset(n_samples: int = 100) -> Dataset:
             },
             reward=None,
             metadata={
-                "prompt_id": f"test_{i}",
                 "judge_score": float(judge_score),
                 "oracle_label": float(oracle_label) if i < 50 else None,  # 50% coverage
             },

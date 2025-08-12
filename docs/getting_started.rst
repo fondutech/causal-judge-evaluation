@@ -84,6 +84,7 @@ Your data should be in JSONL format with these required fields:
 .. code-block:: json
 
    {
+     "prompt_id": "q_001",
      "prompt": "What is machine learning?",
      "response": "Machine learning is...",
      "base_policy_logprob": -35.704,
@@ -99,6 +100,7 @@ Your data should be in JSONL format with these required fields:
 
 Key fields:
 
+- ``prompt_id``: Unique identifier for the prompt (required)
 - ``base_policy_logprob``: Log probability from your current model
 - ``target_policy_logprobs``: Log probabilities from models you want to evaluate
 - ``metadata``: Additional fields like judge scores and oracle labels

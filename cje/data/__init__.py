@@ -21,6 +21,10 @@ from .models import (
 )
 from .factory import DatasetFactory, default_factory
 from .loaders import DatasetLoader, JsonlDataSource, InMemoryDataSource
+from .validation import (
+    validate_cje_data,
+    validate_for_precomputed_sampler,
+)
 
 __all__ = [
     # Data loading
@@ -38,4 +42,7 @@ __all__ = [
     "LogProbResult",
     # Utilities
     "add_rewards_to_existing_data",
+    # Validation
+    "validate_cje_data",
+    "validate_for_precomputed_sampler",
 ]

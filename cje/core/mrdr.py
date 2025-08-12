@@ -306,10 +306,7 @@ class MRDREstimator(CalibratedIPS):
         rng = np.random.RandomState(42)
 
         for i, s in enumerate(self.sampler.dataset.samples):
-            pid = s.metadata.get("prompt_id")
-            if pid is None:
-                # DR/MRDR requires prompt_id to align logged ↔ fresh; fail later if missing in data paths
-                continue
+            pid = s.prompt_id
             if "cv_fold" in s.metadata:
                 fold = int(s.metadata["cv_fold"])
             else:

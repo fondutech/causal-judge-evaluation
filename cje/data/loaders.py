@@ -5,10 +5,16 @@ following the Single Responsibility Principle.
 """
 
 import json
+import logging
 from typing import List, Dict, Any, Optional, Protocol
 from abc import ABC, abstractmethod
+from collections import defaultdict
+from pathlib import Path
 
 from .models import Dataset, Sample
+from .fresh_draws import FreshDrawSample, FreshDrawDataset
+
+logger = logging.getLogger(__name__)
 
 
 class DataSource(Protocol):
@@ -122,7 +128,20 @@ class DatasetLoader:
         return sorted(list(policies))
 
     def _convert_record_to_sample(self, record: Dict[str, Any]) -> Sample:
-        """Convert a single record to a Sample."""
+        """Convert a single record to a Sample.
+
+        NOTE: Temporarily supports prompt_id in metadata for backward compatibility.
+        New data should always have prompt_id as a top-level field.
+        """
+        # Get prompt_id - check both top-level and metadata for backward compatibility
+        # TODO: Remove metadata fallback once all data is migrated
+        prompt_id = record.get("prompt_id")
+        if prompt_id is None and "metadata" in record:
+            # Backward compatibility: check metadata for old data format
+            prompt_id = record.get("metadata", {}).get("prompt_id")
+        if prompt_id is None:
+            raise ValueError("Record missing required 'prompt_id' field")
+
         # Extract reward if present (handle nested format)
         reward = None
         if self.reward_field in record:
@@ -143,6 +162,7 @@ class DatasetLoader:
 
         # Add any fields that aren't core fields to metadata
         core_fields = {
+            "prompt_id",
             self.prompt_field,
             self.response_field,
             self.reward_field,
@@ -157,6 +177,7 @@ class DatasetLoader:
 
         # Create Sample object
         return Sample(
+            prompt_id=prompt_id,
             prompt=record[self.prompt_field],
             response=record[self.response_field],
             reward=reward,
@@ -164,3 +185,75 @@ class DatasetLoader:
             target_policy_logprobs=target_logprobs,
             metadata=metadata,
         )
+
+
+class FreshDrawLoader:
+    """Loader for fresh draw samples used in DR estimation."""
+
+    @staticmethod
+    def load_from_jsonl(path: str) -> Dict[str, FreshDrawDataset]:
+        """Load fresh draws from JSONL file, grouped by policy.
+
+        Expected JSONL format:
+        {"prompt_id": "0", "target_policy": "premium", "judge_score": 0.85, "draw_idx": 0}
+        {"prompt_id": "0", "target_policy": "premium", "judge_score": 0.82, "draw_idx": 1}
+        {"prompt_id": "1", "target_policy": "premium", "judge_score": 0.90, "draw_idx": 0}
+
+        Args:
+            path: Path to JSONL file containing fresh draws
+
+        Returns:
+            Dict mapping policy names to FreshDrawDataset objects
+        """
+        path_obj = Path(path)
+        if not path_obj.exists():
+            raise FileNotFoundError(f"Fresh draws file not found: {path_obj}")
+
+        # Group samples by policy
+        samples_by_policy: Dict[str, List[FreshDrawSample]] = defaultdict(list)
+
+        with open(path_obj, "r") as f:
+            for line_num, line in enumerate(f, 1):
+                try:
+                    data = json.loads(line)
+
+                    # Create FreshDrawSample
+                    sample = FreshDrawSample(
+                        prompt_id=data["prompt_id"],
+                        target_policy=data["target_policy"],
+                        judge_score=data["judge_score"],
+                        response=data.get("response"),  # Optional
+                        draw_idx=data.get(
+                            "draw_idx", 0
+                        ),  # Default to 0 if not provided
+                    )
+
+                    samples_by_policy[sample.target_policy].append(sample)
+
+                except (json.JSONDecodeError, KeyError, ValueError) as e:
+                    logger.warning(f"Skipping invalid line {line_num}: {e}")
+
+        # Create FreshDrawDataset for each policy
+        datasets = {}
+        for policy, samples in samples_by_policy.items():
+            # Determine draws_per_prompt
+            prompt_counts: Dict[str, int] = defaultdict(int)
+            for sample in samples:
+                prompt_counts[sample.prompt_id] += 1
+
+            # Check consistency
+            draws_counts = list(prompt_counts.values())
+            if draws_counts and len(set(draws_counts)) > 1:
+                logger.warning(
+                    f"Inconsistent draws per prompt for {policy}: {set(draws_counts)}"
+                )
+
+            draws_per_prompt = max(draws_counts) if draws_counts else 1
+
+            datasets[policy] = FreshDrawDataset(
+                samples=samples,
+                target_policy=policy,
+                draws_per_prompt=draws_per_prompt,
+            )
+
+        return datasets

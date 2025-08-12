@@ -26,6 +26,7 @@ def create_test_dataset(n_samples: int = 20) -> Dataset:
         oracle_label = judge_score + 0.1 * np.random.normal()  # Noisy oracle
 
         sample = Sample(
+            prompt_id=f"test_{i}",
             prompt=f"Question {i}",
             response=f"Answer {i}",
             base_policy_logprob=-10.0 - i * 0.1,
@@ -35,7 +36,6 @@ def create_test_dataset(n_samples: int = 20) -> Dataset:
             },
             reward=None,  # Will be set by calibration
             metadata={
-                "prompt_id": f"test_{i}",
                 "judge_score": float(np.clip(judge_score, 0, 1)),
                 "oracle_label": float(np.clip(oracle_label, 0, 1)) if i < 10 else None,
             },

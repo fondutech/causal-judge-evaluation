@@ -62,6 +62,8 @@ from .data import (
     DatasetLoader,
     default_factory,
     add_rewards_to_existing_data,
+    validate_cje_data,
+    validate_for_precomputed_sampler,
 )
 
 from typing import Optional, List, Any, Tuple, Dict

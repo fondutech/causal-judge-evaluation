@@ -318,16 +318,12 @@ class TMLEEstimator(CalibratedIPS):
                 raise ValueError(
                     "All samples must have 'judge_score' in metadata for TMLE."
                 )
-            if "prompt_id" not in s.metadata:
-                raise ValueError(
-                    "All samples must have 'prompt_id' in metadata to align with fresh draws."
-                )
             if s.reward is None:
                 raise ValueError("All samples must have calibrated rewards for TMLE.")
 
             scores.append(float(s.metadata["judge_score"]))
             rewards.append(float(s.reward))
-            pid = str(s.metadata["prompt_id"])
+            pid = str(s.prompt_id)
             prompt_ids.append(pid)
             fold_ids.append(int(self._promptid_to_fold.get(pid, 0)))
 
@@ -509,7 +505,7 @@ class TMLEEstimator(CalibratedIPS):
         rng = np.random.RandomState(42)
 
         for s in self.sampler.dataset.samples:
-            pid = s.metadata.get("prompt_id")
+            pid = s.prompt_id
             if pid is None:
                 # TMLE requires prompt_id to align logged ↔ fresh; we'll fail later if missing in data paths
                 continue

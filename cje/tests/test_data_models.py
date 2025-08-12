@@ -9,6 +9,7 @@ def test_sample() -> None:
 
     # Valid sample
     sample = Sample(
+        prompt_id="test_001",
         prompt="What is machine learning?",
         response="ML is...",
         reward=0.8,
@@ -23,6 +24,7 @@ def test_sample() -> None:
     # Test invalid base logprob
     try:
         Sample(
+            prompt_id="test_002",
             prompt="test",
             response="response",
             reward=0.5,
@@ -37,6 +39,7 @@ def test_sample() -> None:
     # Test invalid reward
     try:
         Sample(
+            prompt_id="test_003",
             prompt="test",
             response="response",
             reward=1.5,  # Invalid: > 1
@@ -54,6 +57,7 @@ def test_dataset() -> None:
 
     samples = [
         Sample(
+            prompt_id=f"test_{i}",
             prompt=f"prompt{i}",
             response=f"response{i}",
             reward=0.5 + i * 0.1,
