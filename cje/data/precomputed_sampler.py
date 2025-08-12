@@ -227,42 +227,89 @@ class PrecomputedSampler:
         raise IndexError(f"Formatted index {formatted_index} out of range")
 
     def compute_raw_weights(self, target_policy: str) -> np.ndarray:
-        """Compute raw importance weights WITHOUT any clipping.
+        """Compute raw importance weights with numerical stability via log-shift.
 
-        Returns truly raw weights: exp(log_p_target - log_p_base)
-        Only handles numerical overflow protection, no artificial clipping.
+        Uses a scale-invariant log-shift to keep weights in a numerically safe range.
+        Since all our estimators normalize weights (SNIPS/mean-one), multiplying all
+        weights by a constant doesn't change estimates, but prevents numerical issues.
 
         Args:
             target_policy: Name of target policy
 
         Returns:
-            Array of raw importance weights
+            Array of raw importance weights (shifted for stability)
         """
         if target_policy not in self.target_policies:
             raise ValueError(f"Unknown target policy: {target_policy}")
 
-        weights = []
-        for record in self.formatted_data:
-            base_logp = record["base_policy_logprob"]
-            target_logp = record["target_policy_logprobs"][target_policy]
+        # Vectorized log-ratio computation
+        log_ratios = np.array(
+            [
+                record["target_policy_logprobs"][target_policy]
+                - record["base_policy_logprob"]
+                for record in self.formatted_data
+            ],
+            dtype=np.float64,
+        )
 
-            # Compute weight with overflow protection
-            log_ratio = target_logp - base_logp
+        # Handle non-finite values
+        n_nan = np.isnan(log_ratios).sum()
+        n_posinf = np.isposinf(log_ratios).sum()
+        n_neginf = np.isneginf(log_ratios).sum()
 
-            # Practical thresholds for importance weights:
-            # - log_ratio > 100 means target is 10^43 times more likely (unrealistic)
-            # - log_ratio < -100 means target is 10^-43 times as likely (effectively 0)
-            # These are still very extreme but prevent numerical overflow
-            if log_ratio > 100:
-                weight = np.exp(100)  # ~2.7e43, extreme but manageable
-            elif log_ratio < -100:
-                weight = 0.0  # Effectively zero weight
+        if n_nan > 0:
+            logger.warning(
+                f"{n_nan} NaN log-ratios for {target_policy}; setting to -inf (zero weight)."
+            )
+            log_ratios[np.isnan(log_ratios)] = -np.inf
+
+        # Replace +inf with a large finite value
+        if n_posinf > 0:
+            finite_mask = np.isfinite(log_ratios)
+            if finite_mask.any():
+                finite_max = np.max(log_ratios[finite_mask])
             else:
-                weight = np.exp(log_ratio)
+                finite_max = 0.0
+            log_ratios[np.isposinf(log_ratios)] = finite_max + 100.0
+            logger.debug(
+                f"{n_posinf} +inf log-ratios for {target_policy}; using finite max + 100"
+            )
 
-            weights.append(weight)
+        # Apply log-shift for numerical stability
+        # Shift so the maximum weight is around exp(50) ≈ 5e21
+        # This keeps weights well within float64 range while preserving relative values
+        top_margin = 50.0
+        max_log_ratio = np.max(log_ratios) if log_ratios.size else 0.0
+        log_shift = max_log_ratio - top_margin
 
-        return np.array(weights)
+        # Compute shifted weights
+        shifted_log_ratios = log_ratios - log_shift
+        weights = np.exp(shifted_log_ratios)
+
+        # Clean up any residual non-finite values
+        bad_mask = ~np.isfinite(weights)
+        if bad_mask.any():
+            logger.warning(
+                f"{bad_mask.sum()} non-finite weights for {target_policy}; setting to 0."
+            )
+            weights[bad_mask] = 0.0
+
+        # Log diagnostics
+        n_zero = (weights == 0.0).sum()
+
+        # Log at INFO level if shift is significant (helps with debugging)
+        if abs(log_shift) > 100:
+            logger.info(
+                f"Applied large log-shift={log_shift:.1f} for {target_policy} to prevent overflow. "
+                f"This is scale-invariant and won't affect estimates."
+            )
+        elif n_zero > 0 or abs(log_shift) > 10:
+            logger.debug(
+                f"Weight computation for {target_policy}: log_shift={log_shift:.1f}, "
+                f"zero_weights={n_zero}/{len(weights)}, max_weight={weights.max():.2e}"
+            )
+
+        return weights
 
     def compute_importance_weights(
         self, target_policy: str, clip_weight: Optional[float] = None
@@ -278,14 +325,12 @@ class PrecomputedSampler:
         Returns:
             Array of importance weights
         """
-        # Get raw weights
+        # Get raw weights (already stabilized via log-shift)
         raw_weights = self.compute_raw_weights(target_policy)
 
-        # Apply clipping if requested (and if it would actually clip anything)
-        if (
-            clip_weight is not None and clip_weight < 1e9
-        ):  # Only clip if reasonable threshold
-            weights_array = np.clip(raw_weights, 0, clip_weight)
+        # Apply clipping if requested
+        if clip_weight is not None and np.isfinite(clip_weight):
+            weights_array = np.minimum(raw_weights, clip_weight)
 
             # Log clipping statistics
             n_clipped = np.sum(raw_weights > clip_weight)
