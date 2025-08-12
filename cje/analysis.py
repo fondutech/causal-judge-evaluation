@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 def analyze_dataset(
     dataset_path: str,
     estimator: str = "calibrated-ips",
-    oracle_coverage: float = 1.0,
     judge_field: str = "judge_score",
     oracle_field: str = "oracle_label",
     estimator_config: Optional[Dict[str, Any]] = None,
@@ -68,7 +67,6 @@ def analyze_dataset(
         >>> results = analyze_dataset(
         ...     "my_data.jsonl",
         ...     estimator="dr-cpo",
-        ...     oracle_coverage=0.5,
         ...     estimator_config={"n_folds": 10},
         ...     fresh_draws_dir="responses/"
         ... )
@@ -85,7 +83,7 @@ def analyze_dataset(
 
     # Step 2: Handle rewards
     calibrated_dataset, calibration_result = _prepare_rewards(
-        dataset, oracle_coverage, judge_field, oracle_field, verbose
+        dataset, judge_field, oracle_field, verbose
     )
 
     # Step 3: Create sampler
@@ -121,7 +119,7 @@ def analyze_dataset(
     # Add metadata for downstream use
     results.metadata["dataset_path"] = dataset_path
     results.metadata["estimator"] = estimator
-    results.metadata["oracle_coverage"] = oracle_coverage
+    # Note: oracle_coverage removed - production always uses all available oracle labels
     results.metadata["target_policies"] = list(sampler.target_policies)
 
     if verbose:
@@ -132,7 +130,6 @@ def analyze_dataset(
 
 def _prepare_rewards(
     dataset: Dataset,
-    oracle_coverage: float,
     judge_field: str,
     oracle_field: str,
     verbose: bool,
@@ -147,15 +144,14 @@ def _prepare_rewards(
             logger.info(f"Using pre-computed rewards ({rewards_exist} samples)")
         return dataset, None
 
-    # Always calibrate (let calibrate_dataset handle oracle coverage internally)
+    # Always calibrate using all available oracle labels
     if verbose:
-        logger.info(f"Calibrating with {oracle_coverage:.0%} oracle coverage")
+        logger.info("Calibrating judge scores with oracle labels")
 
     calibrated_dataset, cal_result = calibrate_dataset(
         dataset,
         judge_field=judge_field,
         oracle_field=oracle_field,
-        oracle_coverage=oracle_coverage,  # Pass coverage to calibrate_dataset
         enable_cross_fit=True,  # Always enable for potential DR use
         n_folds=5,
     )

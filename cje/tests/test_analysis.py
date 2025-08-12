@@ -52,9 +52,7 @@ class TestAnalyzeDataset:
     def test_analyze_basic_ips(self) -> None:
         """Test basic IPS analysis with real test data."""
         # Use real arena sample data
-        result = analyze_dataset(
-            str(self.test_data_path), estimator="calibrated-ips", oracle_coverage=1.0
-        )
+        result = analyze_dataset(str(self.test_data_path), estimator="calibrated-ips")
 
         # Check result structure
         assert result.method == "calibrated_ips"
@@ -77,14 +75,12 @@ class TestAnalyzeDataset:
         result = analyze_dataset(
             str(self.test_data_path),
             estimator="calibrated-ips",
-            oracle_coverage=0.5,  # Use 50% of oracle labels
             judge_field="judge_score",
             oracle_field="oracle_label",
         )
 
         # Check calibration happened
         assert result.method == "calibrated_ips"
-        assert result.metadata["oracle_coverage"] == 0.5
 
         # Check we have results for all policies
         assert len(result.estimates) == 4
@@ -99,7 +95,6 @@ class TestAnalyzeDataset:
         result = analyze_dataset(
             str(self.test_data_path),
             estimator="dr-cpo",
-            oracle_coverage=1.0,
             fresh_draws_dir=str(self.fresh_draws_dir),
         )
 
@@ -126,7 +121,6 @@ class TestAnalyzeDataset:
             result = analyze_dataset(
                 test_file,
                 estimator="dr-cpo",
-                oracle_coverage=1.0,
                 # No fresh_draws_dir specified
             )
 
@@ -196,9 +190,7 @@ class TestAnalyzeDataset:
 
         try:
             with pytest.raises(ValueError, match="Insufficient oracle"):
-                analyze_dataset(
-                    test_file, estimator="calibrated-ips", oracle_coverage=1.0
-                )
+                analyze_dataset(test_file, estimator="calibrated-ips")
         finally:
             Path(test_file).unlink()
 
@@ -258,7 +250,6 @@ class TestAnalyzeDataset:
             result = analyze_dataset(
                 test_file,
                 estimator="calibrated-ips",
-                oracle_coverage=0.5,
                 judge_field="judge_score",
                 oracle_field="oracle_label",
             )
@@ -267,7 +258,7 @@ class TestAnalyzeDataset:
             metadata = result.metadata
             assert metadata["dataset_path"] == test_file
             assert metadata["estimator"] == "calibrated-ips"
-            assert metadata["oracle_coverage"] == 0.5
+            # oracle_coverage removed from API
             assert metadata["judge_field"] == "judge_score"
             assert metadata["oracle_field"] == "oracle_label"
             assert "target_policies" in metadata

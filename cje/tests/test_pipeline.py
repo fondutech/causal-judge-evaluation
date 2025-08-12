@@ -21,6 +21,7 @@ def test_pipeline_with_edge_cases(tmp_path: Path) -> None:
     for i in range(12):
         test_data.append(
             {
+                "prompt_id": f"prompt_{i}",  # Required field
                 "prompt": f"Question {i}",
                 "response": f"Answer {i}",
                 "judge_score": 5.0 + (i % 5),  # Scores from 5-9
@@ -34,6 +35,7 @@ def test_pipeline_with_edge_cases(tmp_path: Path) -> None:
     for i in range(12, 15):
         test_data.append(
             {
+                "prompt_id": f"prompt_{i}",  # Required field
                 "prompt": f"Question {i}",
                 "response": f"Answer {i}",
                 "judge_score": 6.0 + (i % 3),

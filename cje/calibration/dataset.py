@@ -15,7 +15,6 @@ def calibrate_dataset(
     dataset: Dataset,
     judge_field: str = "judge_score",
     oracle_field: str = "oracle_label",
-    oracle_coverage: float = 1.0,
     enable_cross_fit: bool = False,
     n_folds: int = 5,
 ) -> Tuple[Dataset, CalibrationResult]:

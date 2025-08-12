@@ -49,13 +49,6 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     analyze_parser.add_argument(
-        "--oracle-coverage",
-        type=float,
-        default=1.0,
-        help="Fraction of oracle labels for calibration (0.0-1.0, default: 1.0)",
-    )
-
-    analyze_parser.add_argument(
         "--output",
         "-o",
         help="Path to save results JSON (optional)",
@@ -134,7 +127,6 @@ def run_analysis(args: argparse.Namespace) -> int:
         # Prepare kwargs
         kwargs = {
             "estimator": args.estimator,
-            "oracle_coverage": args.oracle_coverage,
             "judge_field": args.judge_field,
             "oracle_field": args.oracle_field,
         }
