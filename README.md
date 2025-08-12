@@ -46,6 +46,7 @@ print(f"Best policy: {results.best_policy()}")
 - **RawIPS** - Standard importance sampling with clipping
 - **DRCPOEstimator** - Doubly robust with cross-fitted isotonic outcome models
 - **MRDREstimator** - Policy-specific weighted outcome models for heterogeneous effects
+- **TMLEEstimator** - Targeted minimum loss estimation with optimal bias-variance tradeoff
 
 ### Data Format
 ```json

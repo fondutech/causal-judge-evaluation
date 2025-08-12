@@ -30,6 +30,10 @@ Quick Comparison
      - Heterogeneous effects
      - Policy-specific models
      - More complex, requires cv_fold
+   * - **TMLEEstimator**
+     - Optimal bias-variance
+     - Targeted step, best MSE
+     - Most complex, requires cv_fold
 
 CalibratedIPS (Recommended)
 ----------------------------
@@ -185,6 +189,56 @@ Uses policy-specific weighted outcome models:
 - Three omega modes for different weight schemes
 - Requires cv_fold metadata from calibration
 
+TMLEEstimator (Targeted Minimum Loss)
+--------------------------------------
+
+Uses a targeting step to optimize bias-variance tradeoff:
+
+.. code-block:: python
+
+   from cje.core.tmle import TMLEEstimator
+   
+   # Requires cross-fitted calibration
+   calibrated_dataset, cal_result = calibrate_dataset(
+       dataset,
+       enable_cross_fit=True,  # Required for TMLE
+       n_folds=5
+   )
+   sampler = PrecomputedSampler(calibrated_dataset)
+   
+   # Create TMLE estimator
+   tmle_estimator = TMLEEstimator(
+       sampler,
+       n_folds=5,
+       link="logit"  # For bounded outcomes [0,1]
+   )
+   
+   # Add fresh draws (same as DR/MRDR)
+   for policy in sampler.target_policies:
+       fresh_draws = create_synthetic_fresh_draws(
+           calibrated_dataset,
+           target_policy=policy,
+           draws_per_prompt=10
+       )
+       tmle_estimator.add_fresh_draws(policy, fresh_draws)
+   
+   results = tmle_estimator.fit_and_estimate()
+
+**When to use:**
+
+- Need optimal bias-variance tradeoff
+- Have bounded outcomes (rewards in [0,1])
+- Want principled targeting that solves the EIF equation
+- Need robust inference with proper standard errors
+
+**Key features:**
+
+- Logistic fluctuation for bounded outcomes
+- Newton-Raphson solver for targeting step
+- Cross-fitted isotonic initial models
+- Solves empirical influence function equation
+- Best mean squared error (MSE) properties
+
 Understanding Weight Diagnostics
 ---------------------------------
 
@@ -220,16 +274,19 @@ Choosing an Estimator
 1. You have >10K samples → Consider RawIPS
 2. You can generate target samples → Use DRCPOEstimator
 3. Significant distribution shift + fresh draws → Use MRDREstimator
-4. You need strict unbiasedness → Use RawIPS with large clip_weight
+4. Need optimal bias-variance + fresh draws → Use TMLEEstimator
+5. You need strict unbiasedness → Use RawIPS with large clip_weight
 
 **Decision flowchart:**
 
 .. code-block:: text
 
    Can generate target samples?
-   ├─ Yes → Heterogeneous effects expected?
-   │        ├─ Yes → MRDREstimator
-   │        └─ No → DRCPOEstimator
+   ├─ Yes → Need optimal MSE?
+   │        ├─ Yes → TMLEEstimator
+   │        └─ No → Heterogeneous effects?
+   │                ├─ Yes → MRDREstimator
+   │                └─ No → DRCPOEstimator
    └─ No → Have >10K samples?
            ├─ Yes → RawIPS
            └─ No → CalibratedIPS (default)

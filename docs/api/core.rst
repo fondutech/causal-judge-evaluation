@@ -64,6 +64,19 @@ MRDREstimator
    .. automethod:: fit
    .. automethod:: estimate
 
+TMLEEstimator
+~~~~~~~~~~~~~
+
+.. autoclass:: cje.core.tmle.TMLEEstimator
+   :members:
+   :inherited-members:
+   :show-inheritance:
+   
+   .. automethod:: __init__
+   .. automethod:: add_fresh_draws
+   .. automethod:: fit
+   .. automethod:: estimate
+
 Outcome Models
 --------------
 

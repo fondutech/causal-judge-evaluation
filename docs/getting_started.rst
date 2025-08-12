@@ -144,6 +144,11 @@ Choosing an Estimator
    - Best for significant distribution shifts
    - Requires cross-fitted calibration
 
+**TMLEEstimator** (For optimal MSE)
+   - Targeted minimum loss estimation
+   - Best bias-variance tradeoff
+   - Requires fresh draws and cross-fitting
+
 Next Steps
 ----------
 

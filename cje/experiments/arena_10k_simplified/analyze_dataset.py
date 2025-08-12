@@ -39,6 +39,7 @@ from cje import (
     analyze_extreme_weights,
 )
 from cje.core.mrdr import MRDREstimator
+from cje.core.tmle import TMLEEstimator
 
 # Import visualization if available
 try:
@@ -114,7 +115,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--estimator",
-        choices=["calibrated-ips", "raw-ips", "dr-cpo", "mrdr"],
+        choices=["calibrated-ips", "raw-ips", "dr-cpo", "mrdr", "tmle"],
         default="calibrated-ips",
         help="Estimation method to use (default: calibrated-ips)",
     )
@@ -312,7 +313,9 @@ def main() -> int:
         # Initialize the selected estimator
         estimator_config = args.estimator_config or {}
 
-        estimator: Union[CalibratedIPS, RawIPS, DRCPOEstimator, MRDREstimator]
+        estimator: Union[
+            CalibratedIPS, RawIPS, DRCPOEstimator, MRDREstimator, TMLEEstimator
+        ]
         if args.estimator == "calibrated-ips":
             # Updated API: no more k_folds, uses optimized single-pass
             estimator = CalibratedIPS(sampler)
@@ -443,6 +446,82 @@ def main() -> int:
                     fresh_draws = FreshDrawDataset(
                         target_policy=policy,
                         draws_per_prompt=1,  # One response per prompt
+                        samples=fresh_samples,
+                    )
+                    estimator.add_fresh_draws(policy, fresh_draws)
+                    print(
+                        f"     ✓ Loaded {len(fresh_draws.samples)} real fresh draws for {policy}"
+                    )
+                else:
+                    # Fall back to synthetic fresh draws
+                    print(
+                        f"     ⚠️  No response file found for {policy}, using synthetic draws"
+                    )
+                    fresh_draws = create_synthetic_fresh_draws(
+                        calibrated_dataset,
+                        target_policy=policy,
+                        draws_per_prompt=estimator_config.get("draws_per_prompt", 10),
+                        score_correlation=estimator_config.get(
+                            "score_correlation", 0.9
+                        ),
+                        seed=42 + hash(policy) % 1000,
+                    )
+                    estimator.add_fresh_draws(policy, fresh_draws)
+                    print(
+                        f"     ✓ Added {len(fresh_draws.samples)} synthetic fresh draws for {policy}"
+                    )
+        elif args.estimator == "tmle":
+            # TMLE with targeted minimum loss estimation
+            n_folds = estimator_config.get("n_folds", 5)
+            link = estimator_config.get("link", "logit")
+
+            # TMLE benefits from cross-fitted calibration
+            if not cal_result or not cal_result.calibrator:
+                print("   ⚠️  TMLE works best with cross-fitted calibration.")
+                print("      Re-calibrating with cross-fitting enabled...")
+                calibrated_dataset, cal_result = calibrate_dataset(
+                    calibrated_dataset,
+                    judge_field="judge_score",
+                    oracle_field="oracle_label",
+                    enable_cross_fit=True,
+                    n_folds=n_folds,
+                )
+                sampler = PrecomputedSampler(calibrated_dataset)
+
+            estimator = TMLEEstimator(
+                sampler,
+                n_folds=n_folds,
+                link=link,
+            )
+            print(f"   Using TMLE with link='{link}'")
+
+            # Load fresh draws (same as DR/MRDR)
+            print("   Loading fresh draws for TMLE estimation...")
+            responses_dir = Path(args.data).parent / "responses"
+
+            for policy in sampler.target_policies:
+                response_file = responses_dir / f"{policy}_responses.jsonl"
+
+                if response_file.exists():
+                    # Load real fresh draws from file
+                    fresh_samples = []
+                    with open(response_file, "r") as f:
+                        for line in f:
+                            data = json.loads(line)
+                            fresh_sample = FreshDrawSample(
+                                prompt_id=data["prompt_id"],
+                                target_policy=policy,
+                                response=data["response"],
+                                judge_score=data.get("metadata", {}).get(
+                                    "judge_score", 0.5
+                                ),
+                                draw_idx=0,
+                            )
+                            fresh_samples.append(fresh_sample)
+
+                    fresh_draws = FreshDrawDataset(
+                        target_policy=policy,
+                        draws_per_prompt=1,
                         samples=fresh_samples,
                     )
                     estimator.add_fresh_draws(policy, fresh_draws)

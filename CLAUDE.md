@@ -175,7 +175,8 @@ The codebase implements three distinct isotonic regressions, each with a specifi
 # Estimator hierarchy
 DREstimator(CalibratedIPS)  # Base DR with IPS correction
 ├── DRCPOEstimator          # Default with isotonic outcome model
-└── MRDREstimator           # Policy-specific weighted outcome models
+├── MRDREstimator           # Policy-specific weighted outcome models
+└── TMLEEstimator           # Targeted minimum loss estimation
 
 # Outcome model hierarchy  
 BaseOutcomeModel (ABC)            # Handles cross-fitting infrastructure
