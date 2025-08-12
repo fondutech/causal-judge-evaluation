@@ -4,25 +4,20 @@ This module provides plotting functions for:
 - Weight diagnostics and distributions
 - DR diagnostics and dashboards
 - Calibration plots
+- Policy estimates
 """
 
-from .weight_plots import (
-    plot_weight_dashboard,
-    plot_calibration_comparison,
-    plot_policy_estimates,
-)
-
-from .dr_plots import (
-    plot_dr_dashboard,
-    plot_dr_calibration,
-)
+# Import from new modular structure
+from .calibration import plot_calibration_comparison
+from .estimates import plot_policy_estimates
+from .dashboards import plot_weight_dashboard, plot_dr_dashboard
 
 __all__ = [
-    # Weight visualization
-    "plot_weight_dashboard",
+    # Calibration
     "plot_calibration_comparison",
+    # Policy estimates
     "plot_policy_estimates",
-    # DR visualization
+    # Dashboards
+    "plot_weight_dashboard",
     "plot_dr_dashboard",
-    "plot_dr_calibration",
 ]

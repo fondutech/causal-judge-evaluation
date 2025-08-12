@@ -512,6 +512,7 @@ def generate_visualizations(
     sampler: PrecomputedSampler,
     args: Any,
     summary_data: Dict[str, Any],
+    cal_result: Any = None,
 ) -> None:
     """Generate all visualization plots."""
     if not VIZ_AVAILABLE or args.no_plots:
@@ -553,6 +554,7 @@ def generate_visualizations(
             plt.close(fig)
 
         # Calibration comparison
+        # Use the ORIGINAL dataset (before masking) to get all judge/oracle pairs
         judge_scores = []
         oracle_labels = []
         for s in dataset.samples:
@@ -564,18 +566,23 @@ def generate_visualizations(
                     oracle_labels.append(o_label)
 
         if judge_scores and oracle_labels:
-            calibrated_preds_list = []
-            for s in calibrated_dataset.samples:
-                if (
-                    args.judge_field in s.metadata
-                    and args.oracle_field in s.metadata
-                    and s.reward is not None
-                ):
-                    calibrated_preds_list.append(s.reward)
-
+            # Get calibrated rewards if calibration was performed
             calibrated_preds = None
-            if len(calibrated_preds_list) == len(judge_scores):
-                if not np.allclose(calibrated_preds_list, judge_scores, rtol=1e-5):
+            if cal_result is not None:  # Calibration was performed
+                # Get rewards for ALL samples (calibration was done on partial oracle labels)
+                calibrated_preds_list = []
+                for s_orig, s_cal in zip(dataset.samples, calibrated_dataset.samples):
+                    # Match samples from original dataset (with all oracle labels)
+                    # to calibrated dataset (with rewards)
+                    if (
+                        args.judge_field in s_orig.metadata
+                        and args.oracle_field in s_orig.metadata
+                        and s_cal.reward is not None
+                    ):
+                        calibrated_preds_list.append(s_cal.reward)
+
+                # Use calibrated scores if we have them for all samples
+                if len(calibrated_preds_list) == len(judge_scores):
                     calibrated_preds = calibrated_preds_list
 
             fig = plot_calibration_comparison(
@@ -584,9 +591,7 @@ def generate_visualizations(
                 calibrated_scores=(
                     np.array(calibrated_preds) if calibrated_preds else None
                 ),
-            )
-            fig.savefig(
-                plot_dir / "calibration_comparison.png", dpi=150, bbox_inches="tight"
+                save_path=plot_dir / "calibration_comparison",
             )
             print(
                 f"   ✓ Calibration comparison → {plot_dir}/calibration_comparison.png"
@@ -616,7 +621,7 @@ def generate_visualizations(
             standard_errors=policy_ses,
             oracle_values=oracle_values,
             base_policy="base",
-            save_path=plot_dir / "policy_estimates.png",
+            save_path=plot_dir / "policy_estimates",
         )
         print(f"   ✓ Policy estimates → {plot_dir}/policy_estimates.png")
         plt.close(fig)
@@ -631,6 +636,7 @@ def generate_visualizations(
                 fig.savefig(plot_dir / "dr_dashboard.png", dpi=150, bbox_inches="tight")
                 print(f"   ✓ DR dashboard → {plot_dir}/dr_dashboard.png")
                 plt.close(fig)
+
             except Exception as e:
                 print(f"   ⚠️  Could not generate DR dashboard: {e}")
 
@@ -739,8 +745,11 @@ def main() -> int:
                     )
                 )
 
+                # Store original oracle labels for visualization later
+                original_oracle_labels = {}
                 for i, sample in enumerate(dataset.samples):
                     if i not in keep_indices and args.oracle_field in sample.metadata:
+                        original_oracle_labels[i] = sample.metadata[args.oracle_field]
                         sample.metadata[args.oracle_field] = None
 
             # Calibrate with cross-fitting for DR
@@ -776,9 +785,21 @@ def main() -> int:
         # Step 7: Extreme weights analysis
         analyze_extreme_weights_report(estimator, sampler, calibrated_dataset, args)
 
+        # Restore oracle labels for visualization if they were masked
+        if args.oracle_coverage < 1.0 and "original_oracle_labels" in locals():
+            for i, oracle_value in original_oracle_labels.items():
+                dataset.samples[i].metadata[args.oracle_field] = oracle_value
+
         # Step 8: Generate visualizations
         generate_visualizations(
-            results, dataset, calibrated_dataset, estimator, sampler, args, summary_data
+            results,
+            dataset,
+            calibrated_dataset,
+            estimator,
+            sampler,
+            args,
+            summary_data,
+            cal_result,
         )
 
         # Save results if requested

@@ -1,12 +1,14 @@
-"""Consolidated visualization module for weight diagnostics.
+"""Multi-panel dashboard visualizations for CJE framework.
 
-Primary: Dashboard (plot_weight_dashboard) - Production/debugging decisions
-Secondary: Research plots - Available but not emphasized
+Contains complex multi-panel dashboards for comprehensive diagnostics:
+- Weight diagnostics dashboard
+- DR diagnostics dashboard
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+from matplotlib.figure import Figure
 from typing import Dict, Optional, List, Tuple, Any
 from pathlib import Path
 
@@ -256,9 +258,14 @@ def _plot_max_weight_comparison(ax: Any, metrics: Dict, policies: List[str]) -> 
     if max(raw_max + cal_max) > 10:
         ax.set_yscale("log")
 
-    bars1 = ax.bar(x - width / 2, raw_max, width, label="Raw", color="coral", alpha=0.7)
+    # Use consistent tab10 colormap - same as panel A
+    colors = plt.cm.get_cmap("tab10")
+
+    bars1 = ax.bar(
+        x - width / 2, raw_max, width, label="Raw", color=colors(0), alpha=0.7
+    )
     bars2 = ax.bar(
-        x + width / 2, cal_max, width, label="Calibrated", color="lightgreen", alpha=0.7
+        x + width / 2, cal_max, width, label="Calibrated", color=colors(1), alpha=0.7
     )
 
     # Add value labels for all weights
@@ -478,7 +485,7 @@ def _plot_weight_transformation(
     ax.set_xlabel("Raw Weight (log scale)")
     ax.set_ylabel("Calibrated Weight (log scale)")
     ax.set_title("C. Weight Transformation (log-log)")
-    ax.legend(loc="upper left", fontsize=8, ncol=2)
+    ax.legend(loc="lower right", fontsize=8, ncol=2)
     ax.grid(True, alpha=0.3, which="both")
 
 
@@ -589,413 +596,218 @@ def _plot_summary_table(
             color = "#FFB6C1"  # Light red
         table[(i + 1, 2)].set_facecolor(color)
 
-    ax.set_title("F. Summary & Recommendations", fontsize=10, fontweight="bold", pad=10)
 
+def plot_dr_dashboard(
+    estimation_result: Any, figsize: Tuple[float, float] = (15, 5)
+) -> Tuple[Figure, Dict[str, Any]]:
+    """Create a compact 3-panel DR diagnostic dashboard.
 
-def plot_calibration_comparison(
-    judge_scores: np.ndarray,
-    oracle_labels: np.ndarray,
-    calibrated_scores: Optional[np.ndarray] = None,
-    n_bins: int = 10,
-    save_path: Optional[Path] = None,
-    figsize: tuple = (8, 6),
-) -> plt.Figure:
-    """Plot calibration comparison (reliability diagram) for judge scores.
-
-    Shows both raw and calibrated judge scores against oracle labels,
-    with quantitative metrics for calibration quality.
+    Panel A: DM vs IPS contributions per policy
+    Panel B: Orthogonality check (score mean ± 2SE)
+    Panel C: EIF tail behavior (CCDF)
 
     Args:
-        judge_scores: Raw judge scores
-        oracle_labels: True oracle labels
-        calibrated_scores: Calibrated judge scores (optional)
-        n_bins: Number of bins for grouping
-        save_path: Optional path to save figure
-        figsize: Figure size
-
-    Returns:
-        matplotlib Figure
-    """
-    fig, ax = plt.subplots(figsize=figsize)
-
-    # Compute calibration metrics
-    def compute_calibration_error(
-        predictions: np.ndarray, labels: np.ndarray
-    ) -> Tuple[float, float]:
-        """Compute Expected Calibration Error (ECE) and RMSE."""
-        bins = np.linspace(0, 1, n_bins + 1)
-        bin_indices = np.digitize(predictions, bins) - 1
-
-        ece = 0.0
-        total_samples = 0
-        squared_errors = []
-
-        for i in range(n_bins):
-            mask = bin_indices == i
-            n_in_bin = mask.sum()
-            if n_in_bin > 0:
-                pred_in_bin = predictions[mask].mean()
-                true_in_bin = labels[mask].mean()
-
-                # ECE: weighted average of bin-wise calibration errors
-                ece += n_in_bin * abs(pred_in_bin - true_in_bin)
-                total_samples += n_in_bin
-
-                # For RMSE
-                squared_errors.extend((predictions[mask] - labels[mask]) ** 2)
-
-        ece = ece / total_samples if total_samples > 0 else 0.0
-        rmse = np.sqrt(np.mean(squared_errors)) if squared_errors else 0.0
-
-        return ece, rmse
-
-    # Bin the scores
-    bins = np.linspace(0, 1, n_bins + 1)
-
-    # Plot raw scores
-    bin_indices = np.digitize(judge_scores, bins) - 1
-    mean_pred_raw = []
-    mean_true_raw = []
-    counts_raw = []
-
-    for i in range(n_bins):
-        mask = bin_indices == i
-        n_in_bin = mask.sum()
-        if n_in_bin > 0:
-            mean_pred_raw.append(judge_scores[mask].mean())
-            mean_true_raw.append(oracle_labels[mask].mean())
-            counts_raw.append(n_in_bin)
-
-    # Size points by number of samples in bin
-    sizes_raw = [min(200, 20 + 180 * c / len(judge_scores)) for c in counts_raw]
-
-    ax.scatter(
-        mean_pred_raw,
-        mean_true_raw,
-        label="Raw Judge",
-        s=sizes_raw,
-        alpha=0.7,
-        color="coral",
-        edgecolors="darkred",
-        linewidth=1,
-    )
-    ax.plot(mean_pred_raw, mean_true_raw, "-", alpha=0.5, color="coral")
-
-    # Compute raw metrics
-    ece_raw, rmse_raw = compute_calibration_error(judge_scores, oracle_labels)
-
-    # Plot calibrated scores if provided
-    if calibrated_scores is not None:
-        bin_indices_cal = np.digitize(calibrated_scores, bins) - 1
-        mean_pred_cal = []
-        mean_true_cal = []
-        counts_cal = []
-
-        for i in range(n_bins):
-            mask = bin_indices_cal == i
-            n_in_bin = mask.sum()
-            if n_in_bin > 0:
-                mean_pred_cal.append(calibrated_scores[mask].mean())
-                mean_true_cal.append(oracle_labels[mask].mean())
-                counts_cal.append(n_in_bin)
-
-        # Size points by number of samples in bin
-        sizes_cal = [
-            min(200, 20 + 180 * c / len(calibrated_scores)) for c in counts_cal
-        ]
-
-        ax.scatter(
-            mean_pred_cal,
-            mean_true_cal,
-            label="Calibrated Judge",
-            s=sizes_cal,
-            alpha=0.7,
-            color="lightgreen",
-            edgecolors="darkgreen",
-            linewidth=1,
-        )
-        ax.plot(mean_pred_cal, mean_true_cal, "-", alpha=0.5, color="lightgreen")
-
-        # Compute calibrated metrics
-        ece_cal, rmse_cal = compute_calibration_error(calibrated_scores, oracle_labels)
-
-        # Add improvement metrics to plot
-        improvement_text = (
-            f"Calibration Improvement:\n"
-            f"ECE: {ece_raw:.3f} → {ece_cal:.3f} ({100*(ece_raw-ece_cal)/ece_raw:.0f}% ↓)\n"
-            f"RMSE: {rmse_raw:.3f} → {rmse_cal:.3f} ({100*(rmse_raw-rmse_cal)/rmse_raw:.0f}% ↓)"
-        )
-    else:
-        # Only raw metrics
-        improvement_text = (
-            f"Raw Judge Metrics:\n" f"ECE: {ece_raw:.3f}\n" f"RMSE: {rmse_raw:.3f}"
-        )
-
-    # Perfect calibration line
-    ax.plot([0, 1], [0, 1], "--", color="gray", alpha=0.5, label="Perfect calibration")
-
-    # Add shaded region for ±0.1 calibration error
-    x_perfect = np.linspace(0, 1, 100)
-    ax.fill_between(
-        x_perfect,
-        x_perfect - 0.1,
-        x_perfect + 0.1,
-        alpha=0.1,
-        color="gray",
-        label="±0.1 tolerance",
-    )
-
-    # Add metrics text box
-    ax.text(
-        0.05,
-        0.95,
-        improvement_text,
-        transform=ax.transAxes,
-        fontsize=9,
-        verticalalignment="top",
-        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.8),
-    )
-
-    # Labels and formatting
-    ax.set_xlabel("Mean Predicted Score")
-    ax.set_ylabel("Mean Oracle Score")
-    ax.set_title("Judge Calibration Comparison")
-    ax.legend(loc="lower right", fontsize=9)
-    ax.grid(True, alpha=0.3)
-    ax.set_xlim(-0.05, 1.05)
-    ax.set_ylim(-0.05, 1.05)
-
-    # Add note about point sizes
-    ax.text(
-        0.95,
-        0.05,
-        "Point size ∝ samples in bin",
-        transform=ax.transAxes,
-        fontsize=8,
-        horizontalalignment="right",
-        alpha=0.6,
-    )
-
-    if save_path:
-        save_path = Path(save_path)
-        fig.savefig(save_path.with_suffix(".png"), dpi=150, bbox_inches="tight")
-
-    return fig
-
-
-def plot_policy_estimates(
-    estimates: Dict[str, float],
-    standard_errors: Dict[str, float],
-    oracle_values: Optional[Dict[str, float]] = None,
-    base_policy: str = "base",
-    figsize: tuple = (10, 6),
-    save_path: Optional[Path] = None,
-) -> plt.Figure:
-    """Create forest plot of policy performance estimates with confidence intervals.
-
-    A clean, publication-quality forest plot showing:
-    - Point estimates with 95% confidence intervals
-    - Base policy as reference (vertical line)
-    - Oracle ground truth values if available (diamonds)
-    - Best policy highlighted in green
-
-    Args:
-        estimates: Point estimates for each policy
-        standard_errors: Standard errors for each policy
-        oracle_values: Optional oracle ground truth values
-        base_policy: Name of base policy (for reference line)
+        estimation_result: Result from DR estimator with diagnostics
         figsize: Figure size (width, height)
-        save_path: Optional path to save figure
 
     Returns:
-        matplotlib Figure
+        (fig, summary_metrics) tuple
     """
-    fig, ax = plt.subplots(figsize=figsize)
+    if "dr_diagnostics" not in estimation_result.metadata:
+        raise ValueError("No DR diagnostics found in estimation result")
 
-    # Sort policies: base first, then others by estimate value (descending)
-    all_policies = list(estimates.keys())
-    other_policies = [p for p in all_policies if p != base_policy]
-    other_policies.sort(key=lambda p: estimates[p], reverse=True)
+    dr_diags = estimation_result.metadata["dr_diagnostics"]
+    policies = list(dr_diags.keys())
+    n_policies = len(policies)
 
-    # Arrange: base at top, then sorted others
-    if base_policy in estimates:
-        policies = [base_policy] + other_policies
-    else:
-        policies = other_policies
+    # Set up figure
+    fig, axes = plt.subplots(1, 3, figsize=figsize)
+    fig.suptitle("DR Diagnostics Dashboard", fontsize=14, fontweight="bold")
 
-    # Y positions (top to bottom)
-    y_positions = list(range(len(policies)))[::-1]
+    # Color palette
+    colors = plt.cm.get_cmap("tab10")(np.linspace(0, 1, n_policies))
 
-    # Find best policy (highest estimate)
-    best_policy = max(estimates.keys(), key=lambda p: estimates[p])
+    # Panel A: DM vs IPS contributions
+    ax = axes[0]
+    x = np.arange(n_policies)
+    width = 0.35
 
-    # Plot each policy
-    for policy, y_pos in zip(policies, y_positions):
-        est = estimates[policy]
-        se = standard_errors[policy]
+    dm_means = [dr_diags[p]["dm_mean"] for p in policies]
+    ips_corrs = [dr_diags[p]["ips_corr_mean"] for p in policies]
+    dr_estimates = [dr_diags[p]["dr_estimate"] for p in policies]
 
-        # Determine color
-        if policy == base_policy:
-            color = "#666666"  # Gray for base
-            marker_size = 8
-        elif policy == best_policy and policy != base_policy:
-            color = "#2ca02c"  # Green for best
-            marker_size = 10
-        else:
-            color = "#1f77b4"  # Blue for others
-            marker_size = 8
+    bars1 = ax.bar(
+        x - width / 2, dm_means, width, label="DM", color="steelblue", alpha=0.7
+    )
+    bars2 = ax.bar(
+        x + width / 2,
+        ips_corrs,
+        width,
+        label="IPS Correction",
+        color="coral",
+        alpha=0.7,
+    )
 
-        # Plot point estimate with 95% CI
-        ci_lower = est - 1.96 * se
-        ci_upper = est + 1.96 * se
+    # Add DR estimate markers
+    ax.scatter(
+        x, dr_estimates, color="black", s=50, zorder=5, label="DR Estimate", marker="D"
+    )
 
-        # Error bar (confidence interval)
-        ax.plot(
-            [ci_lower, ci_upper], [y_pos, y_pos], color=color, linewidth=2, alpha=0.7
+    ax.set_xlabel("Policy")
+    ax.set_ylabel("Value")
+    ax.set_title("A: Contributions (DM vs IPS)")
+    ax.set_xticks(x)
+    ax.set_xticklabels(policies, rotation=45, ha="right")
+    ax.legend(loc="best")
+    ax.grid(axis="y", alpha=0.3)
+    ax.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
+
+    # Panel B: Orthogonality check
+    ax = axes[1]
+
+    for i, policy in enumerate(policies):
+        diag = dr_diags[policy]
+        score_mean = diag["score_mean"]
+        score_se = diag["score_se"]
+
+        # Plot point with error bars (2 SE)
+        ax.errorbar(
+            i,
+            score_mean,
+            yerr=2 * score_se,
+            fmt="o",
+            color=colors[i],
+            markersize=8,
+            capsize=5,
+            capthick=2,
+            label=policy,
         )
 
-        # Point estimate
-        ax.plot(
-            est,
-            y_pos,
-            marker="o",
-            markersize=marker_size,
-            color=color,
-            markeredgecolor="white",
-            markeredgewidth=1.5,
-        )
-
-        # Oracle value if available
-        if oracle_values and policy in oracle_values:
-            oracle_val = oracle_values[policy]
-            # Diamond marker for oracle
-            ax.plot(
-                oracle_val,
-                y_pos,
-                marker="D",
-                markersize=7,
-                color="#d62728",
-                alpha=0.7,
-                markeredgecolor="white",
-                markeredgewidth=1,
-                label="Oracle" if policy == policies[0] else "",
+        # Add p-value annotation
+        p_val = diag["score_p"]
+        if p_val < 0.05:
+            ax.text(
+                i,
+                score_mean + 2.5 * score_se,
+                f"p={p_val:.3f}",
+                ha="center",
+                fontsize=8,
+                color="red",
             )
 
-            # Thin line connecting estimate to oracle
-            ax.plot(
-                [est, oracle_val],
-                [y_pos, y_pos],
-                color="#d62728",
-                linewidth=0.5,
-                alpha=0.3,
-            )
+    ax.axhline(y=0, color="black", linestyle="-", linewidth=1)
+    ax.set_xlabel("Policy")
+    ax.set_ylabel("Score Mean")
+    ax.set_title("B: Orthogonality Check (mean ± 2SE)")
+    ax.set_xticks(range(n_policies))
+    ax.set_xticklabels(policies, rotation=45, ha="right")
+    ax.grid(axis="y", alpha=0.3)
 
-    # Add reference line at base policy estimate
-    if base_policy in estimates:
-        ax.axvline(
-            estimates[base_policy],
-            color="#666666",
-            linestyle="--",
-            alpha=0.3,
-            linewidth=1,
-        )
-
-        # Add subtle text annotation for reference line
+    # Add note for TMLE
+    if estimation_result.method == "tmle":
         ax.text(
-            estimates[base_policy],
-            -0.5,
-            f"{base_policy} (reference)",
-            horizontalalignment="center",
-            fontsize=8,
-            color="#666666",
+            0.5,
+            0.95,
+            "TMLE: bars should straddle 0",
+            transform=ax.transAxes,
+            ha="center",
+            va="top",
+            fontsize=9,
             style="italic",
+            color="gray",
         )
 
-    # Y-axis: policy names
-    ax.set_yticks(y_positions)
-    ax.set_yticklabels(policies)
+    # Panel C: EIF tail behavior (CCDF)
+    ax = axes[2]
 
-    # X-axis: performance scale
-    ax.set_xlabel("Estimated Performance", fontsize=11)
+    # Check if actual influence functions are available
+    has_empirical_ifs = False
+    if "dr_influence" in estimation_result.metadata:
+        ifs_data = estimation_result.metadata["dr_influence"]
+        if ifs_data and all(policy in ifs_data for policy in policies):
+            has_empirical_ifs = True
 
-    # Title
-    title = "Policy Performance Estimates (95% CI)"
-    if oracle_values:
-        # Calculate RMSE if we have oracle values
-        rmse_values = []
-        for policy in estimates:
-            if policy in oracle_values:
-                error = estimates[policy] - oracle_values[policy]
-                rmse_values.append(error**2)
-        if rmse_values:
-            rmse = np.sqrt(np.mean(rmse_values))
-            title += f"\nRMSE vs Oracle: {rmse:.3f}"
-    ax.set_title(title, fontsize=12, pad=15)
+    if has_empirical_ifs:
+        # Use empirical influence functions for exact CCDF
+        for i, policy in enumerate(policies):
+            ifs = ifs_data[policy]
+            if isinstance(ifs, np.ndarray) and len(ifs) > 0:
+                # Compute empirical CCDF
+                abs_ifs = np.abs(ifs)
+                sorted_ifs = np.sort(abs_ifs)[::-1]  # Descending
+                ccdf = np.arange(1, len(sorted_ifs) + 1) / len(sorted_ifs)
 
-    # Grid for easier reading
-    ax.grid(True, axis="x", alpha=0.2, linestyle="-", linewidth=0.5)
-    ax.set_axisbelow(True)
+                # Plot with appropriate sampling for large n
+                if len(sorted_ifs) > 10000:
+                    # Downsample for plotting efficiency
+                    indices = np.logspace(
+                        0, np.log10(len(sorted_ifs) - 1), 1000, dtype=int
+                    )
+                    ax.loglog(
+                        sorted_ifs[indices],
+                        ccdf[indices],
+                        label=policy,
+                        color=colors[i],
+                        linewidth=2,
+                    )
+                else:
+                    ax.loglog(
+                        sorted_ifs, ccdf, label=policy, color=colors[i], linewidth=2
+                    )
+    else:
+        # Fallback: plot quantile markers only (no synthetic curves)
+        for i, policy in enumerate(policies):
+            diag = dr_diags[policy]
+            if_p95 = diag["if_p95"]
+            if_p99 = diag["if_p99"]
 
-    # Add legend if we have oracle values
-    if oracle_values:
-        # Create custom legend
-        from matplotlib.patches import Patch
-        from matplotlib.lines import Line2D
+            # Draw vertical lines at quantiles
+            ax.axvline(if_p95, color=colors[i], linestyle="--", alpha=0.5, linewidth=1)
+            ax.axvline(if_p99, color=colors[i], linestyle=":", alpha=0.5, linewidth=1)
 
-        legend_elements = [
-            Line2D(
-                [0],
-                [0],
-                marker="o",
-                color="w",
-                markerfacecolor="#1f77b4",
-                markersize=8,
-                label="CJE Estimate",
-            ),
-            Line2D(
-                [0],
-                [0],
-                marker="D",
-                color="w",
-                markerfacecolor="#d62728",
-                markersize=7,
+            # Add text labels
+            ax.text(
+                if_p95,
+                0.05,
+                f"{policy}\np95",
+                rotation=45,
+                fontsize=7,
+                color=colors[i],
                 alpha=0.7,
-                label="Oracle Truth",
-            ),
-        ]
-        if best_policy != base_policy:
-            legend_elements.append(
-                Line2D(
-                    [0],
-                    [0],
-                    marker="o",
-                    color="w",
-                    markerfacecolor="#2ca02c",
-                    markersize=10,
-                    label="Best Policy",
-                )
+            )
+            ax.text(
+                if_p99,
+                0.01,
+                f"p99",
+                rotation=45,
+                fontsize=7,
+                color=colors[i],
+                alpha=0.7,
             )
 
-        ax.legend(
-            handles=legend_elements,
-            loc="best",
-            frameon=True,
-            fancybox=True,
-            shadow=False,
-            fontsize=9,
-        )
+    # Add reference lines at p95 and p99
+    ax.axhline(y=0.05, color="gray", linestyle=":", alpha=0.5, label="p95")
+    ax.axhline(y=0.01, color="gray", linestyle="--", alpha=0.5, label="p99")
 
-    # Adjust layout to prevent label cutoff
+    ax.set_xlabel("|IF| (log scale)")
+    ax.set_ylabel("CCDF (log scale)")
+    ax.set_title("C: EIF Tail Behavior")
+    ax.legend(loc="best")
+    ax.grid(True, which="both", alpha=0.3)
+
     plt.tight_layout()
 
-    # Add subtle box around plot area
-    for spine in ax.spines.values():
-        spine.set_edgecolor("#CCCCCC")
-        spine.set_linewidth(0.8)
+    # Compute summary metrics
+    summary_metrics = {
+        "worst_if_tail_ratio": max(d["if_tail_ratio_99_5"] for d in dr_diags.values()),
+        "best_r2_oof": max(d["r2_oof"] for d in dr_diags.values()),
+        "worst_r2_oof": min(d["r2_oof"] for d in dr_diags.values()),
+        "avg_residual_rmse": np.mean([d["residual_rmse"] for d in dr_diags.values()]),
+    }
 
-    # Save if requested
-    if save_path:
-        save_path = Path(save_path)
-        fig.savefig(save_path.with_suffix(".png"), dpi=150, bbox_inches="tight")
+    if estimation_result.method == "tmle":
+        summary_metrics["tmle_max_abs_score"] = max(
+            abs(d["score_mean"]) for d in dr_diags.values()
+        )
 
-    return fig
+    return fig, summary_metrics
