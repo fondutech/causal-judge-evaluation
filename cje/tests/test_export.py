@@ -14,7 +14,7 @@ from cje.data.models import EstimationResult
 class TestExportJSON:
     """Test JSON export functionality."""
 
-    def create_sample_result(self):
+    def create_sample_result(self) -> EstimationResult:
         """Create a sample EstimationResult for testing."""
         return EstimationResult(
             estimates=np.array([0.7, 0.8, 0.6]),
@@ -44,7 +44,7 @@ class TestExportJSON:
             },
         )
 
-    def test_export_json_basic(self):
+    def test_export_json_basic(self) -> None:
         """Test basic JSON export."""
         result = self.create_sample_result()
 
@@ -81,7 +81,7 @@ class TestExportJSON:
         finally:
             Path(output_path).unlink()
 
-    def test_export_json_with_confidence_intervals(self):
+    def test_export_json_with_confidence_intervals(self) -> None:
         """Test JSON export includes confidence intervals."""
         result = self.create_sample_result()
 
@@ -113,7 +113,7 @@ class TestExportJSON:
         finally:
             Path(output_path).unlink()
 
-    def test_export_json_handles_none_values(self):
+    def test_export_json_handles_none_values(self) -> None:
         """Test JSON export handles None values properly."""
         result = EstimationResult(
             estimates=np.array([0.7]),
@@ -143,7 +143,7 @@ class TestExportJSON:
         finally:
             Path(output_path).unlink()
 
-    def test_export_json_pretty_format(self):
+    def test_export_json_pretty_format(self) -> None:
         """Test JSON is formatted for readability."""
         result = self.create_sample_result()
 
@@ -170,7 +170,7 @@ class TestExportJSON:
 class TestExportCSV:
     """Test CSV export functionality."""
 
-    def create_sample_result(self):
+    def create_sample_result(self) -> EstimationResult:
         """Create a sample EstimationResult for testing."""
         return EstimationResult(
             estimates=np.array([0.7, 0.8, 0.6]),
@@ -184,7 +184,7 @@ class TestExportCSV:
             },
         )
 
-    def test_export_csv_basic(self):
+    def test_export_csv_basic(self) -> None:
         """Test basic CSV export."""
         result = self.create_sample_result()
 
@@ -221,7 +221,7 @@ class TestExportCSV:
         finally:
             Path(output_path).unlink()
 
-    def test_export_csv_with_diagnostics(self):
+    def test_export_csv_with_diagnostics(self) -> None:
         """Test CSV export includes diagnostic columns when available."""
         result = EstimationResult(
             estimates=np.array([0.7, 0.8]),
@@ -265,7 +265,7 @@ class TestExportCSV:
         finally:
             Path(output_path).unlink()
 
-    def test_export_csv_missing_diagnostics(self):
+    def test_export_csv_missing_diagnostics(self) -> None:
         """Test CSV export handles missing diagnostics gracefully."""
         result = EstimationResult(
             estimates=np.array([0.7]),
@@ -298,7 +298,7 @@ class TestExportCSV:
         finally:
             Path(output_path).unlink()
 
-    def test_export_csv_escaping(self):
+    def test_export_csv_escaping(self) -> None:
         """Test CSV properly escapes special characters."""
         result = EstimationResult(
             estimates=np.array([0.7]),
@@ -330,7 +330,7 @@ class TestExportCSV:
         finally:
             Path(output_path).unlink()
 
-    def test_export_csv_header_order(self):
+    def test_export_csv_header_order(self) -> None:
         """Test CSV has consistent column order."""
         result = self.create_sample_result()
 

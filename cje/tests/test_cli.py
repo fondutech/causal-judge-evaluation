@@ -14,7 +14,7 @@ from cje.cli import create_parser, run_analysis, validate_data, main
 class TestCLIParser:
     """Test argument parsing for CLI commands."""
 
-    def test_analyze_command_basic(self):
+    def test_analyze_command_basic(self) -> None:
         """Test basic analyze command parsing."""
         parser = create_parser()
         args = parser.parse_args(["analyze", "data.jsonl"])
@@ -26,7 +26,7 @@ class TestCLIParser:
         assert args.output is None
         assert args.fresh_draws_dir is None
 
-    def test_analyze_command_full(self):
+    def test_analyze_command_full(self) -> None:
         """Test analyze command with all options."""
         parser = create_parser()
         args = parser.parse_args(
@@ -63,7 +63,7 @@ class TestCLIParser:
         assert args.verbose is True
         assert args.quiet is False
 
-    def test_validate_command(self):
+    def test_validate_command(self) -> None:
         """Test validate command parsing."""
         parser = create_parser()
         args = parser.parse_args(["validate", "data.jsonl", "-v"])
@@ -72,13 +72,13 @@ class TestCLIParser:
         assert args.dataset == "data.jsonl"
         assert args.verbose is True
 
-    def test_no_command(self):
+    def test_no_command(self) -> None:
         """Test parser with no command."""
         parser = create_parser()
         args = parser.parse_args([])
         assert args.command is None
 
-    def test_invalid_estimator(self):
+    def test_invalid_estimator(self) -> None:
         """Test that invalid estimator is rejected by parser."""
         parser = create_parser()
         with pytest.raises(SystemExit):
@@ -90,7 +90,7 @@ class TestAnalyzeCommand:
     """Test the analyze command execution."""
 
     @patch("cje.analysis.analyze_dataset")
-    def test_run_analysis_basic(self, mock_analyze):
+    def test_run_analysis_basic(self, mock_analyze) -> None:
         """Test basic analysis run."""
         # Setup mock return value
         import numpy as np
@@ -139,7 +139,7 @@ class TestAnalyzeCommand:
 
     @patch("cje.analysis.analyze_dataset")
     @patch("cje.utils.export.export_results_json")
-    def test_run_analysis_with_output(self, mock_export, mock_analyze):
+    def test_run_analysis_with_output(self, mock_export, mock_analyze) -> None:
         """Test analysis with output file."""
         # Setup mock
         import numpy as np
@@ -172,7 +172,7 @@ class TestAnalyzeCommand:
         mock_export.assert_called_once_with(mock_result, "results.json")
 
     @patch("cje.analysis.analyze_dataset")
-    def test_run_analysis_quiet_mode(self, mock_analyze):
+    def test_run_analysis_quiet_mode(self, mock_analyze) -> None:
         """Test analysis in quiet mode."""
         import numpy as np
 
@@ -205,7 +205,7 @@ class TestAnalyzeCommand:
         assert "Results:" not in output
 
     @patch("cje.analysis.analyze_dataset")
-    def test_run_analysis_file_not_found(self, mock_analyze):
+    def test_run_analysis_file_not_found(self, mock_analyze) -> None:
         """Test handling of missing dataset file."""
         mock_analyze.side_effect = FileNotFoundError("data.jsonl not found")
 
@@ -229,7 +229,7 @@ class TestAnalyzeCommand:
         assert "Dataset file not found" in stderr.getvalue()
 
     @patch("cje.analysis.analyze_dataset")
-    def test_run_analysis_value_error(self, mock_analyze):
+    def test_run_analysis_value_error(self, mock_analyze) -> None:
         """Test handling of value errors."""
         mock_analyze.side_effect = ValueError("Invalid estimator config")
 
@@ -258,7 +258,7 @@ class TestValidateCommand:
 
     @patch("cje.load_dataset_from_jsonl")
     @patch("cje.data.validation.validate_cje_data")
-    def test_validate_valid_data(self, mock_validate, mock_load):
+    def test_validate_valid_data(self, mock_validate, mock_load) -> None:
         """Test validation of valid data."""
         # Setup mocks
         mock_dataset = MagicMock()
@@ -284,7 +284,7 @@ class TestValidateCommand:
 
     @patch("cje.load_dataset_from_jsonl")
     @patch("cje.data.validation.validate_cje_data")
-    def test_validate_invalid_data(self, mock_validate, mock_load):
+    def test_validate_invalid_data(self, mock_validate, mock_load) -> None:
         """Test validation of invalid data."""
         mock_dataset = MagicMock()
         mock_dataset.n_samples = 100
@@ -309,7 +309,7 @@ class TestValidateCommand:
 
     @patch("cje.load_dataset_from_jsonl")
     @patch("cje.data.validation.validate_cje_data")
-    def test_validate_verbose_mode(self, mock_validate, mock_load):
+    def test_validate_verbose_mode(self, mock_validate, mock_load) -> None:
         """Test validation in verbose mode."""
         # Setup dataset with judge scores and oracle labels
         mock_dataset = MagicMock()
@@ -352,7 +352,7 @@ class TestValidateCommand:
         assert "Valid samples per policy:" in output
 
     @patch("cje.load_dataset_from_jsonl")
-    def test_validate_file_not_found(self, mock_load):
+    def test_validate_file_not_found(self, mock_load) -> None:
         """Test validation with missing file."""
         mock_load.side_effect = FileNotFoundError("data.jsonl")
 
@@ -368,7 +368,7 @@ class TestValidateCommand:
 class TestMainEntry:
     """Test the main CLI entry point."""
 
-    def test_main_no_args(self):
+    def test_main_no_args(self) -> None:
         """Test main with no arguments shows help."""
         with patch("sys.argv", ["cje"]):
             with patch("sys.stdout", new=StringIO()) as stdout:
@@ -380,7 +380,7 @@ class TestMainEntry:
         assert "available commands" in output.lower()
 
     @patch("cje.cli.run_analysis")
-    def test_main_analyze_command(self, mock_run):
+    def test_main_analyze_command(self, mock_run) -> None:
         """Test main routes to analyze command."""
         mock_run.return_value = 0
 
@@ -391,7 +391,7 @@ class TestMainEntry:
         mock_run.assert_called_once()
 
     @patch("cje.cli.validate_data")
-    def test_main_validate_command(self, mock_validate):
+    def test_main_validate_command(self, mock_validate) -> None:
         """Test main routes to validate command."""
         mock_validate.return_value = 0
 
@@ -401,7 +401,7 @@ class TestMainEntry:
         assert result == 0
         mock_validate.assert_called_once()
 
-    def test_main_unknown_command(self):
+    def test_main_unknown_command(self) -> None:
         """Test main with unknown command."""
         with patch("sys.argv", ["cje", "unknown", "data.jsonl"]):
             # Parser will exit with error

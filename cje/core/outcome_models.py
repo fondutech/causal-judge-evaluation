@@ -133,8 +133,10 @@ class BaseOutcomeModel(ABC):
             if not np.any(train_mask):
                 raise ValueError(f"No training data for fold {fold}")
 
-            train_prompts = [p for i, p in enumerate(prompts) if train_mask[i]]
-            train_responses = [r for i, r in enumerate(responses) if train_mask[i]]
+            # Cast to numpy array for type safety
+            train_mask_arr = np.asarray(train_mask)
+            train_prompts = [p for i, p in enumerate(prompts) if train_mask_arr[i]]
+            train_responses = [r for i, r in enumerate(responses) if train_mask_arr[i]]
             train_rewards = rewards[train_mask]
             train_scores = judge_scores[train_mask]
 

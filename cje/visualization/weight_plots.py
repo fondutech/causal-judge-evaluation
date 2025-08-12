@@ -112,7 +112,8 @@ def plot_weight_dashboard(
 
     # Panel D: Tail Behavior (all policies on one CCDF)
     ax_tail = fig.add_subplot(gs[1, 1])
-    _plot_tail_ccdf_combined(ax_tail, weights_to_plot, policies)
+    if weights_to_plot is not None:
+        _plot_tail_ccdf_combined(ax_tail, weights_to_plot, policies)
 
     # Row 3: Efficiency and summary
     # Panel E: Sample Efficiency
@@ -358,7 +359,7 @@ def _plot_weight_transformation(
     ax: Any, raw_weights_dict: Dict, calibrated_weights_dict: Dict, policies: List[str]
 ) -> None:
     """Plot weight transformation showing calibration effect for all policies."""
-    colors = plt.cm.Set2(np.linspace(0, 1, len(policies)))
+    colors = plt.cm.get_cmap("Set2")(np.linspace(0, 1, len(policies)))
     markers = ["o", "s", "^", "D"]  # Different markers for each policy
 
     for i, (policy, color) in enumerate(zip(policies, colors)):
@@ -418,7 +419,7 @@ def _plot_weight_transformation(
 
 def _plot_tail_ccdf_combined(ax: Any, weights_dict: Dict, policies: List[str]) -> None:
     """CCDF on log-log scale, all policies overlaid."""
-    colors = plt.cm.Set2(np.linspace(0, 1, len(policies)))
+    colors = plt.cm.get_cmap("Set2")(np.linspace(0, 1, len(policies)))
 
     for policy, color in zip(policies, colors):
         weights = weights_dict[policy]

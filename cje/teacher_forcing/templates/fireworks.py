@@ -112,9 +112,11 @@ class FireworksTemplateConfig(ChatTemplateConfig):
             model: Full model path (e.g., "accounts/fireworks/models/llama4-maverick-instruct-basic")
         """
         self.model = model
-        self._template = None
-        self._style = None
-        self._jinja_template = None
+        self._template: Optional[str] = None
+        self._style: Optional[str] = None
+        self._jinja_template: Optional[Any] = (
+            None  # Will be jinja2.Template when loaded
+        )
 
         # Load template (from cache or API)
         self._load_template()
@@ -140,7 +142,10 @@ class FireworksTemplateConfig(ChatTemplateConfig):
         try:
             from jinja2 import Template
 
-            self._jinja_template = Template(self._template)
+            if self._template is not None:
+                self._jinja_template = Template(self._template)
+            else:
+                raise ValueError("Template string is None")
         except ImportError:
             raise ImportError(
                 "jinja2 library required for Fireworks templates. "
@@ -194,7 +199,8 @@ class FireworksTemplateConfig(ChatTemplateConfig):
         }
 
         try:
-            return self._jinja_template.render(**template_vars)
+            result = self._jinja_template.render(**template_vars)
+            return str(result)
         except Exception as e:
             raise FireworksTemplateError(
                 self.model, f"Template rendering error: {str(e)}"

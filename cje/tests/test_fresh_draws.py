@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from cje.utils.fresh_draws import (
-    load_fresh_draws,
+    load_fresh_draws_from_jsonl,
     load_fresh_draws_auto,
     create_synthetic_fresh_draws,
 )
@@ -17,7 +17,7 @@ from cje.data.fresh_draws import FreshDrawDataset
 class TestLoadFreshDrawsAuto:
     """Test the auto-loading functionality for fresh draws."""
 
-    def setup_method(self):
+    def setup_method(self) -> None:
         """Set up test data directory structure."""
         self.temp_dir = tempfile.mkdtemp()
         self.temp_path = Path(self.temp_dir)
@@ -69,7 +69,7 @@ class TestLoadFreshDrawsAuto:
 
         return filepath
 
-    def test_auto_load_finds_responses_dir(self):
+    def test_auto_load_finds_responses_dir(self) -> None:
         """Test auto-loading finds responses in standard location."""
         # Create fresh draw files
         self.create_fresh_draws_file("policy_a")
@@ -83,7 +83,7 @@ class TestLoadFreshDrawsAuto:
         assert result.n_samples == 10
         assert result.samples[0].response == "Fresh response for policy_a"
 
-    def test_auto_load_tries_multiple_locations(self):
+    def test_auto_load_tries_multiple_locations(self) -> None:
         """Test auto-loading searches multiple standard locations."""
         # Create in non-standard location
         alt_dir = self.data_dir / "fresh_draws"
@@ -103,7 +103,7 @@ class TestLoadFreshDrawsAuto:
         assert result.n_samples == 1
         assert result.samples[0].response == "Found in alt location"
 
-    def test_auto_load_falls_back_to_synthetic(self):
+    def test_auto_load_falls_back_to_synthetic(self) -> None:
         """Test auto-loading falls back to synthetic when files not found."""
         # No fresh draw files created
 
@@ -124,7 +124,7 @@ class TestLoadFreshDrawsAuto:
             assert result == mock_dataset
             mock_synthetic.assert_called_once_with("policy_missing", 20)
 
-    def test_auto_load_no_fallback_raises(self):
+    def test_auto_load_no_fallback_raises(self) -> None:
         """Test auto-loading raises error when no fallback and files missing."""
         with pytest.raises(FileNotFoundError, match="No fresh draws found"):
             load_fresh_draws_auto(
@@ -133,7 +133,7 @@ class TestLoadFreshDrawsAuto:
                 fallback_synthetic=False,
             )
 
-    def test_auto_load_with_explicit_dir(self):
+    def test_auto_load_with_explicit_dir(self) -> None:
         """Test auto-loading with explicitly specified directory."""
         # Create in custom location
         custom_dir = self.temp_path / "custom_responses"
@@ -156,7 +156,7 @@ class TestLoadFreshDrawsAuto:
         assert result.n_samples == 1
         assert result.samples[0].response == "Custom location"
 
-    def test_auto_load_pattern_matching(self):
+    def test_auto_load_pattern_matching(self) -> None:
         """Test different file naming patterns are recognized."""
         test_cases = [
             ("policy_a_responses.jsonl", True),
@@ -190,7 +190,7 @@ class TestLoadFreshDrawsAuto:
                         fallback_synthetic=False,
                     )
 
-    def test_auto_load_validates_content(self):
+    def test_auto_load_validates_content(self) -> None:
         """Test auto-loading validates fresh draw file content."""
         # Create invalid fresh draw file (missing required fields)
         invalid_data = [
@@ -208,7 +208,7 @@ class TestLoadFreshDrawsAuto:
                 data_dir=self.data_dir, policy="policy_a", fallback_synthetic=False
             )
 
-    def test_auto_load_logging(self, caplog):
+    def test_auto_load_logging(self, caplog) -> None:
         """Test auto-loading logs appropriate messages."""
         import logging
 
@@ -231,7 +231,7 @@ class TestLoadFreshDrawsAuto:
         # Should log fallback
         assert "synthetic" in caplog.text.lower() or "not found" in caplog.text.lower()
 
-    def test_auto_load_caching(self):
+    def test_auto_load_caching(self) -> None:
         """Test that auto-loading can utilize caching if implemented."""
         # Create fresh draws
         self.create_fresh_draws_file("policy_a")
@@ -245,7 +245,7 @@ class TestLoadFreshDrawsAuto:
         assert result1.n_samples == result2.n_samples
         assert result1.samples[0].prompt_id == result2.samples[0].prompt_id
 
-    def test_auto_load_handles_compressed(self):
+    def test_auto_load_handles_compressed(self) -> None:
         """Test auto-loading handles compressed files if supported."""
         import gzip
 

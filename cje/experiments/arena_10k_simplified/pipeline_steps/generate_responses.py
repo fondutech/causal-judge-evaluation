@@ -175,7 +175,7 @@ def generate_responses(
                 }
 
                 # Save immediately if using batching
-                if batch_size:
+                if batch_size and output_f is not None:
                     output_f.write(json.dumps(result) + "\n")
                     output_f.flush()  # Ensure written to disk
                     # Save progress every batch_size responses
@@ -201,7 +201,7 @@ def generate_responses(
                     "error": str(e),
                 }
 
-                if batch_size:
+                if batch_size and output_f is not None:
                     output_f.write(json.dumps(result) + "\n")
                     output_f.flush()
                 else:

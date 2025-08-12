@@ -87,7 +87,7 @@ def run_single_experiment(
 
     if result.returncode != 0:
         print(f"  ❌ Failed: {result.stderr}")
-        return None
+        return {}
 
     # Load and return results
     with open(output_file) as f:

@@ -38,7 +38,7 @@ def plot_dr_dashboard(
     fig.suptitle("DR Diagnostics Dashboard", fontsize=14, fontweight="bold")
 
     # Color palette
-    colors = plt.cm.tab10(np.linspace(0, 1, n_policies))
+    colors = plt.cm.get_cmap("tab10")(np.linspace(0, 1, n_policies))
 
     # Panel A: DM vs IPS contributions
     ax = axes[0]
@@ -241,23 +241,23 @@ def plot_dr_calibration(
     fig, ax = plt.subplots(figsize=figsize)
 
     # Compute bin statistics
-    bin_centers = []
-    bin_means = []
-    bin_stds = []
-    bin_counts = []
+    bin_centers_list = []
+    bin_means_list = []
+    bin_stds_list = []
+    bin_counts_list = []
 
     for i in range(n_bins):
         mask = (g_logged >= bin_edges[i]) & (g_logged < bin_edges[i + 1])
         if np.sum(mask) > 0:
-            bin_centers.append(np.mean(g_logged[mask]))
-            bin_means.append(np.mean(rewards[mask]))
-            bin_stds.append(np.std(rewards[mask]))
-            bin_counts.append(np.sum(mask))
+            bin_centers_list.append(np.mean(g_logged[mask]))
+            bin_means_list.append(np.mean(rewards[mask]))
+            bin_stds_list.append(np.std(rewards[mask]))
+            bin_counts_list.append(np.sum(mask))
 
-    bin_centers = np.array(bin_centers)
-    bin_means = np.array(bin_means)
-    bin_stds = np.array(bin_stds)
-    bin_counts = np.array(bin_counts)
+    bin_centers = np.array(bin_centers_list)
+    bin_means = np.array(bin_means_list)
+    bin_stds = np.array(bin_stds_list)
+    bin_counts = np.array(bin_counts_list)
 
     # Plot calibration
     ax.errorbar(

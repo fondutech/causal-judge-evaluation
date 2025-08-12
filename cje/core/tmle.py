@@ -23,12 +23,14 @@ _EPS = 1e-7  # numerical guard for logits/probabilities
 
 
 def _expit(x: np.ndarray) -> np.ndarray:
-    return 1.0 / (1.0 + np.exp(-x))
+    result = 1.0 / (1.0 + np.exp(-x))
+    return np.asarray(result)
 
 
 def _logit(p: np.ndarray) -> np.ndarray:
     p = np.clip(p, _EPS, 1.0 - _EPS)
-    return np.log(p) - np.log(1.0 - p)
+    result = np.log(p) - np.log(1.0 - p)
+    return np.asarray(result)
 
 
 class TMLEEstimator(DREstimator):
@@ -245,6 +247,8 @@ class TMLEEstimator(DREstimator):
                 continue
 
             weights = self.get_weights(policy)
+            if weights is None:
+                continue
             rewards = np.array([d["reward"] for d in data], dtype=float)
             scores = np.array([d.get("judge_score") for d in data], dtype=float)
             prompt_ids = [str(d.get("prompt_id")) for d in data]
@@ -394,7 +398,7 @@ class TMLEEstimator(DREstimator):
         if not converged:
             logger.info(
                 f"TMLE logistic fluctuation did not fully converge: "
-                f"iters={self.max_iter}, |score|={abs(score_val):.3e}, fisher={fisher_val:.3e}"
+                f"iters={self.max_iter}, |score|={abs(score_val) if score_val is not None else 0:.3e}, fisher={fisher_val:.3e}"
             )
 
         return float(eps), dict(

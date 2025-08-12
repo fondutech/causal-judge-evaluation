@@ -129,7 +129,7 @@ class MRDREstimator(DREstimator):
         if mode == "w2":
             return w**2
         if mode == "w":
-            return np.abs(w)
+            return np.asarray(np.abs(w))
         raise ValueError(f"Unknown omega_mode: {mode}")
 
     def fit(self) -> None:

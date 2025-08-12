@@ -172,7 +172,7 @@ class DREstimator(BaseCJEEstimator):
         valid_fold_assignments = []
 
         # Get indices of samples that are valid for at least one policy
-        valid_for_any = set()
+        valid_for_any: set[int] = set()
         for policy in self.sampler.target_policies:
             valid_indices = self.sampler._get_valid_indices(policy)
             valid_for_any.update(valid_indices)
@@ -296,12 +296,12 @@ class DREstimator(BaseCJEEstimator):
                 logged_prompt_ids.append(str(d["prompt_id"]))
 
             # Get fold assignments using precomputed mapping (O(1) lookups)
-            valid_fold_ids = []
+            valid_fold_ids_list = []
             if self._promptid_to_fold:
                 for pid in logged_prompt_ids:
                     fold = self._promptid_to_fold.get(pid, 0)
-                    valid_fold_ids.append(fold)
-            valid_fold_ids = np.array(valid_fold_ids)
+                    valid_fold_ids_list.append(fold)
+            valid_fold_ids = np.array(valid_fold_ids_list)
 
             # Verify we have the right number of fold assignments
             if len(valid_fold_ids) != len(logged_prompts):
@@ -331,7 +331,7 @@ class DREstimator(BaseCJEEstimator):
 
             # Collect fresh scores for each logged sample
             g_fresh_all = []
-            fresh_draw_var_per_prompt = []  # For diagnostics
+            fresh_draw_var_per_prompt_list = []  # For diagnostics
 
             for i, prompt_id in enumerate(logged_prompt_ids):
                 # Get fresh judge scores for this prompt
@@ -378,12 +378,12 @@ class DREstimator(BaseCJEEstimator):
 
                 # Track variance for diagnostics
                 if len(g_fresh_prompt) > 1:
-                    fresh_draw_var_per_prompt.append(g_fresh_prompt.var())
+                    fresh_draw_var_per_prompt_list.append(g_fresh_prompt.var())
                 else:
-                    fresh_draw_var_per_prompt.append(0.0)
+                    fresh_draw_var_per_prompt_list.append(0.0)
 
             g_fresh = np.array(g_fresh_all)
-            fresh_draw_var_per_prompt = np.array(fresh_draw_var_per_prompt)
+            fresh_draw_var_per_prompt = np.array(fresh_draw_var_per_prompt_list)
 
             # Sanity check: weights should have mean approximately 1.0
             weights_mean = weights.mean()
@@ -442,12 +442,12 @@ class DREstimator(BaseCJEEstimator):
             logged_prompt_ids = [str(d["prompt_id"]) for d in data]
 
             # Get fold assignments
-            valid_fold_ids = []
+            valid_fold_ids_list = []
             if self._promptid_to_fold:
                 for pid in logged_prompt_ids:
                     fold = self._promptid_to_fold.get(pid, 0)
-                    valid_fold_ids.append(fold)
-            valid_fold_ids = np.array(valid_fold_ids)
+                    valid_fold_ids_list.append(fold)
+            valid_fold_ids = np.array(valid_fold_ids_list)
 
             # Get outcome predictions
             if hasattr(self.outcome_model, "predict"):
@@ -462,7 +462,7 @@ class DREstimator(BaseCJEEstimator):
             # Recompute g_fresh and variance (could optimize by storing)
             fresh_dataset = self._fresh_draws[policy]
             g_fresh_all = []
-            fresh_draw_var_per_prompt = []
+            fresh_draw_var_per_prompt_list = []
 
             for i, prompt_id in enumerate(logged_prompt_ids):
                 fresh_scores = fresh_dataset.get_scores_for_prompt_id(prompt_id)
@@ -481,12 +481,12 @@ class DREstimator(BaseCJEEstimator):
 
                 g_fresh_all.append(g_fresh_prompt.mean())
                 if len(g_fresh_prompt) > 1:
-                    fresh_draw_var_per_prompt.append(g_fresh_prompt.var())
+                    fresh_draw_var_per_prompt_list.append(g_fresh_prompt.var())
                 else:
-                    fresh_draw_var_per_prompt.append(0.0)
+                    fresh_draw_var_per_prompt_list.append(0.0)
 
             g_fresh = np.array(g_fresh_all)
-            fresh_draw_var_per_prompt = np.array(fresh_draw_var_per_prompt)
+            fresh_draw_var_per_prompt = np.array(fresh_draw_var_per_prompt_list)
 
             # Compute diagnostics
             diag = compute_dr_policy_diagnostics(

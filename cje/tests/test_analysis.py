@@ -13,7 +13,7 @@ from cje.analysis import analyze_dataset
 class TestAnalyzeDataset:
     """Test the analyze_dataset high-level function."""
 
-    def setup_method(self):
+    def setup_method(self) -> None:
         """Use real test data from arena sample."""
         self.test_data_path = (
             Path(__file__).parent / "data" / "arena_sample" / "dataset.jsonl"
@@ -38,7 +38,7 @@ class TestAnalyzeDataset:
             for i in range(20)
         ]
 
-    def create_test_file(self, data=None):
+    def create_test_file(self, data=None) -> str:
         """Helper to create a test JSONL file."""
         if data is None:
             data = self.mock_data
@@ -48,7 +48,7 @@ class TestAnalyzeDataset:
                 f.write(json.dumps(record) + "\n")
             return f.name
 
-    def test_analyze_basic_ips(self):
+    def test_analyze_basic_ips(self) -> None:
         """Test basic IPS analysis with real test data."""
         # Use real arena sample data
         result = analyze_dataset(
@@ -71,7 +71,7 @@ class TestAnalyzeDataset:
         assert result.metadata["estimator"] == "calibrated-ips"
         assert result.metadata["dataset_path"] == str(self.test_data_path)
 
-    def test_analyze_with_calibration(self):
+    def test_analyze_with_calibration(self) -> None:
         """Test analysis with judge calibration using real data."""
         result = analyze_dataset(
             str(self.test_data_path),
@@ -93,7 +93,7 @@ class TestAnalyzeDataset:
         assert "diagnostics" in result_dict
         assert "clone" in result_dict["diagnostics"]
 
-    def test_analyze_dr_with_fresh_draws(self):
+    def test_analyze_dr_with_fresh_draws(self) -> None:
         """Test DR analysis with real fresh draws."""
         result = analyze_dataset(
             str(self.test_data_path),
@@ -112,7 +112,7 @@ class TestAnalyzeDataset:
         assert "dr_diagnostics" in result.metadata or "diagnostics" in result.to_dict()
 
     @patch("cje.analysis.load_fresh_draws_auto")
-    def test_analyze_dr_fallback_synthetic(self, mock_load_fresh):
+    def test_analyze_dr_fallback_synthetic(self, mock_load_fresh) -> None:
         """Test DR falls back to synthetic when fresh draws missing."""
         # Mock returns synthetic dataset
         mock_synthetic = MagicMock()
@@ -138,7 +138,7 @@ class TestAnalyzeDataset:
         finally:
             Path(test_file).unlink()
 
-    def test_analyze_with_estimator_config(self):
+    def test_analyze_with_estimator_config(self) -> None:
         """Test passing estimator configuration."""
         test_file = self.create_test_file()
 
@@ -158,7 +158,7 @@ class TestAnalyzeDataset:
         finally:
             Path(test_file).unlink()
 
-    def test_analyze_invalid_estimator(self):
+    def test_analyze_invalid_estimator(self) -> None:
         """Test error handling for invalid estimator."""
         test_file = self.create_test_file()
 
@@ -168,12 +168,12 @@ class TestAnalyzeDataset:
         finally:
             Path(test_file).unlink()
 
-    def test_analyze_missing_file(self):
+    def test_analyze_missing_file(self) -> None:
         """Test error handling for missing file."""
         with pytest.raises(FileNotFoundError):
             analyze_dataset("nonexistent.jsonl", estimator="calibrated-ips")
 
-    def test_analyze_insufficient_oracle_labels(self):
+    def test_analyze_insufficient_oracle_labels(self) -> None:
         """Test error when too few oracle labels for calibration."""
         # Create data with only 5 oracle labels (below minimum)
         limited_data = [
@@ -201,12 +201,12 @@ class TestAnalyzeDataset:
         finally:
             Path(test_file).unlink()
 
-    def test_analyze_mrdr_estimator(self):
+    def test_analyze_mrdr_estimator(self) -> None:
         """Test MRDR estimator analysis."""
         # Add rewards for MRDR
         data_with_rewards = [
             {**record, "reward": 0.5 + 0.02 * i}
-            for i, record in enumerate(self.test_data)
+            for i, record in enumerate(self.mock_data)
         ]
 
         test_file = self.create_test_file(data_with_rewards)
@@ -225,12 +225,12 @@ class TestAnalyzeDataset:
         finally:
             Path(test_file).unlink()
 
-    def test_analyze_tmle_estimator(self):
+    def test_analyze_tmle_estimator(self) -> None:
         """Test TMLE estimator analysis."""
         # Add rewards for TMLE
         data_with_rewards = [
             {**record, "reward": 0.5 + 0.02 * i}
-            for i, record in enumerate(self.test_data)
+            for i, record in enumerate(self.mock_data)
         ]
 
         test_file = self.create_test_file(data_with_rewards)
@@ -249,7 +249,7 @@ class TestAnalyzeDataset:
         finally:
             Path(test_file).unlink()
 
-    def test_analyze_preserves_metadata(self):
+    def test_analyze_preserves_metadata(self) -> None:
         """Test that analyze preserves important metadata."""
         test_file = self.create_test_file()
 
@@ -275,10 +275,10 @@ class TestAnalyzeDataset:
         finally:
             Path(test_file).unlink()
 
-    def test_analyze_result_structure(self):
+    def test_analyze_result_structure(self) -> None:
         """Test the structure of the returned EstimationResult."""
         # Use data with rewards for simplicity
-        data_with_rewards = [{**record, "reward": 0.7} for record in self.test_data]
+        data_with_rewards = [{**record, "reward": 0.7} for record in self.mock_data]
 
         test_file = self.create_test_file(data_with_rewards)
 

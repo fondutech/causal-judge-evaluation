@@ -204,6 +204,12 @@ def compute_chat_logprob(
             return prefix_result
 
         # Compute log P(reply | prompt) = log P(full) - log P(prefix)
+        if full_result.value is None or prefix_result.value is None:
+            return LogProbResult(
+                value=None,
+                status=LogProbStatus.API_ERROR,
+                error="Missing value from full or prefix computation",
+            )
         lp_reply = full_result.value - prefix_result.value
 
         # Sanity checks

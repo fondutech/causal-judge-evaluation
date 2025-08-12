@@ -186,3 +186,39 @@ class EstimationResult(BaseModel):
             "p_value": p_value,
             "significant": p_value < alpha,
         }
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        ci_lower, ci_upper = self.confidence_interval()
+
+        result = {
+            "method": self.method,
+            "estimates": self.estimates.tolist(),
+            "standard_errors": self.standard_errors.tolist(),
+            "n_samples_used": self.n_samples_used,
+            "confidence_intervals": {
+                "alpha": 0.05,
+                "lower": ci_lower.tolist(),
+                "upper": ci_upper.tolist(),
+            },
+            "metadata": self.metadata,
+        }
+
+        # Add per-policy results if policies are specified
+        if "target_policies" in self.metadata:
+            policies = self.metadata["target_policies"]
+            result["per_policy_results"] = {}
+            for i, policy in enumerate(policies):
+                result["per_policy_results"][policy] = {
+                    "estimate": float(self.estimates[i]),
+                    "standard_error": float(self.standard_errors[i]),
+                    "ci_lower": float(ci_lower[i]),
+                    "ci_upper": float(ci_upper[i]),
+                    "n_samples": self.n_samples_used.get(policy, 0),
+                }
+
+        # Include diagnostics if available
+        if "diagnostics" in self.metadata:
+            result["diagnostics"] = self.metadata["diagnostics"]
+
+        return result

@@ -1,6 +1,6 @@
 """HuggingFace tokenizer-based template configuration."""
 
-from typing import List, Dict
+from typing import List, Dict, Optional
 from .base import ChatTemplateConfig
 
 
@@ -11,7 +11,7 @@ class HuggingFaceTemplateConfig(ChatTemplateConfig):
     formatting automatically.
     """
 
-    def __init__(self, tokenizer_name: str, hf_token: str = None):
+    def __init__(self, tokenizer_name: str, hf_token: Optional[str] = None):
         """Initialize with HuggingFace model/tokenizer name.
 
         Args:
