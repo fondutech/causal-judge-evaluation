@@ -1,0 +1,4 @@
+# Test data directories
+cje/experiments/arena_10k_simplified/test_e2e_clean/
+cje/experiments/arena_10k_simplified/test_e2e_data/
+cje/experiments/arena_10k_simplified/test_e2e_data copy/
