@@ -130,7 +130,7 @@ class BaseOutcomeModel(ABC):
         for fold in range(self.n_folds):
             train_mask = self.fold_assignments != fold
 
-            if not train_mask.any():
+            if not np.any(train_mask):
                 raise ValueError(f"No training data for fold {fold}")
 
             train_prompts = [p for i, p in enumerate(prompts) if train_mask[i]]

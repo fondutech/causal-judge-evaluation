@@ -218,6 +218,7 @@ class FreshDrawLoader:
                         draw_idx=data.get(
                             "draw_idx", 0
                         ),  # Default to 0 if not provided
+                        fold_id=data.get("fold_id"),  # Optional
                     )
 
                     samples_by_policy[sample.target_policy].append(sample)

@@ -93,7 +93,7 @@ def _mean_one_isotonic_projection_exact(
     else:
         v = np.ones_like(w_sorted_mean1)  # Degenerate case
 
-    return v
+    return np.asarray(v)
 
 
 def _variance_safe_blend_closed_form(

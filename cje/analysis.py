@@ -101,14 +101,16 @@ def analyze_dataset(
 
     # Step 5: Add fresh draws for DR estimators
     if estimator in ["dr-cpo", "mrdr", "tmle"]:
-        _add_fresh_draws(
-            estimator_obj,
-            sampler,
-            calibrated_dataset,
-            fresh_draws_dir,
-            estimator_config or {},
-            verbose,
-        )
+        # Type narrowing for mypy
+        if isinstance(estimator_obj, (DRCPOEstimator, MRDREstimator, TMLEEstimator)):
+            _add_fresh_draws(
+                estimator_obj,
+                sampler,
+                calibrated_dataset,
+                fresh_draws_dir,
+                estimator_config or {},
+                verbose,
+            )
 
     # Step 6: Run estimation
     if verbose:
@@ -222,7 +224,7 @@ def _add_fresh_draws(
     fresh_draws_dir: Optional[str],
     config: Dict[str, Any],
     verbose: bool,
-):
+) -> None:
     """Add fresh draws to a DR estimator."""
     from .utils.fresh_draws import load_fresh_draws_auto
 

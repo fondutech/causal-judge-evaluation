@@ -29,7 +29,7 @@ def export_results_json(
         indent: JSON indentation level (None for compact)
     """
     # Prepare the export data
-    export_data = {
+    export_data: Dict[str, Any] = {
         "timestamp": datetime.now().isoformat(),
         "method": results.method,
         "estimates": _serialize_array(results.estimates),
@@ -136,7 +136,7 @@ def _serialize_array(arr: np.ndarray) -> list:
 
 def _serialize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
     """Serialize metadata, handling special types."""
-    serialized = {}
+    serialized: Dict[str, Any] = {}
 
     for key, value in metadata.items():
         # Skip complex objects that aren't easily serializable
@@ -161,7 +161,7 @@ def _serialize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
 
 def _serialize_diagnostics(diagnostics: Dict[str, Any]) -> Dict[str, Any]:
     """Serialize diagnostics, handling nested structures."""
-    serialized = {}
+    serialized: Dict[str, Any] = {}
 
     for key, value in diagnostics.items():
         if isinstance(value, dict):

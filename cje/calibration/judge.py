@@ -171,7 +171,8 @@ class JudgeCalibrator:
         if self._final_calibrator is None:
             raise RuntimeError("Calibrator must be fitted before prediction")
 
-        return self._final_calibrator.predict(np.asarray(judge_scores))
+        result = self._final_calibrator.predict(np.asarray(judge_scores))
+        return np.asarray(result)
 
     def fit_cv(
         self,

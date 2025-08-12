@@ -147,6 +147,7 @@ def create_synthetic_fresh_draws(
                 judge_score=float(score),
                 response=f"Synthetic response for {prompt_id} draw {draw_idx}",
                 draw_idx=draw_idx,
+                fold_id=None,
             )
             samples.append(fresh_sample)
 

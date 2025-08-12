@@ -124,7 +124,7 @@ class Dataset(BaseModel):
 
     def summary(self) -> Dict[str, Any]:
         """Get dataset summary statistics."""
-        rewards = [s.reward for s in self.samples]
+        rewards = [s.reward for s in self.samples if s.reward is not None]
         valid_counts = {policy: 0 for policy in self.target_policies}
 
         for sample in self.samples:
@@ -135,8 +135,8 @@ class Dataset(BaseModel):
         return {
             "n_samples": self.n_samples,
             "target_policies": self.target_policies,
-            "reward_mean": np.mean(rewards),
-            "reward_std": np.std(rewards),
+            "reward_mean": np.mean(rewards) if rewards else None,
+            "reward_std": np.std(rewards) if rewards else None,
             "valid_samples_per_policy": valid_counts,
         }
 
