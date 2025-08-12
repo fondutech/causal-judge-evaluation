@@ -75,9 +75,7 @@ class TestLoadFreshDrawsAuto:
         self.create_fresh_draws_file("policy_a")
 
         # Test auto-loading
-        result = load_fresh_draws_auto(
-            data_dir=self.data_dir, policy="policy_a", fallback_synthetic=False
-        )
+        result = load_fresh_draws_auto(data_dir=self.data_dir, policy="policy_a")
 
         assert isinstance(result, FreshDrawDataset)
         assert result.n_samples == 10
@@ -96,42 +94,17 @@ class TestLoadFreshDrawsAuto:
         with open(alt_dir / "policy_a.jsonl", "w") as f:
             f.write(json.dumps(fresh_data[0]) + "\n")
 
-        result = load_fresh_draws_auto(
-            data_dir=self.data_dir, policy="policy_a", fallback_synthetic=False
-        )
+        result = load_fresh_draws_auto(data_dir=self.data_dir, policy="policy_a")
 
         assert result.n_samples == 1
         assert result.samples[0].response == "Found in alt location"
 
-    def test_auto_load_falls_back_to_synthetic(self) -> None:
-        """Test auto-loading falls back to synthetic when files not found."""
-        # No fresh draw files created
-
-        with patch(
-            "cje.utils.fresh_draws.create_synthetic_fresh_draws"
-        ) as mock_synthetic:
-            mock_dataset = MagicMock()
-            mock_dataset.n_samples = 10
-            mock_synthetic.return_value = mock_dataset
-
-            result = load_fresh_draws_auto(
-                data_dir=self.data_dir,
-                policy="policy_missing",
-                fallback_synthetic=True,
-                dataset=MagicMock(),  # Dataset required for synthetic
-                config={"draws_per_prompt": 20},
-            )
-
-            assert result == mock_dataset
-            mock_synthetic.assert_called_once()
-
     def test_auto_load_no_fallback_raises(self) -> None:
-        """Test auto-loading raises error when no fallback and files missing."""
-        with pytest.raises(FileNotFoundError, match="No fresh draws found"):
+        """Test auto-loading raises error when files missing."""
+        with pytest.raises(FileNotFoundError, match="No fresh draw file found"):
             load_fresh_draws_auto(
                 data_dir=self.data_dir,
                 policy="policy_missing",
-                fallback_synthetic=False,
             )
 
     def test_auto_load_with_explicit_dir(self) -> None:
@@ -150,7 +123,6 @@ class TestLoadFreshDrawsAuto:
         result = load_fresh_draws_auto(
             data_dir=custom_dir,  # Use custom dir as data_dir
             policy="policy_a",
-            fallback_synthetic=False,
         )
 
         assert result.n_samples == 1
@@ -179,7 +151,7 @@ class TestLoadFreshDrawsAuto:
 
             if should_find:
                 result = load_fresh_draws_auto(
-                    data_dir=self.data_dir, policy="policy_a", fallback_synthetic=False
+                    data_dir=self.data_dir, policy="policy_a"
                 )
                 assert result.n_samples == 1
             else:
@@ -187,7 +159,6 @@ class TestLoadFreshDrawsAuto:
                     load_fresh_draws_auto(
                         data_dir=self.data_dir,
                         policy="policy_a",
-                        fallback_synthetic=False,
                     )
 
     def test_auto_load_validates_content(self) -> None:
@@ -204,9 +175,7 @@ class TestLoadFreshDrawsAuto:
             f.write(json.dumps(invalid_data[0]) + "\n")
 
         with pytest.raises(Exception):  # Should raise validation error
-            load_fresh_draws_auto(
-                data_dir=self.data_dir, policy="policy_a", fallback_synthetic=False
-            )
+            load_fresh_draws_auto(data_dir=self.data_dir, policy="policy_a")
 
     def test_auto_load_logging(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test auto-loading logs appropriate messages."""
@@ -221,15 +190,6 @@ class TestLoadFreshDrawsAuto:
 
         # Should log where it found the file
         assert "Found fresh draws" in caplog.text or "Loading" in caplog.text
-
-        # Test fallback to synthetic
-        caplog.clear()
-        result = load_fresh_draws_auto(
-            data_dir=self.data_dir, policy="policy_missing", fallback_synthetic=True
-        )
-
-        # Should log fallback
-        assert "synthetic" in caplog.text.lower() or "not found" in caplog.text.lower()
 
     def test_auto_load_caching(self) -> None:
         """Test that auto-loading can utilize caching if implemented."""
@@ -258,14 +218,6 @@ class TestLoadFreshDrawsAuto:
         with gzip.open(filepath, "wt") as f:
             f.write(json.dumps(fresh_data[0]) + "\n")
 
-        # This might not be implemented yet, so we allow it to fail gracefully
-        try:
-            result = load_fresh_draws_auto(
-                data_dir=self.data_dir, policy="policy_a", fallback_synthetic=True
-            )
-            # If it works, great!
-            if result.n_samples > 0 and not hasattr(result, "_synthetic"):
-                assert result.samples[0].response == "Compressed data"
-        except:
-            # If not implemented, that's okay for now
-            pass
+        # Compressed files are not currently supported, should raise FileNotFoundError
+        with pytest.raises(FileNotFoundError):
+            result = load_fresh_draws_auto(data_dir=self.data_dir, policy="policy_a")

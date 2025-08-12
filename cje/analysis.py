@@ -226,28 +226,17 @@ def _add_fresh_draws(
 
     for policy in sampler.target_policies:
         if fresh_draws_dir:
-            # Try to load from directory
+            # Load from directory - no fallback
             fresh_draws = load_fresh_draws_auto(
                 Path(fresh_draws_dir),
                 policy,
-                fallback_synthetic=True,
-                dataset=dataset,
-                config=config,
                 verbose=verbose,
             )
         else:
-            # Create synthetic fresh draws
-            from .utils.fresh_draws import create_synthetic_fresh_draws
-
-            if verbose:
-                logger.info(f"Creating synthetic fresh draws for {policy}")
-
-            fresh_draws = create_synthetic_fresh_draws(
-                dataset,
-                target_policy=policy,
-                draws_per_prompt=config.get("draws_per_prompt", 10),
-                score_correlation=config.get("score_correlation", 0.9),
-                seed=42 + hash(policy) % 1000,
+            # No fresh draws available - fail clearly
+            raise ValueError(
+                f"DR estimators require fresh draws for policy '{policy}'. "
+                f"Please provide --fresh-draws-dir with real teacher forcing responses."
             )
 
         estimator.add_fresh_draws(policy, fresh_draws)

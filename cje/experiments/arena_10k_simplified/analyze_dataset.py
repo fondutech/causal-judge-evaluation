@@ -49,7 +49,6 @@ from cje import (
     TMLEEstimator,
     FreshDrawDataset,
     FreshDrawSample,
-    create_synthetic_fresh_draws,
     load_fresh_draws_auto,
     diagnose_weights,
     create_weight_summary_table,
@@ -149,29 +148,26 @@ def add_fresh_draws_to_estimator(
     data_dir = Path(data_path).parent
 
     for policy in sampler.target_policies:
-        # Try to load fresh draws - NO SYNTHETIC FALLBACK
-        fresh_draws = load_fresh_draws_auto(
-            data_dir=data_dir,
-            policy=policy,
-            fallback_synthetic=False,  # NEVER create synthetic data
-            dataset=dataset,
-            config=estimator_config,
-            verbose=False,
-        )
-
-        if fresh_draws is None:
-            # Fail loudly - this is a critical error
-            raise ValueError(
+        # Load fresh draws - will raise FileNotFoundError if missing
+        try:
+            fresh_draws = load_fresh_draws_auto(
+                data_dir=data_dir,
+                policy=policy,
+                verbose=False,
+            )
+            # Print status - we know these are real draws now
+            print(f"     ✓ Loaded {len(fresh_draws.samples)} fresh draws for {policy}")
+        except FileNotFoundError as e:
+            # Enhance the error message with specific guidance
+            raise FileNotFoundError(
                 f"No fresh draws found for policy '{policy}' in {data_dir}.\n"
                 f"DR/MRDR/TMLE require real fresh draws from teacher forcing.\n"
-                f"Either:\n"
+                f"Options:\n"
                 f"  1. Generate fresh draws using generate_fresh_draws.py\n"
                 f"  2. Use --estimator calibrated-ips or raw-ips (no fresh draws needed)\n"
-                f"  3. Provide path to fresh draw files"
-            )
-
-        # Print status - we know these are real draws now
-        print(f"     ✓ Loaded {len(fresh_draws.samples)} fresh draws for {policy}")
+                f"  3. Ensure response files exist in {data_dir}/responses/\n"
+                f"Original error: {e}"
+            ) from e
         estimator.add_fresh_draws(policy, fresh_draws)
 
 

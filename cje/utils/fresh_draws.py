@@ -168,35 +168,27 @@ def create_synthetic_fresh_draws(
 def load_fresh_draws_auto(
     data_dir: Path,
     policy: str,
-    fallback_synthetic: bool = True,
-    dataset: Optional[Dataset] = None,
-    config: Optional[Dict] = None,
     verbose: bool = False,
 ) -> FreshDrawDataset:
     """
-    Automatically load fresh draws from files or create synthetic ones.
+    Load fresh draws from files.
 
     This function tries to load fresh draws from standard locations:
     1. {data_dir}/{policy}_responses.jsonl
     2. {data_dir}/responses/{policy}_responses.jsonl
     3. {data_dir}/{policy}_fresh.jsonl
-
-    If no file is found and fallback_synthetic is True, creates synthetic draws.
+    4. {data_dir}/fresh_draws/{policy}.jsonl
 
     Args:
         data_dir: Directory to search for fresh draw files
         policy: Target policy name
-        fallback_synthetic: Whether to create synthetic draws if file not found
-        dataset: Dataset for creating synthetic draws (required if fallback_synthetic)
-        config: Configuration for synthetic draws (draws_per_prompt, score_correlation)
         verbose: Whether to log detailed information
 
     Returns:
         FreshDrawDataset for the specified policy
 
     Raises:
-        FileNotFoundError: If no file found and fallback_synthetic is False
-        ValueError: If fallback_synthetic is True but dataset is None
+        FileNotFoundError: If no fresh draw file found
     """
     # Standard file patterns to check
     possible_files = [
@@ -259,28 +251,12 @@ def load_fresh_draws_auto(
                 logger.warning(f"Failed to load {file_path}: {e}")
                 continue
 
-    # No file found - fall back to synthetic if requested
-    if fallback_synthetic:
-        if dataset is None:
-            raise ValueError("Dataset required for creating synthetic fresh draws")
-
-        if verbose:
-            logger.info(f"No fresh draw file found for {policy}, creating synthetic")
-
-        config = config or {}
-        return create_synthetic_fresh_draws(
-            dataset,
-            target_policy=policy,
-            draws_per_prompt=config.get("draws_per_prompt", 10),
-            score_correlation=config.get("score_correlation", 0.9),
-            seed=42 + hash(policy) % 1000,
-        )
-
-    else:
-        searched_paths = "\n  ".join(str(p) for p in possible_files)
-        raise FileNotFoundError(
-            f"No fresh draw file found for policy '{policy}'. Searched:\n  {searched_paths}"
-        )
+    # No file found - raise error with helpful message
+    searched_paths = "\n  ".join(str(p) for p in possible_files)
+    raise FileNotFoundError(
+        f"No fresh draw file found for policy '{policy}'. Searched:\n  {searched_paths}\n"
+        f"Fresh draws must be generated from real teacher forcing responses."
+    )
 
 
 def save_fresh_draws_to_jsonl(

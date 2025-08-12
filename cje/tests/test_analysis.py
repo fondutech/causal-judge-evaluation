@@ -107,28 +107,18 @@ class TestAnalyzeDataset:
         # DR should have diagnostics
         assert "dr_diagnostics" in result.metadata or "diagnostics" in result.to_dict()
 
-    @patch("cje.analysis.load_fresh_draws_auto")
-    def test_analyze_dr_fallback_synthetic(self, mock_load_fresh: MagicMock) -> None:
-        """Test DR falls back to synthetic when fresh draws missing."""
-        # Mock returns synthetic dataset
-        mock_synthetic = MagicMock()
-        mock_synthetic.n_samples = 20
-        mock_load_fresh.return_value = mock_synthetic
-
+    def test_analyze_dr_requires_fresh_draws(self) -> None:
+        """Test DR fails clearly when fresh draws missing."""
         test_file = self.create_test_file()
 
         try:
-            result = analyze_dataset(
-                test_file,
-                estimator="dr-cpo",
-                # No fresh_draws_dir specified
-            )
-
-            # Should still work with synthetic
-            assert result.method in ["dr_cpo", "dr", "doubly_robust"]
-
-            # Check auto-loading was attempted
-            mock_load_fresh.assert_called()
+            # Should raise error without fresh draws
+            with pytest.raises(ValueError, match="DR estimators require fresh draws"):
+                analyze_dataset(
+                    test_file,
+                    estimator="dr-cpo",
+                    # No fresh_draws_dir specified
+                )
 
         finally:
             Path(test_file).unlink()
