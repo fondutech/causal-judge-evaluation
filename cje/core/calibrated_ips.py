@@ -208,12 +208,13 @@ class CalibratedIPS(BaseCJEEstimator):
             wy = weights * rewards
             estimate = wy.mean()
 
-            # Compute standard error using delta-method for SNIPS (ratio estimator)
+            # Compute standard error using delta method for ratio estimator (SNIPS/Hajek)
+            # With mean-one weights, we have E[W] = 1, so this simplifies to:
+            # Var[W*R - θ*W] = Var[W*(R - θ)]
             n = len(wy)
             if n > 1:
-                centered = weights * (
-                    rewards - estimate
-                )  # Ratio (SNIPS) delta-method residuals
+                # For mean-one weights, this is the correct formula
+                centered = weights * (rewards - estimate)
                 var_hat = float(np.var(centered, ddof=1))
                 se = np.sqrt(var_hat / n)
             else:

@@ -168,6 +168,40 @@ def main() -> None:
     data_dir = Path(args.data_dir)
     data_dir.mkdir(exist_ok=True)
 
+    # Check for existing data and warn user
+    existing_files = []
+    important_files = [
+        data_dir / "cje_dataset.jsonl",
+        data_dir / "prompts.jsonl",
+    ]
+
+    # Check for response files
+    for policy in POLICY_NAMES:
+        important_files.append(data_dir / "responses" / f"{policy}_responses.jsonl")
+
+    for file in important_files:
+        if file.exists():
+            existing_files.append(file)
+
+    if existing_files and not args.force and not args.skip_existing:
+        print("\n⚠️  WARNING: The following files already exist:")
+        for file in existing_files:
+            print(f"   - {file}")
+        print("\nThis operation will OVERWRITE these files!")
+        print("Options:")
+        print("  1. Continue and overwrite (type 'yes')")
+        print("  2. Skip existing files (rerun with --skip-existing)")
+        print("  3. Force overwrite without asking (rerun with --force)")
+        print("  4. Cancel (any other input)")
+
+        response = (
+            input("\nDo you want to continue and OVERWRITE? (yes/no): ").strip().lower()
+        )
+        if response != "yes":
+            print("❌ Operation cancelled. No files were modified.")
+            sys.exit(0)
+        print("⚠️  Proceeding with overwrite...")
+
     # Create subdirectories
     (data_dir / "responses").mkdir(exist_ok=True)
     (data_dir / "logprobs").mkdir(exist_ok=True)

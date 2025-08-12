@@ -187,6 +187,23 @@ class BaseOutcomeModel(ABC):
 
         fold_ids = fold_ids.astype(int)
 
+        # Remap fold IDs if we have a mapping (from fit())
+        if hasattr(self, "_fold_id_map") and self._fold_id_map:
+            # Map incoming fold IDs to compact range
+            mapped_fold_ids = np.array(
+                [self._fold_id_map.get(fid, None) for fid in fold_ids]
+            )
+
+            # Check for unmapped fold IDs
+            if None in mapped_fold_ids:
+                unmapped = set(fid for fid in fold_ids if fid not in self._fold_id_map)
+                raise ValueError(
+                    f"Unmapped fold IDs: {sorted(unmapped)}. "
+                    f"Known mappings: {self._fold_id_map}"
+                )
+
+            fold_ids = mapped_fold_ids.astype(int)
+
         # Guard against unknown fold IDs
         unknown_folds = set(np.unique(fold_ids)) - set(self.fold_models.keys())
         if unknown_folds:

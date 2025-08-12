@@ -11,7 +11,7 @@ from typing import Dict, Optional, List, Tuple, Any
 from pathlib import Path
 
 # Import shared utilities
-from .diagnostics import compute_ess, diagnose_weights
+from ..utils.diagnostics import compute_ess, diagnose_weights
 
 
 def plot_weight_dashboard(

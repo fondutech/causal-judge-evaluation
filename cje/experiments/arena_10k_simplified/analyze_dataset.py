@@ -41,12 +41,20 @@ from cje import (
 from cje.core.mrdr import MRDREstimator
 from cje.core.tmle import TMLEEstimator
 
+# Import DR diagnostics
+from cje.utils.dr_diagnostics import (
+    compute_dr_diagnostics_all,
+    format_dr_diagnostic_summary,
+)
+
 # Import visualization if available
 try:
-    from cje import (
+    from cje.visualization import (
         plot_weight_dashboard,
         plot_calibration_comparison,
         plot_policy_estimates,
+        plot_dr_dashboard,
+        plot_dr_calibration,
     )
 
     _viz_available = True
@@ -375,6 +383,9 @@ def main() -> int:
     ess = float(dataset.n_samples)
     ess_frac = 1.0
 
+    # Check if using a DR estimator (for diagnostics and plotting)
+    is_dr_estimator = args.estimator in ["dr-cpo", "mrdr", "tmle"]
+
     try:
         sampler = PrecomputedSampler(calibrated_dataset)
 
@@ -428,6 +439,7 @@ def main() -> int:
                                     "judge_score", 0.5
                                 ),
                                 draw_idx=0,  # Only one draw per prompt in these files
+                                fold_id=None,
                             )
                             fresh_samples.append(fresh_sample)
 
@@ -507,6 +519,7 @@ def main() -> int:
                                     "judge_score", 0.5
                                 ),
                                 draw_idx=0,  # Only one draw per prompt in these files
+                                fold_id=None,
                             )
                             fresh_samples.append(fresh_sample)
 
@@ -584,6 +597,7 @@ def main() -> int:
                                     "judge_score", 0.5
                                 ),
                                 draw_idx=0,
+                                fold_id=None,
                             )
                             fresh_samples.append(fresh_sample)
 
@@ -696,9 +710,9 @@ def main() -> int:
                                     "metadata" in data
                                     and args.oracle_field in data["metadata"]
                                 ):
-                                    oracle_labels.append(
-                                        data["metadata"][args.oracle_field]
-                                    )
+                                    val = data["metadata"][args.oracle_field]
+                                    if val is not None:
+                                        oracle_labels.append(val)
                         if oracle_labels:
                             oracle_means[policy] = sum(oracle_labels) / len(
                                 oracle_labels
@@ -814,8 +828,36 @@ def main() -> int:
             ess = float(len(base_rewards))
             ess_frac = 1.0
 
-        # Generate extreme weights analysis
-        print(f"\n6. Analyzing extreme weights...")
+        # Show DR diagnostics if using a DR estimator
+        if is_dr_estimator and "dr_diagnostics" in results.metadata:
+            print(f"\n6. Doubly Robust diagnostics:")
+
+            # Compute and print DR diagnostic summary
+            dr_diagnostics = compute_dr_diagnostics_all(results, per_policy=True)
+            summary = format_dr_diagnostic_summary(dr_diagnostics)
+
+            # Indent the summary for better formatting
+            for line in summary.split("\n"):
+                print(f"   {line}")
+
+            # Check for potential issues
+            if dr_diagnostics.get("worst_if_tail_ratio", 0) > 100:
+                print(
+                    "\n   ⚠️  Warning: Heavy-tailed influence functions detected (tail ratio > 100)"
+                )
+                print(
+                    "      Consider using more fresh draws or checking policy overlap"
+                )
+
+            if args.estimator == "tmle" and "tmle_max_score_z" in dr_diagnostics:
+                if dr_diagnostics["tmle_max_score_z"] > 2:
+                    print("\n   ⚠️  Warning: TMLE orthogonality not achieved (|z| > 2)")
+                    print("      Targeting may not have fully converged")
+
+            print(f"\n7. Analyzing extreme weights...")
+        else:
+            # Original numbering for non-DR estimators
+            print(f"\n6. Analyzing extreme weights...")
 
         # Collect raw and calibrated weights for analysis
         analysis_raw_weights = {}
@@ -880,7 +922,9 @@ def main() -> int:
                 # Default to plots/ subdirectory next to the data file
                 plot_dir = Path(args.data).parent / "plots"
 
-            print(f"\n7. Generating visualizations in {plot_dir}/...")
+            # Adjust step number based on whether we showed DR diagnostics
+            step_num = 8 if is_dr_estimator else 7
+            print(f"\n{step_num}. Generating visualizations in {plot_dir}/...")
             plot_dir.mkdir(parents=True, exist_ok=True)
 
             # Collect weights for visualization
@@ -933,8 +977,11 @@ def main() -> int:
                         args.judge_field in s.metadata
                         and args.oracle_field in s.metadata
                     ):
-                        judge_scores.append(s.metadata[args.judge_field])
-                        oracle_labels.append(s.metadata[args.oracle_field])
+                        j_score = s.metadata.get(args.judge_field)
+                        o_label = s.metadata.get(args.oracle_field)
+                        if j_score is not None and o_label is not None:
+                            judge_scores.append(j_score)
+                            oracle_labels.append(o_label)
 
                 if judge_scores and oracle_labels:
                     # Collect calibrated scores to show the transformation
@@ -947,8 +994,15 @@ def main() -> int:
                             args.judge_field in s.metadata
                             and args.oracle_field in s.metadata
                         ):
+                            # Check both fields are not None
+                            j_val = s.metadata.get(args.judge_field)
+                            o_val = s.metadata.get(args.oracle_field)
                             # Check if this sample has a reward (calibrated score)
-                            if s.reward is not None:
+                            if (
+                                s.reward is not None
+                                and j_val is not None
+                                and o_val is not None
+                            ):
                                 calibrated_preds.append(s.reward)
 
                     # Only show calibrated if they differ from judge scores
@@ -1001,14 +1055,18 @@ def main() -> int:
                             policy_ses[policy] = se
 
                     # Use oracle_means if available (may have been loaded earlier)
+                    # Check if oracle_means exists and has values
+                    oracle_values = None
+                    try:
+                        if oracle_means:  # This will raise NameError if not defined
+                            oracle_values = oracle_means
+                    except NameError:
+                        pass  # oracle_means not defined
+
                     fig = plot_policy_estimates(
                         estimates=policy_estimates,
                         standard_errors=policy_ses,
-                        oracle_values=(
-                            oracle_means
-                            if "oracle_means" in locals() and oracle_means
-                            else None
-                        ),
+                        oracle_values=oracle_values,
                         base_policy=base_policy,
                         save_path=plot_dir / "policy_estimates.png",
                     )
@@ -1017,11 +1075,44 @@ def main() -> int:
                     )
                     plt.close(fig)
 
+                # Generate DR dashboard if using a DR estimator
+                if is_dr_estimator and "dr_diagnostics" in results.metadata:
+                    try:
+                        fig, dr_metrics = plot_dr_dashboard(results)
+                        fig.savefig(
+                            plot_dir / "dr_dashboard.png",
+                            dpi=150,
+                            bbox_inches="tight",
+                        )
+                        print(
+                            f"   ✓ DR diagnostics dashboard → {plot_dir}/dr_dashboard.png"
+                        )
+                        plt.close(fig)
+
+                        # Optionally generate per-policy calibration plots for detailed analysis
+                        # (commented out by default to avoid too many plots)
+                        # for policy in sampler.target_policies:
+                        #     if policy in results.metadata.get("dr_calibration_data", {}):
+                        #         fig = plot_dr_calibration(results, policy)
+                        #         fig.savefig(
+                        #             plot_dir / f"dr_calibration_{policy}.png",
+                        #             dpi=150,
+                        #             bbox_inches="tight",
+                        #         )
+                        #         plt.close(fig)
+
+                    except Exception as e:
+                        print(f"   ⚠️  Could not generate DR dashboard: {e}")
+
                 # Close all figures to free memory
                 plt.close("all")
 
             except Exception as e:
                 print(f"   ⚠️  Warning: Failed to generate some plots: {e}")
+                if args.debug:
+                    import traceback
+
+                    traceback.print_exc()
 
     except ValueError as e:
         print(f"\n❌ Estimation failed: {e}")
@@ -1034,8 +1125,12 @@ def main() -> int:
 
     # Final success message
     steps_completed = 6  # base steps (including extreme weights)
+    if is_dr_estimator:
+        steps_completed += 1  # DR diagnostics
     if _viz_available and not args.no_plots:
-        steps_completed = 8  # includes 3 visualizations
+        steps_completed += 1  # visualizations step
+        if is_dr_estimator:
+            steps_completed += 1  # DR dashboard
     print(f"\n✓ Analysis complete! ({steps_completed} steps)")
 
     # Write results to file if requested
@@ -1108,6 +1203,34 @@ def main() -> int:
                 "zero_weight_count": int(diag.zero_weight_count),
                 "consistency_flag": diag.consistency_flag,
             }
+
+        # Add DR diagnostics if available
+        if is_dr_estimator and "dr_diagnostics" in results.metadata:
+            dr_diags = results.metadata["dr_diagnostics"]
+            results_data["dr_diagnostics"] = {"policies": {}, "overview": {}}
+
+            # Per-policy DR diagnostics
+            for policy, dr_diag in dr_diags.items():
+                results_data["dr_diagnostics"]["policies"][policy] = {
+                    "dm_mean": float(dr_diag["dm_mean"]),
+                    "ips_corr_mean": float(dr_diag["ips_corr_mean"]),
+                    "score_mean": float(dr_diag["score_mean"]),
+                    "score_p": float(dr_diag["score_p"]),
+                    "residual_rmse": float(dr_diag["residual_rmse"]),
+                    "r2_oof": float(dr_diag["r2_oof"]),
+                    "if_tail_ratio_99_5": float(dr_diag["if_tail_ratio_99_5"]),
+                }
+
+            # Overview metrics
+            if "dr_overview" in results.metadata:
+                overview = results.metadata["dr_overview"]
+                results_data["dr_diagnostics"]["overview"] = {
+                    "worst_if_tail_ratio": overview.get("worst_if_tail_ratio_99_5", 0),
+                }
+                if args.estimator == "tmle" and "tmle_max_score_z" in overview:
+                    results_data["dr_diagnostics"]["overview"]["tmle_max_score_z"] = (
+                        float(overview["tmle_max_score_z"])
+                    )
 
         # Note: Calibration stats are now reported during calibration step
         # Could be enhanced to save these statistics if needed

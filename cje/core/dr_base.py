@@ -16,6 +16,7 @@ from ..data.models import EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..data.fresh_draws import FreshDrawDataset
 from ..utils.fresh_draws import validate_fresh_draws
+from ..utils.dr_diagnostics import compute_dr_policy_diagnostics
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ class DREstimator(BaseCJEEstimator):
         n_folds: int = 5,
         use_calibrated_weights: bool = True,
         calibrator: Optional[Any] = None,
+        random_seed: int = 42,
         **kwargs: Any,
     ):
         super().__init__(sampler)
@@ -60,6 +62,7 @@ class DREstimator(BaseCJEEstimator):
         self.n_folds = n_folds
         self.calibrator = calibrator
         self.use_calibrated_weights = use_calibrated_weights
+        self.random_seed = random_seed
 
         # Initialize the appropriate IPS estimator
         self.ips_estimator: Union[CalibratedIPS, RawIPS]
@@ -118,8 +121,8 @@ class DREstimator(BaseCJEEstimator):
             Array of fold assignments
         """
         fold_assignments = np.arange(n_samples) % n_folds
-        # Shuffle to ensure random assignment
-        rng = np.random.RandomState(42)
+        # Shuffle to ensure random assignment with configured seed
+        rng = np.random.RandomState(self.random_seed)
         rng.shuffle(fold_assignments)
         return fold_assignments
 
@@ -328,6 +331,7 @@ class DREstimator(BaseCJEEstimator):
 
             # Collect fresh scores for each logged sample
             g_fresh_all = []
+            fresh_draw_var_per_prompt = []  # For diagnostics
 
             for i, prompt_id in enumerate(logged_prompt_ids):
                 # Get fresh judge scores for this prompt
@@ -372,11 +376,20 @@ class DREstimator(BaseCJEEstimator):
                 # Average over draws for this prompt
                 g_fresh_all.append(g_fresh_prompt.mean())
 
+                # Track variance for diagnostics
+                if len(g_fresh_prompt) > 1:
+                    fresh_draw_var_per_prompt.append(g_fresh_prompt.var())
+                else:
+                    fresh_draw_var_per_prompt.append(0.0)
+
             g_fresh = np.array(g_fresh_all)
+            fresh_draw_var_per_prompt = np.array(fresh_draw_var_per_prompt)
 
             # Sanity check: weights should have mean approximately 1.0
             weights_mean = weights.mean()
-            if not (0.9 <= weights_mean <= 1.1):
+            # With mean-one calibration, weights should be very close to 1.0
+            # Allow small tolerance for numerical precision
+            if not (0.99 <= weights_mean <= 1.01):
                 weights_min = weights.min()
                 weights_max = weights.max()
                 weights_std = weights.std()
@@ -407,15 +420,133 @@ class DREstimator(BaseCJEEstimator):
                 f"(DM={dm_term:.4f}, IPS_corr={ips_correction:.4f})"
             )
 
-        # Add DR-specific diagnostics
-        dr_diagnostics = {
+        # Compute DR diagnostics for all policies
+        dr_diagnostics_per_policy = {}
+        dr_calibration_data = {}
+
+        # Re-compute diagnostics for each policy (we need to loop again to have all estimates)
+        for idx, policy in enumerate(self.sampler.target_policies):
+            if policy not in self._fresh_draws or np.isnan(estimates[idx]):
+                continue
+
+            # Get components (re-fetch, could optimize by storing above)
+            weights = self.ips_estimator.get_weights(policy)
+            data = self.sampler.get_data_for_policy(policy)
+            if weights is None or data is None:
+                continue
+
+            logged_rewards = np.array([d["reward"] for d in data])
+            logged_prompts = [d["prompt"] for d in data]
+            logged_responses = [d["response"] for d in data]
+            logged_scores = np.array([d.get("judge_score") for d in data])
+            logged_prompt_ids = [str(d["prompt_id"]) for d in data]
+
+            # Get fold assignments
+            valid_fold_ids = []
+            if self._promptid_to_fold:
+                for pid in logged_prompt_ids:
+                    fold = self._promptid_to_fold.get(pid, 0)
+                    valid_fold_ids.append(fold)
+            valid_fold_ids = np.array(valid_fold_ids)
+
+            # Get outcome predictions
+            if hasattr(self.outcome_model, "predict"):
+                g_logged = self.outcome_model.predict(
+                    logged_prompts, logged_responses, logged_scores, valid_fold_ids
+                )
+            else:
+                g_logged = self.outcome_model.predict(
+                    logged_prompts, logged_responses, logged_scores
+                )
+
+            # Recompute g_fresh and variance (could optimize by storing)
+            fresh_dataset = self._fresh_draws[policy]
+            g_fresh_all = []
+            fresh_draw_var_per_prompt = []
+
+            for i, prompt_id in enumerate(logged_prompt_ids):
+                fresh_scores = fresh_dataset.get_scores_for_prompt_id(prompt_id)
+                fresh_prompts = [logged_prompts[i]] * len(fresh_scores)
+                fresh_responses = [""] * len(fresh_scores)
+                fresh_fold_ids = np.full(len(fresh_scores), valid_fold_ids[i])
+
+                if hasattr(self.outcome_model, "predict"):
+                    g_fresh_prompt = self.outcome_model.predict(
+                        fresh_prompts, fresh_responses, fresh_scores, fresh_fold_ids
+                    )
+                else:
+                    g_fresh_prompt = self.outcome_model.predict(
+                        fresh_prompts, fresh_responses, fresh_scores
+                    )
+
+                g_fresh_all.append(g_fresh_prompt.mean())
+                if len(g_fresh_prompt) > 1:
+                    fresh_draw_var_per_prompt.append(g_fresh_prompt.var())
+                else:
+                    fresh_draw_var_per_prompt.append(0.0)
+
+            g_fresh = np.array(g_fresh_all)
+            fresh_draw_var_per_prompt = np.array(fresh_draw_var_per_prompt)
+
+            # Compute diagnostics
+            diag = compute_dr_policy_diagnostics(
+                weights=weights,
+                rewards=logged_rewards,
+                g_logged=g_logged,
+                g_fresh=g_fresh,
+                dr_estimate=estimates[idx],
+                se=standard_errors[idx],
+                fresh_draw_var_per_prompt=fresh_draw_var_per_prompt,
+                draws_per_prompt=fresh_dataset.draws_per_prompt,
+                coverage_ok=True,  # Already validated
+                missing_prompts=0,  # Would have errored if missing
+                cross_fitted=True,  # All our models are cross-fitted
+                n_folds=self.n_folds,
+            )
+
+            dr_diagnostics_per_policy[policy] = diag.__dict__
+
+            # Store calibration data for potential plotting
+            dr_calibration_data[policy] = {
+                "g_logged": g_logged,
+                "rewards": logged_rewards,
+            }
+
+        # Add DR-specific metadata
+        dr_metadata = {
             "fresh_draws_policies": list(self._fresh_draws.keys()),
             "cross_fitted": True,
             "n_folds": self.n_folds,
         }
 
-        # Merge with IPS diagnostics
-        all_diagnostics = {**self._diagnostics, **dr_diagnostics}
+        # Create overview
+        dr_overview = {}
+        if dr_diagnostics_per_policy:
+            dr_overview = {
+                "policies": list(dr_diagnostics_per_policy.keys()),
+                "dm_vs_ips": {
+                    p: (d["dm_mean"], d["ips_corr_mean"])
+                    for p, d in dr_diagnostics_per_policy.items()
+                },
+                "worst_if_tail_ratio_99_5": max(
+                    d["if_tail_ratio_99_5"] for d in dr_diagnostics_per_policy.values()
+                ),
+            }
+
+            # For TMLE specifically (will be overridden in subclass)
+            if self.__class__.__name__ == "TMLEEstimator":
+                dr_overview["tmle_score_abs_mean"] = {
+                    p: abs(d["score_mean"])
+                    for p, d in dr_diagnostics_per_policy.items()
+                }
+
+        # Get IPS diagnostics from the IPS estimator
+        ips_diagnostics = {}
+        if hasattr(self.ips_estimator, "get_diagnostics"):
+            ips_diagnostics = self.ips_estimator.get_diagnostics()
+
+        # Merge all diagnostics
+        all_diagnostics = {"ips": ips_diagnostics, **dr_metadata}
 
         return EstimationResult(
             estimates=np.array(estimates),
@@ -426,6 +557,9 @@ class DREstimator(BaseCJEEstimator):
                 "diagnostics": all_diagnostics,
                 "target_policies": self.sampler.target_policies,
                 "weight_method": "calibrated" if self.use_calibrated_weights else "raw",
+                "dr_diagnostics": dr_diagnostics_per_policy,
+                "dr_overview": dr_overview,
+                "dr_calibration_data": dr_calibration_data,
             },
         )
 
@@ -485,6 +619,7 @@ class DRCPOEstimator(DREstimator):
         n_folds: int = 5,
         use_calibrated_weights: bool = True,
         calibrator: Optional[Any] = None,
+        random_seed: int = 42,
         **kwargs: Any,
     ):
         # Pass everything to parent - it will choose the right outcome model
@@ -494,6 +629,7 @@ class DRCPOEstimator(DREstimator):
             n_folds=n_folds,
             use_calibrated_weights=use_calibrated_weights,
             calibrator=calibrator,
+            random_seed=random_seed,
             **kwargs,
         )
 
