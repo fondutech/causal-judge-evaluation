@@ -20,6 +20,7 @@ def plot_weight_dashboard(
     n_samples: Optional[int] = None,
     save_path: Optional[Path] = None,
     figsize: tuple = (14, 12),
+    random_seed: int = 42,
 ) -> Tuple[plt.Figure, Dict[str, Any]]:
     """Create production-ready weight diagnostics dashboard.
 
@@ -44,7 +45,10 @@ def plot_weight_dashboard(
     use_calibrated = calibrated_weights_dict is not None
     weights_to_plot = calibrated_weights_dict if use_calibrated else raw_weights_dict
 
-    # Infer n_samples if not provided
+    # Set random seed for reproducibility
+    np.random.seed(random_seed)
+
+    # Infer n_samples if not provided - but track per-policy
     if n_samples is None:
         n_samples = len(next(iter(raw_weights_dict.values())))
 
@@ -56,6 +60,9 @@ def plot_weight_dashboard(
             if calibrated_weights_dict
             else raw_w
         )
+
+        # Track actual sample size per policy
+        policy_n_samples = len(raw_w)
 
         # ESS metrics
         ess_raw = compute_ess(raw_w)
@@ -69,17 +76,23 @@ def plot_weight_dashboard(
         n_for_50 = np.searchsorted(cumsum_w, 0.5 * total_w) + 1
         n_for_90 = np.searchsorted(cumsum_w, 0.9 * total_w) + 1
 
+        # Count extreme weights
+        n_above_10 = np.sum(cal_w > 10)
+        n_above_100 = np.sum(cal_w > 100)
+
         metrics[policy] = {
             "ess_raw": ess_raw,
             "ess_cal": ess_cal,
-            "ess_raw_frac": ess_raw / n_samples,
-            "ess_cal_frac": ess_cal / n_samples,
+            "ess_raw_frac": ess_raw / policy_n_samples,
+            "ess_cal_frac": ess_cal / policy_n_samples,
             "ess_improvement": ess_cal / max(ess_raw, 1e-10),
             "max_weight_raw": np.max(raw_w),
             "max_weight_cal": np.max(cal_w),
             "n_for_50pct": n_for_50,
             "n_for_90pct": n_for_90,
-            "n_samples": n_samples,
+            "n_samples": policy_n_samples,
+            "n_above_10": n_above_10,
+            "n_above_100": n_above_100,
         }
 
     # Create figure with 3x2 grid for better breathing room
@@ -147,22 +160,34 @@ def _plot_ess_comparison_dashboard(ax: Any, metrics: Dict, policies: List[str]) 
     # Get values
     raw_ess = [metrics[p]["ess_raw"] for p in policies]
     cal_ess = [metrics[p]["ess_cal"] for p in policies]
+    improvements = [metrics[p]["ess_improvement"] for p in policies]
 
-    # Plot bars - use same colors as weight concentration plot
-    # Raw bars in coral (same as Panel B)
-    bars1 = ax.bar(x - width / 2, raw_ess, width, label="Raw", color="coral", alpha=0.7)
+    # Use consistent tab10 colormap
+    colors = plt.cm.get_cmap("tab10")
 
-    # Calibrated bars in light green (same as Panel B)
+    # Plot bars
+    bars1 = ax.bar(
+        x - width / 2, raw_ess, width, label="Raw", color=colors(0), alpha=0.7
+    )
     bars2 = ax.bar(
-        x + width / 2, cal_ess, width, label="Calibrated", color="lightgreen", alpha=0.7
+        x + width / 2, cal_ess, width, label="Calibrated", color=colors(1), alpha=0.7
     )
 
-    # Remove improvement text - just show the values on the bars
-
-    # Labels on bars
-    for i, (r, c) in enumerate(zip(raw_ess, cal_ess)):
+    # Labels on bars with improvement factor
+    for i, (r, c, imp) in enumerate(zip(raw_ess, cal_ess, improvements)):
         ax.text(i - width / 2, r + 5, f"{r:.0f}", ha="center", fontsize=8)
+        # Show calibrated value and improvement
         ax.text(i + width / 2, c + 5, f"{c:.0f}", ha="center", fontsize=8)
+        if imp > 1.5:  # Only show significant improvements
+            ax.text(
+                i + width / 2,
+                c / 2,
+                f"+{imp:.1f}×",
+                ha="center",
+                fontsize=7,
+                style="italic",
+                color="darkgreen",
+            )
 
     ax.set_xticks(x)
     # Always rotate labels for consistency and to prevent overlaps
@@ -172,17 +197,30 @@ def _plot_ess_comparison_dashboard(ax: Any, metrics: Dict, policies: List[str]) 
     ax.legend(loc="upper left", fontsize=9)
     ax.grid(True, alpha=0.3, axis="y")
 
-    # Add reference lines with labels
+    # Add reference lines - compute based on actual per-policy n_samples
     if policies:
-        n_samples = metrics[policies[0]]["n_samples"]
+        # Use the minimum n_samples across policies for conservative thresholds
+        min_n_samples = min(metrics[p]["n_samples"] for p in policies)
+        max_n_samples = max(metrics[p]["n_samples"] for p in policies)
+
+        # If sample sizes vary significantly, note it
+        if max_n_samples > min_n_samples * 1.1:
+            ax.text(
+                0.02,
+                0.98,
+                f"n varies: {min_n_samples}-{max_n_samples}",
+                transform=ax.transAxes,
+                fontsize=7,
+                va="top",
+            )
 
         # 50% line - good threshold
         ax.axhline(
-            n_samples * 0.5, color="green", linestyle="--", alpha=0.3, linewidth=1
+            min_n_samples * 0.5, color="green", linestyle="--", alpha=0.3, linewidth=1
         )
         ax.text(
             n_policies - 0.5,
-            n_samples * 0.5 + 10,
+            min_n_samples * 0.5 + 10,
             "50% (good)",
             fontsize=7,
             color="green",
@@ -192,11 +230,11 @@ def _plot_ess_comparison_dashboard(ax: Any, metrics: Dict, policies: List[str]) 
 
         # 10% line - warning threshold
         ax.axhline(
-            n_samples * 0.1, color="orange", linestyle="--", alpha=0.3, linewidth=1
+            min_n_samples * 0.1, color="orange", linestyle="--", alpha=0.3, linewidth=1
         )
         ax.text(
             n_policies - 0.5,
-            n_samples * 0.1 + 10,
+            min_n_samples * 0.1 + 10,
             "10% (marginal)",
             fontsize=7,
             color="orange",
@@ -287,12 +325,15 @@ def _plot_sample_efficiency(ax: Any, metrics: Dict, policies: List[str]) -> None
     # Create stacked bars
     x = np.arange(n_policies)
 
+    # Use consistent colors from tab10
+    colors = plt.cm.get_cmap("tab10")
+
     # Bottom segment: samples contributing 50% weight (most important)
     bars1 = ax.bar(
         x,
         [d[0] for d in data],
         label=f"Samples carrying 50% of weight",
-        color="darkred",
+        color=colors(3),  # Red-ish from tab10
         alpha=0.8,
     )
 
@@ -302,7 +343,7 @@ def _plot_sample_efficiency(ax: Any, metrics: Dict, policies: List[str]) -> None
         [d[1] for d in data],
         bottom=[d[0] for d in data],
         label="Additional samples for 90% weight",
-        color="orange",
+        color=colors(1),  # Orange from tab10
         alpha=0.6,
     )
 
@@ -359,36 +400,60 @@ def _plot_weight_transformation(
     ax: Any, raw_weights_dict: Dict, calibrated_weights_dict: Dict, policies: List[str]
 ) -> None:
     """Plot weight transformation showing calibration effect for all policies."""
-    colors = plt.cm.get_cmap("Set2")(np.linspace(0, 1, len(policies)))
+    colors = plt.cm.get_cmap("tab10")(np.linspace(0, 1, len(policies)))
     markers = ["o", "s", "^", "D"]  # Different markers for each policy
+
+    # Collect all weights for quantile-based limits
+    all_raw = []
+    all_cal = []
 
     for i, (policy, color) in enumerate(zip(policies, colors)):
         raw_w = raw_weights_dict[policy]
         cal_w = calibrated_weights_dict[policy]
 
-        # Clip to small positive value to avoid log(0)
-        cal_w_clipped = np.maximum(cal_w, 1e-10)
+        # Clip both arrays to avoid log(0) warnings
+        raw_w_clipped = np.maximum(raw_w, 1e-12)
+        cal_w_clipped = np.maximum(cal_w, 1e-12)
+
+        all_raw.extend(raw_w_clipped)
+        all_cal.extend(cal_w_clipped)
 
         # Use scatter plot to show density of points
-        # Smaller points with some transparency to see overlaps
+        # For large N, consider downsampling
+        if len(raw_w_clipped) > 5000:
+            # Random sample for visualization
+            idx = np.random.choice(len(raw_w_clipped), 2000, replace=False)
+            raw_w_plot = raw_w_clipped[idx]
+            cal_w_plot = cal_w_clipped[idx]
+        else:
+            raw_w_plot = raw_w_clipped
+            cal_w_plot = cal_w_clipped
+
         ax.scatter(
-            raw_w,
-            cal_w_clipped,
+            raw_w_plot,
+            cal_w_plot,
             label=policy,
             color=color,
             alpha=0.5,
             s=10,
             marker=markers[i % len(markers)],
             edgecolors="none",
+            rasterized=True,  # Better PDF rendering
         )
 
-    # Use log scale for both axes - shows full range better
+    # Use log scale for both axes
     ax.set_xscale("log")
     ax.set_yscale("log")
 
-    # Set reasonable axis limits
-    ax.set_xlim(1e-40, 1e4)  # Raw weights range
-    ax.set_ylim(1e-10, 1e2)  # Calibrated weights range
+    # Use quantile-based limits to avoid outlier clipping
+    if all_raw and all_cal:
+        all_raw_arr = np.array(all_raw)
+        all_cal_arr = np.array(all_cal)
+        x_lo, x_hi = np.quantile(all_raw_arr[all_raw_arr > 0], [0.001, 0.999])
+        y_lo, y_hi = np.quantile(all_cal_arr[all_cal_arr > 0], [0.001, 0.999])
+        # Expand slightly for visibility
+        ax.set_xlim(x_lo / 2, x_hi * 2)
+        ax.set_ylim(y_lo / 2, y_hi * 2)
 
     # Add reference lines
     ax.axhline(

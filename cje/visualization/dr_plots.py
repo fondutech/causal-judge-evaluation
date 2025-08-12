@@ -133,47 +133,70 @@ def plot_dr_dashboard(
     # Panel C: EIF tail behavior (CCDF)
     ax = axes[2]
 
-    # For each policy, reconstruct approximate EIF distribution for CCDF
-    for i, policy in enumerate(policies):
-        diag = dr_diags[policy]
+    # Check if actual influence functions are available
+    has_empirical_ifs = False
+    if "dr_influence" in estimation_result.metadata:
+        ifs_data = estimation_result.metadata["dr_influence"]
+        if ifs_data and all(policy in ifs_data for policy in policies):
+            has_empirical_ifs = True
 
-        # Create synthetic IF samples based on quantiles
-        # This is approximate but good enough for visualization
-        n = diag["n"]
-        if_p95 = diag["if_p95"]
-        if_p99 = diag["if_p99"]
-        if_var = diag["if_var"]
+    if has_empirical_ifs:
+        # Use empirical influence functions for exact CCDF
+        for i, policy in enumerate(policies):
+            ifs = ifs_data[policy]
+            if isinstance(ifs, np.ndarray) and len(ifs) > 0:
+                # Compute empirical CCDF
+                abs_ifs = np.abs(ifs)
+                sorted_ifs = np.sort(abs_ifs)[::-1]  # Descending
+                ccdf = np.arange(1, len(sorted_ifs) + 1) / len(sorted_ifs)
 
-        # Generate approximate distribution
-        # Use exponential tail approximation beyond p95
-        n_samples = 1000
-        quantiles = np.linspace(0, 1, n_samples)
+                # Plot with appropriate sampling for large n
+                if len(sorted_ifs) > 10000:
+                    # Downsample for plotting efficiency
+                    indices = np.logspace(
+                        0, np.log10(len(sorted_ifs) - 1), 1000, dtype=int
+                    )
+                    ax.loglog(
+                        sorted_ifs[indices],
+                        ccdf[indices],
+                        label=policy,
+                        color=colors[i],
+                        linewidth=2,
+                    )
+                else:
+                    ax.loglog(
+                        sorted_ifs, ccdf, label=policy, color=colors[i], linewidth=2
+                    )
+    else:
+        # Fallback: plot quantile markers only (no synthetic curves)
+        for i, policy in enumerate(policies):
+            diag = dr_diags[policy]
+            if_p95 = diag["if_p95"]
+            if_p99 = diag["if_p99"]
 
-        # Simple approximation: use normal up to p95, exponential beyond
-        if_values = np.zeros(n_samples)
-        p95_idx = int(0.95 * n_samples)
-        p99_idx = int(0.99 * n_samples)
+            # Draw vertical lines at quantiles
+            ax.axvline(if_p95, color=colors[i], linestyle="--", alpha=0.5, linewidth=1)
+            ax.axvline(if_p99, color=colors[i], linestyle=":", alpha=0.5, linewidth=1)
 
-        # Normal part (0 to p95)
-        if_values[:p95_idx] = np.abs(np.random.normal(0, np.sqrt(if_var), p95_idx))
-        if_values[:p95_idx] = np.sort(if_values[:p95_idx])
-        if_values[:p95_idx] *= (
-            if_p95 / if_values[p95_idx - 1] if if_values[p95_idx - 1] > 0 else 1
-        )
-
-        # Exponential tail (p95 to p99 and beyond)
-        if if_p99 > if_p95:
-            rate = np.log(if_p99 / if_p95) / (0.99 - 0.95)
-            tail_quantiles = quantiles[p95_idx:] - 0.95
-            if_values[p95_idx:] = if_p95 * np.exp(rate * tail_quantiles / 0.05)
-        else:
-            if_values[p95_idx:] = if_p95
-
-        # Plot CCDF
-        sorted_if = np.sort(if_values)[::-1]
-        ccdf = np.arange(1, len(sorted_if) + 1) / len(sorted_if)
-
-        ax.loglog(sorted_if, ccdf, label=policy, color=colors[i], linewidth=2)
+            # Add text labels
+            ax.text(
+                if_p95,
+                0.05,
+                f"{policy}\np95",
+                rotation=45,
+                fontsize=7,
+                color=colors[i],
+                alpha=0.7,
+            )
+            ax.text(
+                if_p99,
+                0.01,
+                f"p99",
+                rotation=45,
+                fontsize=7,
+                color=colors[i],
+                alpha=0.7,
+            )
 
     # Add reference lines at p95 and p99
     ax.axhline(y=0.05, color="gray", linestyle=":", alpha=0.5, label="p95")
@@ -243,35 +266,76 @@ def plot_dr_calibration(
     # Compute bin statistics
     bin_centers_list = []
     bin_means_list = []
-    bin_stds_list = []
+    bin_ses_list = []  # Standard errors, not stds
     bin_counts_list = []
+    bin_ci_lower_list = []
+    bin_ci_upper_list = []
 
     for i in range(n_bins):
         mask = (g_logged >= bin_edges[i]) & (g_logged < bin_edges[i + 1])
-        if np.sum(mask) > 0:
-            bin_centers_list.append(np.mean(g_logged[mask]))
-            bin_means_list.append(np.mean(rewards[mask]))
-            bin_stds_list.append(np.std(rewards[mask]))
-            bin_counts_list.append(np.sum(mask))
+        n_bin = np.sum(mask)
+        if n_bin > 0:
+            bin_rewards = rewards[mask]
+            bin_predictions = g_logged[mask]
+
+            bin_centers_list.append(np.mean(bin_predictions))
+            p_mean = np.mean(bin_rewards)
+            bin_means_list.append(p_mean)
+
+            # Use standard error, not standard deviation
+            se = np.std(bin_rewards) / np.sqrt(n_bin) if n_bin > 1 else 0
+            bin_ses_list.append(se)
+            bin_counts_list.append(n_bin)
+
+            # Wilson confidence interval for binomial-like data in [0,1]
+            if 0 <= p_mean <= 1:
+                z = 1.96  # 95% confidence
+                denom = 1 + z * z / n_bin
+                center = (p_mean + z * z / (2 * n_bin)) / denom
+                half_width = (
+                    z
+                    * np.sqrt(
+                        p_mean * (1 - p_mean) / n_bin + z * z / (4 * n_bin * n_bin)
+                    )
+                    / denom
+                )
+                bin_ci_lower_list.append(max(0, center - half_width))
+                bin_ci_upper_list.append(min(1, center + half_width))
+            else:
+                # Fallback to normal CI if outside [0,1]
+                bin_ci_lower_list.append(p_mean - 1.96 * se)
+                bin_ci_upper_list.append(p_mean + 1.96 * se)
 
     bin_centers = np.array(bin_centers_list)
     bin_means = np.array(bin_means_list)
-    bin_stds = np.array(bin_stds_list)
+    bin_ses = np.array(bin_ses_list)
     bin_counts = np.array(bin_counts_list)
+    bin_ci_lower = np.array(bin_ci_lower_list)
+    bin_ci_upper = np.array(bin_ci_upper_list)
 
-    # Plot calibration
+    # Plot calibration with proper confidence intervals
+    # Use asymmetric error bars from Wilson CI
+    yerr_lower = bin_means - bin_ci_lower
+    yerr_upper = bin_ci_upper - bin_means
+
     ax.errorbar(
         bin_centers,
         bin_means,
-        yerr=bin_stds,
+        yerr=[yerr_lower, yerr_upper],
         fmt="o",
         markersize=8,
         capsize=5,
         capthick=2,
-        label="Binned data",
+        label="Binned data (95% CI)",
+        color="tab:blue",
     )
 
-    # Perfect calibration line
+    # Add text annotations for bin counts
+    for i, (x, y, n) in enumerate(zip(bin_centers, bin_means, bin_counts)):
+        if i % 2 == 0:  # Show every other count to avoid crowding
+            ax.text(x, y - 0.05, f"n={n}", ha="center", fontsize=7, alpha=0.6)
+
+    # Perfect calibration line with confidence band
     lim_min = min(np.min(g_logged), np.min(rewards))
     lim_max = max(np.max(g_logged), np.max(rewards))
     ax.plot(
@@ -280,6 +344,20 @@ def plot_dr_calibration(
         "k--",
         alpha=0.5,
         label="Perfect calibration",
+    )
+
+    # Add subtle confidence band around diagonal
+    # Approximate binomial SE at each point
+    x_band = np.linspace(lim_min, lim_max, 100)
+    # SE for binomial proportion at p
+    se_band = np.sqrt(x_band * (1 - x_band) / np.sqrt(len(rewards)))
+    ax.fill_between(
+        x_band,
+        x_band - 1.96 * se_band,
+        x_band + 1.96 * se_band,
+        alpha=0.1,
+        color="gray",
+        label="95% band (expected)",
     )
 
     # Add histogram of predictions in background
