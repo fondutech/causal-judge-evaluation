@@ -168,6 +168,7 @@ def test_dr_requires_complete_coverage() -> None:
                     judge_score=0.5 + 0.1 * np.random.normal(),
                     response=None,  # Optional field
                     draw_idx=draw_idx,
+                    fold_id=None,
                 )
             )
 

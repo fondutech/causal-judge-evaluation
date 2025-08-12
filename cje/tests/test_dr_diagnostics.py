@@ -264,7 +264,7 @@ class TestDRDiagnosticIntegration:
             )
             samples.append(sample)
 
-        dataset = Dataset(samples=samples)
+        dataset = Dataset(samples=samples, target_policies=["policy_a"])
         sampler = PrecomputedSampler(dataset)
 
         # Create estimator
@@ -279,7 +279,8 @@ class TestDRDiagnosticIntegration:
                     prompt_id=f"p{i}",
                     response=f"fresh {j}",
                     judge_score=0.5 + np.random.normal(0, 0.1),
-                    policy="target",
+                    target_policy="policy_a",
+                    draw_idx=j,
                     fold_id=i % 5,
                 )
                 fresh_samples.append(fresh_sample)

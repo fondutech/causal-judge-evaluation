@@ -90,7 +90,7 @@ class TestAnalyzeCommand:
     """Test the analyze command execution."""
 
     @patch("cje.analysis.analyze_dataset")
-    def test_run_analysis_basic(self, mock_analyze) -> None:
+    def test_run_analysis_basic(self, mock_analyze: MagicMock) -> None:
         """Test basic analysis run."""
         # Setup mock return value
         import numpy as np
@@ -139,7 +139,9 @@ class TestAnalyzeCommand:
 
     @patch("cje.analysis.analyze_dataset")
     @patch("cje.utils.export.export_results_json")
-    def test_run_analysis_with_output(self, mock_export, mock_analyze) -> None:
+    def test_run_analysis_with_output(
+        self, mock_export: MagicMock, mock_analyze: MagicMock
+    ) -> None:
         """Test analysis with output file."""
         # Setup mock
         import numpy as np
@@ -172,7 +174,7 @@ class TestAnalyzeCommand:
         mock_export.assert_called_once_with(mock_result, "results.json")
 
     @patch("cje.analysis.analyze_dataset")
-    def test_run_analysis_quiet_mode(self, mock_analyze) -> None:
+    def test_run_analysis_quiet_mode(self, mock_analyze: MagicMock) -> None:
         """Test analysis in quiet mode."""
         import numpy as np
 
@@ -205,7 +207,7 @@ class TestAnalyzeCommand:
         assert "Results:" not in output
 
     @patch("cje.analysis.analyze_dataset")
-    def test_run_analysis_file_not_found(self, mock_analyze) -> None:
+    def test_run_analysis_file_not_found(self, mock_analyze: MagicMock) -> None:
         """Test handling of missing dataset file."""
         mock_analyze.side_effect = FileNotFoundError("data.jsonl not found")
 
@@ -229,7 +231,7 @@ class TestAnalyzeCommand:
         assert "Dataset file not found" in stderr.getvalue()
 
     @patch("cje.analysis.analyze_dataset")
-    def test_run_analysis_value_error(self, mock_analyze) -> None:
+    def test_run_analysis_value_error(self, mock_analyze: MagicMock) -> None:
         """Test handling of value errors."""
         mock_analyze.side_effect = ValueError("Invalid estimator config")
 
@@ -258,7 +260,9 @@ class TestValidateCommand:
 
     @patch("cje.load_dataset_from_jsonl")
     @patch("cje.data.validation.validate_cje_data")
-    def test_validate_valid_data(self, mock_validate, mock_load) -> None:
+    def test_validate_valid_data(
+        self, mock_validate: MagicMock, mock_load: MagicMock
+    ) -> None:
         """Test validation of valid data."""
         # Setup mocks
         mock_dataset = MagicMock()
@@ -284,7 +288,9 @@ class TestValidateCommand:
 
     @patch("cje.load_dataset_from_jsonl")
     @patch("cje.data.validation.validate_cje_data")
-    def test_validate_invalid_data(self, mock_validate, mock_load) -> None:
+    def test_validate_invalid_data(
+        self, mock_validate: MagicMock, mock_load: MagicMock
+    ) -> None:
         """Test validation of invalid data."""
         mock_dataset = MagicMock()
         mock_dataset.n_samples = 100
@@ -309,7 +315,9 @@ class TestValidateCommand:
 
     @patch("cje.load_dataset_from_jsonl")
     @patch("cje.data.validation.validate_cje_data")
-    def test_validate_verbose_mode(self, mock_validate, mock_load) -> None:
+    def test_validate_verbose_mode(
+        self, mock_validate: MagicMock, mock_load: MagicMock
+    ) -> None:
         """Test validation in verbose mode."""
         # Setup dataset with judge scores and oracle labels
         mock_dataset = MagicMock()
@@ -352,7 +360,7 @@ class TestValidateCommand:
         assert "Valid samples per policy:" in output
 
     @patch("cje.load_dataset_from_jsonl")
-    def test_validate_file_not_found(self, mock_load) -> None:
+    def test_validate_file_not_found(self, mock_load: MagicMock) -> None:
         """Test validation with missing file."""
         mock_load.side_effect = FileNotFoundError("data.jsonl")
 
@@ -380,7 +388,7 @@ class TestMainEntry:
         assert "available commands" in output.lower()
 
     @patch("cje.cli.run_analysis")
-    def test_main_analyze_command(self, mock_run) -> None:
+    def test_main_analyze_command(self, mock_run: MagicMock) -> None:
         """Test main routes to analyze command."""
         mock_run.return_value = 0
 
@@ -391,7 +399,7 @@ class TestMainEntry:
         mock_run.assert_called_once()
 
     @patch("cje.cli.validate_data")
-    def test_main_validate_command(self, mock_validate) -> None:
+    def test_main_validate_command(self, mock_validate: MagicMock) -> None:
         """Test main routes to validate command."""
         mock_validate.return_value = 0
 

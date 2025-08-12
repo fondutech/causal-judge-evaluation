@@ -21,7 +21,7 @@ EXAMPLE_DATA = {
 }
 
 
-def example_cli():
+def example_cli() -> None:
     """Example: Using the command-line interface."""
     print("=" * 60)
     print("COMMAND LINE INTERFACE EXAMPLES")
@@ -46,7 +46,7 @@ def example_cli():
     print("       --output dr_results.json")
 
 
-def example_high_level_api():
+def example_high_level_api() -> None:
     """Example: Using the high-level Python API."""
     print("\n" + "=" * 60)
     print("HIGH-LEVEL API EXAMPLE")
@@ -89,7 +89,7 @@ def example_high_level_api():
     )
 
 
-def example_low_level_api():
+def example_low_level_api() -> None:
     """Example: Using the low-level Python API for more control."""
     print("\n" + "=" * 60)
     print("LOW-LEVEL API EXAMPLE")
@@ -134,7 +134,7 @@ def example_low_level_api():
     )
 
 
-def example_dr_estimation():
+def example_dr_estimation() -> None:
     """Example: Using doubly robust estimation."""
     print("\n" + "=" * 60)
     print("DOUBLY ROBUST ESTIMATION EXAMPLE")
@@ -187,7 +187,7 @@ def example_dr_estimation():
     )
 
 
-def example_data_preparation():
+def example_data_preparation() -> None:
     """Example: Preparing data for CJE."""
     print("\n" + "=" * 60)
     print("DATA PREPARATION EXAMPLE")
@@ -242,7 +242,7 @@ def example_data_preparation():
     )
 
 
-def main():
+def main() -> None:
     """Run all examples."""
     print("\n" + "🚀 CJE QUICK START EXAMPLES 🚀".center(60))
     print("=" * 60)

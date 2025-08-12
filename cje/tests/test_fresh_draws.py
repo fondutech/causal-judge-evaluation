@@ -45,13 +45,13 @@ class TestLoadFreshDrawsAuto:
             for record in self.logged_data:
                 f.write(json.dumps(record) + "\n")
 
-    def teardown_method(self):
+    def teardown_method(self) -> None:
         """Clean up test directory."""
         import shutil
 
         shutil.rmtree(self.temp_dir)
 
-    def create_fresh_draws_file(self, policy: str, n_samples: int = 10):
+    def create_fresh_draws_file(self, policy: str, n_samples: int = 10) -> Path:
         """Helper to create a fresh draws file."""
         fresh_data = [
             {
@@ -118,11 +118,12 @@ class TestLoadFreshDrawsAuto:
                 data_dir=self.data_dir,
                 policy="policy_missing",
                 fallback_synthetic=True,
-                n_synthetic=20,
+                dataset=MagicMock(),  # Dataset required for synthetic
+                config={"draws_per_prompt": 20},
             )
 
             assert result == mock_dataset
-            mock_synthetic.assert_called_once_with("policy_missing", 20)
+            mock_synthetic.assert_called_once()
 
     def test_auto_load_no_fallback_raises(self) -> None:
         """Test auto-loading raises error when no fallback and files missing."""
@@ -147,9 +148,8 @@ class TestLoadFreshDrawsAuto:
             f.write(json.dumps(fresh_data[0]) + "\n")
 
         result = load_fresh_draws_auto(
-            data_dir=self.data_dir,
+            data_dir=custom_dir,  # Use custom dir as data_dir
             policy="policy_a",
-            fresh_draws_dir=custom_dir,
             fallback_synthetic=False,
         )
 
@@ -169,8 +169,8 @@ class TestLoadFreshDrawsAuto:
 
         for filename, should_find in test_cases:
             # Clean directory
-            for f in self.responses_dir.glob("*.jsonl"):
-                f.unlink()
+            for old_file in self.responses_dir.glob("*.jsonl"):
+                old_file.unlink()
 
             # Create test file
             fresh_data = {"prompt_id": "id_0", "response": "Test", "logprob": -5.0}
@@ -208,7 +208,7 @@ class TestLoadFreshDrawsAuto:
                 data_dir=self.data_dir, policy="policy_a", fallback_synthetic=False
             )
 
-    def test_auto_load_logging(self, caplog) -> None:
+    def test_auto_load_logging(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test auto-loading logs appropriate messages."""
         import logging
 

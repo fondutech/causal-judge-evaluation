@@ -4,6 +4,7 @@ import pytest
 import json
 import tempfile
 from pathlib import Path
+from typing import Optional
 from unittest.mock import patch, MagicMock, call
 import numpy as np
 
@@ -38,7 +39,7 @@ class TestAnalyzeDataset:
             for i in range(20)
         ]
 
-    def create_test_file(self, data=None) -> str:
+    def create_test_file(self, data: Optional[list] = None) -> str:
         """Helper to create a test JSONL file."""
         if data is None:
             data = self.mock_data
@@ -112,7 +113,7 @@ class TestAnalyzeDataset:
         assert "dr_diagnostics" in result.metadata or "diagnostics" in result.to_dict()
 
     @patch("cje.analysis.load_fresh_draws_auto")
-    def test_analyze_dr_fallback_synthetic(self, mock_load_fresh) -> None:
+    def test_analyze_dr_fallback_synthetic(self, mock_load_fresh: MagicMock) -> None:
         """Test DR falls back to synthetic when fresh draws missing."""
         # Mock returns synthetic dataset
         mock_synthetic = MagicMock()

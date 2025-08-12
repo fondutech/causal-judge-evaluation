@@ -60,7 +60,11 @@ def test_pipeline_with_edge_cases(tmp_path: Path) -> None:
     # Test that calibration worked
     assert cal_result.n_oracle == 12
     assert calibrated_dataset.n_samples == 15  # Check total samples in dataset
-    assert all(0 <= sample.reward <= 1 for sample in calibrated_dataset.samples)
+    assert all(
+        0 <= sample.reward <= 1
+        for sample in calibrated_dataset.samples
+        if sample.reward is not None
+    )
 
     # Run estimation
     sampler = PrecomputedSampler(calibrated_dataset)

@@ -56,6 +56,11 @@ class FreshDrawDataset(BaseModel):
                     )
         return v
 
+    @property
+    def n_samples(self) -> int:
+        """Total number of fresh draw samples."""
+        return len(self.samples)
+
     def get_prompt_ids(self) -> List[str]:
         """Get unique prompt IDs in dataset."""
         return sorted(set(s.prompt_id for s in self.samples))

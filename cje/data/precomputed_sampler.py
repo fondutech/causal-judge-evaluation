@@ -273,7 +273,7 @@ class PrecomputedSampler:
         # Clean up non-finite values (from -inf log ratios)
         weights[~np.isfinite(weights)] = 0.0
 
-        return weights
+        return np.asarray(weights)
 
     def compute_hajek_weights(self, target_policy: str) -> np.ndarray:
         """Compute mean-one (SNIPS/Hájek) weights using stable log-sum-exp.
@@ -369,7 +369,7 @@ class PrecomputedSampler:
             f"min={weights_array.min():.3f}, max={weights_array.max():.3f}"
         )
 
-        return weights_array
+        return np.asarray(weights_array)
 
     def get_rewards(self) -> np.ndarray:
         """Get array of calibrated rewards."""
