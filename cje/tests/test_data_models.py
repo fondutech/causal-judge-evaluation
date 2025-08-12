@@ -71,11 +71,9 @@ def test_dataset() -> None:
 
 def test_config() -> None:
     """Test configuration validation."""
-    config = WeightCalibrationConfig(
-        k_folds=3, clip_weight=50.0, target_mean=1.0, random_seed=42
-    )
-    assert config.k_folds == 3
+    config = WeightCalibrationConfig(clip_weight=50.0, target_mean=1.0)
     assert config.clip_weight == 50.0
+    assert config.target_mean == 1.0
     print("✓ Config validation works")
 
 

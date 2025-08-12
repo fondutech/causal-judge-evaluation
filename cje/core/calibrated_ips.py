@@ -48,12 +48,10 @@ class CalibratedIPS(BaseCJEEstimator):
         max_variance_ratio: float = 1.0,  # ≤1.0 = no increase, <1.0 = force reduction
         compute_diagnostics: bool = True,  # compute detailed diagnostics
     ):
-        # Create config (k_folds not used but required by config)
+        # Create config
         config = WeightCalibrationConfig(
-            k_folds=2,  # Not used in optimized version
             clip_weight=clip_weight,
             target_mean=1.0,
-            random_seed=42,  # Not used in optimized version
         )
         super().__init__(sampler, config)
         self.enforce_variance_nonincrease = enforce_variance_nonincrease
@@ -234,7 +232,6 @@ class CalibratedIPS(BaseCJEEstimator):
             n_samples_used=n_samples_used,
             method="calibrated_ips",
             metadata={
-                "k_folds": self.config.k_folds,
                 "clip_weight": self.config.clip_weight,
                 "diagnostics": self._diagnostics,  # Include diagnostics
             },

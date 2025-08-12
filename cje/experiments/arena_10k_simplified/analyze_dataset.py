@@ -792,7 +792,7 @@ def main() -> int:
                     if policy in json_report.get("per_policy_analysis", {}):
                         stats = json_report["per_policy_analysis"][policy]["statistics"]
                         print(
-                            f"   ✓ {policy}: {stats['n_clipped_high']} clipped, {stats['n_near_zero']} near-zero"
+                            f"   ✓ {policy}: {stats['n_clipped_high']} very high (≥100), {stats['n_near_zero']} near-zero (<1e-10)"
                         )
 
                 if report_dir:

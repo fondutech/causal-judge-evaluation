@@ -273,7 +273,7 @@ def _format_text_report(report: Dict[str, Any]) -> str:
         )
         lines.append(f"ESS improvement: {stats['ess_raw']} → {stats['ess_calibrated']}")
         lines.append(
-            f"Clipped samples: {stats['n_clipped_high']} high, {stats['n_near_zero']} near-zero"
+            f"Extreme weights: {stats['n_clipped_high']} very high (≥100), {stats['n_near_zero']} near-zero (<1e-10)"
         )
         lines.append("")
 

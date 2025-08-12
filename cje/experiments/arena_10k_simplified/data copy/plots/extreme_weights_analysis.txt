@@ -1,7 +1,7 @@
 ================================================================================
 EXTREME WEIGHTS ANALYSIS REPORT
 ================================================================================
-Generated: 2025-08-11T19:54:55.617523
+Generated: 2025-08-11T20:04:57.690935
 Samples: 978 valid / 994 total
 Policies: clone, parallel_universe_prompt, premium, unhelpful
 ================================================================================
@@ -11,7 +11,7 @@ POLICY: clone
 Raw weight range: [1.09e-02, 7.28e+01]
 Calibrated range: [0.009, 1.755]
 ESS improvement: 14.7% → 78.1%
-Clipped samples: 0 high, 0 near-zero
+Extreme weights: 0 very high (≥100), 0 near-zero (<1e-10)
 
 TOP 5 HIGHEST WEIGHTS:
 1. Sample arena_851 (raw: 7.28e+01 → cal: 1.755)
@@ -89,7 +89,7 @@ POLICY: parallel_universe_prompt
 Raw weight range: [4.46e-36, 4.81e+03]
 Calibrated range: [0.000, 6.787]
 ESS improvement: 0.8% → 15.2%
-Clipped samples: 22 high, 581 near-zero
+Extreme weights: 22 very high (≥100), 581 near-zero (<1e-10)
 
 TOP 5 HIGHEST WEIGHTS:
 1. Sample arena_537 (raw: 4.81e+03 → cal: 6.787)
@@ -165,7 +165,7 @@ POLICY: premium
 Raw weight range: [1.16e-75, 4.44e+01]
 Calibrated range: [0.000, 11.082]
 ESS improvement: 0.4% → 9.0%
-Clipped samples: 0 high, 934 near-zero
+Extreme weights: 0 very high (≥100), 934 near-zero (<1e-10)
 
 TOP 5 HIGHEST WEIGHTS:
 1. Sample arena_171 (raw: 4.44e+01 → cal: 11.082)
@@ -237,7 +237,7 @@ POLICY: unhelpful
 Raw weight range: [1.62e-62, 1.70e+01]
 Calibrated range: [0.000, 15.173]
 ESS improvement: 0.2% → 6.6%
-Clipped samples: 0 high, 964 near-zero
+Extreme weights: 0 very high (≥100), 964 near-zero (<1e-10)
 
 TOP 5 HIGHEST WEIGHTS:
 1. Sample arena_150 (raw: 1.70e+01 → cal: 15.173)
