@@ -41,24 +41,32 @@ def add_rewards_to_existing_data(
     Returns:
         Path to output file
     """
-    # Load data using the proper loading pattern
+    # Load raw data to preserve all fields
+    raw_data = []
+    with open(data_path, "r") as f:
+        for line in f:
+            raw_data.append(json.loads(line))
+
+    # Also load through dataset for validation
     from cje import load_dataset_from_jsonl
 
-    # Load dataset with type safety
     dataset = load_dataset_from_jsonl(data_path)
 
-    # Get judge scores - look for them in metadata first, then try the field
+    # Get judge scores - look for them in metadata first, then top level
     judge_scores = []
-    for sample in dataset.samples:
+    for i, (raw_record, sample) in enumerate(zip(raw_data, dataset.samples)):
+        # Try metadata first (from parsed sample)
         if judge_score_field in sample.metadata:
             score = sample.metadata[judge_score_field]
+        # Then try top level in raw data
+        elif judge_score_field in raw_record:
+            score = raw_record[judge_score_field]
         else:
-            # This is a fallback - ideally scores should be in metadata
             score = None
 
         if score is None:
             raise ValueError(
-                f"Judge score field '{judge_score_field}' not found in sample metadata"
+                f"Judge score field '{judge_score_field}' not found in record {i}"
             )
 
         if isinstance(score, dict):
@@ -70,17 +78,13 @@ def add_rewards_to_existing_data(
     # Apply calibration
     calibrated_rewards = calibrator.predict(judge_scores_array)
 
-    # Convert back to dict format and add rewards
+    # Add rewards to raw data to preserve ALL original fields
     data = []
-    for i, sample in enumerate(dataset.samples):
-        record = {
-            "prompt": sample.prompt,
-            "response": sample.response,
-            "base_policy_logprob": sample.base_policy_logprob,
-            "target_policy_logprobs": sample.target_policy_logprobs,
-            "metadata": sample.metadata,
-            output_reward_field: float(calibrated_rewards[i]),
-        }
+    for i, raw_record in enumerate(raw_data):
+        # Start from the original raw record to preserve all fields
+        record = dict(raw_record)  # Make a copy
+        # Inject the calibrated reward
+        record[output_reward_field] = float(calibrated_rewards[i])
         data.append(record)
 
     # Save

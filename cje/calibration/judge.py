@@ -137,7 +137,10 @@ class JudgeCalibrator:
         self._final_calibrator.fit(oracle_scores, oracle_y)
 
         # Apply calibration to all samples using full model
-        calibrated_scores = self._final_calibrator.predict(judge_scores)
+        # Clip to [0,1] to ensure rewards stay in valid range even if oracle labels exceed bounds
+        calibrated_scores = np.clip(
+            self._final_calibrator.predict(judge_scores), 0.0, 1.0
+        )
 
         # Compute diagnostics on oracle subset
         oracle_calibrated = calibrated_scores[oracle_mask]
@@ -171,8 +174,9 @@ class JudgeCalibrator:
         if self._final_calibrator is None:
             raise RuntimeError("Calibrator must be fitted before prediction")
 
+        # Predict and clip to [0,1] to ensure rewards stay in valid range
         result = self._final_calibrator.predict(np.asarray(judge_scores))
-        return np.asarray(result)
+        return np.clip(np.asarray(result), 0.0, 1.0)
 
     def fit_cv(
         self,
@@ -241,7 +245,10 @@ class JudgeCalibrator:
         # Step 1: Fit global model (same as fit_transform)
         self._final_calibrator = IsotonicRegression(out_of_bounds="clip")
         self._final_calibrator.fit(oracle_scores, oracle_y)
-        calibrated_scores = self._final_calibrator.predict(judge_scores)
+        # Clip to [0,1] to ensure rewards stay in valid range even if oracle labels exceed bounds
+        calibrated_scores = np.clip(
+            self._final_calibrator.predict(judge_scores), 0.0, 1.0
+        )
 
         # Step 2: Assign fold IDs to all samples
         self._fold_ids = np.zeros(n_total, dtype=int)
@@ -294,7 +301,8 @@ class JudgeCalibrator:
         for fold_id, model in self._fold_models.items():
             mask = self._fold_ids[oracle_mask] == fold_id
             if np.any(mask):
-                oracle_oof[mask] = model.predict(oracle_scores[mask])
+                # Clip predictions to [0,1]
+                oracle_oof[mask] = np.clip(model.predict(oracle_scores[mask]), 0.0, 1.0)
 
         rmse_oof = float(np.sqrt(np.mean((oracle_oof - oracle_y) ** 2)))
         coverage_01_oof = float(np.mean(np.abs(oracle_oof - oracle_y) <= 0.1))
@@ -347,9 +355,12 @@ class JudgeCalibrator:
         for fold_id, model in self._fold_models.items():
             fold_mask = fold_ids == fold_id
             if np.any(fold_mask):
-                predictions[fold_mask] = model.predict(judge_scores[fold_mask])
+                # Clip predictions to [0,1] to ensure valid rewards
+                predictions[fold_mask] = np.clip(
+                    model.predict(judge_scores[fold_mask]), 0.0, 1.0
+                )
 
-        return predictions
+        return np.clip(predictions, 0.0, 1.0)  # Extra safety clip
 
 
 def calibrate_judge_scores(

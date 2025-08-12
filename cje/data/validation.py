@@ -69,16 +69,45 @@ def validate_cje_data(
         elif not sample["target_policy_logprobs"]:
             issues.append("target_policy_logprobs cannot be empty")
 
-    # Check evaluation fields
+    # Check evaluation fields - scan a larger sample for robustness
+    # Check up to 100 samples or 10% of data, whichever is smaller
+    sample_size = min(100, max(10, len(data) // 10))
     has_reward = reward_field and reward_field in sample
-    has_judge = judge_field and all(
-        (
-            judge_field in rec.get("metadata", {})
-            if judge_field not in rec
-            else judge_field in rec
+
+    # Check for judge field - accept it either at top level or in metadata
+    # Also validate that values are numeric and non-None
+    judge_samples_checked = 0
+    valid_judge_samples = 0
+    invalid_judge_values = []
+
+    if judge_field:
+        for i, rec in enumerate(data[:sample_size]):
+            judge_samples_checked += 1
+            judge_val = None
+
+            # Check top level first
+            if judge_field in rec:
+                judge_val = rec[judge_field]
+            # Then check metadata
+            elif "metadata" in rec and judge_field in rec["metadata"]:
+                judge_val = rec["metadata"][judge_field]
+
+            # Validate the value
+            if judge_val is not None:
+                if isinstance(judge_val, (int, float)):
+                    valid_judge_samples += 1
+                else:
+                    invalid_judge_values.append((i, type(judge_val).__name__))
+
+    has_judge = judge_field and (valid_judge_samples > 0)
+
+    # Report invalid judge values if found
+    if invalid_judge_values:
+        examples = invalid_judge_values[:3]  # Show first 3 examples
+        issues.append(
+            f"Judge field '{judge_field}' has non-numeric values. "
+            f"Examples: {examples}. Values must be numeric (int or float)."
         )
-        for rec in data[: min(10, len(data))]  # Check first 10 samples
-    )
 
     if not has_reward and not has_judge:
         issues.append(
@@ -96,18 +125,42 @@ def validate_cje_data(
                 "Provide oracle_field parameter pointing to oracle labels."
             )
         else:
-            oracle_count = sum(
-                1
-                for rec in data
-                if oracle_field in rec.get("metadata", {})
-                and rec["metadata"][oracle_field] is not None
-            )
+            # Check for oracle labels - accept at top level or in metadata
+            # Also validate that values are numeric
+            oracle_count = 0
+            invalid_oracle_values = []
+
+            for i, rec in enumerate(data):
+                oracle_val = None
+
+                # Check top level first
+                if oracle_field in rec:
+                    oracle_val = rec[oracle_field]
+                # Then check metadata
+                elif "metadata" in rec and oracle_field in rec["metadata"]:
+                    oracle_val = rec["metadata"][oracle_field]
+
+                # Validate the value
+                if oracle_val is not None:
+                    if isinstance(oracle_val, (int, float)):
+                        oracle_count += 1
+                    else:
+                        invalid_oracle_values.append((i, type(oracle_val).__name__))
+
+            # Report invalid oracle values if found
+            if invalid_oracle_values:
+                examples = invalid_oracle_values[:3]  # Show first 3 examples
+                issues.append(
+                    f"Oracle field '{oracle_field}' has non-numeric values. "
+                    f"Examples: {examples}. Values must be numeric (int or float)."
+                )
 
             if oracle_count == 0:
                 issues.append(
-                    f"No oracle labels found in field '{oracle_field}'. "
+                    f"No valid oracle labels found in field '{oracle_field}'. "
                     "Judge scores require oracle labels for calibration. "
-                    "Need at least 10 samples with oracle labels (50-100 recommended)."
+                    "Need at least 10 samples with oracle labels (50-100 recommended). "
+                    "Check that oracle values are numeric and non-None."
                 )
             elif oracle_count < 10:
                 issues.append(
