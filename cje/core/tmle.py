@@ -374,7 +374,11 @@ class TMLEEstimator(DREstimator):
     def _solve_logistic_fluctuation(
         self, q0_logged: np.ndarray, rewards: np.ndarray, weights: np.ndarray
     ) -> Tuple[float, Dict[str, Any]]:
-        """Solve for ε in logit(Q*) = logit(Q0) + ε using weighted logistic MLE."""
+        """Solve for ε in logit(Q*) = logit(Q0) + ε using weighted logistic MLE.
+
+        Uses scale-aware convergence: |score| / sqrt(Fisher) < tol
+        This is the normalized score that accounts for the parameter scale.
+        """
         # Guards
         q0 = np.clip(q0_logged, _EPS, 1.0 - _EPS)
         eta0 = _logit(q0)
@@ -383,11 +387,17 @@ class TMLEEstimator(DREstimator):
         converged = False
         score_val = None
         fisher_val = None
+        normalized_score = None
 
         # If all weights ~0, skip targeting
         if float(np.sum(weights)) <= 0:
             return 0.0, dict(
-                epsilon=0.0, converged=True, iters=0, score=0.0, fisher=0.0
+                epsilon=0.0,
+                converged=True,
+                iters=0,
+                score=0.0,
+                fisher=0.0,
+                normalized_score=0.0,
             )
 
         for t in range(self.max_iter):
@@ -399,10 +409,20 @@ class TMLEEstimator(DREstimator):
             score_val = score
             fisher_val = fisher
 
-            if abs(score) <= self.tol * len(q0):
-                converged = True
-                break
-            if fisher <= 1e-12:
+            # Scale-aware convergence: |score| / sqrt(Fisher)
+            # This is the normalized score that accounts for parameter scale
+            if fisher > 1e-12:
+                normalized_score = abs(score) / np.sqrt(fisher)
+                # Scale-aware tolerance (much more stringent and meaningful)
+                if normalized_score <= self.tol:
+                    converged = True
+                    break
+            else:
+                # Fisher too small - declare converged if score is small
+                if abs(score) <= self.tol:
+                    converged = True
+                    normalized_score = abs(score)  # Use raw score as fallback
+                    break
                 logger.warning(
                     "TMLE logistic fluctuation: near-singular Fisher; stopping early."
                 )
@@ -417,7 +437,8 @@ class TMLEEstimator(DREstimator):
         if not converged:
             logger.info(
                 f"TMLE logistic fluctuation did not fully converge: "
-                f"iters={self.max_iter}, |score|={abs(score_val) if score_val is not None else 0:.3e}, fisher={fisher_val:.3e}"
+                f"iters={self.max_iter}, normalized_score={normalized_score:.3e}, "
+                f"|score|={abs(score_val) if score_val is not None else 0:.3e}, fisher={fisher_val:.3e}"
             )
 
         return float(eps), dict(
@@ -426,6 +447,9 @@ class TMLEEstimator(DREstimator):
             iters=int(t + 1),
             score=float(score_val if score_val is not None else 0.0),
             fisher=float(fisher_val if fisher_val is not None else 0.0),
+            normalized_score=float(
+                normalized_score if normalized_score is not None else 0.0
+            ),
         )
 
     def _solve_identity_fluctuation(

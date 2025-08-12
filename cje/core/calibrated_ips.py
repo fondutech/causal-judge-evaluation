@@ -6,7 +6,7 @@ substantially reduced variance (i.e., not strictly unbiased).
 """
 
 import numpy as np
-from typing import Dict, Optional, Any, Union
+from typing import Dict, Optional, Any, Union, Set
 import logging
 
 from .base_estimator import BaseCJEEstimator
@@ -57,6 +57,7 @@ class CalibratedIPS(BaseCJEEstimator):
         self.store_influence = store_influence
         self.target_mean = 1.0  # Always use SNIPS/Hajek normalization
         self._influence_functions: Dict[str, np.ndarray] = {}
+        self._no_overlap_policies: Set[str] = set()  # Track policies with no overlap
 
     def fit(self) -> None:
         """Fit weight calibration for all target policies with comprehensive diagnostics."""
@@ -67,6 +68,21 @@ class CalibratedIPS(BaseCJEEstimator):
                 policy, clip_weight=self.clip_weight
             )
             if raw_weights is None:
+                continue
+
+            # Check for no overlap (all weights are zero)
+            if np.all(raw_weights == 0):
+                logger.warning(
+                    f"Policy '{policy}' has no overlap with base policy (all weights zero). "
+                    f"Marking as 'no_overlap' with NaN estimates."
+                )
+                # Store special marker for no overlap
+                self._no_overlap_policies.add(policy)
+                self._diagnostics[policy] = {
+                    "status": "no_overlap",
+                    "reason": "All importance weights are zero (disjoint support)",
+                    "weights": {"all_zero": True},
+                }
                 continue
 
             # Store raw weight statistics for comparison
@@ -189,6 +205,20 @@ class CalibratedIPS(BaseCJEEstimator):
                 estimates.append(np.nan)
                 standard_errors.append(np.nan)
                 n_samples_used[policy] = 0
+                continue
+
+            # Check for no overlap
+            if (
+                hasattr(self, "_no_overlap_policies")
+                and policy in self._no_overlap_policies
+            ):
+                # Policy has no overlap - return NaN
+                estimates.append(np.nan)
+                standard_errors.append(np.nan)
+                n_samples_used[policy] = 0
+                logger.info(
+                    f"Policy '{policy}' has status='no_overlap', returning NaN estimate"
+                )
                 continue
 
             # Get data and weights for this policy

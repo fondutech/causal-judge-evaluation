@@ -7,6 +7,7 @@ to achieve better bias-variance tradeoffs and double robustness properties.
 import numpy as np
 from typing import Dict, List, Optional, Any, Union
 import logging
+import dataclasses
 
 from .calibrated_ips import CalibratedIPS
 from .raw_ips import RawIPS
@@ -289,7 +290,14 @@ class DREstimator(BaseCJEEstimator):
             # Get components
             weights = self.ips_estimator.get_weights(policy)
             if weights is None:
-                logger.warning(f"No weights for policy '{policy}', skipping")
+                # Check if this is a no_overlap case
+                diag = self.ips_estimator.get_diagnostics(policy)
+                if diag and diag.get("status") == "no_overlap":
+                    logger.warning(
+                        f"Policy '{policy}' has no overlap with base policy, returning NaN"
+                    )
+                else:
+                    logger.warning(f"No weights for policy '{policy}', skipping")
                 estimates.append(np.nan)
                 standard_errors.append(np.nan)
                 n_samples_used[policy] = 0
@@ -462,8 +470,8 @@ class DREstimator(BaseCJEEstimator):
             )
 
         # Compute DR diagnostics for all policies
-        dr_diagnostics_per_policy = {}
-        dr_calibration_data = {}
+        dr_diagnostics_per_policy: Dict[str, Dict[str, Any]] = {}
+        dr_calibration_data: Dict[str, Dict[str, Any]] = {}
 
         # Re-compute diagnostics for each policy (we need to loop again to have all estimates)
         for idx, policy in enumerate(self.sampler.target_policies):
@@ -530,7 +538,7 @@ class DREstimator(BaseCJEEstimator):
             fresh_draw_var_per_prompt = np.array(fresh_draw_var_per_prompt_list)
 
             # Compute diagnostics
-            diag = compute_dr_policy_diagnostics(
+            diag_dataclass = compute_dr_policy_diagnostics(
                 weights=weights,
                 rewards=logged_rewards,
                 g_logged=g_logged,
@@ -544,8 +552,8 @@ class DREstimator(BaseCJEEstimator):
                 cross_fitted=True,  # All our models are cross-fitted
                 n_folds=self.n_folds,
             )
-
-            dr_diagnostics_per_policy[policy] = diag.__dict__
+            # Convert dataclass to dict for JSON serialization
+            dr_diagnostics_per_policy[policy] = dataclasses.asdict(diag_dataclass)
 
             # Store calibration data for potential plotting
             dr_calibration_data[policy] = {
