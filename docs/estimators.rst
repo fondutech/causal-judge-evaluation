@@ -24,8 +24,12 @@ Quick Comparison
      - High variance
    * - **DRCPOEstimator**
      - When fresh draws available
-     - Lowest variance
+     - Lowest variance, doubly robust
      - Requires target samples
+   * - **MRDREstimator**
+     - Heterogeneous effects
+     - Policy-specific models
+     - More complex, requires cv_fold
 
 CalibratedIPS (Recommended)
 ----------------------------
@@ -91,15 +95,27 @@ Combines outcome modeling with IPS correction:
 
 .. code-block:: python
 
-   from cje import DRCPOEstimator, create_synthetic_fresh_draws
+   from cje import DRCPOEstimator, calibrate_dataset, create_synthetic_fresh_draws
    
-   # Create estimator with cross-fitted outcome model
-   dr_estimator = DRCPOEstimator(sampler, n_folds=5)
+   # Calibrate with cross-fitting for optimal DR
+   calibrated_dataset, cal_result = calibrate_dataset(
+       dataset,
+       enable_cross_fit=True,
+       n_folds=5
+   )
+   sampler = PrecomputedSampler(calibrated_dataset)
+   
+   # Create estimator (reuses calibration models)
+   dr_estimator = DRCPOEstimator(
+       sampler, 
+       n_folds=5,
+       calibrator=cal_result.calibrator  # Reuse cross-fitted models
+   )
    
    # Add fresh draws (samples from target policy)
    for policy in sampler.target_policies:
        fresh_draws = create_synthetic_fresh_draws(
-           dataset, 
+           calibrated_dataset, 
            target_policy=policy,
            draws_per_prompt=10
        )
@@ -119,6 +135,55 @@ Combines outcome modeling with IPS correction:
 - Doubly robust (consistent if either component correct)
 - Requires fresh draws from target
 - Best variance reduction
+- Reuses calibration models when available
+
+MRDREstimator (Policy-Specific Models)
+---------------------------------------
+
+Uses policy-specific weighted outcome models:
+
+.. code-block:: python
+
+   from cje.core.mrdr import MRDREstimator
+   
+   # Requires cross-fitted calibration
+   calibrated_dataset, cal_result = calibrate_dataset(
+       dataset,
+       enable_cross_fit=True,  # Required for MRDR
+       n_folds=5
+   )
+   sampler = PrecomputedSampler(calibrated_dataset)
+   
+   # Create MRDR estimator
+   mrdr_estimator = MRDREstimator(
+       sampler,
+       n_folds=5,
+       omega_mode="snips"  # Weight mode: "snips", "w2", or "w"
+   )
+   
+   # Add fresh draws (same as DR)
+   for policy in sampler.target_policies:
+       fresh_draws = create_synthetic_fresh_draws(
+           calibrated_dataset,
+           target_policy=policy,
+           draws_per_prompt=10
+       )
+       mrdr_estimator.add_fresh_draws(policy, fresh_draws)
+   
+   results = mrdr_estimator.fit_and_estimate()
+
+**When to use:**
+
+- Significant distribution shift between policies
+- Heterogeneous treatment effects
+- Want outcome model to adapt to each policy's importance structure
+
+**Key features:**
+
+- Policy-specific isotonic models
+- Weighted by importance structure (ω)
+- Three omega modes for different weight schemes
+- Requires cv_fold metadata from calibration
 
 Understanding Weight Diagnostics
 ---------------------------------
@@ -154,14 +219,17 @@ Choosing an Estimator
 
 1. You have >10K samples → Consider RawIPS
 2. You can generate target samples → Use DRCPOEstimator
-3. You need strict unbiasedness → Use RawIPS with large clip_weight
+3. Significant distribution shift + fresh draws → Use MRDREstimator
+4. You need strict unbiasedness → Use RawIPS with large clip_weight
 
 **Decision flowchart:**
 
 .. code-block:: text
 
    Can generate target samples?
-   ├─ Yes → DRCPOEstimator
+   ├─ Yes → Heterogeneous effects expected?
+   │        ├─ Yes → MRDREstimator
+   │        └─ No → DRCPOEstimator
    └─ No → Have >10K samples?
            ├─ Yes → RawIPS
            └─ No → CalibratedIPS (default)

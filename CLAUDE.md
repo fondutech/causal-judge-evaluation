@@ -140,6 +140,27 @@ Don't create complex abstractions for template selection - let the tools handle 
 - Unnecessary abstractions (if it's only used once, inline it)
 - String-based dispatch when direct calls would suffice
 
+## 🔬 Three Isotonic Mappings
+
+The codebase implements three distinct isotonic regressions, each with a specific purpose:
+
+1. **Reward Calibration** (judge → oracle)
+   - **Where**: `JudgeCalibrator` in `calibration/judge.py`
+   - **Global model**: `f_all` for stable reward labels (`Sample.reward`)
+   - **Cross-fitted**: `f^(-k)` for DR outcome models (via `predict_oof`)
+   - **Usage**: `calibrate_dataset(enable_cross_fit=True)` for DR
+
+2. **Weight Calibration** (IPS stabilization)
+   - **Where**: `calibrate_to_target_mean` in `calibration/isotonic.py`
+   - **Method**: Mean-one PAV + variance-safe blending
+   - **No cross-fitting**: Applied per-policy in `CalibratedIPS.fit()`
+   - **Purpose**: Prevents weight explosion while preserving mean
+
+3. **DR Outcome Model** (g(s))
+   - **Preferred**: `CalibratorBackedOutcomeModel` - reuses f^(-k) from calibration
+   - **Fallback**: `IsotonicOutcomeModel` - refits if no calibrator passed
+   - **Always cross-fitted**: Preserves orthogonality for DR
+
 ## 🤖 Doubly Robust (DR) Design
 
 ### Architecture
@@ -153,7 +174,8 @@ Don't create complex abstractions for template selection - let the tools handle 
 ```python
 # Estimator hierarchy
 DREstimator(CalibratedIPS)  # Base DR with IPS correction
-└── DRCPOEstimator          # Default with isotonic outcome model
+├── DRCPOEstimator          # Default with isotonic outcome model
+└── MRDREstimator           # Policy-specific weighted outcome models
 
 # Outcome model hierarchy  
 BaseOutcomeModel (ABC)            # Handles cross-fitting infrastructure
@@ -164,15 +186,17 @@ BaseOutcomeModel (ABC)            # Handles cross-fitting infrastructure
 
 ### Cross-Fitting for DR
 ```python
-# Enable cross-fitting during calibration
+# ALWAYS enable cross-fitting and pass calibrator for DR
 calibrated_dataset, result = calibrate_dataset(
     dataset,
     enable_cross_fit=True,  # Fits both f_all and f^(-k)
     n_folds=5
 )
 
-# DR automatically uses CalibratorBackedOutcomeModel
-dr = DRCPOEstimator(sampler, calibrator=result.calibrator)
+# ALWAYS pass calibrator to avoid redundant fitting
+sampler = PrecomputedSampler(calibrated_dataset)
+dr = DRCPOEstimator(sampler, calibrator=result.calibrator, n_folds=5)
+# This reuses the cross-fitted models from calibration (efficient!)
 ```
 
 ### Implementation Pattern

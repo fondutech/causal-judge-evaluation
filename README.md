@@ -44,7 +44,8 @@ print(f"Best policy: {results.best_policy()}")
 ### Estimators
 - **CalibratedIPS** - Variance-controlled IPS with isotonic calibration (recommended)
 - **RawIPS** - Standard importance sampling with clipping
-- **DRCPOEstimator** - Doubly robust with cross-fitted outcome models
+- **DRCPOEstimator** - Doubly robust with cross-fitted isotonic outcome models
+- **MRDREstimator** - Policy-specific weighted outcome models for heterogeneous effects
 
 ### Data Format
 ```json

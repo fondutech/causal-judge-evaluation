@@ -26,6 +26,7 @@ logging.basicConfig(
 
 from cje import (
     load_dataset_from_jsonl,
+    calibrate_dataset,
     PrecomputedSampler,
     CalibratedIPS,
     RawIPS,
@@ -37,6 +38,7 @@ from cje import (
     create_weight_summary_table,
     analyze_extreme_weights,
 )
+from cje.core.mrdr import MRDREstimator
 
 # Import visualization if available
 try:
@@ -112,7 +114,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--estimator",
-        choices=["calibrated-ips", "raw-ips", "dr-cpo"],
+        choices=["calibrated-ips", "raw-ips", "dr-cpo", "mrdr"],
         default="calibrated-ips",
         help="Estimation method to use (default: calibrated-ips)",
     )
@@ -151,6 +153,10 @@ def main() -> int:
     dataset = load_dataset_from_jsonl(args.data)
     print(f"   ✓ Loaded {dataset.n_samples} samples")
     print(f"   ✓ Target policies: {dataset.target_policies}")
+
+    # Initialize variables for calibration
+    calibrated_dataset = None
+    cal_result = None  # Store calibration result for passing to DR
 
     # Step 2: Handle rewards
     # Check if rewards already exist in the dataset
@@ -229,93 +235,61 @@ def main() -> int:
                 )
                 # Judge calibration workflow with partial oracle coverage
                 try:
-                    # Need to implement partial oracle calibration
                     import random
-                    from sklearn.isotonic import IsotonicRegression
 
                     # Set seed for reproducibility
                     random.seed(42)
                     np.random.seed(42)
 
-                    # Extract samples with both judge and oracle
-                    samples_with_both = []
-                    for i, sample in enumerate(dataset.samples):
-                        if (
-                            args.judge_field in sample.metadata
-                            and args.oracle_field in sample.metadata
-                        ):
-                            samples_with_both.append(i)
+                    # If partial coverage, mask out some oracle labels
+                    if args.oracle_coverage < 1.0:
+                        # Get indices of samples with oracle labels
+                        samples_with_oracle = [
+                            i
+                            for i, s in enumerate(dataset.samples)
+                            if args.oracle_field in s.metadata
+                            and s.metadata[args.oracle_field] is not None
+                        ]
 
-                    if not samples_with_both:
-                        raise ValueError(
-                            "No samples have both judge scores and oracle labels"
+                        if not samples_with_oracle:
+                            raise ValueError(
+                                f"No oracle labels found in field '{args.oracle_field}'"
+                            )
+
+                        # Select subset to keep
+                        n_keep = max(
+                            2, int(len(samples_with_oracle) * args.oracle_coverage)
                         )
-
-                    # Select subset for calibration
-                    n_oracle = max(
-                        2, int(len(samples_with_both) * args.oracle_coverage)
-                    )
-                    calibration_indices = sorted(
-                        random.sample(
-                            samples_with_both, min(n_oracle, len(samples_with_both))
-                        )
-                    )
-
-                    # Extract arrays for calibration
-                    judge_scores = []
-                    oracle_labels = []
-                    for idx in calibration_indices:
-                        sample = dataset.samples[idx]
-                        judge_scores.append(sample.metadata[args.judge_field])
-                        oracle_labels.append(sample.metadata[args.oracle_field])
-
-                    # Fit isotonic regression
-                    iso_reg = IsotonicRegression(out_of_bounds="clip")
-                    iso_reg.fit(judge_scores, oracle_labels)
-
-                    # Apply calibration to all samples with judge scores
-                    calibrated_count = 0
-                    for sample in dataset.samples:
-                        if args.judge_field in sample.metadata:
-                            judge_score = sample.metadata[args.judge_field]
-                            sample.reward = float(iso_reg.predict([judge_score])[0])
-                            calibrated_count += 1
-
-                    calibrated_dataset = dataset
-
-                    # Report calibration quality
-                    all_judge = []
-                    all_oracle = []
-                    for sample in dataset.samples:
-                        if (
-                            args.judge_field in sample.metadata
-                            and args.oracle_field in sample.metadata
-                            and sample.reward is not None
-                        ):
-                            all_judge.append(sample.reward)
-                            all_oracle.append(sample.metadata[args.oracle_field])
-
-                    if all_judge:
-                        rmse = np.sqrt(
-                            np.mean(
-                                [(j - o) ** 2 for j, o in zip(all_judge, all_oracle)]
+                        keep_indices = set(
+                            random.sample(
+                                samples_with_oracle,
+                                min(n_keep, len(samples_with_oracle)),
                             )
                         )
-                        coverage = sum(
-                            1
-                            for j, o in zip(all_judge, all_oracle)
-                            if abs(j - o) <= 0.1
-                        ) / len(all_judge)
 
-                        print(
-                            f"   ✓ Calibrated {calibrated_count} samples using {len(calibration_indices)} oracle labels"
-                        )
-                        print(f"   ✓ Calibration RMSE: {rmse:.3f}")
-                        print(f"   ✓ Coverage (±0.1): {coverage:.1%}")
-                    else:
-                        print(
-                            f"   ✓ Calibrated {calibrated_count} samples using {len(calibration_indices)} oracle labels"
-                        )
+                        # Mask out non-selected oracle labels
+                        for i, sample in enumerate(dataset.samples):
+                            if (
+                                i not in keep_indices
+                                and args.oracle_field in sample.metadata
+                            ):
+                                sample.metadata[args.oracle_field] = None
+
+                    # Use calibrate_dataset with cross-fitting for DR
+                    calibrated_dataset, cal_result = calibrate_dataset(
+                        dataset,
+                        judge_field=args.judge_field,
+                        oracle_field=args.oracle_field,
+                        enable_cross_fit=True,  # Enable for DR
+                        n_folds=5,
+                    )
+
+                    print(f"   ✓ Calibrated using {cal_result.n_oracle} oracle labels")
+                    print(f"   ✓ Calibration RMSE: {cal_result.calibration_rmse:.3f}")
+                    print(f"   ✓ Coverage (±0.1): {cal_result.coverage_at_01:.1%}")
+                    if cal_result.oof_rmse is not None:
+                        print(f"   ✓ OOF RMSE: {cal_result.oof_rmse:.3f}")
+                        print(f"   ✓ OOF Coverage: {cal_result.oof_coverage_at_01:.1%}")
 
                 except Exception as e:
                     print(f"\n❌ Calibration failed: {e}")
@@ -338,7 +312,7 @@ def main() -> int:
         # Initialize the selected estimator
         estimator_config = args.estimator_config or {}
 
-        estimator: Union[CalibratedIPS, RawIPS, DRCPOEstimator]
+        estimator: Union[CalibratedIPS, RawIPS, DRCPOEstimator, MRDREstimator]
         if args.estimator == "calibrated-ips":
             # Updated API: no more k_folds, uses optimized single-pass
             estimator = CalibratedIPS(sampler)
@@ -349,10 +323,99 @@ def main() -> int:
         elif args.estimator == "dr-cpo":
             # DR-CPO estimator with cross-fitted isotonic outcome model
             n_folds = estimator_config.get("n_folds", 5)
-            estimator = DRCPOEstimator(sampler, n_folds=n_folds)
+            # Pass calibrator if available to reuse cross-fitted models
+            if cal_result and cal_result.calibrator:
+                estimator = DRCPOEstimator(
+                    sampler, n_folds=n_folds, calibrator=cal_result.calibrator
+                )
+                print(
+                    "   Using CalibratorBackedOutcomeModel (reusing calibration models)"
+                )
+            else:
+                estimator = DRCPOEstimator(sampler, n_folds=n_folds)
+                print("   Using IsotonicOutcomeModel (refitting models)")
 
             # Try to load real fresh draws from response files
             print("   Loading fresh draws for DR estimation...")
+            responses_dir = Path(args.data).parent / "responses"
+
+            for policy in sampler.target_policies:
+                response_file = responses_dir / f"{policy}_responses.jsonl"
+
+                if response_file.exists():
+                    # Load real fresh draws from file
+                    fresh_samples = []
+                    with open(response_file, "r") as f:
+                        for line in f:
+                            data = json.loads(line)
+                            # Create FreshDrawSample from the response data
+                            fresh_sample = FreshDrawSample(
+                                prompt_id=data["prompt_id"],
+                                target_policy=policy,
+                                response=data["response"],
+                                judge_score=data.get("metadata", {}).get(
+                                    "judge_score", 0.5
+                                ),
+                                draw_idx=0,  # Only one draw per prompt in these files
+                            )
+                            fresh_samples.append(fresh_sample)
+
+                    # Create FreshDrawDataset
+                    fresh_draws = FreshDrawDataset(
+                        target_policy=policy,
+                        draws_per_prompt=1,  # One response per prompt
+                        samples=fresh_samples,
+                    )
+                    estimator.add_fresh_draws(policy, fresh_draws)
+                    print(
+                        f"     ✓ Loaded {len(fresh_draws.samples)} real fresh draws for {policy}"
+                    )
+                else:
+                    # Fall back to synthetic fresh draws
+                    print(
+                        f"     ⚠️  No response file found for {policy}, using synthetic draws"
+                    )
+                    fresh_draws = create_synthetic_fresh_draws(
+                        calibrated_dataset,
+                        target_policy=policy,
+                        draws_per_prompt=estimator_config.get("draws_per_prompt", 10),
+                        score_correlation=estimator_config.get(
+                            "score_correlation", 0.9
+                        ),
+                        seed=42 + hash(policy) % 1000,
+                    )
+                    estimator.add_fresh_draws(policy, fresh_draws)
+                    print(
+                        f"     ✓ Added {len(fresh_draws.samples)} synthetic fresh draws for {policy}"
+                    )
+        elif args.estimator == "mrdr":
+            # MRDR estimator with policy-specific weighted outcome models
+            n_folds = estimator_config.get("n_folds", 5)
+            omega_mode = estimator_config.get("omega_mode", "snips")
+
+            # MRDR requires cross-fitted calibration
+            if not cal_result or not cal_result.calibrator:
+                print("   ⚠️  MRDR works best with cross-fitted calibration.")
+                print("      Re-calibrating with cross-fitting enabled...")
+                # Re-calibrate with cross-fitting if not already done
+                calibrated_dataset, cal_result = calibrate_dataset(
+                    calibrated_dataset,
+                    judge_field="judge_score",
+                    oracle_field="oracle_label",
+                    enable_cross_fit=True,
+                    n_folds=n_folds,
+                )
+                sampler = PrecomputedSampler(calibrated_dataset)
+
+            estimator = MRDREstimator(
+                sampler,
+                n_folds=n_folds,
+                omega_mode=omega_mode,
+            )
+            print(f"   Using MRDR with omega_mode='{omega_mode}'")
+
+            # Load fresh draws (same as DR)
+            print("   Loading fresh draws for MRDR estimation...")
             responses_dir = Path(args.data).parent / "responses"
 
             for policy in sampler.target_policies:

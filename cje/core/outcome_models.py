@@ -437,19 +437,21 @@ class CalibratorBackedOutcomeModel(BaseOutcomeModel):
                 if len(self.calibrator._fold_ids) == n_samples:
                     self.fold_assignments = self.calibrator._fold_ids
                 else:
-                    # Need to subset or map somehow
-                    logger.warning(
-                        f"Calibrator has {len(self.calibrator._fold_ids)} fold IDs "
-                        f"but we have {n_samples} samples. Using random assignment."
-                    )
-                    np.random.seed(42)
-                    self.fold_assignments = np.random.randint(
-                        0, self.n_folds, n_samples
+                    # Strict error to avoid accidental in-fold leakage
+                    raise ValueError(
+                        f"CalibratorBackedOutcomeModel requires exact fold_ids when "
+                        f"calibrator's stored fold_ids don't match the data subset. "
+                        f"Calibrator has {len(self.calibrator._fold_ids)} fold IDs but "
+                        f"we have {n_samples} samples. Pass explicit fold_ids from the "
+                        f"'cv_fold' metadata to avoid accidental in-fold predictions."
                     )
             else:
-                # Fall back to random assignment
-                np.random.seed(42)
-                self.fold_assignments = np.random.randint(0, self.n_folds, n_samples)
+                # No fold IDs available - require explicit ones
+                raise ValueError(
+                    "CalibratorBackedOutcomeModel requires fold_ids to be provided. "
+                    "Either pass them explicitly or ensure the calibrator was fitted "
+                    "with fit_cv() and has matching data size."
+                )
 
         self._fitted = True
         logger.info(

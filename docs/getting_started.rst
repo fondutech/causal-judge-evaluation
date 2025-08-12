@@ -139,6 +139,11 @@ Choosing an Estimator
    - Lower variance than IPS
    - Requires samples from target policy
 
+**MRDREstimator** (For heterogeneous effects)
+   - Policy-specific weighted outcome models
+   - Best for significant distribution shifts
+   - Requires cross-fitted calibration
+
 Next Steps
 ----------
 

@@ -51,6 +51,19 @@ DRCPOEstimator
    .. automethod:: fit
    .. automethod:: estimate
 
+MRDREstimator
+~~~~~~~~~~~~~
+
+.. autoclass:: cje.core.mrdr.MRDREstimator
+   :members:
+   :inherited-members:
+   :show-inheritance:
+   
+   .. automethod:: __init__
+   .. automethod:: add_fresh_draws
+   .. automethod:: fit
+   .. automethod:: estimate
+
 Outcome Models
 --------------
 
