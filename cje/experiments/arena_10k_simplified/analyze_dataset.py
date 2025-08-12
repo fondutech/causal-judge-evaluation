@@ -1,0 +1,1132 @@
+#!/usr/bin/env python3
+"""
+Run CJE analysis on prepared Arena data
+
+This shows how to use the decoupled loading and calibration approach:
+1. Load dataset (rewards optional)
+2. Calibrate judge scores OR use oracle labels directly
+3. Run CJE estimation with cross-fitting
+"""
+
+import sys
+from pathlib import Path
+from typing import Optional, Dict, Any, Union, List
+import numpy as np
+import os
+import logging
+
+sys.path.append(str(Path(__file__).parent.parent.parent))
+
+# Set up logging based on environment variable
+log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, log_level, logging.INFO),
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+
+from cje import (
+    load_dataset_from_jsonl,
+    calibrate_dataset,
+    PrecomputedSampler,
+    CalibratedIPS,
+    RawIPS,
+    DRCPOEstimator,
+    create_synthetic_fresh_draws,
+    FreshDrawDataset,
+    FreshDrawSample,
+    diagnose_weights,
+    create_weight_summary_table,
+    analyze_extreme_weights,
+)
+from cje.core.mrdr import MRDREstimator
+from cje.core.tmle import TMLEEstimator
+
+# Import visualization if available
+try:
+    from cje import (
+        plot_weight_dashboard,
+        plot_calibration_comparison,
+        plot_policy_estimates,
+    )
+
+    _viz_available = True
+except ImportError:
+    _viz_available = False
+
+
+def migrate_prompt_id_if_needed(filepath: str) -> None:
+    """Migrate prompt_id from metadata to top-level if needed.
+
+    This provides backward compatibility for old data format where
+    prompt_id was stored in metadata instead of as a top-level field.
+    """
+    import json
+    from pathlib import Path
+
+    path = Path(filepath)
+    if not path.exists():
+        return
+
+    # Check first line to see if migration is needed
+    with open(path, "r") as f:
+        first_line = f.readline()
+        if not first_line:
+            return
+
+        try:
+            first_record = json.loads(first_line)
+            # If prompt_id already at top level, no migration needed
+            if "prompt_id" in first_record:
+                return
+            # If no prompt_id in metadata either, skip
+            if "metadata" not in first_record or "prompt_id" not in first_record.get(
+                "metadata", {}
+            ):
+                return
+        except json.JSONDecodeError:
+            return
+
+    # Migration needed - read all lines and migrate
+    print(f"   ⚠️  Migrating prompt_id from metadata to top-level in {filepath}")
+    lines = []
+
+    with open(path, "r") as f:
+        for line in f:
+            if not line.strip():
+                lines.append(line)
+                continue
+
+            try:
+                data = json.loads(line)
+                # Move prompt_id if it's in metadata
+                if (
+                    "prompt_id" not in data
+                    and "metadata" in data
+                    and "prompt_id" in data["metadata"]
+                ):
+                    data["prompt_id"] = data["metadata"]["prompt_id"]
+                    del data["metadata"]["prompt_id"]
+
+                lines.append(json.dumps(data) + "\n")
+            except json.JSONDecodeError:
+                lines.append(line)
+
+    # Write back the migrated data
+    with open(path, "w") as f:
+        f.writelines(lines)
+
+    print(f"   ✓ Migration complete")
+
+
+def main() -> int:
+    """Run complete CJE analysis workflow."""
+    import argparse
+    import json
+    from datetime import datetime
+
+    parser = argparse.ArgumentParser(description="Run CJE analysis on Arena data")
+    parser.add_argument(
+        "--data",
+        default="data/cje_dataset.jsonl",
+        help="Path to prepared CJE dataset",
+    )
+    parser.add_argument(
+        "--use-oracle",
+        action="store_true",
+        help="Use oracle labels directly as rewards (skip calibration)",
+    )
+    parser.add_argument(
+        "--oracle-coverage",
+        type=float,
+        default=1.0,
+        help="Fraction of oracle labels to use for calibration (0.0-1.0). Default: 1.0",
+    )
+    parser.add_argument(
+        "--judge-field",
+        default="judge_score",
+        help="Field containing judge scores",
+    )
+    parser.add_argument(
+        "--oracle-field",
+        default="oracle_label",
+        help="Field containing oracle labels",
+    )
+    parser.add_argument(
+        "--n-folds",
+        type=int,
+        default=5,
+        help="Number of cross-fitting folds",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        help="Path to write results (optional, defaults to stdout only)",
+    )
+    parser.add_argument(
+        "--plot-dir",
+        type=str,
+        help="Directory to save visualization plots (defaults to same dir as data file)",
+    )
+    parser.add_argument(
+        "--no-plots",
+        action="store_true",
+        help="Disable plot generation even if matplotlib is available",
+    )
+    parser.add_argument(
+        "--estimator",
+        choices=["calibrated-ips", "raw-ips", "dr-cpo", "mrdr", "tmle"],
+        default="calibrated-ips",
+        help="Estimation method to use (default: calibrated-ips)",
+    )
+    parser.add_argument(
+        "--estimator-config",
+        type=json.loads,
+        help='JSON config for estimator (e.g., \'{"k_folds": 10, "clip_weight": 50}\')',
+    )
+    parser.add_argument(
+        "--extreme-threshold-high",
+        type=float,
+        default=100.0,
+        help="Weights above this are considered extreme (default: 100.0)",
+    )
+    parser.add_argument(
+        "--extreme-threshold-low",
+        type=float,
+        default=0.01,
+        help="Weights below this are considered extreme (default: 0.01)",
+    )
+
+    args = parser.parse_args()
+
+    # Update logging level if debug flag is set
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+        # Also set debug for key modules
+        logging.getLogger("cje.calibration.isotonic").setLevel(logging.DEBUG)
+        logging.getLogger("cje.core.calibrated_ips").setLevel(logging.DEBUG)
+
+    print("Running CJE Analysis")
+    print("=" * 50)
+
+    # Step 1: Load data (no rewards required)
+    print("\n1. Loading dataset...")
+
+    # Migrate prompt_id if needed for backward compatibility
+    migrate_prompt_id_if_needed(args.data)
+
+    dataset = load_dataset_from_jsonl(args.data)
+    print(f"   ✓ Loaded {dataset.n_samples} samples")
+    print(f"   ✓ Target policies: {dataset.target_policies}")
+
+    # Initialize variables for calibration
+    calibrated_dataset = None
+    cal_result = None  # Store calibration result for passing to DR
+
+    # Step 2: Handle rewards
+    # Check if rewards already exist in the dataset
+    rewards_exist = sum(1 for s in dataset.samples if s.reward is not None)
+
+    if rewards_exist > 0:
+        print(f"\n2. Using pre-computed rewards from dataset...")
+        print(f"   ✓ Found {rewards_exist}/{dataset.n_samples} samples with rewards")
+        calibrated_dataset = dataset
+
+        # Report reward statistics
+        rewards = [s.reward for s in dataset.samples if s.reward is not None]
+        print(f"   ✓ Reward range: [{min(rewards):.3f}, {max(rewards):.3f}]")
+        print(f"   ✓ Mean reward: {sum(rewards)/len(rewards):.3f}")
+
+        # If we have oracle labels, report calibration quality
+        if all(args.oracle_field in s.metadata for s in dataset.samples):
+            oracle_labels = [
+                s.metadata[args.oracle_field]
+                for s in dataset.samples
+                if s.reward is not None
+                and s.metadata.get(args.oracle_field) is not None
+            ]
+            # Only compute metrics if we have valid oracle labels
+            if oracle_labels and len(oracle_labels) == len(rewards):
+                rmse = np.sqrt(
+                    np.mean([(r - o) ** 2 for r, o in zip(rewards, oracle_labels)])
+                )
+                abs_errors = [abs(r - o) for r, o in zip(rewards, oracle_labels)]
+                coverage_01 = sum(1 for e in abs_errors if e <= 0.1) / len(abs_errors)
+
+                print(f"\n   Reward quality (vs oracle labels):")
+                print(f"   ✓ RMSE: {rmse:.3f}")
+                print(f"   ✓ Coverage (±0.1): {coverage_01:.1%}")
+
+    else:
+        # Fallback to old behavior for backward compatibility
+        if args.use_oracle:
+            print("\n2. Using oracle labels directly as rewards...")
+            # Direct oracle workflow - assign oracle labels as rewards
+            oracle_count = 0
+            for sample in dataset.samples:
+                if args.oracle_field in sample.metadata:
+                    sample.reward = float(sample.metadata[args.oracle_field])
+                    oracle_count += 1
+
+            if oracle_count == 0:
+                raise ValueError(
+                    f"No oracle labels found in field '{args.oracle_field}'"
+                )
+
+            print(f"   ✓ Assigned {oracle_count} oracle labels as rewards")
+            calibrated_dataset = dataset
+
+        else:
+            # Decide between direct oracle use or calibration based on coverage
+            if args.oracle_coverage == 1.0:
+                print("\n2. Using oracle labels directly as rewards (100% coverage)...")
+                # Direct oracle workflow - assign oracle labels as rewards
+                oracle_count = 0
+                for sample in dataset.samples:
+                    if args.oracle_field in sample.metadata:
+                        sample.reward = float(sample.metadata[args.oracle_field])
+                        oracle_count += 1
+
+                if oracle_count == 0:
+                    raise ValueError(
+                        f"No oracle labels found in field '{args.oracle_field}'"
+                    )
+
+                print(f"   ✓ Assigned {oracle_count} oracle labels as rewards")
+                calibrated_dataset = dataset
+            else:
+                print(
+                    f"\n2. Calibrating judge scores using {args.oracle_coverage:.0%} oracle coverage..."
+                )
+                # Judge calibration workflow with partial oracle coverage
+                try:
+                    import random
+
+                    # Set seed for reproducibility
+                    random.seed(42)
+                    np.random.seed(42)
+
+                    # If partial coverage, mask out some oracle labels
+                    if args.oracle_coverage < 1.0:
+                        # Get indices of samples with oracle labels
+                        samples_with_oracle = [
+                            i
+                            for i, s in enumerate(dataset.samples)
+                            if args.oracle_field in s.metadata
+                            and s.metadata[args.oracle_field] is not None
+                        ]
+
+                        if not samples_with_oracle:
+                            raise ValueError(
+                                f"No oracle labels found in field '{args.oracle_field}'"
+                            )
+
+                        # Select subset to keep
+                        n_keep = max(
+                            2, int(len(samples_with_oracle) * args.oracle_coverage)
+                        )
+                        keep_indices = set(
+                            random.sample(
+                                samples_with_oracle,
+                                min(n_keep, len(samples_with_oracle)),
+                            )
+                        )
+
+                        # Mask out non-selected oracle labels
+                        for i, sample in enumerate(dataset.samples):
+                            if (
+                                i not in keep_indices
+                                and args.oracle_field in sample.metadata
+                            ):
+                                sample.metadata[args.oracle_field] = None
+
+                    # Use calibrate_dataset with cross-fitting for DR
+                    calibrated_dataset, cal_result = calibrate_dataset(
+                        dataset,
+                        judge_field=args.judge_field,
+                        oracle_field=args.oracle_field,
+                        enable_cross_fit=True,  # Enable for DR
+                        n_folds=5,
+                    )
+
+                    print(f"   ✓ Calibrated using {cal_result.n_oracle} oracle labels")
+                    print(f"   ✓ Calibration RMSE: {cal_result.calibration_rmse:.3f}")
+                    print(f"   ✓ Coverage (±0.1): {cal_result.coverage_at_01:.1%}")
+                    if cal_result.oof_rmse is not None:
+                        print(f"   ✓ OOF RMSE: {cal_result.oof_rmse:.3f}")
+                        print(f"   ✓ OOF Coverage: {cal_result.oof_coverage_at_01:.1%}")
+
+                except Exception as e:
+                    print(f"\n❌ Calibration failed: {e}")
+                    raise ValueError(f"Calibration failed: {e}")
+
+    # Step 3: Run CJE estimation (requires rewards)
+    print(f"\n3. Running CJE estimation with {args.estimator}...")
+
+    # Initialize variables that will be used in JSON output
+    all_weight_diagnostics: Dict[str, Any] = {}
+    best_policy = "base"
+    mean_w = 1.0
+    max_w = 1.0
+    ess = float(dataset.n_samples)
+    ess_frac = 1.0
+
+    try:
+        sampler = PrecomputedSampler(calibrated_dataset)
+
+        # Initialize the selected estimator
+        estimator_config = args.estimator_config or {}
+
+        estimator: Union[
+            CalibratedIPS, RawIPS, DRCPOEstimator, MRDREstimator, TMLEEstimator
+        ]
+        if args.estimator == "calibrated-ips":
+            # Updated API: no more k_folds, uses optimized single-pass
+            estimator = CalibratedIPS(sampler)
+        elif args.estimator == "raw-ips":
+            # Use clip_weight from config or default
+            clip_weight = estimator_config.get("clip_weight", 100.0)
+            estimator = RawIPS(sampler, clip_weight=clip_weight)
+        elif args.estimator == "dr-cpo":
+            # DR-CPO estimator with cross-fitted isotonic outcome model
+            n_folds = estimator_config.get("n_folds", 5)
+            # Pass calibrator if available to reuse cross-fitted models
+            if cal_result and cal_result.calibrator:
+                estimator = DRCPOEstimator(
+                    sampler, n_folds=n_folds, calibrator=cal_result.calibrator
+                )
+                print(
+                    "   Using CalibratorBackedOutcomeModel (reusing calibration models)"
+                )
+            else:
+                estimator = DRCPOEstimator(sampler, n_folds=n_folds)
+                print("   Using IsotonicOutcomeModel (refitting models)")
+
+            # Try to load real fresh draws from response files
+            print("   Loading fresh draws for DR estimation...")
+            responses_dir = Path(args.data).parent / "responses"
+
+            for policy in sampler.target_policies:
+                response_file = responses_dir / f"{policy}_responses.jsonl"
+
+                if response_file.exists():
+                    # Load real fresh draws from file
+                    fresh_samples = []
+                    with open(response_file, "r") as f:
+                        for line in f:
+                            data = json.loads(line)
+                            # Create FreshDrawSample from the response data
+                            fresh_sample = FreshDrawSample(
+                                prompt_id=data["prompt_id"],
+                                target_policy=policy,
+                                response=data["response"],
+                                judge_score=data.get("metadata", {}).get(
+                                    "judge_score", 0.5
+                                ),
+                                draw_idx=0,  # Only one draw per prompt in these files
+                            )
+                            fresh_samples.append(fresh_sample)
+
+                    # Create FreshDrawDataset
+                    fresh_draws = FreshDrawDataset(
+                        target_policy=policy,
+                        draws_per_prompt=1,  # One response per prompt
+                        samples=fresh_samples,
+                    )
+                    estimator.add_fresh_draws(policy, fresh_draws)
+                    print(
+                        f"     ✓ Loaded {len(fresh_draws.samples)} real fresh draws for {policy}"
+                    )
+                else:
+                    # Fall back to synthetic fresh draws
+                    print(
+                        f"     ⚠️  No response file found for {policy}, using synthetic draws"
+                    )
+                    fresh_draws = create_synthetic_fresh_draws(
+                        calibrated_dataset,
+                        target_policy=policy,
+                        draws_per_prompt=estimator_config.get("draws_per_prompt", 10),
+                        score_correlation=estimator_config.get(
+                            "score_correlation", 0.9
+                        ),
+                        seed=42 + hash(policy) % 1000,
+                    )
+                    estimator.add_fresh_draws(policy, fresh_draws)
+                    print(
+                        f"     ✓ Added {len(fresh_draws.samples)} synthetic fresh draws for {policy}"
+                    )
+        elif args.estimator == "mrdr":
+            # MRDR estimator with policy-specific weighted outcome models
+            n_folds = estimator_config.get("n_folds", 5)
+            omega_mode = estimator_config.get("omega_mode", "snips")
+
+            # MRDR requires cross-fitted calibration
+            if not cal_result or not cal_result.calibrator:
+                print("   ⚠️  MRDR works best with cross-fitted calibration.")
+                print("      Re-calibrating with cross-fitting enabled...")
+                # Re-calibrate with cross-fitting if not already done
+                calibrated_dataset, cal_result = calibrate_dataset(
+                    calibrated_dataset,
+                    judge_field="judge_score",
+                    oracle_field="oracle_label",
+                    enable_cross_fit=True,
+                    n_folds=n_folds,
+                )
+                sampler = PrecomputedSampler(calibrated_dataset)
+
+            estimator = MRDREstimator(
+                sampler,
+                n_folds=n_folds,
+                omega_mode=omega_mode,
+            )
+            print(f"   Using MRDR with omega_mode='{omega_mode}'")
+
+            # Load fresh draws (same as DR)
+            print("   Loading fresh draws for MRDR estimation...")
+            responses_dir = Path(args.data).parent / "responses"
+
+            for policy in sampler.target_policies:
+                response_file = responses_dir / f"{policy}_responses.jsonl"
+
+                if response_file.exists():
+                    # Load real fresh draws from file
+                    fresh_samples = []
+                    with open(response_file, "r") as f:
+                        for line in f:
+                            data = json.loads(line)
+                            # Create FreshDrawSample from the response data
+                            fresh_sample = FreshDrawSample(
+                                prompt_id=data["prompt_id"],
+                                target_policy=policy,
+                                response=data["response"],
+                                judge_score=data.get("metadata", {}).get(
+                                    "judge_score", 0.5
+                                ),
+                                draw_idx=0,  # Only one draw per prompt in these files
+                            )
+                            fresh_samples.append(fresh_sample)
+
+                    # Create FreshDrawDataset
+                    fresh_draws = FreshDrawDataset(
+                        target_policy=policy,
+                        draws_per_prompt=1,  # One response per prompt
+                        samples=fresh_samples,
+                    )
+                    estimator.add_fresh_draws(policy, fresh_draws)
+                    print(
+                        f"     ✓ Loaded {len(fresh_draws.samples)} real fresh draws for {policy}"
+                    )
+                else:
+                    # Fall back to synthetic fresh draws
+                    print(
+                        f"     ⚠️  No response file found for {policy}, using synthetic draws"
+                    )
+                    fresh_draws = create_synthetic_fresh_draws(
+                        calibrated_dataset,
+                        target_policy=policy,
+                        draws_per_prompt=estimator_config.get("draws_per_prompt", 10),
+                        score_correlation=estimator_config.get(
+                            "score_correlation", 0.9
+                        ),
+                        seed=42 + hash(policy) % 1000,
+                    )
+                    estimator.add_fresh_draws(policy, fresh_draws)
+                    print(
+                        f"     ✓ Added {len(fresh_draws.samples)} synthetic fresh draws for {policy}"
+                    )
+        elif args.estimator == "tmle":
+            # TMLE with targeted minimum loss estimation
+            n_folds = estimator_config.get("n_folds", 5)
+            link = estimator_config.get("link", "logit")
+
+            # TMLE benefits from cross-fitted calibration
+            if not cal_result or not cal_result.calibrator:
+                print("   ⚠️  TMLE works best with cross-fitted calibration.")
+                print("      Re-calibrating with cross-fitting enabled...")
+                calibrated_dataset, cal_result = calibrate_dataset(
+                    calibrated_dataset,
+                    judge_field="judge_score",
+                    oracle_field="oracle_label",
+                    enable_cross_fit=True,
+                    n_folds=n_folds,
+                )
+                sampler = PrecomputedSampler(calibrated_dataset)
+
+            estimator = TMLEEstimator(
+                sampler,
+                n_folds=n_folds,
+                link=link,
+            )
+            print(f"   Using TMLE with link='{link}'")
+
+            # Load fresh draws (same as DR/MRDR)
+            print("   Loading fresh draws for TMLE estimation...")
+            responses_dir = Path(args.data).parent / "responses"
+
+            for policy in sampler.target_policies:
+                response_file = responses_dir / f"{policy}_responses.jsonl"
+
+                if response_file.exists():
+                    # Load real fresh draws from file
+                    fresh_samples = []
+                    with open(response_file, "r") as f:
+                        for line in f:
+                            data = json.loads(line)
+                            fresh_sample = FreshDrawSample(
+                                prompt_id=data["prompt_id"],
+                                target_policy=policy,
+                                response=data["response"],
+                                judge_score=data.get("metadata", {}).get(
+                                    "judge_score", 0.5
+                                ),
+                                draw_idx=0,
+                            )
+                            fresh_samples.append(fresh_sample)
+
+                    fresh_draws = FreshDrawDataset(
+                        target_policy=policy,
+                        draws_per_prompt=1,
+                        samples=fresh_samples,
+                    )
+                    estimator.add_fresh_draws(policy, fresh_draws)
+                    print(
+                        f"     ✓ Loaded {len(fresh_draws.samples)} real fresh draws for {policy}"
+                    )
+                else:
+                    # Fall back to synthetic fresh draws
+                    print(
+                        f"     ⚠️  No response file found for {policy}, using synthetic draws"
+                    )
+                    fresh_draws = create_synthetic_fresh_draws(
+                        calibrated_dataset,
+                        target_policy=policy,
+                        draws_per_prompt=estimator_config.get("draws_per_prompt", 10),
+                        score_correlation=estimator_config.get(
+                            "score_correlation", 0.9
+                        ),
+                        seed=42 + hash(policy) % 1000,
+                    )
+                    estimator.add_fresh_draws(policy, fresh_draws)
+                    print(
+                        f"     ✓ Added {len(fresh_draws.samples)} synthetic fresh draws for {policy}"
+                    )
+        else:
+            raise ValueError(f"Unknown estimator: {args.estimator}")
+
+        results = estimator.fit_and_estimate()
+
+        # Get target policies list for indexing
+        target_policies: List[str] = list(sampler.target_policies)
+
+        # Display results
+        print("\n4. Results:")
+        print("   " + "-" * 40)
+
+        # Display base policy results first
+        base_rewards = [
+            s.reward for s in calibrated_dataset.samples if s.reward is not None
+        ]
+        base_mean = sum(base_rewards) / len(base_rewards) if base_rewards else 0.0
+        base_se = (
+            np.std(base_rewards, ddof=1) / np.sqrt(len(base_rewards))
+            if len(base_rewards) > 1
+            else 0.0
+        )
+        base_ci_lower = base_mean - 1.96 * base_se
+        base_ci_upper = base_mean + 1.96 * base_se
+
+        print(f"   base (observed):")
+        print(f"     Estimate: {base_mean:.3f}")
+        print(f"     Std Error: {base_se:.3f}")
+        print(f"     95% CI: [{base_ci_lower:.3f}, {base_ci_upper:.3f}]")
+
+        # Display results for each target policy
+        ci_lower, ci_upper = results.confidence_interval(alpha=0.05)
+        for policy, estimate, se, ci_l, ci_u in zip(
+            target_policies,
+            results.estimates,
+            results.standard_errors,
+            ci_lower,
+            ci_upper,
+        ):
+            print(f"   {policy}:")
+            print(f"     Estimate: {estimate:.3f}")
+            print(f"     Std Error: {se:.3f}")
+            print(f"     95% CI: [{ci_l:.3f}, {ci_u:.3f}]")
+
+        # Best policy (including base)
+        all_estimates = [base_mean] + list(results.estimates)
+        all_policies = ["base"] + target_policies
+        best_idx = np.argmax(all_estimates)
+        best_policy = all_policies[best_idx]
+        print(f"\n   🏆 Best policy: {best_policy}")
+
+        # Compare to oracle ground truth if available
+        if args.oracle_field in dataset.samples[0].metadata:
+            print(f"\n   📊 Oracle Ground Truth Comparison:")
+
+            # Try to load oracle labels for each policy from response files
+            oracle_means = {}
+            responses_dir = Path(args.data).parent / "responses"
+
+            # Compute oracle mean for base policy from dataset
+            base_oracle_labels = [
+                s.metadata[args.oracle_field]
+                for s in dataset.samples
+                if args.oracle_field in s.metadata
+                and s.metadata[args.oracle_field] is not None
+            ]
+            if base_oracle_labels:
+                oracle_means["base"] = sum(base_oracle_labels) / len(base_oracle_labels)
+
+            # Try to load oracle labels for target policies from their response files
+            for policy in target_policies:
+                response_file = responses_dir / f"{policy}_responses.jsonl"
+                if response_file.exists():
+                    try:
+                        oracle_labels = []
+                        with open(response_file, "r") as f:
+                            for line in f:
+                                data = json.loads(line)
+                                if (
+                                    "metadata" in data
+                                    and args.oracle_field in data["metadata"]
+                                ):
+                                    oracle_labels.append(
+                                        data["metadata"][args.oracle_field]
+                                    )
+                        if oracle_labels:
+                            oracle_means[policy] = sum(oracle_labels) / len(
+                                oracle_labels
+                            )
+                    except Exception:
+                        pass  # Silently skip if can't load
+
+            # If we couldn't load target policy oracle labels, note it
+            if len(oracle_means) == 1:
+                # Only have base policy oracle labels
+                print(f"   Base Policy (Observed):")
+                print(f"     CJE Estimate: {base_mean:.3f}")
+                print(f"     Oracle Mean:  {oracle_means['base']:.3f}")
+                print(f"     Error:        {base_mean - oracle_means['base']:+.3f}")
+                print(
+                    f"\n   Note: Oracle labels for target policies not available in response files."
+                )
+                print(f"   CJE uses importance weighting on base policy responses.")
+            else:
+                # Have oracle labels for multiple policies - show full comparison
+                print(
+                    f"   {'Policy':<12} {'CJE Estimate':>12} {'Oracle Mean':>12} {'Error':>10}"
+                )
+                print(f"   {'-'*46}")
+
+                # Show base policy
+                oracle_val = oracle_means.get("base", 0.0)
+                error = base_mean - oracle_val
+                print(
+                    f"   {'base':<12} {base_mean:>12.3f} {oracle_val:>12.3f} {error:>+10.3f}"
+                )
+
+                # Show target policies
+                for policy, estimate in zip(target_policies, results.estimates):
+                    if policy in oracle_means:
+                        oracle_val = oracle_means[policy]
+                        error = estimate - oracle_val
+                        print(
+                            f"   {policy:<12} {estimate:>12.3f} {oracle_val:>12.3f} {error:>+10.3f}"
+                        )
+                    else:
+                        print(
+                            f"   {policy:<12} {estimate:>12.3f} {'N/A':>12} {'N/A':>10}"
+                        )
+
+                # Check if CJE identified the correct best policy
+                if all(p in oracle_means for p in all_policies):
+                    oracle_best = max(oracle_means.items(), key=lambda x: x[1])[0]
+                    if oracle_best == best_policy:
+                        print(
+                            f"\n   ✅ CJE correctly identified {best_policy} as the best policy"
+                        )
+                    else:
+                        print(
+                            f"\n   ❌ CJE selected {best_policy}, but oracle shows {oracle_best} is best"
+                        )
+
+        # Show weight diagnostics for all policies
+        print(f"\n5. Weight diagnostics:")
+
+        # Collect diagnostics for all policies
+        all_weight_diagnostics = {}
+
+        # Base policy has uniform weights (no importance sampling)
+        base_diag = diagnose_weights(
+            np.ones(len(base_rewards)),
+            "base",
+            expected_weight=1.0,
+            extreme_threshold_high=args.extreme_threshold_high,
+            extreme_threshold_low=args.extreme_threshold_low,
+        )
+        all_weight_diagnostics["base"] = base_diag
+
+        # Target policies
+        for policy in target_policies:
+            weights = estimator.get_weights(policy)
+            if weights is not None:
+                # Expected weight is 1.0 for clone, None for others
+                expected = 1.0 if policy == "clone" else None
+                diag = diagnose_weights(
+                    weights,
+                    policy,
+                    expected,
+                    extreme_threshold_high=args.extreme_threshold_high,
+                    extreme_threshold_low=args.extreme_threshold_low,
+                )
+                all_weight_diagnostics[policy] = diag
+
+        # Print summary table
+        print("\n" + create_weight_summary_table(all_weight_diagnostics))
+
+        # Print detailed diagnostics if any issues found
+        has_issues = any(
+            d.consistency_flag != "GOOD" for d in all_weight_diagnostics.values()
+        )
+        if has_issues:
+            print("\n   ⚠️  Weight diagnostics warnings:")
+            for policy, diag in all_weight_diagnostics.items():
+                if diag.consistency_flag != "GOOD":
+                    print(f"\n   {diag.summary()}")
+
+        # Store diagnostics for the best policy for JSON output
+        best_diag = all_weight_diagnostics.get(best_policy)
+        if best_diag:
+            mean_w = best_diag.mean_weight
+            max_w = best_diag.max_weight
+            ess = best_diag.ess_fraction * len(base_rewards)
+            ess_frac = best_diag.ess_fraction
+        else:
+            # Fallback values
+            mean_w = 1.0
+            max_w = 1.0
+            ess = float(len(base_rewards))
+            ess_frac = 1.0
+
+        # Generate extreme weights analysis
+        print(f"\n6. Analyzing extreme weights...")
+
+        # Collect raw and calibrated weights for analysis
+        analysis_raw_weights = {}
+        analysis_cal_weights = {}
+
+        for policy in sampler.target_policies:
+            # Get raw weights (works for both CalibratedIPS and RawIPS)
+            raw_weights = estimator.get_raw_weights(policy)
+            if raw_weights is not None:
+                analysis_raw_weights[policy] = raw_weights
+
+            # Get calibrated/final weights
+            cal_weights = estimator.get_weights(policy)
+            if cal_weights is not None:
+                analysis_cal_weights[policy] = cal_weights
+
+        # Generate extreme weights report
+        if analysis_raw_weights:
+            try:
+                # Use same directory as plots for the report
+                report_dir = None
+                if not args.no_plots:
+                    if args.plot_dir:
+                        report_dir = Path(args.plot_dir)
+                    else:
+                        report_dir = Path(args.data).parent / "plots"
+                    report_dir.mkdir(parents=True, exist_ok=True)
+
+                json_report, text_report = analyze_extreme_weights(
+                    dataset=calibrated_dataset,
+                    sampler=sampler,
+                    raw_weights_dict=analysis_raw_weights,
+                    calibrated_weights_dict=analysis_cal_weights,
+                    n_extreme=5,
+                    output_dir=report_dir,
+                    near_zero_threshold=args.extreme_threshold_low,
+                )
+
+                # Print summary of findings
+                print(f"   ✓ Analyzed {len(analysis_raw_weights)} policies")
+                for policy in analysis_raw_weights.keys():
+                    if policy in json_report.get("per_policy_analysis", {}):
+                        stats = json_report["per_policy_analysis"][policy]["statistics"]
+                        print(
+                            f"   ✓ {policy}: {stats['n_clipped_high']} very high (≥100), {stats['n_near_zero']} near-zero (<1e-10)"
+                        )
+
+                if report_dir:
+                    print(
+                        f"   ✓ Saved detailed report to {report_dir}/extreme_weights_analysis.txt"
+                    )
+
+            except Exception as e:
+                print(f"   ⚠️  Could not generate extreme weights analysis: {e}")
+
+        # Generate visualizations by default (unless --no-plots is specified)
+        if _viz_available and not args.no_plots:
+            # Default plot_dir to same directory as data file
+            if args.plot_dir:
+                plot_dir = Path(args.plot_dir)
+            else:
+                # Default to plots/ subdirectory next to the data file
+                plot_dir = Path(args.data).parent / "plots"
+
+            print(f"\n7. Generating visualizations in {plot_dir}/...")
+            plot_dir.mkdir(parents=True, exist_ok=True)
+
+            # Collect weights for visualization
+            weights_dict = {}
+            raw_weights_dict = {}
+            calibrated_weights_dict = {}
+
+            # Base policy (uniform weights) - only for backward compatibility plots
+            weights_dict["base"] = np.ones(len(base_rewards))
+
+            # Target policies only for calibration plots (not base)
+            for policy in sampler.target_policies:
+                # Get calibrated/final weights
+                weights = estimator.get_weights(policy)
+                if weights is not None:
+                    weights_dict[policy] = weights
+                    calibrated_weights_dict[policy] = weights
+
+                # Get raw weights (works for both estimator types)
+                raw_weights = estimator.get_raw_weights(policy)
+                if raw_weights is not None:
+                    raw_weights_dict[policy] = raw_weights
+                elif weights is not None:
+                    # Fall back to calibrated weights if raw not available
+                    raw_weights_dict[policy] = weights
+
+            # Generate plots
+            try:
+                import matplotlib.pyplot as plt
+
+                if raw_weights_dict and calibrated_weights_dict:
+                    # Generate weight diagnostics dashboard
+                    fig, viz_metrics = plot_weight_dashboard(
+                        raw_weights_dict,
+                        calibrated_weights_dict,
+                        n_samples=sampler.n_valid_samples,
+                        save_path=plot_dir / "weight_dashboard",
+                    )
+                    print(
+                        f"   ✓ Weight diagnostics dashboard → "
+                        f"{plot_dir}/weight_dashboard.png"
+                    )
+                    plt.close(fig)
+
+                # Calibration comparison - generate whenever we have judge scores and oracle labels
+                judge_scores = []
+                oracle_labels = []
+                for s in dataset.samples:
+                    if (
+                        args.judge_field in s.metadata
+                        and args.oracle_field in s.metadata
+                    ):
+                        judge_scores.append(s.metadata[args.judge_field])
+                        oracle_labels.append(s.metadata[args.oracle_field])
+
+                if judge_scores and oracle_labels:
+                    # Collect calibrated scores to show the transformation
+                    # We want to show calibration whenever rewards differ from raw judge scores
+                    calibrated_preds = []
+
+                    # Collect rewards for samples that have both judge and oracle
+                    for s in calibrated_dataset.samples:
+                        if (
+                            args.judge_field in s.metadata
+                            and args.oracle_field in s.metadata
+                        ):
+                            # Check if this sample has a reward (calibrated score)
+                            if s.reward is not None:
+                                calibrated_preds.append(s.reward)
+
+                    # Only show calibrated if they differ from judge scores
+                    # (i.e., we actually applied calibration)
+                    if len(calibrated_preds) == len(judge_scores):
+                        # Check if calibration was actually applied
+                        # (rewards differ from judge scores)
+                        if np.allclose(calibrated_preds, judge_scores, rtol=1e-5):
+                            # No calibration was applied, rewards are same as judge scores
+                            calibrated_preds = None
+                    else:
+                        # Length mismatch, skip calibrated
+                        calibrated_preds = None
+
+                    # Generate calibration plot
+                    fig = plot_calibration_comparison(
+                        judge_scores=np.array(judge_scores),
+                        oracle_labels=np.array(oracle_labels),
+                        calibrated_scores=(
+                            np.array(calibrated_preds) if calibrated_preds else None
+                        ),
+                    )
+                    fig.savefig(
+                        plot_dir / "calibration_comparison.png",
+                        dpi=150,
+                        bbox_inches="tight",
+                    )
+                    print(
+                        f"   ✓ Calibration comparison → {plot_dir}/calibration_comparison.png"
+                    )
+                    plt.close(fig)
+
+                # Generate policy estimates forest plot
+                if results:
+                    # Collect estimates and standard errors for all policies
+                    policy_estimates = {}
+                    policy_ses = {}
+                    base_policy = "base"  # Define base policy name
+
+                    # Add base policy
+                    policy_estimates[base_policy] = base_mean
+                    policy_ses[base_policy] = base_se
+
+                    # Add target policies
+                    for policy, estimate, se in zip(
+                        target_policies, results.estimates, results.standard_errors
+                    ):
+                        if not np.isnan(estimate):
+                            policy_estimates[policy] = estimate
+                            policy_ses[policy] = se
+
+                    # Use oracle_means if available (may have been loaded earlier)
+                    fig = plot_policy_estimates(
+                        estimates=policy_estimates,
+                        standard_errors=policy_ses,
+                        oracle_values=(
+                            oracle_means
+                            if "oracle_means" in locals() and oracle_means
+                            else None
+                        ),
+                        base_policy=base_policy,
+                        save_path=plot_dir / "policy_estimates.png",
+                    )
+                    print(
+                        f"   ✓ Policy estimates forest plot → {plot_dir}/policy_estimates.png"
+                    )
+                    plt.close(fig)
+
+                # Close all figures to free memory
+                plt.close("all")
+
+            except Exception as e:
+                print(f"   ⚠️  Warning: Failed to generate some plots: {e}")
+
+    except ValueError as e:
+        print(f"\n❌ Estimation failed: {e}")
+        print("\nThis usually means the dataset is missing rewards.")
+        print("Please ensure you either:")
+        print("  1. Have oracle labels to use directly (--use-oracle)")
+        print("  2. Have judge scores and oracle labels for calibration")
+        print("  3. Have pre-calibrated rewards in the dataset")
+        return 1
+
+    # Final success message
+    steps_completed = 6  # base steps (including extreme weights)
+    if _viz_available and not args.no_plots:
+        steps_completed = 8  # includes 3 visualizations
+    print(f"\n✓ Analysis complete! ({steps_completed} steps)")
+
+    # Write results to file if requested
+    if args.output:
+        results_data: Dict[str, Any] = {
+            "timestamp": datetime.now().isoformat(),
+            "dataset": {
+                "path": args.data,
+                "n_samples": dataset.n_samples,
+                "target_policies": dataset.target_policies,
+            },
+            "workflow": (
+                "pre_computed_rewards"
+                if rewards_exist > 0
+                else ("oracle_direct" if args.use_oracle else "judge_calibration")
+            ),
+            "estimation": {
+                "estimator": args.estimator,
+                "estimator_config": estimator_config,
+                "n_folds": args.n_folds,
+                "policies": {},
+            },
+            "best_policy": best_policy,
+            "weight_diagnostics": {
+                "best_policy": {
+                    "mean_weight": float(mean_w),
+                    "max_weight": float(max_w),
+                    "effective_sample_size": float(ess),
+                    "effective_sample_size_fraction": float(ess_frac),
+                },
+                "all_policies": {},
+            },
+        }
+
+        # Add base policy results
+        results_data["estimation"]["policies"]["base"] = {
+            "estimate": float(base_mean),
+            "standard_error": float(base_se),
+            "ci_lower": float(base_ci_lower),
+            "ci_upper": float(base_ci_upper),
+            "type": "observed",
+            "n_samples": len(base_rewards),
+        }
+
+        # Add per-policy results
+        for policy, estimate, se, ci_l, ci_u in zip(
+            target_policies,
+            results.estimates,
+            results.standard_errors,
+            ci_lower,
+            ci_upper,
+        ):
+            results_data["estimation"]["policies"][policy] = {
+                "estimate": float(estimate),
+                "standard_error": float(se),
+                "ci_lower": float(ci_l),
+                "ci_upper": float(ci_u),
+                "type": "counterfactual",
+            }
+
+        # Add weight diagnostics for all policies
+        for policy, diag in all_weight_diagnostics.items():
+            results_data["weight_diagnostics"]["all_policies"][policy] = {
+                "mean_weight": float(diag.mean_weight),
+                "max_weight": float(diag.max_weight),
+                "min_weight": float(diag.min_weight),
+                "median_weight": float(diag.median_weight),
+                "ess_fraction": float(diag.ess_fraction),
+                "extreme_weight_count": int(diag.extreme_weight_count),
+                "zero_weight_count": int(diag.zero_weight_count),
+                "consistency_flag": diag.consistency_flag,
+            }
+
+        # Note: Calibration stats are now reported during calibration step
+        # Could be enhanced to save these statistics if needed
+
+        # Add visualization info if plots were generated
+        if _viz_available and args.plot_dir and not args.no_plots:
+            results_data["visualizations"] = {
+                "directory": args.plot_dir,
+                "plots_generated": True,
+            }
+
+        # Write to file
+        with open(args.output, "w") as f:
+            json.dump(results_data, f, indent=2)
+
+        print(f"\n✓ Results written to: {args.output}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    exit(main())

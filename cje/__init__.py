@@ -1,73 +1,204 @@
-"""CJE-Core: Counterfactual Judge Evaluation toolkit."""
+"""Simplified CJE (Causal Judge Evaluation) library.
 
-__version__ = "0.1.0"
+A minimal implementation focused on the core CJE methodology:
+- Load precomputed log probabilities and judge scores
+- Calibrate judge scores to oracle KPIs
+- Compute calibrated importance weights
+- Get unbiased policy performance estimates
 
-# Automatically load .env file if present
-import os
-from pathlib import Path
+Example:
+    from cje import PrecomputedSampler, CalibratedIPS
 
-# Try to load .env file if python-dotenv is available
-from .utils.imports import optional_import
+    # Load data
+    sampler = PrecomputedSampler.from_jsonl("data.jsonl")
 
-dotenv, HAS_DOTENV = optional_import(
-    "python-dotenv",
-    "Automatic .env file loading",
-    warn=False,  # Don't warn at import time
+    # Run estimation
+    estimator = CalibratedIPS(sampler)
+    results = estimator.fit_and_estimate()
+
+    # Analyze
+    print(f"Best policy: {sampler.target_policies[results.best_policy()]}")
+    print(f"95% CI: {results.confidence_interval(0.95)}")
+"""
+
+# Core classes and types
+from .core import (
+    # Estimators
+    BaseCJEEstimator,
+    CalibratedIPS,
+    RawIPS,
+    # Types
+    LogProbResult,
+    LogProbStatus,
 )
 
-if HAS_DOTENV:
-    from dotenv import load_dotenv
+# Import DR estimators if available
+try:
+    from .core.dr_base import DREstimator, DRCPOEstimator
+    from .core.outcome_models import (
+        BaseOutcomeModel,
+        IsotonicOutcomeModel,
+        LinearOutcomeModel,
+    )
+    from .data.fresh_draws import FreshDrawSample, FreshDrawDataset
+    from .utils.fresh_draws import (
+        load_fresh_draws_from_jsonl,
+        validate_fresh_draws,
+        create_synthetic_fresh_draws,
+        save_fresh_draws_to_jsonl,
+    )
 
-    # Look for .env file in project root
-    env_path = Path(__file__).parent.parent / ".env"
-    if env_path.exists():
-        load_dotenv(env_path)
+    _dr_available = True
+except ImportError:
+    _dr_available = False
 
-# Export reference implementation for quick experimentation
-from .reference import FixedSampler, ReferenceDRCPO
+# Data loading and preparation
+from .data import (
+    PrecomputedSampler,
+    Sample,
+    Dataset,
+    EstimationResult,
+    DatasetFactory,
+    DatasetLoader,
+    default_factory,
+    add_rewards_to_existing_data,
+    validate_cje_data,
+    validate_for_precomputed_sampler,
+)
 
-# Pipeline functionality is now in cje.pipeline module
-from .pipeline import CJEPipeline, PipelineConfig
+from typing import Optional, List, Any, Tuple, Dict
 
-# Export configuration API for Python-first usage
-from .config import ConfigurationBuilder, CJEConfig
-from .config.unified import simple_config, multi_policy_config
 
-# Export data loading for convenience
-from .data import load_dataset
+# Convenience functions for backward compatibility
+def load_dataset_from_jsonl(
+    file_path: str, target_policies: Optional[List[str]] = None, **kwargs: Any
+) -> Dataset:
+    """Load Dataset from JSONL file.
 
-# Export PrecomputedSampler
-from .loggers.precomputed_sampler import PrecomputedSampler
+    Convenience function using the default factory.
+    """
+    return default_factory.create_from_jsonl(file_path, target_policies)
 
-# Export calibration tools
-from .calibration import cross_fit_calibration
 
-# Export new modules
-from .estimators import get_estimator
-from .estimators.featurizer import RichFeaturizer
-from .oracle_labeling import add_oracle_labels
+# Calibration
+from .calibration import (
+    # Isotonic regression utilities
+    calibrate_to_target_mean,
+    # Judge calibration
+    JudgeCalibrator,
+    calibrate_judge_scores,
+    CalibrationResult,
+    # Dataset calibration
+    calibrate_dataset,
+    calibrate_from_raw_data,
+)
+
+# Utilities and diagnostics
+from .utils import (
+    # Weight diagnostics
+    diagnose_weights,
+    create_weight_summary_table,
+    WeightDiagnostics,
+    # Extreme weights analysis
+    analyze_extreme_weights,
+)
+
+# Import visualization utilities if available
+try:
+    from .utils import (
+        plot_weight_dashboard,
+        plot_calibration_comparison,
+        plot_policy_estimates,
+    )
+
+    _viz_available = True
+except ImportError:
+    _viz_available = False
+
+# Teacher forcing
+from .teacher_forcing import (
+    compute_teacher_forced_logprob,
+    ChatTemplateConfig,
+    Llama3TemplateConfig,
+    HuggingFaceTemplateConfig,
+    compute_chat_logprob,
+    convert_chat_to_completions,
+)
+
+__version__ = "0.1.3"
 
 __all__ = [
-    # Pipeline
-    "CJEPipeline",
-    "PipelineConfig",
-    # Configuration
-    "ConfigurationBuilder",
-    "CJEConfig",
-    "simple_config",
-    "multi_policy_config",
-    # Data
-    "load_dataset",
-    # Reference implementation
-    "FixedSampler",
-    "ReferenceDRCPO",
-    # PrecomputedSampler
+    # Core functionality
+    "BaseCJEEstimator",
+    "CalibratedIPS",
+    "RawIPS",
     "PrecomputedSampler",
-    # Calibration
-    "cross_fit_calibration",
-    # New additions
-    "RichFeaturizer",
-    "add_oracle_labels",
-    # Estimators
-    "get_estimator",
+    "compute_teacher_forced_logprob",
+    # Data models
+    "Sample",
+    "Dataset",
+    "EstimationResult",
+    # Data loading (SOLID-compliant)
+    "DatasetFactory",
+    "DatasetLoader",
+    "default_factory",
+    # Convenience functions
+    "load_dataset_from_jsonl",
+    # Types
+    "LogProbResult",
+    "LogProbStatus",
+    # Diagnostics
+    "diagnose_weights",
+    "create_weight_summary_table",
+    "WeightDiagnostics",
+    "analyze_extreme_weights",
+    # Calibration - isotonic regression
+    "calibrate_to_target_mean",
+    # Judge calibration
+    "JudgeCalibrator",
+    "calibrate_judge_scores",
+    "CalibrationResult",
+    # Dataset calibration
+    "calibrate_dataset",
+    "calibrate_from_raw_data",
+    # Reward utilities
+    "add_rewards_to_existing_data",
+    # Chat support
+    "ChatTemplateConfig",
+    "Llama3TemplateConfig",
+    "HuggingFaceTemplateConfig",
+    "compute_chat_logprob",
+    "convert_chat_to_completions",
 ]
+
+# Add visualization exports if available
+if _viz_available:
+    __all__.extend(
+        [
+            "plot_weight_dashboard",
+            "plot_calibration_comparison",
+            "plot_policy_estimates",
+        ]
+    )
+
+# Add DR estimators if available
+if _dr_available:
+    __all__.extend(
+        [
+            # DR estimators
+            "DREstimator",
+            "DRCPOEstimator",
+            # Outcome models
+            "BaseOutcomeModel",
+            "IsotonicOutcomeModel",
+            "LinearOutcomeModel",
+            # Fresh draw data models
+            "FreshDrawSample",
+            "FreshDrawDataset",
+            # Fresh draw utilities
+            "load_fresh_draws_from_jsonl",
+            "validate_fresh_draws",
+            "create_synthetic_fresh_draws",
+            "save_fresh_draws_to_jsonl",
+        ]
+    )

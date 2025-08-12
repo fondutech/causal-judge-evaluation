@@ -1,35 +1,32 @@
-"""Model calibration and uncertainty quantification tools.
+"""Calibration utilities for CJE.
 
-This module provides calibration functionality for different stages of the CJE pipeline:
-
-1. Judge Score Calibration:
-   - cross_fit_calibration: Calibrates judge scores against oracle labels
-   - fit_isotonic, plot_reliability: Basic isotonic calibration utilities
-
-2. Importance Weight Calibration:
-   - calibrate_weights_isotonic: Calibrates importance weights for estimators
-   - apply_weight_calibration_pipeline: Full pipeline with clipping and stabilization
-
-3. Outcome Model Calibration:
-   - calibrate_outcome_model_isotonic: Calibrates predictions from outcome models
-
-The calibration functions use isotonic regression to maintain monotonicity while
-improving statistical calibration. Cross-fitting is used to prevent overfitting.
+This module contains all calibration functionality:
+- Optimized isotonic regression for weight calibration
+- Judge score calibration to match oracle labels
+- Dataset calibration workflows
 """
 
-from .isotonic import fit_isotonic, plot_reliability
-from .cross_fit import cross_fit_calibration
-from .weights import (
-    calibrate_weights_isotonic,
-    calibrate_outcome_model_isotonic,
-    apply_weight_calibration_pipeline,
+from .isotonic import (
+    calibrate_to_target_mean,
+)
+from .judge import (
+    JudgeCalibrator,
+    calibrate_judge_scores,
+    CalibrationResult,
+)
+from .dataset import (
+    calibrate_dataset,
+    calibrate_from_raw_data,
 )
 
 __all__ = [
-    "fit_isotonic",
-    "plot_reliability",
-    "cross_fit_calibration",
-    "calibrate_weights_isotonic",
-    "calibrate_outcome_model_isotonic",
-    "apply_weight_calibration_pipeline",
+    # Isotonic regression utilities
+    "calibrate_to_target_mean",
+    # Judge calibration
+    "JudgeCalibrator",
+    "calibrate_judge_scores",
+    "CalibrationResult",
+    # Dataset calibration
+    "calibrate_dataset",
+    "calibrate_from_raw_data",
 ]

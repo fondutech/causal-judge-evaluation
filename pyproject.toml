@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "cje"
-version = "0.1.0"
-description = "Causal Judge Evaluation toolkit"
+name = "causal-judge-evaluation"
+version = "0.2.0"
+description = "Causal Judge Evaluation - Unbiased LLM evaluation framework"
 authors = ["Eddie Landesberg <eddie@fondutech.com>"]
 license = "MIT"
 packages = [{ include = "cje" }]
@@ -43,6 +43,9 @@ langchain-together = "^0.3.0"
 hypothesis = "^6.135.7"
 python-dotenv = "^1.1.0"
 labelbox = "^7.0.0"
+langchain = "^0.3.27"
+langchain-fireworks = "^0.3.0"
+blobfile = "^3.0.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.3"
@@ -60,8 +63,7 @@ myst-parser = ">=2.0,<3.0"
 watchdog = "^6.0.0"
 pytest-xdist = "^3.7.0"
 
-[tool.poetry.scripts]
-cje = "cje.cli.main:app"
+# CLI scripts can be defined here when needed
 
 [tool.black]
 line-length = 88

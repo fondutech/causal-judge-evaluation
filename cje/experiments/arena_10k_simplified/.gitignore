@@ -1,0 +1,18 @@
+# Generated data files
+data/*.jsonl
+data/**/*.jsonl
+test_e2e_data/
+test_batch/
+
+# Analysis outputs
+analysis/
+*.json
+
+# Temp files from batch saving
+*.tmp
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/

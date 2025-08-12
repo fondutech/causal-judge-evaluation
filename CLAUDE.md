@@ -2,198 +2,232 @@
 
 Core guidance for Claude Code when working with the CJE repository.
 
-Last updated: 2025-01-09 - Fixed token boundary bug causing extreme weights
+## 🎯 Project Philosophy
 
-## 🎯 Hygiene Rules
+The `cje/` directory is the production implementation focusing on:
+- Clear separation of concerns
+- Type safety with Pydantic models  
+- Explicit error handling (no magic fallbacks)
+- Simple, composable abstractions
+- YAGNI (You Aren't Gonna Need It) - avoid premature abstraction
 
-### STARTUP
-1. Check git status and recent commits
-2. Run `make lint` before any commits
-3. Run tests: `poetry run pytest`
+## 📝 Documentation Principles
 
-### AUTO-FIX
-Fix immediately without asking:
-- Commands/features that don't exist
-- References to deleted files/modules
-- Documentation contradicting implementation
-- Outdated comments or docstrings
+- Keep documentation minimal and focused on core concepts
+- Avoid adding implementation details that will become outdated
+- Focus on principles and patterns rather than specific code
+- Update README.md for user-facing changes, keep CLAUDE.md for timeless guidance
 
-### CRITICAL: NO FALLBACK VALUES
-- NEVER use fallback values for log probabilities (no -100.0, 0.0, etc.)
-- All failures must return None/null and be handled explicitly
-- Use LogProbResult type for all log probability computations
-- Watch for exact 0.0 log probs on non-empty responses (indicates bug)
-- **Token Boundary Bug Fixed**: Teacher forcing now detects and handles tokenization boundary issues
+## 📁 Repository Structure
 
-## Essential Commands
-```bash
-make dev-setup                 # Initial setup
-poetry run pytest              # Run tests (fast)
-poetry run pytest --run-slow   # Include slow tests
-cje run --cfg-path configs --cfg-name example_eval  # Run experiment via CLI
-make lint                      # MUST pass before ANY commit
-
-# Python API:
-from cje.config.unified import simple_config
-config = simple_config(dataset_name="test.jsonl", ...)
-results = config.run()
+```
+cje/                      # Production implementation
+├── calibration/          # Calibration utilities
+├── core/                 # Core abstractions
+├── data/                 # Data models and loading  
+├── teacher_forcing/      # Log probability computation
+├── experiments/          # Arena experiment pipeline
+└── tests/                # Test suite
 ```
 
-## API Keys (CRITICAL)
-**Always source secrets before running scripts that need API access:**
-```bash
-source /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/set_secrets.sh
-```
-This sets: FIREWORKS_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY
-
-## Architecture
-
-**Pipeline**: Data → Log Probs → Judge → Calibrate → Estimate → Results
-
-**Key Principles**:
-- All judges return `JudgeScore(mean, variance)`
-- All policies return `LogProbResult` (never raw floats)
-- Single source of truth - no duplicates
-- Uncertainty built-in from the start
-- Explicit error handling - no silent failures
-
-**Implementation**:
-- Teacher forcing for unbiased log probabilities
-- Cross-fitting k≥2 (prevents overfitting)
-- Log ratio clipping at ±20.0
-- Scores stored as `{"mean": x, "variance": y}`
-- Failed log probs stored as null with error details
-
-## Teacher Forcing (CRITICAL)
-
-**Silent Failure Bug (Fixed Dec 2024)**: Token boundary detection could fail catastrophically
-- **Symptom**: Log probs of -1500 instead of -30 (returns full sequence instead of response only)
-- **Cause**: `token_counting` method assumes deterministic tokenization across API calls
-- **Fix**: Use `continuation` method as primary (computes log P(full) - log P(prompt))
+## 🚀 Quick Start
 
 ```python
-# Implementation uses methods in order of reliability:
-# 1. continuation: Most reliable, uses log subtraction
-# 2. token_counting: Can fail if tokenization varies between calls
-# 3. echo_based: Not implemented for most providers
+from cje import load_dataset_from_jsonl, calibrate_dataset, PrecomputedSampler, CalibratedIPS
 
-from cje.utils import RobustTeacherForcing
-tf = RobustTeacherForcing(provider="fireworks", model="...", temperature=0.5)
-result = tf.compute_log_prob(prompt, response)  # Uses continuation method first
-```
+# Load data (no rewards required)
+dataset = load_dataset_from_jsonl("data.jsonl")
 
-**Critical Validations**:
-- Avg log prob per token should be > -10 (else likely wrong tokens)
-- Response token count should match response length (~4 chars/token)
-- Extreme negative values indicate boundary detection failure
-- **NEVER allow silent failures** - wrong log probs corrupt all downstream analysis
+# Calibrate if needed
+calibrated_dataset, result = calibrate_dataset(
+    dataset, 
+    judge_field="judge_score",
+    oracle_field="oracle_label"
+)
 
-**Historical Issues**:
-- Token boundary misalignment causing 0.0 log probs
-- Response text absorbed into prompt tokens
-- Non-deterministic tokenization between API calls
-
-**Teacher Forcing Robustness**:
-- Edge case detection for problematic token boundaries
-- Automatic method switching (continuation vs token counting)
-- Validation and rejection of extreme importance weights
-
-## Judge System
-- Three uncertainty methods: deterministic, confidence_interval, monte_carlo
-- Provider abstraction with capability tracking
-- Fireworks/Together: full teacher forcing support
-- OpenAI/Anthropic: judge-only (no teacher forcing)
-
-## Working with Precomputed Data
-```python
-from cje.loggers import PrecomputedSampler
-from cje.estimators import CalibratedIPS
-
-# Create sampler from JSONL with teacher-forced log probs
-sampler = PrecomputedSampler.from_jsonl("data_with_logps.jsonl")
-
-# Use with any estimator
+# Run estimation
+sampler = PrecomputedSampler(calibrated_dataset)
 estimator = CalibratedIPS(sampler)
-estimator.fit(logs)
-results = estimator.estimate()
+results = estimator.fit_and_estimate()
 ```
 
-## Type System & Error Handling
+## 🔧 Essential Commands
 
-**Core Types**:
-- `LogProbResult`: Wraps log probability computations with status/error info
-- `JudgeScore`: Always includes mean AND variance
-- `SampleResult/BatchResult`: Structured results for multi-target sampling
-
-**Policy System**:
-- All policies inherit from `BasePolicy` 
-- Must implement `_compute_log_prob_impl()` (can raise exceptions)
-- Base class handles retries, error tracking, and returns `LogProbResult`
-- Use `create_api_policy()` factory for API-based policies
-
-**Error Handling**:
-- NO fallback values (no -100.0, 0.0, etc.)
-- Failed computations return explicit None/null
-- Rich error context with retry counts and error types
-- Monitor importance weights (>100 or <0.01 indicates problems)
-
-## Importance Weight Monitoring
-
-Watch for these red flags:
-```python
-# Extreme weights indicate problems
-if weight > 100 or weight < 0.01:
-    log.warning(f"Extreme weight: {weight}")
-
-# Check effective sample size
-ess = (sum(weights))**2 / sum(w**2 for w in weights)
-if ess < n_samples * 0.1:  # Less than 10% effective samples
-    log.error("Effective sample size too low!")
-```
-
-### API Non-Determinism Detection
-**Known Issue**: Fireworks API returns different log probabilities for identical inputs
-- Affects importance weights even for identical policies (pi_clone vs p0)
-- Use `detect_api_nondeterminism()` to check for this issue
-- Consider averaging multiple API calls for critical comparisons
-
-```python
-from cje.utils.weight_diagnostics import detect_api_nondeterminism
-results = detect_api_nondeterminism(data)
-if results["detected"]:
-    print("API non-determinism detected:", results["reasons"])
-```
-
-## Arena 10K Experiment
-
-**Location**: `experiments/arena_10k_oracle/`
-
-**Key Points**:
-- 4 target policies: pi_clone (baseline), pi_cot, pi_bigger_model, pi_bad
-- Token boundary bug fixed with edge case detection
-- Extreme weight validation in 02b_compute_logprobs.py
-- English-only filter for prompts
-- Pipeline resumes by default
-
-**Running the Experiment**:
 ```bash
-cd experiments/arena_10k_oracle/phase1_dataset_preparation
-source /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/set_secrets.sh
-python run_phase1_pipeline.py  # Defaults to 10k samples
+# Run tests
+poetry run pytest cje/
 
-# Phase 2 analysis
-cd ../phase2_cje_ablations
-python run_cje_analysis.py
+# Run experiments
+cd cje/experiments/arena_10k_simplified
+
+# Step 1: Generate data (no calibration)
+poetry run python generate_arena_data.py --n-samples 1000
+
+# Step 2: Analyze with calibration
+poetry run python analyze_dataset.py --data data/cje_dataset.jsonl --oracle-coverage 0.5
 ```
 
-**Validation Checklist**:
-- pi_clone median weight should be ~1.0
-- Extreme weights (>150x) automatically rejected
-- Check extreme_weights.jsonl for flagged samples
-- ESS should be >50% after validation
+## 🔑 API Keys
 
-## Not Currently Supported
-- Trajectory sampling (removed)
-- Agent/tool-based policies  
-- Multi-step reasoning traces
-- PolicyRunner class (removed - use APIPolicyRunner)
+Required keys:
+- `OPENAI_API_KEY` - For judge and oracle evaluation
+- `FIREWORKS_API_KEY` - For response generation and log probabilities
+
+```bash
+source /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/set_secrets.sh
+```
+
+## 🧾 Command Best Practices
+
+- Run "source set_secrets.sh" in the same line as other commands when they depend on api keys
+
+## 📊 Data Format
+
+Expected JSONL format:
+```json
+{
+  "prompt": "What is 2+2?",
+  "response": "4",
+  "base_policy_logprob": -35.704,
+  "target_policy_logprobs": {
+    "pi_improved": -32.123
+  },
+  "metadata": {
+    "judge_score": 0.8,
+    "oracle_label": 0.85
+  }
+}
+```
+
+Note: `reward` field is added during analysis, not data generation.
+
+## 🤖 Template Handling
+
+For Fireworks models, templates are auto-detected:
+```python
+# Just pass None for template_config
+result = compute_chat_logprob(chat, model)  # Auto-detects for Fireworks
+```
+
+Don't create complex abstractions for template selection - let the tools handle it.
+
+## 🏗️ Key Architectural Decisions
+
+1. **Clean Separation**: Data generation vs analysis are separate steps
+2. **Optional Rewards**: Datasets can exist without rewards  
+3. **Explicit Failures**: Use `None` for failures, never magic values
+4. **Metadata Collection**: Non-core fields go in metadata automatically
+5. **Transparent Filtering**: Use `sampler.n_valid_samples` to see samples after filtering
+6. **Weight Calibration**: Variance can increase when uniform weights need structure (this is correct)
+7. **Three Isotonic Mappings**: Global f_all for rewards, cross-fitted f^(-k) for DR, mean-one PAV for weights
+8. **DR via Inheritance**: DR inherits from CalibratedIPS to reuse weight machinery
+9. **Mandatory prompt_id**: Required for DR to align logged data with fresh draws
+10. **Fold ID Remapping**: Automatic remapping to [0..K-1] for subset compatibility
+
+## ⚠️ Common Pitfalls
+
+1. **Wrong field names**: Use `base_policy_logprob`, not `p0_logprob`
+2. **Magic fallbacks**: Never use -100.0 or similar as fallbacks
+3. **Mixing concerns**: Calibration happens in analysis, not data prep
+4. **Assuming rewards exist**: Check before using PrecomputedSampler
+
+## 🚨 Red Flags in Code Review
+
+- Imports from old legacy paths
+- Magic numbers as fallbacks
+- Classes with multiple responsibilities
+- Calibration during data generation
+- Unnecessary abstractions (if it's only used once, inline it)
+- String-based dispatch when direct calls would suffice
+
+## 🔬 Three Isotonic Mappings
+
+The codebase implements three distinct isotonic regressions, each with a specific purpose:
+
+1. **Reward Calibration** (judge → oracle)
+   - **Where**: `JudgeCalibrator` in `calibration/judge.py`
+   - **Global model**: `f_all` for stable reward labels (`Sample.reward`)
+   - **Cross-fitted**: `f^(-k)` for DR outcome models (via `predict_oof`)
+   - **Usage**: `calibrate_dataset(enable_cross_fit=True)` for DR
+
+2. **Weight Calibration** (IPS stabilization)
+   - **Where**: `calibrate_to_target_mean` in `calibration/isotonic.py`
+   - **Method**: Mean-one PAV + variance-safe blending
+   - **No cross-fitting**: Applied per-policy in `CalibratedIPS.fit()`
+   - **Purpose**: Prevents weight explosion while preserving mean
+
+3. **DR Outcome Model** (g(s))
+   - **Preferred**: `CalibratorBackedOutcomeModel` - reuses f^(-k) from calibration
+   - **Fallback**: `IsotonicOutcomeModel` - refits if no calibrator passed
+   - **Always cross-fitted**: Preserves orthogonality for DR
+
+## 🤖 Doubly Robust (DR) Design
+
+### Architecture
+- **DR inherits from CalibratedIPS**: Reuses all weight machinery
+- **Outcome models are composed**: Easy to swap different models
+- **Cross-fitting in outcome models**: Each model handles its own k-fold logic
+- **Fresh draws are separate**: Added via `add_fresh_draws()` after creation
+- **CalibratorBackedOutcomeModel**: Reuses cross-fitted calibrators from reward calibration
+
+### Key Classes
+```python
+# Estimator hierarchy
+DREstimator(CalibratedIPS)  # Base DR with IPS correction
+├── DRCPOEstimator          # Default with isotonic outcome model
+├── MRDREstimator           # Policy-specific weighted outcome models
+└── TMLEEstimator           # Targeted minimum loss estimation
+
+# Outcome model hierarchy  
+BaseOutcomeModel (ABC)            # Handles cross-fitting infrastructure
+├── IsotonicOutcomeModel         # Default: g(x,a,s) = f(s)
+├── CalibratorBackedOutcomeModel # Reuses calibrator's f^(-k) models
+└── LinearOutcomeModel            # Example custom model
+```
+
+### Cross-Fitting for DR
+```python
+# ALWAYS enable cross-fitting and pass calibrator for DR
+calibrated_dataset, result = calibrate_dataset(
+    dataset,
+    enable_cross_fit=True,  # Fits both f_all and f^(-k)
+    n_folds=5
+)
+
+# ALWAYS pass calibrator to avoid redundant fitting
+sampler = PrecomputedSampler(calibrated_dataset)
+dr = DRCPOEstimator(sampler, calibrator=result.calibrator, n_folds=5)
+# This reuses the cross-fitted models from calibration (efficient!)
+```
+
+### Implementation Pattern
+Users only implement single-model logic:
+```python
+class CustomOutcomeModel(BaseOutcomeModel):
+    def _fit_single_model(self, prompts, responses, rewards, judge_scores):
+        # Train one model
+        
+    def _predict_single_model(self, model, prompts, responses, judge_scores):
+        # Predict with one model
+```
+
+The base class handles all cross-fitting complexity.
+
+## 🎨 Design Principles
+
+1. **YAGNI (You Aren't Gonna Need It)**
+   - Don't create abstractions for single use cases
+   - Inline code that's only called from one place
+   - Remove layers that don't add value
+
+2. **Explicit is Better than Implicit**
+   - No magic strings or hidden behavior
+   - Clear function signatures and return types
+   - Obvious data flow
+
+3. **Fail Fast and Clearly**
+   - Return None or raise exceptions, never magic values
+   - Helpful error messages that guide users
+   - Don't hide failures
+
+Remember: The goal is to be **simple, correct, and maintainable**.
