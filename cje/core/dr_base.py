@@ -5,10 +5,12 @@ to achieve better bias-variance tradeoffs and double robustness properties.
 """
 
 import numpy as np
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 import logging
 
 from .calibrated_ips import CalibratedIPS
+from .raw_ips import RawIPS
+from .base_estimator import BaseCJEEstimator
 from .outcome_models import IsotonicOutcomeModel, CalibratorBackedOutcomeModel
 from ..data.models import EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
@@ -18,12 +20,12 @@ from ..utils.fresh_draws import validate_fresh_draws
 logger = logging.getLogger(__name__)
 
 
-class DREstimator(CalibratedIPS):
-    """Base class for Doubly Robust estimators.
+class DREstimator(BaseCJEEstimator):
+    """Base class for Doubly Robust estimators with flexible weight method.
 
     Key insight: DR = Direct Method + IPS correction
-    We inherit from CalibratedIPS to reuse all the IPS machinery,
-    and add the direct method (outcome modeling) term.
+    This class can use either RawIPS or CalibratedIPS for the importance
+    weighting component, allowing for flexibility in weight handling.
 
     The DR formula from the paper (equation 13):
     V_DR(π') = (1/n) Σ [g(X_i, A'_i, S'_i) + W_i * (R_i - g(X_i, A_i, S_i))]
@@ -32,14 +34,16 @@ class DREstimator(CalibratedIPS):
     - g is the outcome model (uses cross-fitted isotonic calibration)
     - A'_i are pre-generated fresh draws from the target policy
     - S'_i are pre-evaluated judge scores on fresh draws
-    - W_i are the calibrated importance weights (from CalibratedIPS)
+    - W_i are the importance weights (raw or calibrated)
     - R_i are the rewards on logged data (from full calibration model)
 
     Args:
         sampler: PrecomputedSampler with logged data
         outcome_model: Outcome model for predictions (default: IsotonicOutcomeModel)
         n_folds: Number of cross-fitting folds (default 5)
-        **kwargs: Additional arguments passed to CalibratedIPS
+        use_calibrated_weights: If True, use CalibratedIPS; if False, use RawIPS (default True)
+        calibrator: Optional calibrator for CalibratorBackedOutcomeModel
+        **kwargs: Additional arguments passed to the IPS estimator
     """
 
     def __init__(
@@ -47,13 +51,24 @@ class DREstimator(CalibratedIPS):
         sampler: PrecomputedSampler,
         outcome_model: Optional[Any] = None,
         n_folds: int = 5,
+        use_calibrated_weights: bool = True,
         calibrator: Optional[Any] = None,
         **kwargs: Any,
     ):
-        super().__init__(sampler, **kwargs)
+        super().__init__(sampler)
 
         self.n_folds = n_folds
         self.calibrator = calibrator
+        self.use_calibrated_weights = use_calibrated_weights
+
+        # Initialize the appropriate IPS estimator
+        self.ips_estimator: Union[CalibratedIPS, RawIPS]
+        if use_calibrated_weights:
+            self.ips_estimator = CalibratedIPS(sampler, **kwargs)
+            logger.info("Using CalibratedIPS for importance weights in DR")
+        else:
+            self.ips_estimator = RawIPS(sampler, **kwargs)
+            logger.info("Using RawIPS for importance weights in DR")
 
         # Choose default outcome model based on available calibrator
         if outcome_model is None:
@@ -135,9 +150,9 @@ class DREstimator(CalibratedIPS):
         )
 
     def fit(self) -> None:
-        """Fit weight calibration and outcome model."""
+        """Fit weight calibration (if applicable) and outcome model."""
         # First fit the IPS weights
-        super().fit()
+        self.ips_estimator.fit()
 
         # Then fit the outcome model on logged data
         self._fit_outcome_model()
@@ -238,7 +253,7 @@ class DREstimator(CalibratedIPS):
                 )
 
             # Get components
-            weights = self.get_weights(policy)
+            weights = self.ips_estimator.get_weights(policy)
             if weights is None:
                 logger.warning(f"No weights for policy '{policy}', skipping")
                 estimates.append(np.nan)
@@ -410,8 +425,42 @@ class DREstimator(CalibratedIPS):
             metadata={
                 "diagnostics": all_diagnostics,
                 "target_policies": self.sampler.target_policies,
+                "weight_method": "calibrated" if self.use_calibrated_weights else "raw",
             },
         )
+
+    def get_weights(self, policy: str) -> Optional[np.ndarray]:
+        """Get importance weights for a policy.
+
+        Args:
+            policy: Target policy name
+
+        Returns:
+            Array of importance weights or None if not fitted
+        """
+        if not self._fitted:
+            return None
+        return self.ips_estimator.get_weights(policy)
+
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """Get diagnostic information about the estimation.
+
+        Returns:
+            Dictionary with diagnostic metrics
+        """
+        diagnostics = {
+            "weight_method": "calibrated" if self.use_calibrated_weights else "raw",
+            "outcome_model": type(self.outcome_model).__name__,
+            "n_folds": self.n_folds,
+            "policies_with_fresh_draws": list(self._fresh_draws.keys()),
+        }
+
+        # Add IPS diagnostics if available
+        if hasattr(self.ips_estimator, "get_diagnostics"):
+            ips_diagnostics = self.ips_estimator.get_diagnostics()
+            diagnostics.update({f"ips_{k}": v for k, v in ips_diagnostics.items()})
+
+        return diagnostics
 
 
 class DRCPOEstimator(DREstimator):
@@ -434,6 +483,7 @@ class DRCPOEstimator(DREstimator):
         sampler: PrecomputedSampler,
         outcome_model: Optional[Any] = None,
         n_folds: int = 5,
+        use_calibrated_weights: bool = True,
         calibrator: Optional[Any] = None,
         **kwargs: Any,
     ):
@@ -442,6 +492,7 @@ class DRCPOEstimator(DREstimator):
             sampler=sampler,
             outcome_model=outcome_model,
             n_folds=n_folds,
+            use_calibrated_weights=use_calibrated_weights,
             calibrator=calibrator,
             **kwargs,
         )
