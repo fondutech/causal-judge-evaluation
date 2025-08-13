@@ -22,7 +22,7 @@ Example:
 """
 
 # Core classes and types
-from .core import (
+from .estimators import (
     # Estimators
     BaseCJEEstimator,
     CalibratedIPS,
@@ -34,10 +34,10 @@ from .core import (
 
 # Import DR estimators if available
 try:
-    from .core.dr_base import DREstimator, DRCPOEstimator
-    from .core.mrdr import MRDREstimator
-    from .core.tmle import TMLEEstimator
-    from .core.outcome_models import (
+    from .estimators.dr_base import DREstimator, DRCPOEstimator
+    from .estimators.mrdr import MRDREstimator
+    from .estimators.tmle import TMLEEstimator
+    from .estimators.outcome_models import (
         BaseOutcomeModel,
         IsotonicOutcomeModel,
         LinearOutcomeModel,

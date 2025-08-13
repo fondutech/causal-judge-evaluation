@@ -17,7 +17,7 @@ from ..data.models import EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..data.fresh_draws import FreshDrawDataset
 from ..utils.fresh_draws import validate_fresh_draws
-from ..utils.dr_diagnostics import compute_dr_policy_diagnostics
+from ..utils.diagnostics.dr import compute_dr_policy_diagnostics
 
 logger = logging.getLogger(__name__)
 

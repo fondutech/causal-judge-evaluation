@@ -5,10 +5,12 @@ This module contains:
 - Visualization: Plotting utilities for weight diagnostics
 """
 
-from .diagnostics import (
+from .diagnostics.weights import (
     diagnose_weights,
-    create_weight_summary_table,
     WeightDiagnostics,
+)
+from .diagnostics.display import (
+    create_weight_summary_table,
 )
 
 from .extreme_weights_analysis import (

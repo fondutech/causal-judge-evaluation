@@ -55,8 +55,10 @@ from cje import (
     analyze_extreme_weights,
 )
 
-from cje.utils.dr_diagnostics import (
+from cje.utils.diagnostics.dr import (
     compute_dr_diagnostics_all,
+)
+from cje.utils.diagnostics.display import (
     format_dr_diagnostic_summary,
 )
 

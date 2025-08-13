@@ -12,7 +12,9 @@ import logging
 from .base_estimator import BaseCJEEstimator
 from ..data.models import EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
+from ..data.diagnostics import Diagnostics, Status
 from ..calibration.isotonic import calibrate_to_target_mean
+from ..utils.diagnostics import compute_weight_diagnostics
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +152,7 @@ class CalibratedIPS(BaseCJEEstimator):
         if self.store_influence:
             self._influence_functions = influence_functions
 
-        # Create result WITHOUT legacy metadata
+        # Create result
         result = EstimationResult(
             estimates=np.array(estimates),
             standard_errors=np.array(standard_errors),
@@ -162,8 +164,9 @@ class CalibratedIPS(BaseCJEEstimator):
             },
         )
 
-        # Build complete diagnostic suite using the new system
-        self._build_diagnostics(result)
+        # Build simplified diagnostics
+        diagnostics = self._build_diagnostics(result)
+        result.diagnostics = diagnostics
 
         # Store for later access
         self._results = result
@@ -193,3 +196,85 @@ class CalibratedIPS(BaseCJEEstimator):
             Dictionary with calibration details or None
         """
         return self._calibration_info.get(target_policy)
+
+    def _build_diagnostics(self, result: EstimationResult) -> Diagnostics:
+        """Build simplified diagnostics for this estimation.
+
+        Args:
+            result: The estimation result
+
+        Returns:
+            Simplified Diagnostics object
+        """
+        # Get dataset info
+        dataset = getattr(self.sampler, "dataset", None) or getattr(
+            self.sampler, "_dataset", None
+        )
+        n_total = 0
+        if dataset:
+            n_total = (
+                dataset.n_samples
+                if hasattr(dataset, "n_samples")
+                else len(dataset.samples)
+            )
+
+        # Build estimates dict
+        estimates_dict = {}
+        se_dict = {}
+        policies = list(self.sampler.target_policies)
+        for i, policy in enumerate(policies):
+            if i < len(result.estimates):
+                estimates_dict[policy] = float(result.estimates[i])
+                se_dict[policy] = float(result.standard_errors[i])
+
+        # Create base diagnostics
+        diag = Diagnostics(
+            estimator_type="CalibratedIPS",
+            method="calibrated_ips",
+            n_samples_total=n_total,
+            n_samples_valid=self.sampler.n_valid_samples,
+            n_policies=len(policies),
+            policies=policies,
+            estimates=estimates_dict,
+            standard_errors=se_dict,
+            n_samples_used=result.n_samples_used,
+        )
+
+        # Add weight diagnostics
+        ess_per_policy = {}
+        max_weight_per_policy = {}
+        tail_ratio_per_policy = {}
+        overall_ess = 0.0
+        total_n = 0
+
+        for policy in policies:
+            weights = self.get_weights(policy)
+            if weights is not None and len(weights) > 0:
+                w_diag = compute_weight_diagnostics(weights, policy)
+                ess_per_policy[policy] = w_diag["ess_fraction"]
+                max_weight_per_policy[policy] = w_diag["max_weight"]
+                tail_ratio_per_policy[policy] = w_diag["tail_ratio_99_5"]
+
+                # Track overall
+                n = len(weights)
+                overall_ess += w_diag["ess_fraction"] * n
+                total_n += n
+
+        if total_n > 0:
+            diag.weight_ess = overall_ess / total_n
+            diag.ess_per_policy = ess_per_policy
+            diag.max_weight_per_policy = max_weight_per_policy
+            diag.weight_tail_ratio_per_policy = tail_ratio_per_policy
+
+            # Determine status based on ESS and tail ratios
+            worst_tail = (
+                max(tail_ratio_per_policy.values()) if tail_ratio_per_policy else 0
+            )
+            if diag.weight_ess < 0.01 or worst_tail > 1000:
+                diag.weight_status = Status.CRITICAL
+            elif diag.weight_ess < 0.1 or worst_tail > 100:
+                diag.weight_status = Status.WARNING
+            else:
+                diag.weight_status = Status.GOOD
+
+        return diag

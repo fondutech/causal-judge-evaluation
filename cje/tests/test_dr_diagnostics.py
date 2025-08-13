@@ -248,7 +248,7 @@ class TestDRDiagnosticIntegration:
         from cje.data.models import Sample, Dataset
         from cje.data.precomputed_sampler import PrecomputedSampler
         from cje.data.fresh_draws import FreshDrawDataset, FreshDrawSample
-        from cje.core.dr_base import DREstimator
+        from cje.estimators.dr_base import DREstimator
 
         # Create minimal dataset
         samples = []

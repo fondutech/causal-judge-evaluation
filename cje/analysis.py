@@ -13,11 +13,11 @@ import numpy as np
 from . import load_dataset_from_jsonl, calibrate_dataset
 from .data.models import Dataset, EstimationResult
 from .data.precomputed_sampler import PrecomputedSampler
-from .core.calibrated_ips import CalibratedIPS
-from .core.raw_ips import RawIPS
-from .core.dr_base import DRCPOEstimator
-from .core.mrdr import MRDREstimator
-from .core.tmle import TMLEEstimator
+from .estimators.calibrated_ips import CalibratedIPS
+from .estimators.raw_ips import RawIPS
+from .estimators.dr_base import DRCPOEstimator
+from .estimators.mrdr import MRDREstimator
+from .estimators.tmle import TMLEEstimator
 
 logger = logging.getLogger(__name__)
 
