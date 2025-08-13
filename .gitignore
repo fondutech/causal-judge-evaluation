@@ -222,6 +222,17 @@ cache/
 *.tmp
 *.bak
 
+# Concatenation scripts and outputs (local utilities)
+concat_for_chat.py
+concat_cje.sh
+concat_*.txt
+cje_for_chatbot.txt
+concat_all.txt
+concat_output.txt
+concat.config
+cje_core.config
+cje_chatbot.config
+
 # Research/experimental files that shouldn't be public
 scratch/
 experiments/*/data/
