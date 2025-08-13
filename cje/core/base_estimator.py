@@ -6,10 +6,19 @@ import numpy as np
 
 from ..data.models import Dataset, EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
+from .diagnostics import DiagnosticSuite, DiagnosticManager
 
 
 class BaseCJEEstimator(ABC):
-    """Abstract base class for CJE estimators."""
+    """Abstract base class for CJE estimators.
+
+    All estimators must implement:
+    - fit(): Prepare the estimator (e.g., calibrate weights)
+    - estimate(): Compute estimates and diagnostics
+
+    The estimate() method must populate EstimationResult.diagnostics
+    with a complete DiagnosticSuite.
+    """
 
     def __init__(
         self,
@@ -23,7 +32,8 @@ class BaseCJEEstimator(ABC):
         self.sampler = sampler
         self._fitted = False
         self._weights_cache: Dict[str, np.ndarray] = {}
-        self._diagnostics: Dict[str, Any] = {}  # Initialize diagnostics storage
+        self._results: Optional[EstimationResult] = None
+        self._diagnostic_manager = DiagnosticManager()
 
     @abstractmethod
     def fit(self) -> None:
@@ -77,3 +87,50 @@ class BaseCJEEstimator(ABC):
         """Ensure estimator is fitted before making predictions."""
         if not self._fitted:
             raise RuntimeError("Estimator must be fitted before calling estimate()")
+
+    def _build_diagnostics(
+        self,
+        result: EstimationResult,
+        calibration_result: Optional[Any] = None,
+        include_oracle: bool = False,
+    ) -> DiagnosticSuite:
+        """Build complete diagnostic suite for the estimation result.
+
+        This method should be called by estimate() to populate diagnostics.
+
+        Args:
+            result: The estimation result (without diagnostics)
+            calibration_result: Optional calibration result
+            include_oracle: Whether to compute oracle diagnostics
+
+        Returns:
+            Complete DiagnosticSuite
+        """
+        # Store results BEFORE computing diagnostics so they're available
+        self._results = result
+
+        # Get the dataset from sampler
+        dataset = self.sampler.dataset if hasattr(self.sampler, "dataset") else None
+
+        # Use diagnostic manager to compute full suite
+        suite = self._diagnostic_manager.compute_suite(
+            estimator=self,
+            dataset=dataset,
+            calibration_result=calibration_result,
+            include_oracle=include_oracle,
+        )
+
+        # Add diagnostics to result
+        result.diagnostics = suite
+
+        return suite
+
+    def get_diagnostics(self) -> Optional[DiagnosticSuite]:
+        """Get the diagnostic suite from the last estimation.
+
+        Returns:
+            DiagnosticSuite if estimate() has been called, None otherwise
+        """
+        if self._results and self._results.diagnostics:
+            return self._results.diagnostics
+        return None

@@ -1,6 +1,6 @@
 """Data models for CJE using Pydantic."""
 
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, TYPE_CHECKING, ForwardRef
 from enum import Enum
 from pydantic import BaseModel, Field, field_validator
 import numpy as np
@@ -142,13 +142,28 @@ class Dataset(BaseModel):
 
 
 class EstimationResult(BaseModel):
-    """Result from a CJE estimator."""
+    """Result from a CJE estimator.
+
+    The diagnostics field is the single source of truth for all diagnostic information.
+    The metadata field is kept for backward compatibility but should not be used for
+    new diagnostic data.
+    """
 
     estimates: np.ndarray = Field(..., description="Point estimates for each policy")
     standard_errors: np.ndarray = Field(..., description="Standard errors")
     n_samples_used: Dict[str, int] = Field(..., description="Valid samples per policy")
     method: str = Field(..., description="Estimation method used")
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    # New unified diagnostics field - use Any to avoid circular import
+    diagnostics: Optional[Any] = Field(
+        None, description="Unified diagnostic suite containing all diagnostics"
+    )
+
+    # Keep metadata for backward compatibility
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Legacy metadata field (use diagnostics instead)",
+    )
 
     model_config = {"arbitrary_types_allowed": True}
 
