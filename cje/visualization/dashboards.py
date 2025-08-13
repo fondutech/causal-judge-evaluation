@@ -213,7 +213,7 @@ def _plot_single_policy_weight_smoothing(
     top1_raw: float,
     top1_cal: float,
 ) -> None:
-    """Plot weight smoothing by judge score for a single policy - direct curves."""
+    """Plot calibrated vs raw weights showing isotonic transformation."""
 
     # Filter to valid values
     mask = (
@@ -223,80 +223,75 @@ def _plot_single_policy_weight_smoothing(
         & (raw_w > 0)
         & (cal_w > 0)
     )
-    S = judge_scores[mask]
     W_raw = raw_w[mask]
     W_cal = cal_w[mask]
 
-    n = len(S)
+    n = len(W_raw)
 
-    # Sort by judge score for plotting curves
-    sort_idx = np.argsort(S)
-    S_sorted = S[sort_idx]
+    # Sort by raw weights to show the isotonic transformation
+    sort_idx = np.argsort(W_raw)
     W_raw_sorted = W_raw[sort_idx]
     W_cal_sorted = W_cal[sort_idx]
 
-    # Plot raw weights as thin line or scatter depending on size
+    # Plot the transformation curve
     if n > 5000:
-        # For large datasets, subsample then plot in sorted order
-        # We need to subsample from the original arrays, then sort the subsample
-        subsample_idx = np.random.RandomState(42).choice(n, min(2000, n), replace=False)
-        S_sub = S[subsample_idx]
-        W_raw_sub = W_raw[subsample_idx]
-        # Now sort the subsample by judge score
-        sub_sort_idx = np.argsort(S_sub)
+        # Subsample for visibility but maintain order
+        step = max(1, n // 2000)
+        indices = np.arange(0, n, step)
         ax.plot(
-            S_sub[sub_sort_idx],
-            W_raw_sub[sub_sort_idx],
-            alpha=0.3,
-            color="C0",
-            linewidth=0.5,
-            label="raw weights",
+            W_raw_sorted[indices],
+            W_cal_sorted[indices],
+            color="C1",
+            linewidth=2,
+            label="isotonic transform",
+            zorder=10,
         )
     else:
-        # For smaller datasets, plot all points as a line
         ax.plot(
-            S_sorted,
             W_raw_sorted,
-            alpha=0.4,
-            color="C0",
-            linewidth=1,
-            label="raw weights",
+            W_cal_sorted,
+            color="C1",
+            linewidth=2,
+            label="isotonic transform",
+            zorder=10,
         )
 
-    # Plot calibrated weights as thicker solid line
-    # This will show the staircase pattern from isotonic regression
+    # Add identity line for reference
+    max_val = max(W_raw.max(), W_cal.max())
+    min_val = min(W_raw.min(), W_cal.min())
     ax.plot(
-        S_sorted,
-        W_cal_sorted,
-        color="C1",
-        linewidth=2.5,
-        label="calibrated weights",
-        zorder=10,
+        [min_val, max_val],
+        [min_val, max_val],
+        "k--",
+        alpha=0.3,
+        linewidth=1,
+        label="y=x (no change)",
     )
 
-    # Optional: Add faint scatter for raw weights to show density
-    if n <= 10000:
-        ax.scatter(S, W_raw, s=1, alpha=0.05, color="gray", rasterized=True)
+    # Add horizontal line at y=1 (target mean)
+    ax.axhline(1.0, color="gray", linestyle=":", alpha=0.5, linewidth=1)
 
-    # Set log scale for y-axis
+    # Add scatter points to show density
+    if n > 1000:
+        # Subsample for scatter
+        subsample_idx = np.random.RandomState(42).choice(n, min(500, n), replace=False)
+        ax.scatter(
+            W_raw[subsample_idx],
+            W_cal[subsample_idx],
+            s=5,
+            alpha=0.3,
+            color="C0",
+            rasterized=True,
+        )
+    else:
+        ax.scatter(W_raw, W_cal, s=8, alpha=0.4, color="C0")
+
+    # Set log scale for both axes
+    ax.set_xscale("log")
     ax.set_yscale("log")
 
-    # Set sensible limits
-    y_cap_q = 0.999
-    ymax = np.quantile(W_raw[W_raw > 0], y_cap_q)
-    ymin = max(1e-3, np.quantile(W_raw[W_raw > 0], 0.001))
-    ax.set_ylim(ymin, ymax * 1.5)  # Add some headroom
-
-    # Reference line at y=1 (mean-one reference)
-    ax.axhline(
-        1.0,
-        color="black",
-        linestyle="--",
-        alpha=0.5,
-        linewidth=1,
-        label="weight=1",
-        zorder=5,
-    )
+    # Set equal aspect ratio region
+    ax.set_aspect("equal", adjustable="box")
 
     # Compute variance ratio for annotation
     var_ratio = np.var(W_cal) / np.var(W_raw) if np.var(W_raw) > 0 else 0
@@ -309,8 +304,8 @@ def _plot_single_policy_weight_smoothing(
         f"Var ratio: {var_ratio:.2f}",
         fontsize=10,
     )
-    ax.set_xlabel("Judge Score", fontsize=9)
-    ax.set_ylabel("Weight (log scale)", fontsize=9)
+    ax.set_xlabel("Raw Weight (log scale)", fontsize=9)
+    ax.set_ylabel("Calibrated Weight (log scale)", fontsize=9)
     ax.legend(loc="best", fontsize=8, frameon=False)
     ax.grid(True, alpha=0.3, which="both", linestyle=":")
     ax.tick_params(labelsize=8)
