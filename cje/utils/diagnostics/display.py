@@ -64,11 +64,20 @@ def create_weight_summary_table(
             if hasattr(diag, "ess_fraction"):  # WeightDiagnostics object
                 ess = getattr(diag, "ess_fraction", 0.0)
                 max_w = getattr(diag, "max_weight", 1.0)
-                status = getattr(diag, "consistency_flag", "UNKNOWN")
+                # Try both 'status' and 'consistency_flag' for compatibility
+                status = getattr(
+                    diag, "status", getattr(diag, "consistency_flag", "UNKNOWN")
+                )
             elif isinstance(diag, dict):  # Legacy dict format
                 ess = diag.get("ess_fraction", 0.0)
                 max_w = diag.get("max_weight", 1.0)
-                status = diag.get("consistency_flag", "UNKNOWN")
+                # Try both 'status' and 'consistency_flag' for compatibility
+                status_val = diag.get("status", diag.get("consistency_flag", "UNKNOWN"))
+                # Handle Status enum if present
+                if hasattr(status_val, "value"):
+                    status = status_val.value.upper()
+                else:
+                    status = str(status_val)
             else:
                 ess = 0.0
                 max_w = 1.0
