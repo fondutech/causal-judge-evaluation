@@ -395,26 +395,8 @@ def plot_weight_dashboard(
     Returns:
         Tuple of (matplotlib Figure, metrics dict)
     """
-    # Check if we should use the new per-policy dashboard
-    sampler = kwargs.get("sampler")
-    judge_scores_dict = kwargs.get("judge_scores")
-
-    # If we have judge scores, use the new per-policy dashboard
-    if judge_scores_dict is not None or (
-        sampler is not None and hasattr(sampler, "get_data_for_policy")
-    ):
-        return plot_weight_dashboard_per_policy(
-            raw_weights_dict,
-            calibrated_weights_dict,
-            n_samples=n_samples,
-            save_path=save_path,
-            figsize=figsize,
-            random_seed=random_seed,
-            diagnostics=diagnostics,
-            **kwargs,
-        )
-
-    # Otherwise use the legacy multi-policy dashboard
+    # Always use the legacy multi-policy dashboard
+    # (plot_weight_dashboard_per_policy is a separate function for different visualization)
     return _plot_weight_dashboard_legacy(
         raw_weights_dict,
         calibrated_weights_dict,
