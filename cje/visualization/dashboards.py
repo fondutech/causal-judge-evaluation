@@ -1120,40 +1120,24 @@ def plot_dr_dashboard(
                     ax.loglog(
                         sorted_ifs, ccdf, label=policy, color=colors[i], linewidth=2
                     )
+
+        # Add reference lines at p95 and p99
+        ax.axhline(y=0.05, color="gray", linestyle=":", alpha=0.5, label="p95")
+        ax.axhline(y=0.01, color="gray", linestyle="--", alpha=0.5, label="p99")
     else:
-        # Fallback: plot quantile markers only (no synthetic curves)
-        for i, policy in enumerate(policies):
-            diag = dr_diags[policy]
-            if_p95 = diag["if_p95"]
-            if_p99 = diag["if_p99"]
-
-            # Draw vertical lines at quantiles
-            ax.axvline(if_p95, color=colors[i], linestyle="--", alpha=0.5, linewidth=1)
-            ax.axvline(if_p99, color=colors[i], linestyle=":", alpha=0.5, linewidth=1)
-
-            # Add text labels
-            ax.text(
-                if_p95,
-                0.05,
-                f"{policy}\np95",
-                rotation=45,
-                fontsize=7,
-                color=colors[i],
-                alpha=0.7,
-            )
-            ax.text(
-                if_p99,
-                0.01,
-                f"p99",
-                rotation=45,
-                fontsize=7,
-                color=colors[i],
-                alpha=0.7,
-            )
-
-    # Add reference lines at p95 and p99
-    ax.axhline(y=0.05, color="gray", linestyle=":", alpha=0.5, label="p95")
-    ax.axhline(y=0.01, color="gray", linestyle="--", alpha=0.5, label="p99")
+        # No influence functions available - show message
+        ax.text(
+            0.5,
+            0.5,
+            "Influence functions not available\n(set store_influence=True)",
+            ha="center",
+            va="center",
+            fontsize=10,
+            color="gray",
+            transform=ax.transAxes,
+        )
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
 
     ax.set_xlabel("|IF| (log scale)")
     ax.set_ylabel("CCDF (log scale)")

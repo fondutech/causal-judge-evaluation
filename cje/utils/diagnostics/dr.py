@@ -78,15 +78,6 @@ def compute_dr_policy_diagnostics(
         diagnostics["if_std"] = float(influence_functions.std())
         diagnostics["if_var"] = float(influence_functions.var())
 
-        # Percentiles for visualization
-        diagnostics["if_p1"] = float(np.percentile(influence_functions, 1))
-        diagnostics["if_p5"] = float(np.percentile(influence_functions, 5))
-        diagnostics["if_p25"] = float(np.percentile(influence_functions, 25))
-        diagnostics["if_p50"] = float(np.percentile(influence_functions, 50))
-        diagnostics["if_p75"] = float(np.percentile(influence_functions, 75))
-        diagnostics["if_p95"] = float(np.percentile(influence_functions, 95))
-        diagnostics["if_p99"] = float(np.percentile(influence_functions, 99))
-
         # Check for heavy tails
         diagnostics["if_tail_ratio_99_5"] = tail_weight_ratio(
             np.abs(influence_functions), 0.05, 0.99
