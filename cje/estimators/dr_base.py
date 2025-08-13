@@ -108,8 +108,8 @@ class DREstimator(BaseCJEEstimator):
         self._fresh_draws: Dict[str, FreshDrawDataset] = {}
         self._outcome_fitted = False
 
-        # Influence function storage (default False to save memory, can be enabled for diagnostics)
-        self.store_influence = kwargs.pop("store_influence", False)
+        # Influence function storage (default True for proper diagnostics)
+        self.store_influence = kwargs.pop("store_influence", True)
         self._influence_functions: Dict[str, np.ndarray] = {}
 
         # Store components for diagnostics

@@ -689,43 +689,64 @@ def plot_dr_dashboard(
     # Panel B: Orthogonality check
     ax = axes[1]
 
-    for i, policy in enumerate(policies):
-        diag = dr_diags[policy]
-        score_mean = diag["score_mean"]
-        score_se = diag["score_se"]
+    # Check if we have score information (requires influence functions)
+    has_scores = any("score_mean" in dr_diags[p] for p in policies)
 
-        # Plot point with error bars (2 SE)
-        ax.errorbar(
-            i,
-            score_mean,
-            yerr=2 * score_se,
-            fmt="o",
-            color=colors[i],
-            markersize=8,
-            capsize=5,
-            capthick=2,
-            label=policy,
+    if not has_scores:
+        # No scores available - show informative message
+        ax.text(
+            0.5,
+            0.5,
+            "Score test unavailable\n(influence functions not stored)",
+            transform=ax.transAxes,
+            ha="center",
+            va="center",
+            fontsize=12,
+            color="gray",
+            style="italic",
         )
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis("off")
+        ax.set_title("B: Orthogonality Check (unavailable)")
+    else:
+        for i, policy in enumerate(policies):
+            diag = dr_diags[policy]
+            score_mean = diag.get("score_mean", 0.0)
+            score_se = diag.get("score_se", 0.0)
 
-        # Add p-value annotation
-        p_val = diag["score_p"]
-        if p_val < 0.05:
-            ax.text(
+            # Plot point with error bars (2 SE)
+            ax.errorbar(
                 i,
-                score_mean + 2.5 * score_se,
-                f"p={p_val:.3f}",
-                ha="center",
-                fontsize=8,
-                color="red",
+                score_mean,
+                yerr=2 * score_se,
+                fmt="o",
+                color=colors[i],
+                markersize=8,
+                capsize=5,
+                capthick=2,
+                label=policy,
             )
 
-    ax.axhline(y=0, color="black", linestyle="-", linewidth=1)
-    ax.set_xlabel("Policy")
-    ax.set_ylabel("Score Mean")
-    ax.set_title("B: Orthogonality Check (mean ± 2SE)")
-    ax.set_xticks(range(n_policies))
-    ax.set_xticklabels(policies, rotation=45, ha="right")
-    ax.grid(axis="y", alpha=0.3)
+            # Add p-value annotation
+            p_val = diag.get("score_p", 1.0)
+            if p_val < 0.05:
+                ax.text(
+                    i,
+                    score_mean + 2.5 * score_se,
+                    f"p={p_val:.3f}",
+                    ha="center",
+                    fontsize=8,
+                    color="red",
+                )
+
+        ax.axhline(y=0, color="black", linestyle="-", linewidth=1)
+        ax.set_xlabel("Policy")
+        ax.set_ylabel("Score Mean")
+        ax.set_title("B: Orthogonality Check (mean ± 2SE)")
+        ax.set_xticks(range(n_policies))
+        ax.set_xticklabels(policies, rotation=45, ha="right")
+        ax.grid(axis="y", alpha=0.3)
 
     # Add note for TMLE
     if estimation_result.method == "tmle":
@@ -821,17 +842,36 @@ def plot_dr_dashboard(
 
     plt.tight_layout()
 
-    # Compute summary metrics
-    summary_metrics = {
-        "worst_if_tail_ratio": max(d["if_tail_ratio_99_5"] for d in dr_diags.values()),
-        "best_r2_oof": max(d["r2_oof"] for d in dr_diags.values()),
-        "worst_r2_oof": min(d["r2_oof"] for d in dr_diags.values()),
-        "avg_residual_rmse": np.mean([d["residual_rmse"] for d in dr_diags.values()]),
-    }
+    # Compute summary metrics (handle missing fields gracefully)
+    summary_metrics = {}
+
+    # IF tail ratios
+    if_tail_ratios = [d.get("if_tail_ratio_99_5", 0.0) for d in dr_diags.values()]
+    if if_tail_ratios:
+        summary_metrics["worst_if_tail_ratio"] = max(if_tail_ratios)
+
+    # R² values
+    r2_values = [d.get("r2_oof", np.nan) for d in dr_diags.values() if "r2_oof" in d]
+    if r2_values and not all(np.isnan(r2_values)):
+        valid_r2 = [r for r in r2_values if not np.isnan(r)]
+        if valid_r2:
+            summary_metrics["best_r2_oof"] = max(valid_r2)
+            summary_metrics["worst_r2_oof"] = min(valid_r2)
+
+    # RMSE values
+    rmse_values = [
+        d.get("residual_rmse", np.nan)
+        for d in dr_diags.values()
+        if "residual_rmse" in d
+    ]
+    if rmse_values and not all(np.isnan(rmse_values)):
+        valid_rmse = [r for r in rmse_values if not np.isnan(r)]
+        if valid_rmse:
+            summary_metrics["avg_residual_rmse"] = np.mean(valid_rmse)
 
     if estimation_result.method == "tmle":
-        summary_metrics["tmle_max_abs_score"] = max(
-            abs(d["score_mean"]) for d in dr_diags.values()
-        )
+        score_means = [abs(d.get("score_mean", 0.0)) for d in dr_diags.values()]
+        if score_means:
+            summary_metrics["tmle_max_abs_score"] = max(score_means)
 
     return fig, summary_metrics
