@@ -103,9 +103,9 @@ class MRDREstimator(DREstimator):
         sampler: PrecomputedSampler with calibrated rewards
         n_folds: Cross-fitting folds (default 5)
         omega_mode: Weighting for the MRDR regression. One of:
-            - "snips": (W - 1)^2   [default; matches mean-one/SNIPS IF structure]
-            - "w2":    W^2
-            - "w":     |W|
+            - "w":     |W|         [default; most stable, avoids extreme concentration]
+            - "w2":    W^2         [moderate concentration]
+            - "snips": (W - 1)^2   [can lead to extreme concentration with high-variance weights]
         min_sample_weight: Floor applied to ω to avoid degenerate 0-weight fits
         use_calibrated_weights: Use CalibratedIPS (default True)
         use_policy_specific_models: If True, fit separate weighted models per policy.
@@ -117,7 +117,7 @@ class MRDREstimator(DREstimator):
         self,
         sampler: PrecomputedSampler,
         n_folds: int = 5,
-        omega_mode: str = "snips",
+        omega_mode: str = "w",
         min_sample_weight: float = 1e-8,
         use_calibrated_weights: bool = True,
         use_policy_specific_models: bool = True,
