@@ -164,6 +164,32 @@ class DREstimator(BaseCJEEstimator):
             f"{fresh_draws.draws_per_prompt} draws/prompt"
         )
 
+    def _compute_policy_diagnostics(
+        self, policy: str, estimate: float
+    ) -> Dict[str, Any]:
+        """Compute diagnostics for a single policy.
+
+        This helper method ensures consistent diagnostic computation across
+        all DR estimator subclasses.
+
+        Args:
+            policy: Policy name
+            estimate: The DR estimate for this policy
+
+        Returns:
+            Dictionary of diagnostic metrics
+        """
+        return compute_dr_policy_diagnostics(
+            dm_component=self._dm_component.get(policy, np.array([])),
+            ips_correction=self._ips_correction.get(policy, np.array([])),
+            dr_estimate=estimate,
+            fresh_rewards=self._fresh_rewards.get(policy),  # Always use stored rewards
+            outcome_predictions=self._outcome_predictions.get(policy),
+            influence_functions=self._influence_functions.get(policy),
+            unique_folds=list(range(self.n_folds)),
+            policy=policy,
+        )
+
     def fit(self) -> None:
         """Fit weight calibration (if applicable) and outcome model."""
         # First fit the IPS weights
@@ -486,25 +512,10 @@ class DREstimator(BaseCJEEstimator):
             if policy not in self._dm_component or np.isnan(estimates[idx]):
                 continue
 
-            # Use stored components
-            dm_component = self._dm_component[policy]
-            ips_correction = self._ips_correction[policy]
-
-            # Build diagnostic dict using the simpler function signature
-            diag_dict = compute_dr_policy_diagnostics(
-                dm_component=dm_component,
-                ips_correction=ips_correction,
-                dr_estimate=estimates[idx],
-                fresh_rewards=self._fresh_rewards.get(
-                    policy
-                ),  # Use stored logged rewards
-                outcome_predictions=self._outcome_predictions.get(policy),
-                influence_functions=self._influence_functions.get(policy),
-                unique_folds=list(range(self.n_folds)),
-                policy=policy,
+            # Use helper method for consistent diagnostic computation
+            dr_diagnostics_per_policy[policy] = self._compute_policy_diagnostics(
+                policy, estimates[idx]
             )
-
-            dr_diagnostics_per_policy[policy] = diag_dict
 
         # Add DR-specific metadata
         dr_metadata = {

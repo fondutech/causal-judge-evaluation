@@ -328,21 +328,10 @@ class TMLEEstimator(DREstimator):
             self._fresh_rewards[policy] = rewards  # Actually logged rewards
             self._outcome_predictions[policy] = g_logged0
 
-            # Compute diagnostics using stored components with new signature
-            from ..utils.diagnostics.dr import compute_dr_policy_diagnostics
-
-            diag_dict = compute_dr_policy_diagnostics(
-                dm_component=self._dm_component[policy],
-                ips_correction=self._ips_correction[policy],
-                dr_estimate=estimates[idx],
-                fresh_rewards=None,  # We don't have separate fresh rewards
-                outcome_predictions=self._outcome_predictions.get(policy),
-                influence_functions=self._influence_functions.get(policy),
-                unique_folds=list(range(self.n_folds)),
-                policy=policy,
+            # Use base class helper for consistent diagnostic computation
+            dr_diagnostics_per_policy[policy] = self._compute_policy_diagnostics(
+                policy, estimates[idx]
             )
-
-            dr_diagnostics_per_policy[policy] = diag_dict
 
             # Store calibration data
             dr_calibration_data[policy] = {

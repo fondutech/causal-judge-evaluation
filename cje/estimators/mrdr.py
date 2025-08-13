@@ -385,6 +385,9 @@ class MRDREstimator(DREstimator):
             # Store components for diagnostics
             self._dm_component[policy] = g_fresh
             self._ips_correction[policy] = weights * (rewards - g_logged)
+            self._fresh_rewards[policy] = (
+                rewards  # Store logged rewards for diagnostics
+            )
             self._outcome_predictions[policy] = g_logged
 
             # Compute influence functions and standard error
@@ -414,24 +417,10 @@ class MRDREstimator(DREstimator):
             if policy not in self._dm_component or np.isnan(estimates[idx]):
                 continue
 
-            # Get the logged rewards for R² calculation
-            data = self.sampler.get_data_for_policy(policy)
-            logged_rewards = (
-                np.array([d["reward"] for d in data], dtype=float) if data else None
+            # Use base class helper for consistent diagnostic computation
+            dr_diagnostics_per_policy[policy] = self._compute_policy_diagnostics(
+                policy, estimates[idx]
             )
-
-            # Use stored components to compute diagnostics
-            diag_dict = compute_dr_policy_diagnostics(
-                dm_component=self._dm_component[policy],
-                ips_correction=self._ips_correction[policy],
-                dr_estimate=estimates[idx],
-                fresh_rewards=logged_rewards,  # Pass logged rewards for R² calculation
-                outcome_predictions=self._outcome_predictions.get(policy),
-                influence_functions=self._influence_functions.get(policy),
-                unique_folds=list(range(self.n_folds)),
-                policy=policy,
-            )
-            dr_diagnostics_per_policy[policy] = diag_dict
 
         # Build diagnostics
         diagnostics = self._build_dr_diagnostics(
