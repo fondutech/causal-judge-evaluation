@@ -213,7 +213,10 @@ def _plot_single_policy_weight_smoothing(
     top1_raw: float,
     top1_cal: float,
 ) -> None:
-    """Plot calibrated vs raw weights showing isotonic transformation."""
+    """Plot weights vs judge scores with judge-score-based isotonic calibration."""
+
+    # Import isotonic regression here to avoid circular imports
+    from sklearn.isotonic import IsotonicRegression
 
     # Filter to valid values
     mask = (
@@ -223,89 +226,74 @@ def _plot_single_policy_weight_smoothing(
         & (raw_w > 0)
         & (cal_w > 0)
     )
+    S = judge_scores[mask]
     W_raw = raw_w[mask]
-    W_cal = cal_w[mask]
+    W_cal_actual = cal_w[mask]  # The actual calibrated weights from the system
 
-    n = len(W_raw)
+    n = len(S)
 
-    # Sort by raw weights to show the isotonic transformation
-    sort_idx = np.argsort(W_raw)
+    # Sort by judge scores
+    sort_idx = np.argsort(S)
+    S_sorted = S[sort_idx]
     W_raw_sorted = W_raw[sort_idx]
-    W_cal_sorted = W_cal[sort_idx]
+    W_cal_actual_sorted = W_cal_actual[sort_idx]
 
-    # Plot the transformation curve
-    if n > 5000:
-        # Subsample for visibility but maintain order
-        step = max(1, n // 2000)
+    # Note: We now show the ACTUAL calibrated weights from the estimator
+    # The previous visualization was incorrectly computing its own isotonic regression
+    # from judge scores to weights, which is NOT what the calibration does.
+
+    # Plot raw weights vs judge scores
+    if n > 2000:
+        # Subsample for visibility
+        step = max(1, n // 1000)
         indices = np.arange(0, n, step)
-        ax.plot(
+        ax.scatter(
+            S_sorted[indices],
             W_raw_sorted[indices],
-            W_cal_sorted[indices],
-            color="C1",
-            linewidth=2,
-            label="isotonic transform",
-            zorder=10,
+            s=2,
+            alpha=0.2,
+            color="C0",
+            label="raw weights",
+            rasterized=True,
         )
     else:
-        ax.plot(
-            W_raw_sorted,
-            W_cal_sorted,
-            color="C1",
-            linewidth=2,
-            label="isotonic transform",
-            zorder=10,
+        ax.scatter(
+            S,
+            W_raw,
+            s=3,
+            alpha=0.3,
+            color="C0",
+            label="raw weights",
         )
 
-    # Add identity line for reference
-    max_val = max(W_raw.max(), W_cal.max())
-    min_val = min(W_raw.min(), W_cal.min())
+    # Plot actual calibrated weights as thick line
     ax.plot(
-        [min_val, max_val],
-        [min_val, max_val],
-        "k--",
-        alpha=0.3,
-        linewidth=1,
-        label="y=x (no change)",
+        S_sorted,
+        W_cal_actual_sorted,
+        color="C2",
+        linewidth=2.5,
+        label="actual calibrated",
+        zorder=10,
     )
 
     # Add horizontal line at y=1 (target mean)
     ax.axhline(1.0, color="gray", linestyle=":", alpha=0.5, linewidth=1)
 
-    # Add scatter points to show density
-    if n > 1000:
-        # Subsample for scatter
-        subsample_idx = np.random.RandomState(42).choice(n, min(500, n), replace=False)
-        ax.scatter(
-            W_raw[subsample_idx],
-            W_cal[subsample_idx],
-            s=5,
-            alpha=0.3,
-            color="C0",
-            rasterized=True,
-        )
-    else:
-        ax.scatter(W_raw, W_cal, s=8, alpha=0.4, color="C0")
-
-    # Set log scale for both axes
-    ax.set_xscale("log")
+    # Set log scale for y-axis only
     ax.set_yscale("log")
 
-    # Set equal aspect ratio region
-    ax.set_aspect("equal", adjustable="box")
-
     # Compute variance ratio for annotation
-    var_ratio = np.var(W_cal) / np.var(W_raw) if np.var(W_raw) > 0 else 0
+    var_ratio_actual = np.var(W_cal_actual) / np.var(W_raw) if np.var(W_raw) > 0 else 0
 
     # Title with comprehensive diagnostics
     ax.set_title(
         f"{policy}\n"
         f"ESS: {ess_raw:.0f}→{ess_cal:.0f} ({uplift:.1f}×), "
-        f"Top1%: {100*top1_raw:.1f}%→{100*top1_cal:.1f}%, "
-        f"Var ratio: {var_ratio:.2f}",
+        f"Var ratio: {var_ratio_actual:.2f}",
         fontsize=10,
     )
-    ax.set_xlabel("Raw Weight (log scale)", fontsize=9)
-    ax.set_ylabel("Calibrated Weight (log scale)", fontsize=9)
+    ax.set_xlabel("Judge Score", fontsize=9)
+    ax.set_ylabel("Weight (log scale)", fontsize=9)
     ax.legend(loc="best", fontsize=8, frameon=False)
     ax.grid(True, alpha=0.3, which="both", linestyle=":")
     ax.tick_params(labelsize=8)

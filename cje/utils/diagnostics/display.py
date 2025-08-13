@@ -60,16 +60,21 @@ def create_weight_summary_table(
     # Handle legacy dictionary format
     elif isinstance(all_diagnostics, dict):
         for policy, diag in all_diagnostics.items():
-            # Assume it's a dict (legacy format)
-            ess = diag.get("ess_fraction", 0.0) if isinstance(diag, dict) else 0.0
-            mean_w = diag.get("mean_weight", 1.0) if isinstance(diag, dict) else 1.0
-            status = (
-                diag.get("consistency_flag", "UNKNOWN")
-                if isinstance(diag, dict)
-                else "UNKNOWN"
-            )
+            # Handle WeightDiagnostics objects or dict format
+            if hasattr(diag, "ess_fraction"):  # WeightDiagnostics object
+                ess = getattr(diag, "ess_fraction", 0.0)
+                max_w = getattr(diag, "max_weight", 1.0)
+                status = getattr(diag, "consistency_flag", "UNKNOWN")
+            elif isinstance(diag, dict):  # Legacy dict format
+                ess = diag.get("ess_fraction", 0.0)
+                max_w = diag.get("max_weight", 1.0)
+                status = diag.get("consistency_flag", "UNKNOWN")
+            else:
+                ess = 0.0
+                max_w = 1.0
+                status = "UNKNOWN"
 
-            lines.append(f"{policy:<30} {ess:>7.1%} {mean_w:>12.4f} {status:<10}")
+            lines.append(f"{policy:<30} {ess:>7.1%} {max_w:>12.4f} {status:<10}")
 
     return "\n".join(lines)
 

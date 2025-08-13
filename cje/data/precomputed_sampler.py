@@ -375,6 +375,22 @@ class PrecomputedSampler:
         """Get array of calibrated rewards."""
         return np.array([s.reward for s in self.dataset.samples])
 
+    def get_judge_scores(self) -> Optional[np.ndarray]:
+        """Get array of judge scores from metadata.
+
+        Returns:
+            Array of judge scores if available in all valid samples, None otherwise.
+        """
+        # Only get judge scores for valid (formatted) samples
+        judge_scores = []
+        for idx in self._formatted_to_dataset_idx:
+            sample = self.dataset.samples[idx]
+            score = sample.metadata.get("judge_score")
+            if score is None:
+                return None  # Not all samples have judge scores
+            judge_scores.append(score)
+        return np.array(judge_scores)
+
     def get_contexts(self) -> List[str]:
         """Get list of contexts/prompts."""
         return [s.prompt for s in self.dataset.samples]

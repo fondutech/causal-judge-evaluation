@@ -197,12 +197,13 @@ def calibrate_to_target_mean(
     enforce_variance_nonincrease: bool = True,
     max_variance_ratio: float = 1.0,  # ≤1.0 ⇒ no increase; <1.0 ⇒ force reduction
     return_diagnostics: bool = False,
-    projection_mode: str = "fast",
+    projection_mode: str = "exact",  # Always use exact mode for consistency
+    ordering_index: Optional[np.ndarray] = None,
 ) -> Union[np.ndarray, Tuple[np.ndarray, Dict]]:
     """
     Variance-controlled IPS weight calibration (Hájek mean-one IPS):
 
-    1) Sort w, run mean-1 PAV (fast single-pass or exact bisection).
+    1) Sort by ordering_index (or raw weights if not provided), run mean-1 PAV.
     2) Optionally apply CLOSED-FORM variance-safe blend toward raw (mean-1).
     3) Rescale to target_mean (exact).
 
@@ -215,7 +216,7 @@ def calibrate_to_target_mean(
       • output ≥ 0
       • sample mean == target_mean (within MEAN_TOL)
       • var(out)/var(raw) ≤ max_variance_ratio (when feasible) if enforced
-      • weights are non-decreasing in the rank order of raw weights
+      • weights are non-decreasing in the rank order of the ordering index
 
     Args:
         weights: Raw importance weights (should be non-negative)
@@ -223,6 +224,14 @@ def calibrate_to_target_mean(
         enforce_variance_nonincrease: Whether to cap variance at raw level
         max_variance_ratio: Maximum allowed variance ratio (≤1.0)
         return_diagnostics: If True, return (weights, diagnostics_dict)
+        projection_mode: Always "exact" (bisection) for consistency
+        ordering_index: Optional array to determine isotonic ordering (e.g., judge scores).
+                       If None, sorts by raw weights (backward compatibility).
+
+                       Note: When ordering_index is uncorrelated with weights (e.g., judge
+                       scores uncorrelated with importance ratios), the isotonic projection
+                       may produce nearly constant weights. This is expected behavior and
+                       provides variance stabilization even without a monotonic relationship.
 
     Returns:
         Calibrated weights, or (weights, diagnostics) if return_diagnostics=True
@@ -272,8 +281,35 @@ def calibrate_to_target_mean(
         return out
 
     # ---- Mean-1 PAV on the full vector (no cross-fitting) ----
-    order = np.argsort(raw_norm, kind="stable")  # stable sort for consistent plateaus
-    cal_sorted = _pav_mean1_projection_sorted(raw_norm[order], mode=projection_mode)
+    # Use ordering_index if provided (e.g., judge scores), otherwise fall back to raw weights
+    if ordering_index is not None:
+        if len(ordering_index) != n:
+            raise ValueError(
+                f"ordering_index length ({len(ordering_index)}) must match weights length ({n})"
+            )
+        order = np.argsort(ordering_index, kind="stable")  # Sort by the provided index
+
+        # Handle ties in ordering_index by pooling weights within tied groups
+        sorted_index = ordering_index[order]
+        sorted_weights = raw_norm[order]
+
+        # Find unique values and their positions
+        unique_vals, inverse_indices = np.unique(sorted_index, return_inverse=True)
+
+        # Pool weights within tied groups (average within each group)
+        pooled_weights = np.zeros_like(sorted_weights)
+        for i in range(len(unique_vals)):
+            mask = inverse_indices == i
+            pooled_weights[mask] = sorted_weights[mask].mean()
+
+        # Now apply PAV to the pooled weights
+        cal_sorted = _pav_mean1_projection_sorted(pooled_weights, mode=projection_mode)
+    else:
+        order = np.argsort(
+            raw_norm, kind="stable"
+        )  # Fall back to raw weights for backward compatibility
+        cal_sorted = _pav_mean1_projection_sorted(raw_norm[order], mode=projection_mode)
+
     cal_norm = np.empty_like(raw_norm)
     cal_norm[order] = cal_sorted  # mean 1, monotone by construction
 
@@ -320,24 +356,43 @@ def calibrate_to_target_mean(
                 f"(error={mean_err:.2e})"
             )
 
-    # Monotonic in raw_norm rank (after clipping/normalization)
-    # CRITICAL: Must check in raw_norm order, not original weights order
-    idx = np.argsort(raw_norm, kind="stable")
-    raw_sorted = raw_norm[idx]
-    out_sorted = out[idx]
-    boundaries = np.flatnonzero(np.diff(raw_sorted) > 1e-15)
-    if boundaries.size and np.any(
-        out_sorted[boundaries + 1] < out_sorted[boundaries] - 1e-12
-    ):
-        # Find first violation for error message
-        violations = np.where(
+    # Monotonic in ordering_index (or raw_norm if no ordering_index provided)
+    # CRITICAL: Must check in the same order used for isotonic regression
+    if ordering_index is not None:
+        idx = np.argsort(ordering_index, kind="stable")
+        index_sorted = ordering_index[idx]
+        out_sorted = out[idx]
+        boundaries = np.flatnonzero(np.diff(index_sorted) > 1e-15)
+        if boundaries.size and np.any(
             out_sorted[boundaries + 1] < out_sorted[boundaries] - 1e-12
-        )[0]
-        i = boundaries[violations[0]]
-        raise AssertionError(
-            f"Monotonicity violated: weight {raw_sorted[i]:.3e} -> {out_sorted[i]:.3e} "
-            f"but weight {raw_sorted[i+1]:.3e} -> {out_sorted[i+1]:.3e}"
-        )
+        ):
+            # Find first violation for error message
+            violations = np.where(
+                out_sorted[boundaries + 1] < out_sorted[boundaries] - 1e-12
+            )[0]
+            i = boundaries[violations[0]]
+            raise AssertionError(
+                f"Monotonicity violated: index {index_sorted[i]:.3e} -> weight {out_sorted[i]:.3e} "
+                f"but index {index_sorted[i+1]:.3e} -> weight {out_sorted[i+1]:.3e}"
+            )
+    else:
+        # Fall back to checking raw_norm order for backward compatibility
+        idx = np.argsort(raw_norm, kind="stable")
+        raw_sorted = raw_norm[idx]
+        out_sorted = out[idx]
+        boundaries = np.flatnonzero(np.diff(raw_sorted) > 1e-15)
+        if boundaries.size and np.any(
+            out_sorted[boundaries + 1] < out_sorted[boundaries] - 1e-12
+        ):
+            # Find first violation for error message
+            violations = np.where(
+                out_sorted[boundaries + 1] < out_sorted[boundaries] - 1e-12
+            )[0]
+            i = boundaries[violations[0]]
+            raise AssertionError(
+                f"Monotonicity violated: weight {raw_sorted[i]:.3e} -> {out_sorted[i]:.3e} "
+                f"but weight {raw_sorted[i+1]:.3e} -> {out_sorted[i+1]:.3e}"
+            )
 
     if return_diagnostics:
         diagnostics = {

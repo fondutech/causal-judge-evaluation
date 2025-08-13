@@ -60,6 +60,9 @@ class CalibratedIPS(BaseCJEEstimator):
 
     def fit(self) -> None:
         """Fit weight calibration for all target policies."""
+        # Get judge scores once (same for all policies)
+        judge_scores = self.sampler.get_judge_scores()
+
         for policy in self.sampler.target_policies:
             # Get raw weights (with optional pre-clipping)
             raw_weights = self.sampler.compute_importance_weights(
@@ -81,13 +84,14 @@ class CalibratedIPS(BaseCJEEstimator):
                 f"n_samples={len(raw_weights)}, raw_mean={raw_weights.mean():.3f}"
             )
 
-            # Calibrate weights
+            # Calibrate weights - use judge scores as ordering index if available
             calibrated, calib_info = calibrate_to_target_mean(
                 raw_weights,
                 target_mean=self.target_mean,
                 enforce_variance_nonincrease=self.enforce_variance_nonincrease,
                 max_variance_ratio=self.max_variance_ratio,
                 return_diagnostics=True,
+                ordering_index=judge_scores,  # Pass judge scores as the ordering index
             )
 
             # Cache results
