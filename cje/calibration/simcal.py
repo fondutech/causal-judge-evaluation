@@ -1,8 +1,14 @@
 """Score-Indexed Monotone Calibration (SIMCal) for importance weights.
 
 This module implements SIMCal, which projects weights onto monotone curves
-indexed by a score (e.g., judge score), choosing the direction that minimizes
-L2 distance, then blending toward uniform to hit variance/ESS targets.
+indexed by a score (e.g., judge score). It supports two direction-selection
+strategies:
+  • L2: choose the monotone direction that minimizes L2 distance to raw weights
+  • IF-based: choose the direction that minimizes the empirical variance of an
+    influence function (IPS or DR-correction), aligning selection with
+    downstream estimator risk.
+
+After projection, we blend toward uniform to satisfy ESS/variance caps.
 """
 
 from dataclasses import dataclass
@@ -35,6 +41,10 @@ class SimcalConfig:
         tie_break: How to break ties when L2 distances are equal ("ess" or "var")
                   "ess": prefer direction with higher effective sample size
                   "var": prefer direction with lower variance
+        select_direction_by: How to pick the monotone direction when direction="auto":
+                  "l2": (default) minimize L2 distance to the raw weights
+                  "ips_if": minimize empirical var of IPS IF (needs rewards)
+                  "dr_if": minimize empirical var of DR IF correction (needs residuals = R - g_oof(S))
     """
 
     ess_floor: Optional[float] = None
@@ -42,6 +52,7 @@ class SimcalConfig:
     epsilon: float = 1e-9
     direction: str = "auto"
     tie_break: str = "ess"
+    select_direction_by: str = "l2"
 
     def __post_init__(self) -> None:
         if self.direction not in {"auto", "increasing", "decreasing"}:
@@ -54,6 +65,10 @@ class SimcalConfig:
             raise ValueError(f"ess_floor must be in (0, 1], got {self.ess_floor}")
         if self.var_cap is not None and self.var_cap <= 0:
             raise ValueError(f"var_cap must be positive, got {self.var_cap}")
+        if self.select_direction_by not in {"l2", "ips_if", "dr_if"}:
+            raise ValueError(
+                f"select_direction_by must be one of 'l2','ips_if','dr_if', got {self.select_direction_by}"
+            )
 
         # Validate consistency between ess_floor and var_cap
         if self.ess_floor is not None and self.var_cap is not None:
@@ -104,7 +119,12 @@ class SIMCalibrator:
         return (1.0 / ess_floor) - 1.0
 
     def transform(
-        self, w: np.ndarray, s: np.ndarray
+        self,
+        w: np.ndarray,
+        s: np.ndarray,
+        *,
+        rewards: Optional[np.ndarray] = None,
+        residuals: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Calibrate weights using score-indexed monotone projection.
 
@@ -123,6 +143,9 @@ class SIMCalibrator:
         Args:
             w: Raw importance weights (must be positive, will be normalized to mean 1)
             s: Score index (e.g., judge scores) for ordering
+            rewards: Required if select_direction_by == "ips_if" (IPS IF risk)
+            residuals: Required if select_direction_by == "dr_if"
+                       (cross-fitted residuals R - g_oof(S))
 
         Returns:
             Tuple of (calibrated_weights, info_dict) where info_dict contains:
@@ -136,6 +159,8 @@ class SIMCalibrator:
                 - ess_after_blend: ESS after blending (final)
                 - l2_distance_increasing: L2 distance for increasing projection (if auto)
                 - l2_distance_decreasing: L2 distance for decreasing projection (if auto)
+                - if_var_increasing / if_var_decreasing: IF variances if IF-based selection
+                - selection_method: "l2", "ips_if" or "dr_if"
 
         Raises:
             ValueError: If weights contain non-positive, NaN, or infinite values
@@ -176,88 +201,130 @@ class SIMCalibrator:
         for d in dirs:
             candidates[d] = _isotonic_projection(increasing=(d == "increasing"))
 
-        # Choose direction (if auto)
+        # Helper: blend toward uniform to satisfy constraints and compute stats
+        def _blend_and_stats(z: np.ndarray) -> Dict[str, Any]:
+            v_proj = float(np.var(z))
+            gamma = 0.0
+            if v_proj > 0:
+                if self.cfg.ess_floor is not None:
+                    v_max_ess = (1.0 / self.cfg.ess_floor) - 1.0
+                    if v_proj > v_max_ess:
+                        gamma = max(gamma, 1.0 - np.sqrt(v_max_ess / v_proj))
+                if self.cfg.var_cap is not None and v_proj > self.cfg.var_cap:
+                    gamma = max(gamma, 1.0 - np.sqrt(self.cfg.var_cap / v_proj))
+            gamma = float(np.clip(gamma, 0.0, 1.0))
+            w_blend = 1.0 + (1.0 - gamma) * (z - 1.0)
+            w_blend = np.maximum(w_blend, self.cfg.epsilon)
+            w_blend = w_blend / w_blend.mean()
+            v_final = float(np.var(w_blend))
+            ess_proj = len(z) / (1.0 + v_proj)
+            ess_final = len(z) / (1.0 + v_final)
+            return dict(
+                v_proj=v_proj,
+                gamma=gamma,
+                w_final=w_blend,
+                v_final=v_final,
+                ess_proj=ess_proj,
+                ess_final=ess_final,
+            )
+
+        # Precompute per-direction stats after blending, to allow either selector
+        per_dir: Dict[str, Dict[str, Any]] = {}
+        for d, z in candidates.items():
+            per_dir[d] = _blend_and_stats(z)
+            per_dir[d]["sse"] = float(np.sum((z - w) ** 2))
+
+        # Choose direction
+        selection_method = self.cfg.select_direction_by
         if len(candidates) == 1:
             chosen = next(iter(candidates))
         else:
-            # Compute L2 distances for each direction
-            sse = {d: float(np.sum((z - w) ** 2)) for d, z in candidates.items()}
-
-            # Check for tie
-            if abs(sse["increasing"] - sse["decreasing"]) <= 1e-12:
-                # Tie-break based on ESS or variance
-                def compute_stats(z: np.ndarray) -> Tuple[float, float]:
-                    v = float(np.var(z))
-                    ess = len(z) / (1.0 + v) if v >= 0 else len(z)
-                    return v, ess
-
-                v_inc, ess_inc = compute_stats(candidates["increasing"])
-                v_dec, ess_dec = compute_stats(candidates["decreasing"])
-
-                if self.cfg.tie_break == "ess":
-                    chosen = "increasing" if ess_inc >= ess_dec else "decreasing"
-                else:  # tie_break == "var"
-                    chosen = "increasing" if v_inc <= v_dec else "decreasing"
+            if selection_method == "l2":
+                sse_inc = per_dir["increasing"]["sse"]
+                sse_dec = per_dir["decreasing"]["sse"]
+                if abs(sse_inc - sse_dec) <= 1e-12:
+                    # Tie-break with post-blend ESS/Var
+                    if self.cfg.tie_break == "ess":
+                        chosen = (
+                            "increasing"
+                            if per_dir["increasing"]["ess_final"]
+                            >= per_dir["decreasing"]["ess_final"]
+                            else "decreasing"
+                        )
+                    else:  # "var"
+                        chosen = (
+                            "increasing"
+                            if per_dir["increasing"]["v_final"]
+                            <= per_dir["decreasing"]["v_final"]
+                            else "decreasing"
+                        )
+                else:
+                    chosen = "increasing" if sse_inc <= sse_dec else "decreasing"
             else:
-                # Choose direction with smaller L2 distance
-                chosen = min(sse, key=lambda k: sse[k])
+                # IF-based selection: need rewards/residuals
+                if selection_method == "ips_if":
+                    if rewards is None:
+                        raise ValueError(
+                            "SIMCal(select_direction_by='ips_if') requires rewards."
+                        )
+                    a_inc = per_dir["increasing"]["w_final"] * rewards
+                    a_dec = per_dir["decreasing"]["w_final"] * rewards
+                    if_var_inc = float(np.var(a_inc - a_inc.mean()))
+                    if_var_dec = float(np.var(a_dec - a_dec.mean()))
+                elif selection_method == "dr_if":
+                    if residuals is None:
+                        raise ValueError(
+                            "SIMCal(select_direction_by='dr_if') requires residuals = rewards - g_oof(scores)."
+                        )
+                    b_inc = per_dir["increasing"]["w_final"] * residuals
+                    b_dec = per_dir["decreasing"]["w_final"] * residuals
+                    # Centered variance of the correction term
+                    if_var_inc = float(np.var(b_inc - b_inc.mean()))
+                    if_var_dec = float(np.var(b_dec - b_dec.mean()))
+                else:
+                    raise AssertionError("Unknown selection method")  # defensive
 
-        w_proj = candidates[chosen]
-        v_proj = float(np.var(w_proj))
+                per_dir["increasing"]["if_var"] = if_var_inc
+                per_dir["decreasing"]["if_var"] = if_var_dec
 
-        # Compute blending parameter to meet variance/ESS constraints
-        gamma = 0.0
+                if abs(if_var_inc - if_var_dec) <= 1e-12:
+                    if self.cfg.tie_break == "ess":
+                        chosen = (
+                            "increasing"
+                            if per_dir["increasing"]["ess_final"]
+                            >= per_dir["decreasing"]["ess_final"]
+                            else "decreasing"
+                        )
+                    else:
+                        chosen = (
+                            "increasing"
+                            if per_dir["increasing"]["v_final"]
+                            <= per_dir["decreasing"]["v_final"]
+                            else "decreasing"
+                        )
+                else:
+                    chosen = "increasing" if if_var_inc <= if_var_dec else "decreasing"
 
-        if v_proj > 0:
-            # ESS constraint: ESS = n / (1 + Var(w)) >= ess_floor * n
-            # => Var(w) <= (1/ess_floor - 1)
-            if self.cfg.ess_floor is not None:
-                v_max_ess = (1.0 / self.cfg.ess_floor) - 1.0
-                if v_proj > v_max_ess:
-                    # Blend to reduce variance: Var((1-γ)*w + γ*1) = (1-γ)²*Var(w)
-                    # Want (1-γ)²*v_proj = v_max_ess
-                    gamma_ess = 1.0 - np.sqrt(v_max_ess / v_proj)
-                    gamma = max(gamma, gamma_ess)
-
-            # Variance cap constraint
-            if self.cfg.var_cap is not None and v_proj > self.cfg.var_cap:
-                # Want (1-γ)²*v_proj = var_cap
-                gamma_var = 1.0 - np.sqrt(self.cfg.var_cap / v_proj)
-                gamma = max(gamma, gamma_var)
-
-        # Clip gamma to [0, 1]
-        gamma = float(np.clip(gamma, 0.0, 1.0))
-
-        # Apply blending: w_cal = (1-γ)*w_proj + γ*1
-        # Since mean(w_proj) = 1, this preserves mean-one property
-        w_cal = 1.0 + (1.0 - gamma) * (w_proj - 1.0)
-
-        # Final safety checks
-        w_cal = np.maximum(w_cal, self.cfg.epsilon)
-        w_cal = w_cal / w_cal.mean()
-
-        # Compute final statistics
+        # Assemble output for chosen direction
+        stats = per_dir[chosen]
+        w_cal = stats["w_final"]
         v_before = float(np.var(w))
-        v_after = float(np.var(w_cal))
-
         info = {
             "direction": chosen,
-            "gamma": gamma,
+            "gamma": stats["gamma"],
             "var_before": v_before,
-            "var_after_proj": v_proj,
-            "var_after_blend": v_after,
+            "var_after_proj": stats["v_proj"],
+            "var_after_blend": stats["v_final"],
             "ess_before": len(w) / (1.0 + v_before),
-            "ess_after_proj": len(w) / (1.0 + v_proj),
-            "ess_after_blend": len(w) / (1.0 + v_after),
+            "ess_after_proj": stats["ess_proj"],
+            "ess_after_blend": stats["ess_final"],
+            "selection_method": selection_method,
         }
-
-        # Add L2 distances if computed
         if len(candidates) > 1:
-            info["l2_distance_increasing"] = float(
-                np.sum((candidates["increasing"] - w) ** 2)
-            )
-            info["l2_distance_decreasing"] = float(
-                np.sum((candidates["decreasing"] - w) ** 2)
-            )
+            info["l2_distance_increasing"] = per_dir["increasing"]["sse"]
+            info["l2_distance_decreasing"] = per_dir["decreasing"]["sse"]
+            if "if_var" in per_dir["increasing"]:
+                info["if_var_increasing"] = per_dir["increasing"]["if_var"]
+                info["if_var_decreasing"] = per_dir["decreasing"]["if_var"]
 
         return w_cal, info

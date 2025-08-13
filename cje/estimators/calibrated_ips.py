@@ -7,7 +7,7 @@ blends toward uniform to meet variance/ESS constraints.
 """
 
 import numpy as np
-from typing import Dict, Optional, Set, Any, Tuple
+from typing import Dict, Optional, Set, Any
 import logging
 
 from .base_estimator import BaseCJEEstimator
@@ -15,6 +15,7 @@ from ..data.models import EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..data.diagnostics import IPSDiagnostics, Status
 from ..utils.diagnostics import compute_weight_diagnostics
+from ..calibration.simcal import SIMCalibrator, SimcalConfig
 
 logger = logging.getLogger(__name__)
 
@@ -61,131 +62,6 @@ class CalibratedIPS(BaseCJEEstimator):
         self._calibration_info: Dict[str, Dict] = {}  # Store calibration details
         self._diagnostics: Optional[IPSDiagnostics] = None
 
-    def _select_best_direction(
-        self,
-        raw_weights: np.ndarray,
-        judge_scores: np.ndarray,
-        rewards: np.ndarray,
-        policy: str,
-    ) -> Tuple[np.ndarray, Dict[str, Any]]:
-        """Select SIMCal direction that minimizes influence function variance.
-
-        Args:
-            raw_weights: Raw importance weights (mean-one)
-            judge_scores: Judge scores for ordering
-            rewards: Reward values
-            policy: Policy name (for logging)
-
-        Returns:
-            Tuple of (calibrated_weights, calibration_info)
-        """
-        from ..calibration.simcal import SIMCalibrator, SimcalConfig
-
-        if self.select_direction_by == "l2":
-            # Use existing auto-selection by L2 distance
-            cfg = SimcalConfig(
-                ess_floor=self.ess_floor,
-                var_cap=self.var_cap,
-                direction="auto",
-                tie_break="ess",
-            )
-            sim = SIMCalibrator(cfg)
-            return sim.transform(raw_weights, judge_scores)
-
-        # Try both directions and pick by IF variance
-        results = {}
-
-        for direction in ["increasing", "decreasing"]:
-            # Get calibrated weights for this direction
-            cfg = SimcalConfig(
-                ess_floor=self.ess_floor,
-                var_cap=self.var_cap,
-                direction=direction,
-                tie_break="ess",
-            )
-            sim = SIMCalibrator(cfg)
-            w_cal, info = sim.transform(raw_weights, judge_scores)
-
-            # Compute IF variance for these weights
-            if self.calibrator is not None and hasattr(self.calibrator, "predict_oof"):
-                # DR-aware: use cross-fitted residuals
-                try:
-                    # Get fold assignments from dataset metadata if available
-                    fold_ids = None
-                    if hasattr(self.sampler, "dataset") and self.sampler.dataset:
-                        # Get data for this policy to find fold assignments
-                        data = self.sampler.get_data_for_policy(policy)
-                        if data:
-                            # Extract fold_ids from metadata
-                            fold_list = []
-                            for d in data:
-                                # Look for cv_fold in the sample metadata
-                                if "cv_fold" in d:
-                                    fold_list.append(d["cv_fold"])
-                            if fold_list and len(fold_list) == len(judge_scores):
-                                fold_ids = np.array(fold_list)
-
-                    if fold_ids is not None:
-                        g_oof = self.calibrator.predict_oof(judge_scores, fold_ids)
-                        residuals = rewards - g_oof
-                        # DR influence function (IPS correction term only, DM term doesn't depend on weights)
-                        ips_correction = w_cal * residuals
-                        if_contrib = ips_correction - ips_correction.mean()
-                        logger.debug(
-                            f"Using DR-aware IF variance for {policy} direction={direction}"
-                        )
-                    else:
-                        # No fold info, fall back to IPS
-                        logger.debug(
-                            f"No fold info available for DR-aware selection, using IPS"
-                        )
-                        weighted_rewards = w_cal * rewards
-                        if_contrib = weighted_rewards - weighted_rewards.mean()
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to compute DR residuals: {e}. Falling back to IPS."
-                    )
-                    # Fall back to IPS
-                    weighted_rewards = w_cal * rewards
-                    if_contrib = weighted_rewards - weighted_rewards.mean()
-            else:
-                # IPS influence function
-                weighted_rewards = w_cal * rewards
-                if_contrib = weighted_rewards - weighted_rewards.mean()
-
-            if_var = float(np.var(if_contrib))
-            results[direction] = {
-                "weights": w_cal,
-                "info": info,
-                "if_var": if_var,
-            }
-
-            logger.debug(
-                f"Direction {direction}: IF var={if_var:.6f}, "
-                f"ESS={info['ess_after_blend']:.1f}, gamma={info['gamma']:.3f}"
-            )
-
-        # Pick direction with lower IF variance (tie-break by ESS)
-        if (
-            abs(results["increasing"]["if_var"] - results["decreasing"]["if_var"])
-            < 1e-10
-        ):
-            # Tie: pick by ESS
-            best_dir = max(results, key=lambda d: results[d]["info"]["ess_after_blend"])
-            logger.debug(f"IF variance tied, selected {best_dir} by ESS")
-        else:
-            best_dir = min(results, key=lambda d: results[d]["if_var"])
-            logger.debug(f"Selected {best_dir} by IF variance")
-
-        # Add selection info to the calibration info
-        best_info = results[best_dir]["info"].copy()
-        best_info["selection_method"] = "if_variance"
-        best_info["if_var_increasing"] = results["increasing"]["if_var"]
-        best_info["if_var_decreasing"] = results["decreasing"]["if_var"]
-        best_info["selected_direction"] = best_dir
-
-        return results[best_dir]["weights"], best_info
-
     def fit(self) -> None:
         """Fit weight calibration for all target policies."""
         # Get judge scores once (same for all policies)
@@ -226,9 +102,60 @@ class CalibratedIPS(BaseCJEEstimator):
                 continue
             rewards = np.array([d["reward"] for d in data], dtype=float)
 
-            # Select best direction based on IF variance (or L2 if configured)
-            calibrated, calib_info = self._select_best_direction(
-                raw_weights, judge_scores, rewards, policy
+            # Decide selection mode
+            # "if_variance" ⇒ try DR IF if possible, else IPS IF; explicit "ips_if"/"dr_if"/"l2" respected.
+            mode = self.select_direction_by
+            residuals = None
+            if mode in ("if_variance", "dr_if"):
+                # Try to compute cross-fitted residuals using the provided calibrator + fold ids
+                fold_ids = None
+                try:
+                    fold_list = [d.get("cv_fold") for d in data]
+                    if all(v is not None for v in fold_list) and len(fold_list) == len(
+                        judge_scores
+                    ):
+                        fold_ids = np.asarray(fold_list, dtype=int)
+                except Exception:
+                    fold_ids = None
+                if (
+                    mode != "ips_if"
+                    and self.calibrator is not None
+                    and hasattr(self.calibrator, "predict_oof")
+                    and fold_ids is not None
+                ):
+                    try:
+                        g_oof = self.calibrator.predict_oof(judge_scores, fold_ids)
+                        residuals = rewards - g_oof
+                        sel_method = "dr_if"
+                    except Exception as e:
+                        logger.warning(
+                            f"DR residuals unavailable ({e}); falling back to IPS IF."
+                        )
+                        sel_method = "ips_if" if mode == "if_variance" else "l2"
+                else:
+                    sel_method = "ips_if" if mode == "if_variance" else "l2"
+            elif mode == "ips_if":
+                sel_method = "ips_if"
+            elif mode == "l2":
+                sel_method = "l2"
+            else:
+                # Treat anything else as l2 for backward compatibility
+                sel_method = "l2"
+
+            # Run SIMCal with requested selection rule
+            cfg = SimcalConfig(
+                ess_floor=self.ess_floor,
+                var_cap=self.var_cap,
+                direction="auto",
+                tie_break="ess",
+                select_direction_by=sel_method,
+            )
+            sim = SIMCalibrator(cfg)
+            calibrated, calib_info = sim.transform(
+                raw_weights,
+                judge_scores,
+                rewards=rewards if sel_method == "ips_if" else None,
+                residuals=residuals if sel_method == "dr_if" else None,
             )
 
             # Cache results
