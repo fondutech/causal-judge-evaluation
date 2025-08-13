@@ -14,6 +14,7 @@ from .raw_ips import RawIPS
 from .base_estimator import BaseCJEEstimator
 from .outcome_models import IsotonicOutcomeModel, CalibratorBackedOutcomeModel
 from ..data.models import EstimationResult
+from ..data.diagnostics import DRDiagnostics, IPSDiagnostics
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..data.fresh_draws import FreshDrawDataset
 from ..utils.fresh_draws import validate_fresh_draws
@@ -107,9 +108,15 @@ class DREstimator(BaseCJEEstimator):
         self._fresh_draws: Dict[str, FreshDrawDataset] = {}
         self._outcome_fitted = False
 
-        # Influence function storage (default True for richer diagnostics)
-        self.store_influence = kwargs.pop("store_influence", True)
+        # Influence function storage (default False to save memory, can be enabled for diagnostics)
+        self.store_influence = kwargs.pop("store_influence", False)
         self._influence_functions: Dict[str, np.ndarray] = {}
+
+        # Store components for diagnostics
+        self._dm_component: Dict[str, np.ndarray] = {}
+        self._ips_correction: Dict[str, np.ndarray] = {}
+        self._fresh_rewards: Dict[str, np.ndarray] = {}
+        self._outcome_predictions: Dict[str, np.ndarray] = {}
 
         # Generate fold assignments for cross-fitting
         n_samples = len(sampler.dataset.samples)
@@ -291,13 +298,8 @@ class DREstimator(BaseCJEEstimator):
             weights = self.ips_estimator.get_weights(policy)
             if weights is None:
                 # Check if this is a no_overlap case
-                diag = self.ips_estimator.get_diagnostics(policy)
-                if diag and diag.get("status") == "no_overlap":
-                    logger.warning(
-                        f"Policy '{policy}' has no overlap with base policy, returning NaN"
-                    )
-                else:
-                    logger.warning(f"No weights for policy '{policy}', skipping")
+                # get_diagnostics() doesn't take policy argument, it returns all
+                logger.warning(f"No weights for policy '{policy}', skipping")
                 estimates.append(np.nan)
                 standard_errors.append(np.nan)
                 n_samples_used[policy] = 0
@@ -450,6 +452,12 @@ class DREstimator(BaseCJEEstimator):
             ips_correction = (weights * (logged_rewards - g_logged)).mean()
             dr_estimate = dm_term + ips_correction
 
+            # Store components for diagnostics (avoid recomputation later)
+            self._dm_component[policy] = g_fresh
+            self._ips_correction[policy] = weights * (logged_rewards - g_logged)
+            self._fresh_rewards[policy] = logged_rewards  # Actually logged rewards
+            self._outcome_predictions[policy] = g_logged
+
             # Compute standard error using influence function
             if_contributions = (
                 g_fresh + weights * (logged_rewards - g_logged) - dr_estimate
@@ -472,97 +480,34 @@ class DREstimator(BaseCJEEstimator):
                 f"(DM={dm_term:.4f}, IPS_corr={ips_correction:.4f})"
             )
 
-        # Compute DR diagnostics for all policies
+        # Build DR diagnostics using stored components
         dr_diagnostics_per_policy: Dict[str, Dict[str, Any]] = {}
-        dr_calibration_data: Dict[str, Dict[str, Any]] = {}
 
-        # Re-compute diagnostics for each policy (we need to loop again to have all estimates)
         for idx, policy in enumerate(self.sampler.target_policies):
-            if policy not in self._fresh_draws or np.isnan(estimates[idx]):
+            if policy not in self._dm_component or np.isnan(estimates[idx]):
                 continue
 
-            # Get components (re-fetch, could optimize by storing above)
-            weights = self.ips_estimator.get_weights(policy)
-            data = self.sampler.get_data_for_policy(policy)
-            if weights is None or data is None:
-                continue
+            # Use stored components
+            dm_component = self._dm_component[policy]
+            ips_correction = self._ips_correction[policy]
 
-            logged_rewards = np.array([d["reward"] for d in data])
-            logged_prompts = [d["prompt"] for d in data]
-            logged_responses = [d["response"] for d in data]
-            logged_scores = np.array([d.get("judge_score") for d in data])
-            logged_prompt_ids = [str(d["prompt_id"]) for d in data]
-
-            # Get fold assignments
-            valid_fold_ids_list = []
-            if self._promptid_to_fold:
-                for pid in logged_prompt_ids:
-                    fold = self._promptid_to_fold.get(pid, 0)
-                    valid_fold_ids_list.append(fold)
-            valid_fold_ids = np.array(valid_fold_ids_list)
-
-            # Get outcome predictions
-            if hasattr(self.outcome_model, "predict"):
-                g_logged = self.outcome_model.predict(
-                    logged_prompts, logged_responses, logged_scores, valid_fold_ids
-                )
-            else:
-                g_logged = self.outcome_model.predict(
-                    logged_prompts, logged_responses, logged_scores
-                )
-
-            # Recompute g_fresh and variance (could optimize by storing)
-            fresh_dataset = self._fresh_draws[policy]
-            g_fresh_all = []
-            fresh_draw_var_per_prompt_list = []
-
-            for i, prompt_id in enumerate(logged_prompt_ids):
-                fresh_scores = fresh_dataset.get_scores_for_prompt_id(prompt_id)
-                fresh_prompts = [logged_prompts[i]] * len(fresh_scores)
-                fresh_responses = [""] * len(fresh_scores)
-                fresh_fold_ids = np.full(len(fresh_scores), valid_fold_ids[i])
-
-                if hasattr(self.outcome_model, "predict"):
-                    g_fresh_prompt = self.outcome_model.predict(
-                        fresh_prompts, fresh_responses, fresh_scores, fresh_fold_ids
-                    )
-                else:
-                    g_fresh_prompt = self.outcome_model.predict(
-                        fresh_prompts, fresh_responses, fresh_scores
-                    )
-
-                g_fresh_all.append(g_fresh_prompt.mean())
-                if len(g_fresh_prompt) > 1:
-                    fresh_draw_var_per_prompt_list.append(g_fresh_prompt.var())
-                else:
-                    fresh_draw_var_per_prompt_list.append(0.0)
-
-            g_fresh = np.array(g_fresh_all)
-            fresh_draw_var_per_prompt = np.array(fresh_draw_var_per_prompt_list)
-
-            # Compute diagnostics
-            diag_dataclass = compute_dr_policy_diagnostics(
-                weights=weights,
-                rewards=logged_rewards,
-                g_logged=g_logged,
-                g_fresh=g_fresh,
+            # Build diagnostic dict using the simpler function signature
+            diag_dict = compute_dr_policy_diagnostics(
+                dm_component=dm_component,
+                ips_correction=ips_correction,
                 dr_estimate=estimates[idx],
-                se=standard_errors[idx],
-                fresh_draw_var_per_prompt=fresh_draw_var_per_prompt,
-                draws_per_prompt=fresh_dataset.draws_per_prompt,
-                coverage_ok=True,  # Already validated
-                missing_prompts=0,  # Would have errored if missing
-                cross_fitted=True,  # All our models are cross-fitted
-                n_folds=self.n_folds,
+                fresh_rewards=None,  # We don't have fresh rewards separate
+                outcome_predictions=self._outcome_predictions.get(policy),
+                influence_functions=(
+                    self._influence_functions.get(policy)
+                    if self.store_influence
+                    else None
+                ),
+                unique_folds=list(range(self.n_folds)),
+                policy=policy,
             )
-            # Convert dataclass to dict for JSON serialization
-            dr_diagnostics_per_policy[policy] = dataclasses.asdict(diag_dataclass)
 
-            # Store calibration data for potential plotting
-            dr_calibration_data[policy] = {
-                "g_logged": g_logged,
-                "rewards": logged_rewards,
-            }
+            dr_diagnostics_per_policy[policy] = diag_dict
 
         # Add DR-specific metadata
         dr_metadata = {
@@ -581,7 +526,8 @@ class DREstimator(BaseCJEEstimator):
                     for p, d in dr_diagnostics_per_policy.items()
                 },
                 "worst_if_tail_ratio_99_5": max(
-                    d["if_tail_ratio_99_5"] for d in dr_diagnostics_per_policy.values()
+                    d.get("if_tail_ratio_99_5", 0.0)
+                    for d in dr_diagnostics_per_policy.values()
                 ),
             }
 
@@ -593,21 +539,25 @@ class DREstimator(BaseCJEEstimator):
                 }
 
         # Get IPS diagnostics from the IPS estimator
-        ips_diagnostics = {}
+        ips_diag = None
         if hasattr(self.ips_estimator, "get_diagnostics"):
-            ips_diagnostics = self.ips_estimator.get_diagnostics()
+            ips_diag = self.ips_estimator.get_diagnostics()
 
-        # Merge all diagnostics
-        all_diagnostics = {"ips": ips_diagnostics, **dr_metadata}
+        # Build DRDiagnostics object
+        diagnostics = self._build_dr_diagnostics(
+            estimates=estimates,
+            standard_errors=standard_errors,
+            n_samples_used=n_samples_used,
+            dr_diagnostics_per_policy=dr_diagnostics_per_policy,
+            ips_diagnostics=ips_diag,
+        )
 
-        # Build metadata
+        # Build metadata (keep dr_diagnostics for backward compatibility with visualization)
         metadata = {
-            "diagnostics": all_diagnostics,
             "target_policies": list(self.sampler.target_policies),
             "weight_method": "calibrated" if self.use_calibrated_weights else "raw",
-            "dr_diagnostics": dr_diagnostics_per_policy,
+            "dr_diagnostics": dr_diagnostics_per_policy,  # Keep for visualization
             "dr_overview": dr_overview,
-            "dr_calibration_data": dr_calibration_data,
         }
 
         # Add influence functions if stored
@@ -619,8 +569,128 @@ class DREstimator(BaseCJEEstimator):
             standard_errors=np.array(standard_errors),
             n_samples_used=n_samples_used,
             method="dr_base",
+            diagnostics=diagnostics,  # Add the DRDiagnostics object
             metadata=metadata,
         )
+
+    def _build_dr_diagnostics(
+        self,
+        estimates: List[float],
+        standard_errors: List[float],
+        n_samples_used: Dict[str, int],
+        dr_diagnostics_per_policy: Dict[str, Dict[str, Any]],
+        ips_diagnostics: Optional[IPSDiagnostics],
+    ) -> DRDiagnostics:
+        """Build DRDiagnostics object from components.
+
+        Args:
+            estimates: List of estimates per policy
+            standard_errors: List of SEs per policy
+            n_samples_used: Dict of samples used per policy
+            dr_diagnostics_per_policy: Detailed DR diagnostics
+            ips_diagnostics: IPSDiagnostics from internal IPS estimator
+
+        Returns:
+            DRDiagnostics object
+        """
+        # Build estimates/SE dicts
+        policies = list(self.sampler.target_policies)
+        estimates_dict = {
+            p: float(e) for p, e in zip(policies, estimates) if not np.isnan(e)
+        }
+        se_dict = {
+            p: float(se) for p, se in zip(policies, standard_errors) if not np.isnan(se)
+        }
+
+        # Extract summary metrics from detailed diagnostics
+        r2_values = []
+        rmse_values = []
+        if_tail_ratios = []
+
+        for policy, diag in dr_diagnostics_per_policy.items():
+            if "r2_oof" in diag and diag["r2_oof"] is not None:
+                r2_values.append(diag["r2_oof"])
+            if "residual_rmse" in diag and diag["residual_rmse"] is not None:
+                rmse_values.append(diag["residual_rmse"])
+            if "if_tail_ratio_99_5" in diag:
+                if_tail_ratios.append(diag["if_tail_ratio_99_5"])
+            else:
+                # Use a default value if influence functions weren't computed
+                if_tail_ratios.append(0.0)
+
+        # Compute ranges
+        outcome_r2_range = (min(r2_values), max(r2_values)) if r2_values else (0.0, 0.0)
+        outcome_rmse_mean = np.mean(rmse_values) if rmse_values else 0.0
+        worst_if_tail = max(if_tail_ratios) if if_tail_ratios else 0.0
+
+        # Build DRDiagnostics
+        if ips_diagnostics is not None:
+            # Copy fields from IPS diagnostics
+            diagnostics = DRDiagnostics(
+                estimator_type=f"DR_{ips_diagnostics.estimator_type}",
+                method=self.__class__.__name__.lower().replace("estimator", ""),
+                n_samples_total=ips_diagnostics.n_samples_total,
+                n_samples_valid=ips_diagnostics.n_samples_valid,
+                n_policies=len(policies),
+                policies=policies,
+                estimates=estimates_dict,
+                standard_errors=se_dict,
+                n_samples_used=n_samples_used,
+                # Weight fields from IPS
+                weight_ess=ips_diagnostics.weight_ess,
+                weight_status=ips_diagnostics.weight_status,
+                ess_per_policy=ips_diagnostics.ess_per_policy,
+                max_weight_per_policy=ips_diagnostics.max_weight_per_policy,
+                weight_tail_ratio_per_policy=ips_diagnostics.weight_tail_ratio_per_policy,
+                # Calibration fields (may be None)
+                calibration_rmse=ips_diagnostics.calibration_rmse,
+                calibration_r2=ips_diagnostics.calibration_r2,
+                calibration_coverage=ips_diagnostics.calibration_coverage,
+                n_oracle_labels=ips_diagnostics.n_oracle_labels,
+                # DR-specific fields
+                dr_cross_fitted=True,
+                dr_n_folds=self.n_folds,
+                outcome_r2_range=outcome_r2_range,
+                outcome_rmse_mean=outcome_rmse_mean,
+                worst_if_tail_ratio=worst_if_tail,
+                dr_diagnostics_per_policy=dr_diagnostics_per_policy,
+                influence_functions=(
+                    self._influence_functions if self.store_influence else None
+                ),
+            )
+        else:
+            # No IPS diagnostics available, create minimal version
+            from ..data.diagnostics import Status
+
+            diagnostics = DRDiagnostics(
+                estimator_type="DR",
+                method=self.__class__.__name__.lower().replace("estimator", ""),
+                n_samples_total=len(self.sampler.dataset.samples),
+                n_samples_valid=self.sampler.n_valid_samples,
+                n_policies=len(policies),
+                policies=policies,
+                estimates=estimates_dict,
+                standard_errors=se_dict,
+                n_samples_used=n_samples_used,
+                # Minimal weight fields
+                weight_ess=0.0,
+                weight_status=Status.WARNING,
+                ess_per_policy={},
+                max_weight_per_policy={},
+                weight_tail_ratio_per_policy={},
+                # DR-specific fields
+                dr_cross_fitted=True,
+                dr_n_folds=self.n_folds,
+                outcome_r2_range=outcome_r2_range,
+                outcome_rmse_mean=outcome_rmse_mean,
+                worst_if_tail_ratio=worst_if_tail,
+                dr_diagnostics_per_policy=dr_diagnostics_per_policy,
+                influence_functions=(
+                    self._influence_functions if self.store_influence else None
+                ),
+            )
+
+        return diagnostics
 
     def get_weights(self, policy: str) -> Optional[np.ndarray]:
         """Get importance weights for a policy.
@@ -641,7 +711,7 @@ class DREstimator(BaseCJEEstimator):
         Returns:
             Dictionary with diagnostic metrics
         """
-        diagnostics = {
+        diagnostics: Dict[str, Any] = {
             "weight_method": "calibrated" if self.use_calibrated_weights else "raw",
             "outcome_model": type(self.outcome_model).__name__,
             "n_folds": self.n_folds,
@@ -650,8 +720,12 @@ class DREstimator(BaseCJEEstimator):
 
         # Add IPS diagnostics if available
         if hasattr(self.ips_estimator, "get_diagnostics"):
-            ips_diagnostics = self.ips_estimator.get_diagnostics()
-            diagnostics.update({f"ips_{k}": v for k, v in ips_diagnostics.items()})
+            ips_diag = self.ips_estimator.get_diagnostics()
+            # ips_diag is an IPSDiagnostics object, not a dict
+            if ips_diag is not None:
+                # Convert to dict for legacy compatibility
+                diagnostics["ips_weight_ess"] = ips_diag.weight_ess
+                diagnostics["ips_n_samples"] = ips_diag.n_samples_valid
 
         return diagnostics
 

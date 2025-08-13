@@ -14,9 +14,10 @@ logger = logging.getLogger(__name__)
 
 # ========== Core Metrics ==========
 
+
 def effective_sample_size(weights: np.ndarray) -> float:
     """Compute ESS = (sum(w))^2 / sum(w^2).
-    
+
     ESS measures how many "effective" samples we have after weighting.
     ESS = n means perfect overlap, ESS << n means poor overlap.
     """
@@ -34,12 +35,12 @@ def tail_weight_ratio(
     weights: np.ndarray, q_low: float = 0.05, q_high: float = 0.99
 ) -> float:
     """Compute ratio of high to low quantiles.
-    
+
     Args:
         weights: Importance weights
         q_low: Lower quantile (default 0.05 to avoid instability)
         q_high: Upper quantile (default 0.99)
-    
+
     Returns:
         Ratio of high/low quantiles (inf if low quantile is ~0)
     """
@@ -52,11 +53,11 @@ def tail_weight_ratio(
 
 def mass_concentration(weights: np.ndarray, top_pct: float = 0.01) -> float:
     """Fraction of total weight held by top x% of samples.
-    
+
     Args:
         weights: Importance weights
         top_pct: Top percentage to consider (0.01 = top 1%)
-    
+
     Returns:
         Fraction of total weight in top samples
     """
@@ -68,20 +69,21 @@ def mass_concentration(weights: np.ndarray, top_pct: float = 0.01) -> float:
 
 # ========== Diagnostic Computation ==========
 
+
 def compute_weight_diagnostics(
     weights: np.ndarray, policy: str = "unknown"
 ) -> Dict[str, Any]:
     """Compute weight diagnostics for a single policy.
-    
+
     Returns dict with: ess_fraction, max_weight, tail_ratio_99_5, status
     """
     n = len(weights)
     ess = effective_sample_size(weights)
     ess_fraction = ess / n if n > 0 else 0.0
-    
+
     # Tail ratio (p99/p5)
     tail_ratio = tail_weight_ratio(weights, 0.05, 0.99)
-    
+
     # Determine status
     if ess_fraction < 0.01 or tail_ratio > 1000:
         status = Status.CRITICAL
@@ -89,7 +91,7 @@ def compute_weight_diagnostics(
         status = Status.WARNING
     else:
         status = Status.GOOD
-    
+
     return {
         "ess_fraction": ess_fraction,
         "max_weight": float(weights.max()),
@@ -100,10 +102,11 @@ def compute_weight_diagnostics(
 
 # ========== Legacy Interface (for backward compatibility) ==========
 
+
 @dataclass
 class WeightDiagnostics:
     """Container for weight diagnostic results (legacy interface)."""
-    
+
     policy_name: str
     min_weight: float
     max_weight: float
@@ -113,12 +116,12 @@ class WeightDiagnostics:
     extreme_weight_count: int  # Weights beyond thresholds
     zero_weight_count: int  # Exactly zero weights
     consistency_flag: str  # "GOOD", "WARNING", "CRITICAL"
-    
+
     def summary(self) -> str:
         """Format diagnostics as readable summary."""
         flag_emoji = {"GOOD": "✅", "WARNING": "⚠️", "CRITICAL": "❌"}
         emoji = flag_emoji.get(self.consistency_flag, "❓")
-        
+
         lines = [
             f"{emoji} {self.policy_name} Weight Diagnostics:",
             f"  ESS: {self.ess_fraction:.1%} (Effective Sample Size)",
@@ -137,12 +140,12 @@ def diagnose_weights(
     extreme_quantile: float = 0.99,
 ) -> WeightDiagnostics:
     """Compute comprehensive weight diagnostics (legacy interface).
-    
+
     Args:
         weights: Importance weights
         policy_name: Name of the policy
         extreme_quantile: Quantile for defining extreme weights
-    
+
     Returns:
         WeightDiagnostics dataclass with all metrics
     """
@@ -159,18 +162,18 @@ def diagnose_weights(
             zero_weight_count=0,
             consistency_flag="CRITICAL",
         )
-    
+
     # Compute ESS
     ess = effective_sample_size(weights)
     ess_fraction = ess / n
-    
+
     # Compute thresholds
     extreme_threshold = np.quantile(weights, extreme_quantile)
-    
+
     # Count special cases
     extreme_count = int(np.sum(weights > extreme_threshold))
     zero_count = int(np.sum(weights == 0))
-    
+
     # Determine consistency flag
     if ess_fraction < 0.01 or zero_count > n * 0.1:
         flag = "CRITICAL"
@@ -178,7 +181,7 @@ def diagnose_weights(
         flag = "WARNING"
     else:
         flag = "GOOD"
-    
+
     return WeightDiagnostics(
         policy_name=policy_name,
         min_weight=float(weights.min()),

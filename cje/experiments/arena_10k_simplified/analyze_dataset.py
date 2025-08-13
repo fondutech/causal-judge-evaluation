@@ -55,9 +55,7 @@ from cje import (
     analyze_extreme_weights,
 )
 
-from cje.utils.diagnostics.dr import (
-    compute_dr_diagnostics_all,
-)
+# DR diagnostics are now accessed directly from results.diagnostics
 from cje.utils.diagnostics.display import (
     format_dr_diagnostic_summary,
 )
@@ -387,9 +385,7 @@ def display_weight_diagnostics(
     base_diag = diagnose_weights(
         np.ones(len(base_rewards)),
         "base",
-        expected_weight=1.0,
-        extreme_threshold_high=args.extreme_threshold_high,
-        extreme_threshold_low=args.extreme_threshold_low,
+        extreme_quantile=0.99,
     )
     all_weight_diagnostics["base"] = base_diag
 
@@ -397,13 +393,10 @@ def display_weight_diagnostics(
     for policy in sampler.target_policies:
         weights = estimator.get_weights(policy)
         if weights is not None:
-            expected = 1.0 if policy == "clone" else None
             diag = diagnose_weights(
                 weights,
                 policy,
-                expected,
-                extreme_threshold_high=args.extreme_threshold_high,
-                extreme_threshold_low=args.extreme_threshold_low,
+                extreme_quantile=0.99,
             )
             all_weight_diagnostics[policy] = diag
 
@@ -425,22 +418,53 @@ def display_weight_diagnostics(
 
 def display_dr_diagnostics(results: Any, args: Any) -> None:
     """Display DR diagnostics if available."""
+    # Check if we have DR diagnostics in the new format (DRDiagnostics object)
+    if hasattr(results, "diagnostics") and results.diagnostics is not None:
+        from cje.data.diagnostics import DRDiagnostics
+
+        if isinstance(results.diagnostics, DRDiagnostics):
+            print(f"\n6. Doubly Robust diagnostics:")
+            summary = format_dr_diagnostic_summary(results.diagnostics)
+            for line in summary.split("\n"):
+                print(f"   {line}")
+
+            # Check for issues
+            if results.diagnostics.worst_if_tail_ratio > 100:
+                print("\n   ⚠️  Warning: Heavy-tailed influence functions detected")
+                print(
+                    "      Consider using more fresh draws or checking policy overlap"
+                )
+            return
+
+    # Fallback to legacy format
     if (
         args.estimator in ["dr-cpo", "mrdr", "tmle"]
         and "dr_diagnostics" in results.metadata
     ):
         print(f"\n6. Doubly Robust diagnostics:")
-
-        dr_diagnostics = compute_dr_diagnostics_all(results, per_policy=True)
+        # Use the dr_diagnostics directly from metadata
+        dr_diagnostics = results.metadata["dr_diagnostics"]
         summary = format_dr_diagnostic_summary(dr_diagnostics)
 
         for line in summary.split("\n"):
             print(f"   {line}")
 
         # Check for issues
-        if dr_diagnostics.get("worst_if_tail_ratio", 0) > 100:
-            print("\n   ⚠️  Warning: Heavy-tailed influence functions detected")
-            print("      Consider using more fresh draws or checking policy overlap")
+        if isinstance(dr_diagnostics, dict):
+            worst_tail = (
+                max(
+                    d.get("if_tail_ratio_99_5", 0)
+                    for d in dr_diagnostics.values()
+                    if isinstance(d, dict)
+                )
+                if dr_diagnostics
+                else 0
+            )
+            if worst_tail > 100:
+                print("\n   ⚠️  Warning: Heavy-tailed influence functions detected")
+                print(
+                    "      Consider using more fresh draws or checking policy overlap"
+                )
 
         if args.estimator == "tmle" and "tmle_max_score_z" in dr_diagnostics:
             if dr_diagnostics["tmle_max_score_z"] > 2:
@@ -545,11 +569,13 @@ def generate_visualizations(
                 raw_weights_dict[policy] = weights
 
         if raw_weights_dict and calibrated_weights_dict:
+            # Pass diagnostics object if available
             fig, _ = plot_weight_dashboard(
                 raw_weights_dict,
                 calibrated_weights_dict,
                 n_samples=sampler.n_valid_samples,
                 save_path=plot_dir / "weight_dashboard",
+                diagnostics=results.diagnostics,  # Pass the new diagnostics object
             )
             print(f"   ✓ Weight dashboard → {plot_dir}/weight_dashboard.png")
             plt.close(fig)

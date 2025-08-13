@@ -6,7 +6,7 @@ from typing import Dict, Optional
 
 from .base_estimator import BaseCJEEstimator
 from ..data.models import EstimationResult
-from ..data.diagnostics import Diagnostics, Status
+from ..data.diagnostics import IPSDiagnostics, Status
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..utils.diagnostics import compute_weight_diagnostics
 
@@ -37,6 +37,7 @@ class RawIPS(BaseCJEEstimator):
         self.clip_weight = clip_weight
         self.store_influence = store_influence
         self._influence_functions: Dict[str, np.ndarray] = {}
+        self._diagnostics: Optional[IPSDiagnostics] = None
 
     def fit(self) -> None:
         """Compute raw importance weights for all policies."""
@@ -132,26 +133,35 @@ class RawIPS(BaseCJEEstimator):
         diagnostics = self._build_diagnostics(result)
         result.diagnostics = diagnostics
 
+        # Store diagnostics for later access
+        self._diagnostics = diagnostics
+
         # Store for later access
         self._results = result
 
         return result
-    
-    def _build_diagnostics(self, result: EstimationResult) -> Diagnostics:
+
+    def _build_diagnostics(self, result: EstimationResult) -> IPSDiagnostics:
         """Build diagnostics for raw IPS estimation.
-        
+
         Args:
             result: The estimation result
-            
+
         Returns:
-            Diagnostics object
+            IPSDiagnostics object
         """
         # Get dataset info
-        dataset = getattr(self.sampler, 'dataset', None) or getattr(self.sampler, '_dataset', None)
+        dataset = getattr(self.sampler, "dataset", None) or getattr(
+            self.sampler, "_dataset", None
+        )
         n_total = 0
         if dataset:
-            n_total = dataset.n_samples if hasattr(dataset, 'n_samples') else len(dataset.samples)
-        
+            n_total = (
+                dataset.n_samples
+                if hasattr(dataset, "n_samples")
+                else len(dataset.samples)
+            )
+
         # Build estimates dict
         estimates_dict = {}
         se_dict = {}
@@ -160,9 +170,41 @@ class RawIPS(BaseCJEEstimator):
             if i < len(result.estimates):
                 estimates_dict[policy] = float(result.estimates[i])
                 se_dict[policy] = float(result.standard_errors[i])
-        
-        # Create base diagnostics
-        diag = Diagnostics(
+
+        # Compute weight diagnostics
+        ess_per_policy = {}
+        max_weight_per_policy = {}
+        tail_ratio_per_policy = {}
+        overall_ess = 0.0
+        total_n = 0
+
+        for policy in policies:
+            weights = self.get_weights(policy)
+            if weights is not None and len(weights) > 0:
+                w_diag = compute_weight_diagnostics(weights, policy)
+                ess_per_policy[policy] = w_diag["ess_fraction"]
+                max_weight_per_policy[policy] = w_diag["max_weight"]
+                tail_ratio_per_policy[policy] = w_diag["tail_ratio_99_5"]
+
+                # Track overall
+                n = len(weights)
+                overall_ess += w_diag["ess_fraction"] * n
+                total_n += n
+
+        # Compute overall weight ESS
+        weight_ess = overall_ess / total_n if total_n > 0 else 0.0
+
+        # Determine status based on ESS and tail ratios
+        worst_tail = max(tail_ratio_per_policy.values()) if tail_ratio_per_policy else 0
+        if weight_ess < 0.01 or worst_tail > 1000:
+            weight_status = Status.CRITICAL
+        elif weight_ess < 0.1 or worst_tail > 100:
+            weight_status = Status.WARNING
+        else:
+            weight_status = Status.GOOD
+
+        # Create IPSDiagnostics
+        diagnostics = IPSDiagnostics(
             estimator_type="RawIPS",
             method="raw_ips",
             n_samples_total=n_total,
@@ -171,42 +213,17 @@ class RawIPS(BaseCJEEstimator):
             policies=policies,
             estimates=estimates_dict,
             standard_errors=se_dict,
-            n_samples_used=result.n_samples_used
+            n_samples_used=result.n_samples_used,
+            weight_ess=weight_ess,
+            weight_status=weight_status,
+            ess_per_policy=ess_per_policy,
+            max_weight_per_policy=max_weight_per_policy,
+            weight_tail_ratio_per_policy=tail_ratio_per_policy,
+            # No calibration fields for RawIPS
         )
-        
-        # Add weight diagnostics (similar to CalibratedIPS but without calibration)
-        ess_per_policy = {}
-        max_weight_per_policy = {}
-        tail_ratio_per_policy = {}
-        overall_ess = 0.0
-        total_n = 0
-        
-        for policy in policies:
-            weights = self.get_weights(policy)
-            if weights is not None and len(weights) > 0:
-                w_diag = compute_weight_diagnostics(weights, policy)
-                ess_per_policy[policy] = w_diag['ess_fraction']
-                max_weight_per_policy[policy] = w_diag['max_weight']
-                tail_ratio_per_policy[policy] = w_diag['tail_ratio_99_5']
-                
-                # Track overall
-                n = len(weights)
-                overall_ess += w_diag['ess_fraction'] * n
-                total_n += n
-        
-        if total_n > 0:
-            diag.weight_ess = overall_ess / total_n
-            diag.ess_per_policy = ess_per_policy
-            diag.max_weight_per_policy = max_weight_per_policy
-            diag.weight_tail_ratio_per_policy = tail_ratio_per_policy
-            
-            # Determine status based on ESS and tail ratios
-            worst_tail = max(tail_ratio_per_policy.values()) if tail_ratio_per_policy else 0
-            if diag.weight_ess < 0.01 or worst_tail > 1000:
-                diag.weight_status = Status.CRITICAL
-            elif diag.weight_ess < 0.1 or worst_tail > 100:
-                diag.weight_status = Status.WARNING
-            else:
-                diag.weight_status = Status.GOOD
-        
-        return diag
+
+        return diagnostics
+
+    def get_diagnostics(self) -> Optional[IPSDiagnostics]:
+        """Get the diagnostics object."""
+        return self._diagnostics

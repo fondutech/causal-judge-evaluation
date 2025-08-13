@@ -1,6 +1,6 @@
 """Data models for CJE using Pydantic."""
 
-from typing import Dict, List, Optional, Any, Tuple, TYPE_CHECKING, ForwardRef
+from typing import Dict, List, Optional, Any, Tuple, TYPE_CHECKING, ForwardRef, Union
 from enum import Enum
 from pydantic import BaseModel, Field, field_validator
 import numpy as np
@@ -145,8 +145,7 @@ class EstimationResult(BaseModel):
     """Result from a CJE estimator.
 
     The diagnostics field is the single source of truth for all diagnostic information.
-    The metadata field is kept for backward compatibility but should not be used for
-    new diagnostic data.
+    It will be either IPSDiagnostics or DRDiagnostics depending on the estimator.
     """
 
     estimates: np.ndarray = Field(..., description="Point estimates for each policy")
@@ -154,9 +153,9 @@ class EstimationResult(BaseModel):
     n_samples_used: Dict[str, int] = Field(..., description="Valid samples per policy")
     method: str = Field(..., description="Estimation method used")
 
-    # New unified diagnostics field - use Any to avoid circular import
-    diagnostics: Optional[Any] = Field(
-        None, description="Unified diagnostic suite containing all diagnostics"
+    # Use forward references to avoid circular import
+    diagnostics: Optional[Union["IPSDiagnostics", "DRDiagnostics"]] = Field(
+        None, description="Diagnostic information (IPSDiagnostics or DRDiagnostics)"
     )
 
     # Keep metadata for backward compatibility
@@ -286,3 +285,10 @@ class EstimationResult(BaseModel):
             result["diagnostics"] = self.metadata["diagnostics"]
 
         return result
+
+
+# Import at the end to resolve forward references
+from .diagnostics import IPSDiagnostics, DRDiagnostics
+
+# Update forward references
+EstimationResult.model_rebuild()

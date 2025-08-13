@@ -81,6 +81,16 @@ class TMLEEstimator(DREstimator):
         # Per-policy epsilon/diagnostics
         self._tmle_info: Dict[str, Dict[str, Any]] = {}
 
+        # Initialize storage for diagnostics (inherited from DREstimator but ensure they exist)
+        if not hasattr(self, "_dm_component"):
+            self._dm_component: Dict[str, np.ndarray] = {}
+        if not hasattr(self, "_ips_correction"):
+            self._ips_correction: Dict[str, np.ndarray] = {}
+        if not hasattr(self, "_fresh_rewards"):
+            self._fresh_rewards: Dict[str, np.ndarray] = {}
+        if not hasattr(self, "_outcome_predictions"):
+            self._outcome_predictions: Dict[str, np.ndarray] = {}
+
     def estimate(self) -> EstimationResult:
         """Compute TMLE estimates for all target policies.
 
@@ -309,23 +319,31 @@ class TMLEEstimator(DREstimator):
             g_fresh0 = np.array(g_fresh0_all)
             fresh_var = np.array(fresh_var_all)
 
-            # Compute diagnostics using ORIGINAL predictions for honest R²
-            diag = compute_dr_policy_diagnostics(
-                weights=weights,
-                rewards=rewards,
-                g_logged=g_logged0,  # Original, not targeted
-                g_fresh=g_fresh0,  # Original, not targeted
+            # Store components for diagnostics (like parent DR does)
+            self._dm_component[policy] = g_fresh0
+            self._ips_correction[policy] = weights * (rewards - g_logged0)
+            self._fresh_rewards[policy] = rewards  # Actually logged rewards
+            self._outcome_predictions[policy] = g_logged0
+
+            # Compute diagnostics using stored components with new signature
+            from ..utils.diagnostics.dr import compute_dr_policy_diagnostics
+
+            diag_dict = compute_dr_policy_diagnostics(
+                dm_component=self._dm_component[policy],
+                ips_correction=self._ips_correction[policy],
                 dr_estimate=estimates[idx],
-                se=standard_errors[idx],
-                fresh_draw_var_per_prompt=fresh_var,
-                draws_per_prompt=fresh_dataset.draws_per_prompt,
-                coverage_ok=True,
-                missing_prompts=0,
-                cross_fitted=True,
-                n_folds=self.n_folds,
+                fresh_rewards=None,  # We don't have separate fresh rewards
+                outcome_predictions=self._outcome_predictions.get(policy),
+                influence_functions=(
+                    self._influence_functions.get(policy)
+                    if self.store_influence
+                    else None
+                ),
+                unique_folds=list(range(self.n_folds)),
+                policy=policy,
             )
 
-            dr_diagnostics_per_policy[policy] = diag.__dict__
+            dr_diagnostics_per_policy[policy] = diag_dict
 
             # Store calibration data
             dr_calibration_data[policy] = {
@@ -343,29 +361,39 @@ class TMLEEstimator(DREstimator):
                     for p, d in dr_diagnostics_per_policy.items()
                 },
                 "worst_if_tail_ratio_99_5": max(
-                    d["if_tail_ratio_99_5"] for d in dr_diagnostics_per_policy.values()
+                    d.get("if_tail_ratio_99_5", 0.0)
+                    for d in dr_diagnostics_per_policy.values()
                 ),
                 "tmle_score_abs_mean": {
-                    p: abs(d["score_mean"])
+                    p: abs(d.get("score_mean", 0.0))
                     for p, d in dr_diagnostics_per_policy.items()
                 },
                 "tmle_max_score_z": max(
-                    abs(d["score_z"]) for d in dr_diagnostics_per_policy.values()
+                    abs(d.get("score_z", 0.0))
+                    for d in dr_diagnostics_per_policy.values()
                 ),
             }
 
         # Get IPS diagnostics from the base estimator
-        ips_diagnostics = {}
+        ips_diag = None
         if hasattr(self.ips_estimator, "get_diagnostics"):
-            ips_diagnostics = self.ips_estimator.get_diagnostics()
+            ips_diag = self.ips_estimator.get_diagnostics()
 
-        # Add influence functions to metadata if stored
+        # Build DRDiagnostics object
+        diagnostics = self._build_dr_diagnostics(
+            estimates=estimates,
+            standard_errors=standard_errors,
+            n_samples_used=n_samples_used,
+            dr_diagnostics_per_policy=dr_diagnostics_per_policy,
+            ips_diagnostics=ips_diag,
+        )
+
+        # Add influence functions to metadata if stored (for backward compatibility)
         metadata = {
             "cross_fitted": True,
             "n_folds": self.n_folds,
             "fresh_draws_policies": list(self._fresh_draws.keys()),
-            "ips_diagnostics": ips_diagnostics,
-            "dr_diagnostics": dr_diagnostics_per_policy,
+            "dr_diagnostics": dr_diagnostics_per_policy,  # Keep for backward compatibility
             "dr_overview": dr_overview,
             "dr_calibration_data": dr_calibration_data,
         }
@@ -378,6 +406,7 @@ class TMLEEstimator(DREstimator):
             standard_errors=np.array(standard_errors, dtype=float),
             n_samples_used=n_samples_used,
             method="tmle",
+            diagnostics=diagnostics,  # Add the DRDiagnostics object
             metadata=metadata,
         )
 

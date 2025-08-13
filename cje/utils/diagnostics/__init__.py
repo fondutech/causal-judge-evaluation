@@ -28,7 +28,7 @@ __all__ = [
     # Weight diagnostics
     "effective_sample_size",
     "compute_ess",
-    "tail_weight_ratio", 
+    "tail_weight_ratio",
     "mass_concentration",
     "compute_weight_diagnostics",
     "diagnose_weights",

@@ -1,313 +1,418 @@
-"""Tests for DR diagnostics functionality."""
+"""Tests for DR diagnostics functionality with new diagnostic system."""
 
 import numpy as np
 import pytest
-from unittest.mock import Mock
 from typing import Dict, Any
 
-from cje.utils.dr_diagnostics import (
-    compute_dr_policy_diagnostics,
-    compute_dr_diagnostics_all,
-    format_dr_diagnostic_summary,
-    DRPolicyDiagnostics,
-)
-from cje.data.models import EstimationResult
+from cje.data.diagnostics import IPSDiagnostics, DRDiagnostics, Status
+from cje.data.models import Sample, Dataset, EstimationResult
+from cje.data.precomputed_sampler import PrecomputedSampler
+from cje.data.fresh_draws import FreshDrawDataset, FreshDrawSample
+from cje.estimators import CalibratedIPS, RawIPS
+from cje.estimators.dr_base import DRCPOEstimator
+from cje.estimators.tmle import TMLEEstimator
+from cje.estimators.mrdr import MRDREstimator
 
 
-class TestDRPolicyDiagnostics:
-    """Test the DR diagnostic computation."""
+class TestIPSDiagnostics:
+    """Test IPS diagnostic functionality."""
 
-    def test_basic_diagnostics_computation(self) -> None:
-        """Test basic diagnostic computation with synthetic data."""
-        np.random.seed(42)
-        n = 100
-
-        # Create synthetic data
-        weights = np.ones(n)  # Mean-one weights
-        rewards = np.random.uniform(0, 1, n)
-        g_logged = rewards + np.random.normal(0, 0.1, n)  # Good predictions
-        g_logged = np.clip(g_logged, 0, 1)
-        g_fresh = rewards.mean() * np.ones(n)  # Simple DM estimate
-        dr_estimate = 0.5
-        se = 0.05
-
-        # Compute diagnostics
-        diag = compute_dr_policy_diagnostics(
-            weights=weights,
-            rewards=rewards,
-            g_logged=g_logged,
-            g_fresh=g_fresh,
-            dr_estimate=dr_estimate,
-            se=se,
-            draws_per_prompt=10,
-            n_folds=5,
+    def test_ips_diagnostics_creation(self) -> None:
+        """Test creation of IPSDiagnostics object."""
+        diag = IPSDiagnostics(
+            estimator_type="CalibratedIPS",
+            method="calibrated_ips",
+            n_samples_total=1000,
+            n_samples_valid=950,
+            n_policies=2,
+            policies=["policy_a", "policy_b"],
+            estimates={"policy_a": 0.5, "policy_b": 0.6},
+            standard_errors={"policy_a": 0.05, "policy_b": 0.04},
+            n_samples_used={"policy_a": 950, "policy_b": 950},
+            weight_ess=0.85,
+            weight_status=Status.GOOD,
+            ess_per_policy={"policy_a": 0.85, "policy_b": 0.83},
+            max_weight_per_policy={"policy_a": 5.2, "policy_b": 6.1},
+            weight_tail_ratio_per_policy={"policy_a": 2.5, "policy_b": 3.0},
+            calibration_rmse=0.15,
+            calibration_r2=0.75,
+            n_oracle_labels=500,
         )
 
-        # Check basic properties
-        assert isinstance(diag, DRPolicyDiagnostics)
-        assert diag.n == n
-        assert diag.dr_estimate == dr_estimate
-        assert diag.se == se
-        assert diag.cross_fitted
-        assert diag.unique_folds == 5
-        assert diag.draws_per_prompt == 10
+        # Test basic properties
+        assert diag.estimator_type == "CalibratedIPS"
+        assert abs(diag.filter_rate - 0.05) < 1e-10  # (1000-950)/1000
+        assert diag.best_policy == "policy_b"
+        assert diag.worst_weight_tail_ratio == 3.0
+        assert diag.is_calibrated is True
+        assert diag.overall_status == Status.GOOD
 
-        # Check metrics are reasonable
-        assert 0 <= diag.r2_oof <= 1
-        assert diag.residual_rmse >= 0
-        assert diag.if_var >= 0
-        assert diag.if_p95 >= 0
-        assert diag.if_p99 >= diag.if_p95
+        # Test validation
+        issues = diag.validate()
+        assert len(issues) == 0  # Should have no issues
 
-    def test_orthogonality_check_tmle(self) -> None:
-        """Test that TMLE achieves orthogonality (score_mean ≈ 0)."""
-        np.random.seed(42)
-        n = 1000
+        # Test serialization
+        diag_dict = diag.to_dict()
+        assert "estimator_type" in diag_dict
+        assert "policies" in diag_dict
 
-        # Create data where W*(R - g) has mean zero (orthogonal)
-        weights = np.random.exponential(1, n)
-        weights = weights / weights.mean()  # Mean-one
-        rewards = np.random.uniform(0, 1, n)
-
-        # Make g_logged such that E[W*(R - g)] = 0
-        # This simulates successful TMLE targeting
-        residuals = rewards - rewards.mean()
-        # Adjust residuals to be orthogonal to weights
-        score = weights * residuals
-        adjustment = score.mean() / weights.mean()
-        g_logged = rewards - residuals + adjustment
-        g_logged = np.clip(g_logged, 0, 1)
-
-        g_fresh = rewards.mean() * np.ones(n)
-        dr_estimate = 0.5
-        se = 0.05
-
-        diag = compute_dr_policy_diagnostics(
-            weights=weights,
-            rewards=rewards,
-            g_logged=g_logged,
-            g_fresh=g_fresh,
-            dr_estimate=dr_estimate,
-            se=se,
+    def test_ips_diagnostics_with_issues(self) -> None:
+        """Test IPSDiagnostics with problematic values."""
+        diag = IPSDiagnostics(
+            estimator_type="RawIPS",
+            method="raw_ips",
+            n_samples_total=100,
+            n_samples_valid=10,  # Very high filter rate
+            n_policies=1,
+            policies=["policy_a"],
+            estimates={"policy_a": 0.5},
+            standard_errors={"policy_a": 0.5},  # High SE
+            n_samples_used={"policy_a": 10},
+            weight_ess=0.05,  # Very low ESS
+            weight_status=Status.CRITICAL,
+            ess_per_policy={"policy_a": 0.05},
+            max_weight_per_policy={"policy_a": 500.0},  # Extreme weight
+            weight_tail_ratio_per_policy={"policy_a": 200.0},  # Heavy tail
         )
 
-        # TMLE should achieve near-zero score mean
-        assert abs(diag.score_mean) < 0.05  # Should be close to 0
-        assert diag.score_p > 0.05  # Should not reject null of mean=0
+        # Test status detection
+        assert diag.overall_status == Status.CRITICAL
+        assert diag.filter_rate == 0.9  # 90% filtered
 
-    def test_heavy_tail_detection(self) -> None:
-        """Test detection of heavy-tailed influence functions."""
-        np.random.seed(42)
-        n = 100
+        # Test validation finds issues
+        issues = diag.validate()
+        assert len(issues) > 0
+        assert any("filter rate" in issue.lower() for issue in issues)
+        assert any("ess" in issue.lower() for issue in issues)
 
-        # Create data with heavy-tailed IF
-        weights = np.ones(n)
-        rewards = np.random.uniform(0, 1, n)
-        g_logged = rewards.copy()
-        g_fresh = rewards.mean() * np.ones(n)
-
-        # Spike a few IF contributions
-        weights[:5] = 100  # Create extreme weights
-
-        dr_estimate = 0.5
-        se = 0.05
-
-        diag = compute_dr_policy_diagnostics(
-            weights=weights,
-            rewards=rewards,
-            g_logged=g_logged,
-            g_fresh=g_fresh,
-            dr_estimate=dr_estimate,
-            se=se,
+    def test_ips_diagnostics_summary(self) -> None:
+        """Test summary string generation."""
+        diag = IPSDiagnostics(
+            estimator_type="CalibratedIPS",
+            method="calibrated_ips",
+            n_samples_total=1000,
+            n_samples_valid=950,
+            n_policies=2,
+            policies=["policy_a", "policy_b"],
+            estimates={"policy_a": 0.5, "policy_b": 0.6},
+            standard_errors={"policy_a": 0.05, "policy_b": 0.04},
+            n_samples_used={"policy_a": 950, "policy_b": 950},
+            weight_ess=0.85,
+            weight_status=Status.GOOD,
+            ess_per_policy={"policy_a": 0.85, "policy_b": 0.83},
+            max_weight_per_policy={"policy_a": 5.2, "policy_b": 6.1},
+            weight_tail_ratio_per_policy={"policy_a": 2.5, "policy_b": 3.0},
         )
 
-        # Should detect heavy tails
-        assert diag.if_tail_ratio_99_5 > 10  # Large tail ratio
-        assert diag.if_top1_share > 0.1  # Top 1% has significant mass
-
-    def test_fresh_draw_variance(self) -> None:
-        """Test fresh draw variance tracking."""
-        np.random.seed(42)
-        n = 50
-
-        weights = np.ones(n)
-        rewards = np.random.uniform(0, 1, n)
-        g_logged = rewards.copy()
-        g_fresh = rewards.mean() * np.ones(n)
-
-        # Create varying fresh draw variances
-        fresh_var_per_prompt = np.random.exponential(0.1, n)
-
-        diag = compute_dr_policy_diagnostics(
-            weights=weights,
-            rewards=rewards,
-            g_logged=g_logged,
-            g_fresh=g_fresh,
-            dr_estimate=0.5,
-            se=0.05,
-            fresh_draw_var_per_prompt=fresh_var_per_prompt,
-            draws_per_prompt=20,
-        )
-
-        # Check variance is tracked correctly
-        assert diag.g_fresh_draw_var_mean == pytest.approx(fresh_var_per_prompt.mean())
-        assert diag.draws_per_prompt == 20
+        summary = diag.summary()
+        assert "CalibratedIPS" in summary
+        assert "950/1000" in summary
+        assert "policy_a" in summary
+        assert "policy_b" in summary
+        # The summary doesn't include individual estimates, just the best policy
+        assert "85.0%" in summary  # Weight ESS
 
 
-class TestDRDiagnosticAggregation:
-    """Test aggregation and formatting of DR diagnostics."""
+class TestDRDiagnostics:
+    """Test DR diagnostic functionality."""
 
-    def test_compute_dr_diagnostics_all(self) -> None:
-        """Test aggregation across multiple policies."""
-        # Create mock estimation result with diagnostics
-        dr_diags = {
-            "policy1": {
-                "dm_mean": 0.5,
-                "ips_corr_mean": 0.05,
-                "if_tail_ratio_99_5": 10.0,
-                "r2_oof": 0.8,
-                "score_mean": 0.01,
-                "score_z": 0.5,
-            },
-            "policy2": {
-                "dm_mean": 0.6,
-                "ips_corr_mean": -0.02,
-                "if_tail_ratio_99_5": 20.0,
-                "r2_oof": 0.7,
-                "score_mean": -0.02,
-                "score_z": -1.0,
-            },
-        }
-
-        mock_result = Mock(spec=EstimationResult)
-        mock_result.metadata = {"dr_diagnostics": dr_diags}
-        mock_result.method = "tmle"
-
-        # Compute aggregated diagnostics
-        aggregated = compute_dr_diagnostics_all(mock_result, per_policy=True)
-
-        # Check aggregation
-        assert aggregated["n_policies"] == 2
-        assert aggregated["policies"] == ["policy1", "policy2"]
-        assert aggregated["worst_if_tail_ratio"] == 20.0
-        assert aggregated["best_r2_oof"] == 0.8
-        assert aggregated["worst_r2_oof"] == 0.7
-        assert "tmle_score_abs_mean" in aggregated
-        assert aggregated["tmle_max_score_z"] == 1.0
-
-    def test_format_diagnostic_summary(self) -> None:
-        """Test formatting of diagnostic summary table."""
-        diagnostics = {
-            "per_policy": {
-                "policy1": {
+    def test_dr_diagnostics_creation(self) -> None:
+        """Test creation of DRDiagnostics object."""
+        diag = DRDiagnostics(
+            # IPS fields
+            estimator_type="DR_CalibratedIPS",
+            method="dr_cpo",
+            n_samples_total=1000,
+            n_samples_valid=950,
+            n_policies=2,
+            policies=["policy_a", "policy_b"],
+            estimates={"policy_a": 0.52, "policy_b": 0.61},
+            standard_errors={"policy_a": 0.03, "policy_b": 0.025},
+            n_samples_used={"policy_a": 950, "policy_b": 950},
+            weight_ess=0.85,
+            weight_status=Status.GOOD,
+            ess_per_policy={"policy_a": 0.85, "policy_b": 0.83},
+            max_weight_per_policy={"policy_a": 5.2, "policy_b": 6.1},
+            weight_tail_ratio_per_policy={"policy_a": 2.5, "policy_b": 3.0},
+            # DR-specific fields
+            dr_cross_fitted=True,
+            dr_n_folds=5,
+            outcome_r2_range=(0.7, 0.85),
+            outcome_rmse_mean=0.12,
+            worst_if_tail_ratio=15.5,
+            dr_diagnostics_per_policy={
+                "policy_a": {
                     "dm_mean": 0.5,
-                    "ips_corr_mean": 0.05,
-                    "dr_estimate": 0.55,
-                    "se": 0.02,
+                    "ips_corr_mean": 0.02,
                     "score_mean": 0.001,
-                    "score_se": 0.002,
-                    "score_p": 0.95,
-                    "residual_rmse": 0.1,
-                    "if_tail_ratio_99_5": 15.5,
+                    "score_z": 0.5,
+                },
+                "policy_b": {
+                    "dm_mean": 0.6,
+                    "ips_corr_mean": 0.01,
+                    "score_mean": -0.002,
+                    "score_z": -0.8,
                 },
             },
-            "worst_if_tail_ratio": 15.5,
-            "best_r2_oof": 0.85,
-            "worst_r2_oof": 0.75,
+        )
+
+        # Test inheritance
+        assert isinstance(diag, IPSDiagnostics)
+        assert isinstance(diag, DRDiagnostics)
+
+        # Test DR-specific methods
+        assert diag.dr_cross_fitted is True
+        assert diag.dr_n_folds == 5
+        assert diag.outcome_r2_range == (0.7, 0.85)
+
+        # Test policy diagnostics access
+        policy_a_diag = diag.get_policy_diagnostics("policy_a")
+        assert policy_a_diag is not None
+        assert policy_a_diag["dm_mean"] == 0.5
+
+        # Test influence functions check
+        assert diag.has_influence_functions() is False
+
+    def test_dr_diagnostics_with_influence_functions(self) -> None:
+        """Test DRDiagnostics with influence functions."""
+        n = 100
+        influence_funcs = {
+            "policy_a": np.random.normal(0, 0.1, n),
+            "policy_b": np.random.normal(0, 0.15, n),
         }
 
-        # Format summary
-        summary = format_dr_diagnostic_summary(diagnostics)
+        diag = DRDiagnostics(
+            estimator_type="DR_CalibratedIPS",
+            method="tmle",
+            n_samples_total=n,
+            n_samples_valid=n,
+            n_policies=2,
+            policies=["policy_a", "policy_b"],
+            estimates={"policy_a": 0.52, "policy_b": 0.61},
+            standard_errors={"policy_a": 0.03, "policy_b": 0.025},
+            n_samples_used={"policy_a": n, "policy_b": n},
+            weight_ess=0.85,
+            weight_status=Status.GOOD,
+            ess_per_policy={"policy_a": 0.85, "policy_b": 0.83},
+            max_weight_per_policy={"policy_a": 5.2, "policy_b": 6.1},
+            weight_tail_ratio_per_policy={"policy_a": 2.5, "policy_b": 3.0},
+            dr_cross_fitted=True,
+            dr_n_folds=5,
+            outcome_r2_range=(0.7, 0.85),
+            outcome_rmse_mean=0.12,
+            worst_if_tail_ratio=15.5,
+            dr_diagnostics_per_policy={},
+            influence_functions=influence_funcs,
+        )
 
-        # Check output contains key information
-        assert "DR DIAGNOSTICS SUMMARY" in summary
-        assert "policy1" in summary
-        assert "0.500" in summary  # DM mean
-        assert "0.050" in summary  # IPS correction
-        assert "15.5" in summary  # Tail ratio
-        assert "RMSE" in summary
+        assert diag.has_influence_functions() is True
+        assert len(diag.influence_functions) == 2
+        assert "policy_a" in diag.influence_functions
+        assert len(diag.influence_functions["policy_a"]) == n
 
-    def test_empty_diagnostics_handling(self) -> None:
-        """Test handling of empty diagnostics."""
-        # Empty diagnostics
-        empty_diags: Dict[str, Any] = {}
-        summary = format_dr_diagnostic_summary(empty_diags)
-        assert "No DR diagnostics available" in summary
+    def test_dr_diagnostics_validation(self) -> None:
+        """Test DRDiagnostics validation."""
+        diag = DRDiagnostics(
+            estimator_type="DR_CalibratedIPS",
+            method="dr_cpo",
+            n_samples_total=100,
+            n_samples_valid=100,
+            n_policies=1,
+            policies=["policy_a"],
+            estimates={"policy_a": 0.5},
+            standard_errors={"policy_a": 0.05},
+            n_samples_used={"policy_a": 100},
+            weight_ess=0.03,  # Very low ESS
+            weight_status=Status.CRITICAL,
+            ess_per_policy={"policy_a": 0.03},
+            max_weight_per_policy={"policy_a": 1000.0},
+            weight_tail_ratio_per_policy={"policy_a": 500.0},
+            dr_cross_fitted=True,
+            dr_n_folds=5,
+            outcome_r2_range=(0.1, 0.2),  # Poor R²
+            outcome_rmse_mean=0.5,
+            worst_if_tail_ratio=200.0,  # Very heavy tail
+            dr_diagnostics_per_policy={},
+        )
 
-        # Missing per_policy
-        partial_diags = {"policies": ["p1"]}
-        summary = format_dr_diagnostic_summary(partial_diags)
-        assert "No DR diagnostics available" in summary
+        # Should detect issues
+        issues = diag.validate()
+        assert len(issues) > 0
+        assert any("r²" in issue.lower() or "r2" in issue.lower() for issue in issues)
+        assert any("tail" in issue.lower() for issue in issues)
+
+        # Overall status should be critical
+        assert diag.overall_status == Status.CRITICAL
 
 
-class TestDRDiagnosticIntegration:
-    """Integration tests with actual estimators."""
+class TestEstimatorDiagnosticIntegration:
+    """Test that estimators produce correct diagnostic objects."""
 
-    def test_dr_estimator_produces_diagnostics(self) -> None:
-        """Test that DR estimators produce expected diagnostics structure."""
-        from cje.data.models import Sample, Dataset
-        from cje.data.precomputed_sampler import PrecomputedSampler
-        from cje.data.fresh_draws import FreshDrawDataset, FreshDrawSample
-        from cje.estimators.dr_base import DREstimator
-
-        # Create minimal dataset
+    @pytest.fixture
+    def sample_dataset(self) -> Dataset:
+        """Create a sample dataset for testing."""
+        np.random.seed(42)
         samples = []
-        for i in range(10):
+        for i in range(100):
             sample = Sample(
                 prompt_id=f"p{i}",
                 prompt=f"prompt {i}",
                 response=f"response {i}",
-                base_policy_logprob=-10.0,
-                target_policy_logprobs={"target": -8.0},
-                reward=0.5,
-                metadata={"judge_score": 0.5, "cv_fold": i % 5},
+                base_policy_logprob=-10.0 + np.random.normal(0, 2),
+                target_policy_logprobs={
+                    "policy_a": -9.0 + np.random.normal(0, 2),
+                    "policy_b": -11.0 + np.random.normal(0, 2),
+                },
+                reward=np.random.uniform(0, 1),
+                metadata={"judge_score": np.random.uniform(0, 1), "cv_fold": i % 5},
             )
             samples.append(sample)
 
-        dataset = Dataset(samples=samples, target_policies=["policy_a"])
-        sampler = PrecomputedSampler(dataset)
+        return Dataset(samples=samples, target_policies=["policy_a", "policy_b"])
 
-        # Create estimator
-        estimator = DREstimator(sampler, n_folds=5)
+    @pytest.fixture
+    def fresh_draws(self) -> Dict[str, FreshDrawDataset]:
+        """Create fresh draws for DR estimators."""
+        fresh_draws = {}
+        for policy in ["policy_a", "policy_b"]:
+            fresh_samples = []
+            for i in range(100):
+                for j in range(5):  # 5 draws per prompt
+                    fresh_sample = FreshDrawSample(
+                        prompt_id=f"p{i}",
+                        prompt=f"prompt {i}",
+                        response=f"fresh {j}",
+                        judge_score=np.random.uniform(0, 1),
+                        target_policy=policy,
+                        draw_idx=j,
+                        fold_id=i % 5,
+                    )
+                    fresh_samples.append(fresh_sample)
+
+            fresh_draws[policy] = FreshDrawDataset(
+                samples=fresh_samples, target_policy=policy, draws_per_prompt=5
+            )
+        return fresh_draws
+
+    def test_raw_ips_produces_diagnostics(self, sample_dataset: Dataset) -> None:
+        """Test that RawIPS produces IPSDiagnostics."""
+        sampler = PrecomputedSampler(sample_dataset)
+        estimator = RawIPS(sampler)
         estimator.fit()
-
-        # Create fresh draws
-        fresh_samples = []
-        for i in range(10):
-            for j in range(5):  # 5 draws per prompt
-                fresh_sample = FreshDrawSample(
-                    prompt_id=f"p{i}",
-                    response=f"fresh {j}",
-                    judge_score=0.5 + np.random.normal(0, 0.1),
-                    target_policy="policy_a",
-                    draw_idx=j,
-                    fold_id=i % 5,
-                )
-                fresh_samples.append(fresh_sample)
-
-        fresh_dataset = FreshDrawDataset(
-            samples=fresh_samples,
-            target_policy="target",
-            draws_per_prompt=5,
-        )
-
-        estimator.add_fresh_draws("target", fresh_dataset)
-
-        # Run estimation
         result = estimator.estimate()
 
-        # Check diagnostics are present
-        assert "dr_diagnostics" in result.metadata
-        assert "dr_overview" in result.metadata
-        assert "dr_calibration_data" in result.metadata
+        assert result.diagnostics is not None
+        assert isinstance(result.diagnostics, IPSDiagnostics)
+        assert not isinstance(result.diagnostics, DRDiagnostics)
+        assert result.diagnostics.estimator_type == "RawIPS"
+        assert result.diagnostics.method == "raw_ips"
+        assert result.diagnostics.calibration_rmse is None  # No calibration
 
-        # Check structure
-        dr_diags = result.metadata["dr_diagnostics"]
-        assert "target" in dr_diags
+    def test_calibrated_ips_produces_diagnostics(self, sample_dataset: Dataset) -> None:
+        """Test that CalibratedIPS produces IPSDiagnostics with calibration info."""
+        # Add calibration info to dataset
+        sample_dataset.metadata["calibration_info"] = {
+            "rmse": 0.15,
+            "r2": 0.75,
+            "n_oracle": 50,
+        }
 
-        target_diag = dr_diags["target"]
-        assert "dm_mean" in target_diag
-        assert "ips_corr_mean" in target_diag
-        assert "score_mean" in target_diag
-        assert "if_tail_ratio_99_5" in target_diag
-        assert "r2_oof" in target_diag
+        sampler = PrecomputedSampler(sample_dataset)
+        estimator = CalibratedIPS(sampler)
+        estimator.fit()
+        result = estimator.estimate()
+
+        assert result.diagnostics is not None
+        assert isinstance(result.diagnostics, IPSDiagnostics)
+        assert not isinstance(result.diagnostics, DRDiagnostics)
+        assert result.diagnostics.estimator_type == "CalibratedIPS"
+        assert result.diagnostics.method == "calibrated_ips"
+        assert result.diagnostics.calibration_rmse == 0.15
+        assert result.diagnostics.calibration_r2 == 0.75
+
+    def test_dr_cpo_produces_diagnostics(
+        self, sample_dataset: Dataset, fresh_draws: Dict[str, FreshDrawDataset]
+    ) -> None:
+        """Test that DRCPOEstimator produces DRDiagnostics."""
+        sampler = PrecomputedSampler(sample_dataset)
+        estimator = DRCPOEstimator(sampler, n_folds=5)
+        estimator.fit()
+
+        # Add fresh draws
+        for policy, fresh_dataset in fresh_draws.items():
+            estimator.add_fresh_draws(policy, fresh_dataset)
+
+        result = estimator.estimate()
+
+        assert result.diagnostics is not None
+        assert isinstance(result.diagnostics, DRDiagnostics)
+        assert isinstance(result.diagnostics, IPSDiagnostics)  # Also IPS
+        assert result.diagnostics.estimator_type.startswith("DR")
+        assert result.diagnostics.method == "drcpo"
+        assert result.diagnostics.dr_cross_fitted is True
+        assert result.diagnostics.dr_n_folds == 5
+        assert result.diagnostics.dr_diagnostics_per_policy is not None
+
+    def test_tmle_produces_diagnostics(
+        self, sample_dataset: Dataset, fresh_draws: Dict[str, FreshDrawDataset]
+    ) -> None:
+        """Test that TMLEEstimator produces DRDiagnostics."""
+        sampler = PrecomputedSampler(sample_dataset)
+        estimator = TMLEEstimator(sampler, n_folds=5)
+        estimator.fit()
+
+        # Add fresh draws
+        for policy, fresh_dataset in fresh_draws.items():
+            estimator.add_fresh_draws(policy, fresh_dataset)
+
+        result = estimator.estimate()
+
+        assert result.diagnostics is not None
+        assert isinstance(result.diagnostics, DRDiagnostics)
+        assert result.diagnostics.method == "tmle"
+        assert result.diagnostics.dr_cross_fitted is True
+
+        # Check TMLE-specific fields in per-policy diagnostics
+        for policy in sample_dataset.target_policies:
+            policy_diag = result.diagnostics.get_policy_diagnostics(policy)
+            if policy_diag:
+                assert "score_mean" in policy_diag or "dm_mean" in policy_diag
+
+    def test_mrdr_produces_diagnostics(
+        self, sample_dataset: Dataset, fresh_draws: Dict[str, FreshDrawDataset]
+    ) -> None:
+        """Test that MRDREstimator produces DRDiagnostics."""
+        sampler = PrecomputedSampler(sample_dataset)
+        estimator = MRDREstimator(sampler, n_folds=5, omega_mode="snips")
+        estimator.fit()
+
+        # Add fresh draws
+        for policy, fresh_dataset in fresh_draws.items():
+            estimator.add_fresh_draws(policy, fresh_dataset)
+
+        result = estimator.estimate()
+
+        assert result.diagnostics is not None
+        assert isinstance(result.diagnostics, DRDiagnostics)
+        assert result.diagnostics.method == "mrdr"
+        assert result.diagnostics.dr_cross_fitted is True
+
+    def test_diagnostic_serialization(self, sample_dataset: Dataset) -> None:
+        """Test that diagnostics can be serialized to dict/JSON."""
+        sampler = PrecomputedSampler(sample_dataset)
+        estimator = CalibratedIPS(sampler)
+        estimator.fit()
+        result = estimator.estimate()
+
+        # Test to_dict
+        diag_dict = result.diagnostics.to_dict()
+        assert isinstance(diag_dict, dict)
+        assert "estimator_type" in diag_dict
+        assert "policies" in diag_dict
+
+        # Test JSON serialization
+        import json
+
+        json_str = json.dumps(diag_dict)
+        loaded = json.loads(json_str)
+        assert loaded["estimator_type"] == diag_dict["estimator_type"]

@@ -23,11 +23,16 @@ def plot_weight_dashboard(
     save_path: Optional[Path] = None,
     figsize: tuple = (14, 12),
     random_seed: int = 42,
+    diagnostics: Optional[Any] = None,
 ) -> Tuple[plt.Figure, Dict[str, Any]]:
     """Create production-ready weight diagnostics dashboard.
 
     Single figure with 6 panels showing all essential information for
     quick go/no-go decisions and debugging.
+
+    Can work with either:
+    1. Raw weight dictionaries (backward compatible)
+    2. IPSDiagnostics or DRDiagnostics objects (preferred)
 
     Args:
         raw_weights_dict: Dict mapping policy names to raw weight arrays
@@ -35,10 +40,22 @@ def plot_weight_dashboard(
         n_samples: Total number of samples (for effective sample calculation)
         save_path: Optional path to save figure
         figsize: Figure size (width, height)
+        random_seed: Random seed for reproducibility
+        diagnostics: Optional IPSDiagnostics or DRDiagnostics object
 
     Returns:
         Tuple of (matplotlib Figure, metrics dict)
     """
+    # Check if we have a diagnostics object to use
+    from ..data.diagnostics import IPSDiagnostics, DRDiagnostics
+
+    if diagnostics is not None and isinstance(
+        diagnostics, (IPSDiagnostics, DRDiagnostics)
+    ):
+        # Extract weight info from diagnostics - we still need the actual weight arrays
+        # which aren't stored in diagnostics, so this is just for metadata enhancement
+        if n_samples is None:
+            n_samples = diagnostics.n_samples_valid
     policies = list(raw_weights_dict.keys())
     n_policies = len(policies)
     metrics = {}
@@ -613,10 +630,17 @@ def plot_dr_dashboard(
     Returns:
         (fig, summary_metrics) tuple
     """
-    if "dr_diagnostics" not in estimation_result.metadata:
-        raise ValueError("No DR diagnostics found in estimation result")
+    # Check for DRDiagnostics object first (new way)
+    from ..data.diagnostics import DRDiagnostics
 
-    dr_diags = estimation_result.metadata["dr_diagnostics"]
+    if isinstance(estimation_result.diagnostics, DRDiagnostics):
+        # Use the new diagnostic object
+        dr_diags = estimation_result.diagnostics.dr_diagnostics_per_policy
+    elif "dr_diagnostics" in estimation_result.metadata:
+        # Fallback to old way
+        dr_diags = estimation_result.metadata["dr_diagnostics"]
+    else:
+        raise ValueError("No DR diagnostics found in estimation result")
     policies = list(dr_diags.keys())
     n_policies = len(policies)
 

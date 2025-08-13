@@ -12,7 +12,7 @@ import logging
 from .base_estimator import BaseCJEEstimator
 from ..data.models import EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
-from ..data.diagnostics import Diagnostics, Status
+from ..data.diagnostics import IPSDiagnostics, Status
 from ..calibration.isotonic import calibrate_to_target_mean
 from ..utils.diagnostics import compute_weight_diagnostics
 
@@ -56,6 +56,7 @@ class CalibratedIPS(BaseCJEEstimator):
         self._influence_functions: Dict[str, np.ndarray] = {}
         self._no_overlap_policies: Set[str] = set()
         self._calibration_info: Dict[str, Dict] = {}  # Store calibration details
+        self._diagnostics: Optional[IPSDiagnostics] = None
 
     def fit(self) -> None:
         """Fit weight calibration for all target policies."""
@@ -168,6 +169,9 @@ class CalibratedIPS(BaseCJEEstimator):
         diagnostics = self._build_diagnostics(result)
         result.diagnostics = diagnostics
 
+        # Store diagnostics for later access
+        self._diagnostics = diagnostics
+
         # Store for later access
         self._results = result
 
@@ -197,14 +201,14 @@ class CalibratedIPS(BaseCJEEstimator):
         """
         return self._calibration_info.get(target_policy)
 
-    def _build_diagnostics(self, result: EstimationResult) -> Diagnostics:
+    def _build_diagnostics(self, result: EstimationResult) -> IPSDiagnostics:
         """Build simplified diagnostics for this estimation.
 
         Args:
             result: The estimation result
 
         Returns:
-            Simplified Diagnostics object
+            IPSDiagnostics object
         """
         # Get dataset info
         dataset = getattr(self.sampler, "dataset", None) or getattr(
@@ -227,20 +231,7 @@ class CalibratedIPS(BaseCJEEstimator):
                 estimates_dict[policy] = float(result.estimates[i])
                 se_dict[policy] = float(result.standard_errors[i])
 
-        # Create base diagnostics
-        diag = Diagnostics(
-            estimator_type="CalibratedIPS",
-            method="calibrated_ips",
-            n_samples_total=n_total,
-            n_samples_valid=self.sampler.n_valid_samples,
-            n_policies=len(policies),
-            policies=policies,
-            estimates=estimates_dict,
-            standard_errors=se_dict,
-            n_samples_used=result.n_samples_used,
-        )
-
-        # Add weight diagnostics
+        # Compute weight diagnostics
         ess_per_policy = {}
         max_weight_per_policy = {}
         tail_ratio_per_policy = {}
@@ -260,21 +251,54 @@ class CalibratedIPS(BaseCJEEstimator):
                 overall_ess += w_diag["ess_fraction"] * n
                 total_n += n
 
-        if total_n > 0:
-            diag.weight_ess = overall_ess / total_n
-            diag.ess_per_policy = ess_per_policy
-            diag.max_weight_per_policy = max_weight_per_policy
-            diag.weight_tail_ratio_per_policy = tail_ratio_per_policy
+        # Compute overall weight ESS
+        weight_ess = overall_ess / total_n if total_n > 0 else 0.0
 
-            # Determine status based on ESS and tail ratios
-            worst_tail = (
-                max(tail_ratio_per_policy.values()) if tail_ratio_per_policy else 0
-            )
-            if diag.weight_ess < 0.01 or worst_tail > 1000:
-                diag.weight_status = Status.CRITICAL
-            elif diag.weight_ess < 0.1 or worst_tail > 100:
-                diag.weight_status = Status.WARNING
-            else:
-                diag.weight_status = Status.GOOD
+        # Determine status based on ESS and tail ratios
+        worst_tail = max(tail_ratio_per_policy.values()) if tail_ratio_per_policy else 0
+        if weight_ess < 0.01 or worst_tail > 1000:
+            weight_status = Status.CRITICAL
+        elif weight_ess < 0.1 or worst_tail > 100:
+            weight_status = Status.WARNING
+        else:
+            weight_status = Status.GOOD
 
-        return diag
+        # Get calibration info if available
+        calibration_rmse = None
+        calibration_r2 = None
+        n_oracle_labels = None
+
+        # If dataset has calibration info in metadata
+        if dataset and hasattr(dataset, "metadata"):
+            cal_info = dataset.metadata.get("calibration_info", {})
+            calibration_rmse = cal_info.get("rmse")
+            calibration_r2 = cal_info.get("r2")
+            n_oracle_labels = cal_info.get("n_oracle")
+
+        # Create IPSDiagnostics
+        diagnostics = IPSDiagnostics(
+            estimator_type="CalibratedIPS",
+            method="calibrated_ips",
+            n_samples_total=n_total,
+            n_samples_valid=self.sampler.n_valid_samples,
+            n_policies=len(policies),
+            policies=policies,
+            estimates=estimates_dict,
+            standard_errors=se_dict,
+            n_samples_used=result.n_samples_used,
+            weight_ess=weight_ess,
+            weight_status=weight_status,
+            ess_per_policy=ess_per_policy,
+            max_weight_per_policy=max_weight_per_policy,
+            weight_tail_ratio_per_policy=tail_ratio_per_policy,
+            # Calibration fields
+            calibration_rmse=calibration_rmse,
+            calibration_r2=calibration_r2,
+            n_oracle_labels=n_oracle_labels,
+        )
+
+        return diagnostics
+
+    def get_diagnostics(self) -> Optional[IPSDiagnostics]:
+        """Get the diagnostics object."""
+        return self._diagnostics
