@@ -52,6 +52,12 @@ from cje import (
     load_fresh_draws_auto,
     analyze_extreme_weights,
 )
+from reward_utils import (
+    determine_reward_config,
+    apply_reward_config,
+    should_recalibrate_for_estimator,
+)
+from validation import validate_no_unnecessary_calibration
 
 # DR diagnostics are now accessed directly from results.diagnostics
 from cje.utils.diagnostics.display import (
@@ -72,7 +78,6 @@ try:
     from cje.visualization import (
         plot_weight_dashboard,
         plot_weight_dashboard_per_policy,
-        plot_combined_weight_dashboard,
         plot_calibration_comparison,
         plot_policy_estimates,
         plot_dr_dashboard,
@@ -212,10 +217,16 @@ def setup_estimator(
         n_folds = estimator_config.get("n_folds", 5)
         omega_mode = estimator_config.get("omega_mode", "snips")
 
-        # Ensure cross-fitted calibration for MRDR
-        if not cal_result or not cal_result.calibrator:
+        # MRDR can work with or without calibration
+        # If we have 100% oracle coverage, we're using oracle labels directly
+        # Otherwise, ensure we have cross-fitted calibration
+        if args.oracle_coverage < 1.0 and (not cal_result or not cal_result.calibrator):
             print(
                 "   ⚠️  MRDR works best with cross-fitted calibration. Re-calibrating..."
+            )
+            # Validate this isn't a mistake
+            validate_no_unnecessary_calibration(
+                calibrated_dataset, args.oracle_coverage, cal_result
             )
             calibrated_dataset, cal_result = calibrate_dataset(
                 calibrated_dataset,
@@ -241,10 +252,16 @@ def setup_estimator(
         n_folds = estimator_config.get("n_folds", 5)
         link = estimator_config.get("link", "logit")
 
-        # Ensure cross-fitted calibration for TMLE
-        if not cal_result or not cal_result.calibrator:
+        # TMLE can work with or without calibration
+        # If we have 100% oracle coverage, we're using oracle labels directly
+        # Otherwise, ensure we have cross-fitted calibration
+        if args.oracle_coverage < 1.0 and (not cal_result or not cal_result.calibrator):
             print(
                 "   ⚠️  TMLE works best with cross-fitted calibration. Re-calibrating..."
+            )
+            # Validate this isn't a mistake
+            validate_no_unnecessary_calibration(
+                calibrated_dataset, args.oracle_coverage, cal_result
             )
             calibrated_dataset, cal_result = calibrate_dataset(
                 calibrated_dataset,
@@ -569,16 +586,15 @@ def generate_visualizations(
                 raw_weights_dict[policy] = weights
 
         if raw_weights_dict and calibrated_weights_dict:
-            # Generate combined overview dashboard
-            fig, _ = plot_combined_weight_dashboard(
+            # Generate combined overview dashboard (6-panel summary)
+            fig, _ = plot_weight_dashboard(
                 raw_weights_dict,
                 calibrated_weights_dict,
                 n_samples=sampler.n_valid_samples,
-                save_path=plot_dir / "weight_dashboard_combined",
+                save_path=plot_dir / "weight_dashboard",
                 diagnostics=results.diagnostics,
-                sampler=sampler,
             )
-            print(f"   ✓ Combined dashboard → {plot_dir}/weight_dashboard_combined.png")
+            print(f"   ✓ Weight dashboard → {plot_dir}/weight_dashboard.png")
             plt.close(fig)
 
             # Generate per-policy detailed dashboard

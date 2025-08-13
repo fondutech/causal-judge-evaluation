@@ -406,12 +406,39 @@ class MRDREstimator(DREstimator):
                 f"MRDR[{policy}]: {psi:.4f} ± {se:.4f} (DM={dm_term:.4f}, IPS_corr={ips_corr:.4f})"
             )
 
+        # Build DR diagnostics using stored components
+        from ..utils.diagnostics.dr import compute_dr_policy_diagnostics
+
+        dr_diagnostics_per_policy: Dict[str, Dict[str, Any]] = {}
+        for idx, policy in enumerate(self.sampler.target_policies):
+            if policy not in self._dm_component or np.isnan(estimates[idx]):
+                continue
+
+            # Get the logged rewards for R² calculation
+            data = self.sampler.get_data_for_policy(policy)
+            logged_rewards = (
+                np.array([d["reward"] for d in data], dtype=float) if data else None
+            )
+
+            # Use stored components to compute diagnostics
+            diag_dict = compute_dr_policy_diagnostics(
+                dm_component=self._dm_component[policy],
+                ips_correction=self._ips_correction[policy],
+                dr_estimate=estimates[idx],
+                fresh_rewards=logged_rewards,  # Pass logged rewards for R² calculation
+                outcome_predictions=self._outcome_predictions.get(policy),
+                influence_functions=self._influence_functions.get(policy),
+                unique_folds=list(range(self.n_folds)),
+                policy=policy,
+            )
+            dr_diagnostics_per_policy[policy] = diag_dict
+
         # Build diagnostics
         diagnostics = self._build_dr_diagnostics(
             estimates=estimates,
             standard_errors=standard_errors,
             n_samples_used=n_samples_used,
-            dr_diagnostics_per_policy={},  # Could compute if needed
+            dr_diagnostics_per_policy=dr_diagnostics_per_policy,
             ips_diagnostics=(
                 self.ips_estimator.get_diagnostics()
                 if hasattr(self.ips_estimator, "get_diagnostics")
