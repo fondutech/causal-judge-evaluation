@@ -187,6 +187,9 @@ class PrecomputedSampler:
                         "response": record["response"],
                         "prompt_id": sample.prompt_id,
                         "judge_score": sample.metadata.get("judge_score"),
+                        "cv_fold": sample.metadata.get(
+                            "cv_fold"
+                        ),  # Include fold info for DR
                     }
                 )
 
