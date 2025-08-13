@@ -16,6 +16,7 @@ from .dr_base import DREstimator
 from .outcome_models import BaseOutcomeModel
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..data.models import EstimationResult
+from ..data.fresh_draws import FreshDrawDataset
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class WeightedIsotonicOutcomeModel(BaseOutcomeModel):
     def __init__(self, n_folds: int = 5):
         super().__init__(n_folds)
         self.sample_weights: Optional[np.ndarray] = None
+        self._promptid_to_fold: Dict[str, int] = {}  # Store for MRDR to access
 
     def set_weights(self, weights: np.ndarray) -> None:
         """Set the sample weights for training."""
@@ -70,13 +72,32 @@ class WeightedIsotonicOutcomeModel(BaseOutcomeModel):
         predictions: np.ndarray = model.predict(judge_scores)
         return predictions
 
+    def fit(
+        self,
+        prompts: List[str],
+        responses: List[str],
+        rewards: np.ndarray,
+        judge_scores: Optional[np.ndarray] = None,
+        fold_ids: Optional[np.ndarray] = None,
+        prompt_ids: Optional[List[str]] = None,
+    ) -> None:
+        """Fit with optional prompt_id tracking for cross-fitting."""
+        # Store prompt_id to fold mapping if provided
+        if fold_ids is not None and prompt_ids is not None:
+            self._promptid_to_fold = {
+                pid: int(fid) for pid, fid in zip(prompt_ids, fold_ids)
+            }
+
+        # Call base class fit
+        super().fit(prompts, responses, rewards, judge_scores, fold_ids)
+
 
 class MRDREstimator(DREstimator):
-    """MRDR with cross-fitted, policy-specific weighted isotonic outcome models.
+    """MRDR estimator with policy-specific weighted isotonic outcome models.
 
-    Simplified version that inherits from DREstimator. For full MRDR with
-    policy-specific weighted models, we override the estimate() method to
-    handle per-policy outcome models.
+    Implements Multiple Robust Doubly Robust (MRDR) estimation with separate
+    weighted outcome models for each target policy. The weights (omega) for
+    each policy's outcome model are derived from that policy's importance weights.
 
     Args:
         sampler: PrecomputedSampler with calibrated rewards
@@ -87,6 +108,8 @@ class MRDREstimator(DREstimator):
             - "w":     |W|
         min_sample_weight: Floor applied to ω to avoid degenerate 0-weight fits
         use_calibrated_weights: Use CalibratedIPS (default True)
+        use_policy_specific_models: If True, fit separate weighted models per policy.
+                                   If False, use single shared model (simplified version).
         **kwargs: Passed through to DREstimator
     """
 
@@ -97,6 +120,7 @@ class MRDREstimator(DREstimator):
         omega_mode: str = "snips",
         min_sample_weight: float = 1e-8,
         use_calibrated_weights: bool = True,
+        use_policy_specific_models: bool = True,
         calibrator: Optional[Any] = None,
         **kwargs: Any,
     ):
@@ -105,8 +129,7 @@ class MRDREstimator(DREstimator):
                 f"omega_mode must be one of ['snips','w2','w'], got {omega_mode}"
             )
 
-        # For simplicity, use standard isotonic outcome model
-        # A full implementation would create policy-specific weighted models
+        # Use standard isotonic as default (will be overridden if policy-specific)
         from .outcome_models import IsotonicOutcomeModel
 
         outcome_model = IsotonicOutcomeModel(n_folds=n_folds)
@@ -123,9 +146,19 @@ class MRDREstimator(DREstimator):
 
         self.omega_mode = omega_mode
         self.min_sample_weight = min_sample_weight
+        self.use_policy_specific_models = use_policy_specific_models
 
-        # Store policy-specific models (for full MRDR implementation)
-        self._policy_models: Dict[str, Any] = {}
+        # Store policy-specific models
+        self._policy_models: Dict[str, WeightedIsotonicOutcomeModel] = {}
+
+        if use_policy_specific_models:
+            logger.info(
+                f"MRDREstimator: Using policy-specific weighted models with omega_mode='{omega_mode}'"
+            )
+        else:
+            logger.info(
+                "MRDREstimator: Using simplified version with shared outcome model"
+            )
 
     def _omega_from_weights(self, w: np.ndarray, mode: str) -> np.ndarray:
         """Compute MRDR regression weights ω from mean-one IPS weights W."""
@@ -139,43 +172,260 @@ class MRDREstimator(DREstimator):
         raise ValueError(f"Unknown omega_mode: {mode}")
 
     def fit(self) -> None:
-        """Fit weight calibration and outcome model.
+        """Fit weight calibration and policy-specific weighted outcome models.
 
-        For full MRDR, we would override this to fit policy-specific
-        weighted models. For now, we use the base implementation.
+        For each target policy, fits a separate WeightedIsotonicOutcomeModel
+        using omega weights derived from that policy's importance weights.
         """
-        # Use base class fit which handles IPS weights and outcome model
-        super().fit()
+        # First fit IPS weights using base class
+        self.ips_estimator.fit()
+        self._fitted = True
 
-        # In a full implementation, we would:
-        # 1. Fit IPS weights
-        # 2. For each policy, fit a weighted isotonic model with omega weights
-        # 3. Store policy-specific models
+        if not self.use_policy_specific_models:
+            # Use base implementation with shared model
+            super().fit()
+            return
 
-        logger.info("MRDR fitted (simplified version using base DR infrastructure)")
+        # Fit policy-specific weighted models
+        for policy in self.sampler.target_policies:
+            # Get IPS weights for this policy
+            weights = self.get_weights(policy)
+            if weights is None:
+                logger.warning(f"No weights available for policy '{policy}'. Skipping.")
+                continue
 
-    def estimate(self) -> EstimationResult:
-        """Compute MRDR estimates for all target policies.
+            # Compute omega weights for outcome model
+            omega = self._omega_from_weights(weights, self.omega_mode)
+            omega = np.maximum(
+                omega, self.min_sample_weight
+            )  # Floor to avoid zero weights
 
-        For full MRDR with policy-specific models, we would override this
-        to use the appropriate weighted model for each policy.
-        """
-        # Use base DR estimate
-        result = super().estimate()
+            # Get data for this policy
+            data = self.sampler.get_data_for_policy(policy)
+            if not data:
+                logger.warning(f"No data available for policy '{policy}'. Skipping.")
+                continue
 
-        # Override method name
-        result.method = "mrdr"
+            # Extract arrays
+            prompts = [d["prompt"] for d in data]
+            responses = [d["response"] for d in data]
+            rewards = np.array([d["reward"] for d in data], dtype=float)
+            judge_scores = np.array([d.get("judge_score") for d in data], dtype=float)
+            prompt_ids = [str(d.get("prompt_id")) for d in data]
 
-        # Add MRDR-specific metadata
-        if result.metadata is None:
-            result.metadata = {}
+            # Create and fit weighted model for this policy
+            model = WeightedIsotonicOutcomeModel(n_folds=self.n_folds)
+            model.set_weights(omega)
 
-        result.metadata.update(
-            {
-                "omega_mode": self.omega_mode,
-                "min_sample_weight": self.min_sample_weight,
-                "note": "Simplified MRDR using base DR infrastructure",
-            }
+            # Fit with cross-fitting if we have calibrator with fold assignments
+            if self.calibrator is not None and hasattr(
+                self.calibrator, "fold_assignment"
+            ):
+                # Map prompt_ids to folds
+                fold_map = self.calibrator.fold_assignment
+                fold_ids = np.array(
+                    [fold_map.get(pid, 0) for pid in prompt_ids], dtype=int
+                )
+                model.fit(
+                    prompts, responses, rewards, judge_scores, fold_ids, prompt_ids
+                )
+            else:
+                # Create fold assignments if not provided
+                from sklearn.model_selection import KFold
+
+                kf = KFold(n_splits=self.n_folds, shuffle=True, random_state=42)
+                fold_ids = np.zeros(len(prompts), dtype=int)
+                for fold_idx, (_, test_idx) in enumerate(kf.split(prompts)):
+                    fold_ids[test_idx] = fold_idx
+                model.fit(
+                    prompts, responses, rewards, judge_scores, fold_ids, prompt_ids
+                )
+
+            self._policy_models[policy] = model
+            logger.debug(
+                f"Fitted weighted outcome model for policy '{policy}' with omega_mode='{self.omega_mode}'"
+            )
+
+        # Store prompt_id to fold mapping if available
+        if self.calibrator is not None and hasattr(self.calibrator, "fold_assignment"):
+            self._promptid_to_fold = self.calibrator.fold_assignment
+        else:
+            # Create from first policy model if available
+            if self._policy_models:
+                first_model = next(iter(self._policy_models.values()))
+                if hasattr(first_model, "_promptid_to_fold"):
+                    self._promptid_to_fold = first_model._promptid_to_fold
+                else:
+                    self._promptid_to_fold = {}
+            else:
+                self._promptid_to_fold = {}
+
+        logger.info(
+            f"MRDR fitted with {len(self._policy_models)} policy-specific models"
         )
 
-        return result
+    def estimate(self) -> EstimationResult:
+        """Compute MRDR estimates using policy-specific weighted outcome models.
+
+        Each policy uses its own outcome model trained with omega weights
+        derived from that policy's importance weights.
+        """
+        if not self.use_policy_specific_models:
+            # Use base implementation
+            result = super().estimate()
+            result.method = "mrdr"
+            if result.metadata is None:
+                result.metadata = {}
+            result.metadata.update(
+                {
+                    "omega_mode": self.omega_mode,
+                    "min_sample_weight": self.min_sample_weight,
+                    "note": "Simplified MRDR using shared outcome model",
+                }
+            )
+            return result
+
+        self._validate_fitted()
+
+        estimates: List[float] = []
+        standard_errors: List[float] = []
+        n_samples_used: Dict[str, int] = {}
+
+        # Store components for diagnostics
+        self._dm_component: Dict[str, np.ndarray] = {}
+        self._ips_correction: Dict[str, np.ndarray] = {}
+        self._outcome_predictions: Dict[str, np.ndarray] = {}
+
+        for policy in self.sampler.target_policies:
+            # Check if we have a model for this policy
+            if policy not in self._policy_models:
+                logger.warning(f"No outcome model for policy '{policy}'. Using NaN.")
+                estimates.append(np.nan)
+                standard_errors.append(np.nan)
+                n_samples_used[policy] = 0
+                continue
+
+            # Get fresh draws (required for DR)
+            if policy not in self._fresh_draws:
+                logger.warning(
+                    f"No fresh draws for policy '{policy}'. Skipping DR estimation."
+                )
+                estimates.append(np.nan)
+                standard_errors.append(np.nan)
+                n_samples_used[policy] = 0
+                continue
+
+            fresh_dataset = self._fresh_draws[policy]
+
+            # Get data and weights
+            data = self.sampler.get_data_for_policy(policy)
+            if not data:
+                estimates.append(np.nan)
+                standard_errors.append(np.nan)
+                n_samples_used[policy] = 0
+                continue
+
+            weights = self.get_weights(policy)
+            if weights is None or len(weights) != len(data):
+                raise ValueError(f"Weight/data mismatch for policy '{policy}'")
+
+            # Extract arrays
+            rewards = np.array([d["reward"] for d in data], dtype=float)
+            judge_scores = np.array([d.get("judge_score") for d in data], dtype=float)
+            prompt_ids = [str(d.get("prompt_id")) for d in data]
+            prompts = [d["prompt"] for d in data]
+            responses = [d["response"] for d in data]
+
+            # Get fold assignments
+            if self._promptid_to_fold:
+                fold_ids = np.array(
+                    [self._promptid_to_fold.get(pid, 0) for pid in prompt_ids],
+                    dtype=int,
+                )
+            else:
+                fold_ids = np.zeros(len(prompt_ids), dtype=int)
+
+            # Get policy-specific outcome model
+            outcome_model = self._policy_models[policy]
+
+            # Get predictions on logged data
+            g_logged = outcome_model.predict(prompts, responses, judge_scores, fold_ids)
+
+            # Get predictions on fresh draws
+            g_fresh_all = []
+            for i, prompt_id in enumerate(prompt_ids):
+                fresh_scores = fresh_dataset.get_scores_for_prompt_id(prompt_id)
+                fresh_prompts = [prompts[i]] * len(fresh_scores)
+                fresh_responses = [""] * len(fresh_scores)
+                fresh_fold_ids = np.full(len(fresh_scores), fold_ids[i])
+
+                g_fresh_prompt = outcome_model.predict(
+                    fresh_prompts, fresh_responses, fresh_scores, fresh_fold_ids
+                )
+                g_fresh_all.append(g_fresh_prompt.mean())
+
+            g_fresh = np.array(g_fresh_all)
+
+            # Compute DR estimate
+            dm_term = float(g_fresh.mean())
+            ips_corr = float(np.mean(weights * (rewards - g_logged)))
+            psi = dm_term + ips_corr
+
+            # Store components for diagnostics
+            self._dm_component[policy] = g_fresh
+            self._ips_correction[policy] = weights * (rewards - g_logged)
+            self._outcome_predictions[policy] = g_logged
+
+            # Compute influence functions and standard error
+            if_contrib = g_fresh + weights * (rewards - g_logged) - psi
+            se = (
+                float(np.std(if_contrib, ddof=1) / np.sqrt(len(if_contrib)))
+                if len(if_contrib) > 1
+                else 0.0
+            )
+
+            if self.store_influence:
+                self._influence_functions[policy] = if_contrib
+
+            estimates.append(psi)
+            standard_errors.append(se)
+            n_samples_used[policy] = len(rewards)
+
+            logger.info(
+                f"MRDR[{policy}]: {psi:.4f} ± {se:.4f} (DM={dm_term:.4f}, IPS_corr={ips_corr:.4f})"
+            )
+
+        # Build diagnostics
+        diagnostics = self._build_dr_diagnostics(
+            estimates=estimates,
+            standard_errors=standard_errors,
+            n_samples_used=n_samples_used,
+            dr_diagnostics_per_policy={},  # Could compute if needed
+            ips_diagnostics=(
+                self.ips_estimator.get_diagnostics()
+                if hasattr(self.ips_estimator, "get_diagnostics")
+                else None
+            ),
+        )
+
+        # Create result with MRDR metadata (no influence functions here - they're first-class)
+        metadata = {
+            "omega_mode": self.omega_mode,
+            "min_sample_weight": self.min_sample_weight,
+            "use_policy_specific_models": self.use_policy_specific_models,
+            "n_policy_models": len(self._policy_models),
+            "cross_fitted": True,
+            "n_folds": self.n_folds,
+        }
+
+        return EstimationResult(
+            estimates=np.array(estimates, dtype=float),
+            standard_errors=np.array(standard_errors, dtype=float),
+            n_samples_used=n_samples_used,
+            method="mrdr",
+            influence_functions=(
+                self._influence_functions if self.store_influence else None
+            ),
+            diagnostics=diagnostics,
+            metadata=metadata,
+        )

@@ -26,7 +26,6 @@ Run CJE analysis on a dataset with various estimators.
 
     python -m cje analyze data.jsonl \
         --estimator dr-cpo \
-        --oracle-coverage 0.5 \
         --output results.json \
         --fresh-draws-dir ./responses
 
@@ -44,7 +43,6 @@ Run CJE analysis on a dataset with various estimators.
   * ``mrdr`` - Multiple robust DR
   * ``tmle`` - Targeted maximum likelihood
 
-* ``--oracle-coverage`` - Fraction of oracle labels to use (0.0-1.0, default: 1.0)
 * ``--output, -o`` - Path to save results JSON
 * ``--fresh-draws-dir`` - Directory with fresh draw responses (for DR estimators)
 * ``--estimator-config`` - JSON configuration for estimator
@@ -69,9 +67,8 @@ Run CJE analysis on a dataset with various estimators.
         --estimator mrdr \
         --estimator-config '{"n_folds": 10, "omega_mode": "w2"}'
 
-    # Partial oracle coverage
+    # Verbose output for debugging
     python -m cje analyze data.jsonl \
-        --oracle-coverage 0.5 \
         --verbose
 
 validate
@@ -145,7 +142,6 @@ Use ``--output results.json`` to save comprehensive results::
       "metadata": {
         "dataset_path": "data.jsonl",
         "estimator": "calibrated-ips",
-        "oracle_coverage": 1.0,
         "target_policies": ["gpt4", "claude", "llama"]
       },
       "diagnostics": {
@@ -204,13 +200,7 @@ Best Practices
         --fresh-draws-dir ./responses \
         --output dr_results.json
 
-4. **Use partial oracle coverage to save labeling costs**::
-
-    python -m cje analyze data.jsonl \
-        --oracle-coverage 0.5 \
-        --output results_50pct.json
-
-5. **Export results for downstream analysis**::
+4. **Export results for downstream analysis**::
 
     python -m cje analyze data.jsonl --output results.json
     # Then load in Python/R/Excel for further analysis
@@ -237,7 +227,7 @@ The dataset is missing oracle labels needed for calibration. Either:
 
 1. Add oracle labels to your dataset
 2. Use pre-calibrated rewards
-3. Use ``--oracle-coverage 0`` (not recommended)
+3. Use raw IPS without calibration (not recommended)
 
 **"Fresh draws missing for N prompts"**
 

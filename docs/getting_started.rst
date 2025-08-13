@@ -70,8 +70,7 @@ The simplest way to analyze a dataset programmatically:
    # One-line analysis
    results = analyze_dataset(
        "data.jsonl",
-       estimator="calibrated-ips",
-       oracle_coverage=0.5  # Use 50% of oracle labels
+       estimator="calibrated-ips"
    )
    
    # Check results

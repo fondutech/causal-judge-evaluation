@@ -180,14 +180,18 @@ class TMLEEstimator(DREstimator):
                 eps, info = self._solve_logistic_fluctuation(
                     g_logged0, rewards, weights
                 )
-                g_logged_star = _expit(_logit(g_logged0) + eps)
-                g_fresh_star = _expit(_logit(g_fresh0) + eps)
+                # Clever covariate is W, so update is ε·W
+                g_logged_star = _expit(_logit(g_logged0) + eps * weights)
+                # DO NOT shift the fresh draw predictions - only the logged term
+                g_fresh_star = g_fresh0
             else:  # identity link
                 eps, info = self._solve_identity_fluctuation(
                     g_logged0, rewards, weights
                 )
-                g_logged_star = np.clip(g_logged0 + eps, 0.0, 1.0)
-                g_fresh_star = np.clip(g_fresh0 + eps, 0.0, 1.0)
+                # Update with ε·W for identity link too
+                g_logged_star = np.clip(g_logged0 + eps * weights, 0.0, 1.0)
+                # DO NOT shift the fresh draw predictions
+                g_fresh_star = g_fresh0
 
             # 4) TMLE estimate = DM + IPS correction (using targeted predictions)
             dm_term = float(g_fresh_star.mean())
@@ -388,7 +392,7 @@ class TMLEEstimator(DREstimator):
             ips_diagnostics=ips_diag,
         )
 
-        # Add influence functions to metadata if stored (for backward compatibility)
+        # Create metadata without influence functions (they're first-class now)
         metadata = {
             "cross_fitted": True,
             "n_folds": self.n_folds,
@@ -398,14 +402,14 @@ class TMLEEstimator(DREstimator):
             "dr_calibration_data": dr_calibration_data,
         }
 
-        if self.store_influence:
-            metadata["dr_influence"] = self._influence_functions
-
         return EstimationResult(
             estimates=np.array(estimates, dtype=float),
             standard_errors=np.array(standard_errors, dtype=float),
             n_samples_used=n_samples_used,
             method="tmle",
+            influence_functions=(
+                self._influence_functions if self.store_influence else None
+            ),
             diagnostics=diagnostics,  # Add the DRDiagnostics object
             metadata=metadata,
         )
@@ -413,10 +417,10 @@ class TMLEEstimator(DREstimator):
     def _solve_logistic_fluctuation(
         self, q0_logged: np.ndarray, rewards: np.ndarray, weights: np.ndarray
     ) -> Tuple[float, Dict[str, Any]]:
-        """Solve for ε in logit(Q*) = logit(Q0) + ε using weighted logistic MLE.
+        """Solve for ε in logit(Q*) = logit(Q0) + ε·W using weighted logistic MLE.
 
+        The clever covariate is W, so the fluctuation is ε·W, not just ε.
         Uses scale-aware convergence: |score| / sqrt(Fisher) < tol
-        This is the normalized score that accounts for the parameter scale.
         """
         # Guards
         q0 = np.clip(q0_logged, _EPS, 1.0 - _EPS)
@@ -440,10 +444,12 @@ class TMLEEstimator(DREstimator):
             )
 
         for t in range(self.max_iter):
-            mu = _expit(eta0 + eps)
+            # CRITICAL FIX: clever covariate is W, so fluctuation is ε·W
+            mu = _expit(eta0 + eps * weights)
             # weighted score (sum w*(y-mu))
             score = float(np.sum(weights * (rewards - mu)))
-            fisher = float(np.sum(weights * mu * (1.0 - mu)))
+            # Fisher information for ε with clever covariate W
+            fisher = float(np.sum((weights**2) * mu * (1.0 - mu)))
 
             score_val = score
             fisher_val = fisher
@@ -494,18 +500,21 @@ class TMLEEstimator(DREstimator):
     def _solve_identity_fluctuation(
         self, q0_logged: np.ndarray, rewards: np.ndarray, weights: np.ndarray
     ) -> Tuple[float, Dict[str, Any]]:
-        """Solve for ε in Q* = Q0 + ε via the EIF score equation."""
-        denom = float(np.sum(weights))
-        if denom <= 0:
+        """Solve for ε in Q* = Q0 + ε·W via the EIF score equation.
+
+        The clever covariate is W, so the update is ε·W.
+        """
+        num = float(np.sum(weights * (rewards - q0_logged)))
+        den = float(np.sum(weights**2))  # CRITICAL FIX: denominator is sum(W²)
+        if den <= 1e-12:
             return 0.0, dict(
-                epsilon=0.0, converged=True, iters=1, score=0.0, fisher=denom
+                epsilon=0.0, converged=True, iters=1, score=num, fisher=den
             )
-        resid = float(np.sum(weights * (rewards - q0_logged)))
-        eps = resid / denom
+        eps = num / den
         return float(eps), dict(
             epsilon=float(eps),
             converged=True,
             iters=1,
-            score=float(resid),
-            fisher=denom,
+            score=float(num),
+            fisher=den,
         )

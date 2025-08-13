@@ -88,7 +88,10 @@ class TestAnalyzeDataset:
         # Check diagnostics exist
         result_dict = result.to_dict()
         assert "diagnostics" in result_dict
-        assert "clone" in result_dict["diagnostics"]
+        # Diagnostics is now a serialized object, not a dict of policies
+        diagnostics = result_dict["diagnostics"]
+        assert "policies" in diagnostics
+        assert "clone" in diagnostics["policies"]
 
     def test_analyze_dr_with_fresh_draws(self) -> None:
         """Test DR analysis with real fresh draws."""
@@ -179,58 +182,36 @@ class TestAnalyzeDataset:
         test_file = self.create_test_file(limited_data)
 
         try:
-            with pytest.raises(ValueError, match="Insufficient oracle"):
+            with pytest.raises(ValueError, match="Too few oracle"):
                 analyze_dataset(test_file, estimator="calibrated-ips")
         finally:
             Path(test_file).unlink()
 
     def test_analyze_mrdr_estimator(self) -> None:
         """Test MRDR estimator analysis."""
-        # Add rewards for MRDR
-        data_with_rewards = [
-            {**record, "reward": 0.5 + 0.02 * i}
-            for i, record in enumerate(self.mock_data)
-        ]
+        # Use real test data with fresh draws
+        result = analyze_dataset(
+            str(self.test_data_path),
+            estimator="mrdr",
+            estimator_config={"omega_mode": "w2"},
+            fresh_draws_dir=str(self.fresh_draws_dir),
+        )
 
-        test_file = self.create_test_file(data_with_rewards)
-
-        try:
-            with patch("cje.analysis.load_fresh_draws_auto") as mock_fresh:
-                # Setup minimal fresh draws
-                mock_fresh.return_value = MagicMock(n_samples=20)
-
-                result = analyze_dataset(
-                    test_file, estimator="mrdr", estimator_config={"omega_mode": "w2"}
-                )
-
-                assert result.method in ["mrdr", "multiply_robust"]
-
-        finally:
-            Path(test_file).unlink()
+        assert result.method in ["mrdr", "multiply_robust"]
+        assert len(result.estimates) == 4  # 4 policies in test data
 
     def test_analyze_tmle_estimator(self) -> None:
         """Test TMLE estimator analysis."""
-        # Add rewards for TMLE
-        data_with_rewards = [
-            {**record, "reward": 0.5 + 0.02 * i}
-            for i, record in enumerate(self.mock_data)
-        ]
+        # Use real test data with fresh draws
+        result = analyze_dataset(
+            str(self.test_data_path),
+            estimator="tmle",
+            estimator_config={"max_iter": 5},
+            fresh_draws_dir=str(self.fresh_draws_dir),
+        )
 
-        test_file = self.create_test_file(data_with_rewards)
-
-        try:
-            with patch("cje.analysis.load_fresh_draws_auto") as mock_fresh:
-                # Setup minimal fresh draws
-                mock_fresh.return_value = MagicMock(n_samples=20)
-
-                result = analyze_dataset(
-                    test_file, estimator="tmle", estimator_config={"max_iterations": 5}
-                )
-
-                assert result.method in ["tmle", "targeted_maximum_likelihood"]
-
-        finally:
-            Path(test_file).unlink()
+        assert result.method in ["tmle", "targeted_maximum_likelihood"]
+        assert len(result.estimates) == 4  # 4 policies in test data
 
     def test_analyze_preserves_metadata(self) -> None:
         """Test that analyze preserves important metadata."""

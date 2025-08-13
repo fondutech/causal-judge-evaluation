@@ -122,6 +122,14 @@ def analyze_dataset(
     # Note: oracle_coverage removed - production always uses all available oracle labels
     results.metadata["target_policies"] = list(sampler.target_policies)
 
+    # Add estimator config if provided
+    if estimator_config:
+        results.metadata["estimator_config"] = estimator_config
+
+    # Add field names for reference
+    results.metadata["judge_field"] = judge_field
+    results.metadata["oracle_field"] = oracle_field
+
     if verbose:
         logger.info("Analysis complete!")
 

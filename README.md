@@ -28,8 +28,8 @@ pip install -e .
 # Analyze a dataset with default settings
 python -m cje analyze data.jsonl
 
-# Use specific estimator with options
-python -m cje analyze data.jsonl --estimator dr-cpo --oracle-coverage 0.5
+# Use specific estimator with fresh draws for DR
+python -m cje analyze data.jsonl --estimator dr-cpo --fresh-draws-dir responses/
 
 # Validate dataset format
 python -m cje validate data.jsonl
@@ -46,8 +46,7 @@ from cje import analyze_dataset
 
 results = analyze_dataset(
     "data.jsonl",
-    estimator="calibrated-ips",
-    oracle_coverage=0.5
+    estimator="calibrated-ips"
 )
 print(f"Best policy: {results.best_policy()}")
 
@@ -131,8 +130,6 @@ python -m cje analyze <dataset> [options]
 Options:
   --estimator {calibrated-ips,raw-ips,dr-cpo,mrdr,tmle}
                         Estimation method (default: calibrated-ips)
-  --oracle-coverage FLOAT
-                        Fraction of oracle labels for calibration (0.0-1.0)
   --output PATH         Save results to JSON file
   --fresh-draws-dir DIR Directory containing fresh draw responses (for DR)
   --estimator-config JSON

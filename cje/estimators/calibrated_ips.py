@@ -157,15 +157,16 @@ class CalibratedIPS(BaseCJEEstimator):
         if self.store_influence:
             self._influence_functions = influence_functions
 
-        # Create result
+        # Create result with clean separation of concerns
         result = EstimationResult(
             estimates=np.array(estimates),
             standard_errors=np.array(standard_errors),
             n_samples_used=n_samples_used,
             method="calibrated_ips",
+            influence_functions=influence_functions if self.store_influence else None,
             metadata={
                 "target_policies": list(self.sampler.target_policies),
-                "ips_influence": influence_functions if self.store_influence else None,
+                "calibration_info": self._calibration_info,  # TODO: Move to diagnostics
             },
         )
 

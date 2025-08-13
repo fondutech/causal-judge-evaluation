@@ -144,24 +144,32 @@ class Dataset(BaseModel):
 class EstimationResult(BaseModel):
     """Result from a CJE estimator.
 
-    The diagnostics field is the single source of truth for all diagnostic information.
-    It will be either IPSDiagnostics or DRDiagnostics depending on the estimator.
+    Influence functions are first-class outputs for statistical inference.
+    Diagnostics contain quality metrics and health indicators.
+    Metadata contains configuration and context.
     """
 
+    # Core results
     estimates: np.ndarray = Field(..., description="Point estimates for each policy")
     standard_errors: np.ndarray = Field(..., description="Standard errors")
     n_samples_used: Dict[str, int] = Field(..., description="Valid samples per policy")
     method: str = Field(..., description="Estimation method used")
 
-    # Use forward references to avoid circular import
+    # First-class statistical artifact
+    influence_functions: Optional[Dict[str, np.ndarray]] = Field(
+        None,
+        description="Influence functions for each policy (when store_influence=True)",
+    )
+
+    # Quality metrics
     diagnostics: Optional[Union["IPSDiagnostics", "DRDiagnostics"]] = Field(
         None, description="Diagnostic information (IPSDiagnostics or DRDiagnostics)"
     )
 
-    # Keep metadata for backward compatibility
+    # Configuration and context
     metadata: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Legacy metadata field (use diagnostics instead)",
+        description="Configuration parameters and context (dataset path, timestamp, etc.)",
     )
 
     model_config = {"arbitrary_types_allowed": True}
@@ -185,24 +193,17 @@ class EstimationResult(BaseModel):
         """Compare two policies using influence functions when available."""
         diff = self.estimates[idx1] - self.estimates[idx2]
 
-        # Check if we have influence functions to account for covariance
-        influence_data = (
-            self.metadata.get("dr_influence")
-            or self.metadata.get("ips_influence")
-            or self.metadata.get("tmle_influence")
-        )
-
-        if influence_data and "target_policies" in self.metadata:
-            # Use influence functions for correct variance estimation
+        # Use influence functions for proper variance estimation
+        if self.influence_functions and "target_policies" in self.metadata:
             policies = self.metadata["target_policies"]
             if idx1 < len(policies) and idx2 < len(policies):
                 p1 = policies[idx1]
                 p2 = policies[idx2]
 
-                if p1 in influence_data and p2 in influence_data:
+                if p1 in self.influence_functions and p2 in self.influence_functions:
                     # Compute variance of difference using influence functions
-                    if1 = influence_data[p1]
-                    if2 = influence_data[p2]
+                    if1 = self.influence_functions[p1]
+                    if2 = self.influence_functions[p2]
 
                     # Ensure same length (should be aligned)
                     if len(if1) == len(if2):
@@ -243,7 +244,7 @@ class EstimationResult(BaseModel):
             "z_score": z_score,
             "p_value": p_value,
             "significant": p_value < alpha,
-            "used_influence": influence_data is not None
+            "used_influence": self.influence_functions is not None
             and se_diff
             != np.sqrt(
                 self.standard_errors[idx1] ** 2 + self.standard_errors[idx2] ** 2
@@ -264,8 +265,21 @@ class EstimationResult(BaseModel):
                 "lower": ci_lower.tolist(),
                 "upper": ci_upper.tolist(),
             },
-            "metadata": self.metadata,
         }
+
+        # Add influence functions if present (convert to lists for JSON)
+        if self.influence_functions:
+            result["influence_functions"] = {
+                policy: ifs.tolist() for policy, ifs in self.influence_functions.items()
+            }
+
+        # Add diagnostics if present
+        if self.diagnostics:
+            result["diagnostics"] = self.diagnostics.to_dict()
+
+        # Add metadata if non-empty
+        if self.metadata:
+            result["metadata"] = self.metadata
 
         # Add per-policy results if policies are specified
         if "target_policies" in self.metadata:

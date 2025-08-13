@@ -22,12 +22,14 @@ The `cje/` directory is the production implementation focusing on:
 
 ```
 cje/                      # Production implementation
-├── calibration/          # Calibration utilities
-├── core/                 # Core abstractions
-├── data/                 # Data models and loading  
+├── calibration/          # Calibration utilities (isotonic, judge calibration)
+├── data/                 # Data models, loading, validation
+├── estimators/           # IPS, DR, MRDR, TMLE estimators
+├── utils/                # Utilities (diagnostics, export, fresh draws)
+├── visualization/        # Plotting and dashboard generation
 ├── teacher_forcing/      # Log probability computation
 ├── experiments/          # Arena experiment pipeline
-└── tests/                # Test suite
+└── tests/                # Comprehensive test suite
 ```
 
 ## 🚀 Quick Start
@@ -143,6 +145,8 @@ Don't create complex abstractions for template selection - let the tools handle 
 ## 🔬 Three Isotonic Mappings
 
 The codebase implements three distinct isotonic regressions, each with a specific purpose:
+
+**Important Update (Aug 2024)**: Weight calibration now correctly uses judge scores as the ordering index by default (as specified in CJE paper Section 2.2). Ties in judge scores are handled by pooling weights within tied groups before applying PAV.
 
 1. **Reward Calibration** (judge → oracle)
    - **Where**: `JudgeCalibrator` in `calibration/judge.py`

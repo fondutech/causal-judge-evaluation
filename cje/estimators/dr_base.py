@@ -560,16 +560,15 @@ class DREstimator(BaseCJEEstimator):
             "dr_overview": dr_overview,
         }
 
-        # Add influence functions if stored
-        if self.store_influence:
-            metadata["dr_influence"] = self._influence_functions
-
         return EstimationResult(
             estimates=np.array(estimates),
             standard_errors=np.array(standard_errors),
             n_samples_used=n_samples_used,
             method="dr_base",
-            diagnostics=diagnostics,  # Add the DRDiagnostics object
+            influence_functions=(
+                self._influence_functions if self.store_influence else None
+            ),
+            diagnostics=diagnostics,
             metadata=metadata,
         )
 
