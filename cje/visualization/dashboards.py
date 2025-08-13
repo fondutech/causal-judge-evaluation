@@ -1080,7 +1080,15 @@ def plot_dr_dashboard(
 
     # Check if actual influence functions are available
     has_empirical_ifs = False
-    if "dr_influence" in estimation_result.metadata:
+    ifs_data = None
+
+    # First check the first-class location (new API)
+    if estimation_result.influence_functions is not None:
+        ifs_data = estimation_result.influence_functions
+        if ifs_data and all(policy in ifs_data for policy in policies):
+            has_empirical_ifs = True
+    # Fallback to legacy location in metadata
+    elif "dr_influence" in estimation_result.metadata:
         ifs_data = estimation_result.metadata["dr_influence"]
         if ifs_data and all(policy in ifs_data for policy in policies):
             has_empirical_ifs = True
