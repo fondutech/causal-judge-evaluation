@@ -292,7 +292,7 @@ class CalibratedIPS(BaseCJEEstimator):
         if dataset and hasattr(dataset, "metadata"):
             cal_info = dataset.metadata.get("calibration_info", {})
             calibration_rmse = cal_info.get("rmse")
-            calibration_r2 = cal_info.get("r2")
+            calibration_r2 = cal_info.get("r2")  # May be None if not computed
             n_oracle_labels = cal_info.get("n_oracle")
 
         # Create IPSDiagnostics

@@ -124,11 +124,25 @@ def calibrate_dataset(
         )
         calibrated_samples.append(calibrated_sample)
 
-    # Create new dataset
+    # Create new dataset with calibration info in metadata
+    dataset_metadata = dataset.metadata.copy()
+
+    # Add calibration summary for downstream diagnostics
+    dataset_metadata["calibration_info"] = {
+        "rmse": result.calibration_rmse,
+        "coverage": result.coverage_at_01,
+        "n_oracle": result.n_oracle,
+        "n_total": len(judge_scores),
+        "method": "cross_fitted_isotonic" if enable_cross_fit else "isotonic",
+        "n_folds": n_folds if enable_cross_fit else None,
+        "oof_rmse": result.oof_rmse if enable_cross_fit else None,
+        "oof_coverage": result.oof_coverage_at_01 if enable_cross_fit else None,
+    }
+
     calibrated_dataset = Dataset(
         samples=calibrated_samples,
         target_policies=dataset.target_policies,
-        metadata=dataset.metadata.copy(),
+        metadata=dataset_metadata,
     )
 
     return calibrated_dataset, result

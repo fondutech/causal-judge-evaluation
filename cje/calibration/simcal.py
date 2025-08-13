@@ -15,12 +15,26 @@ from sklearn.isotonic import IsotonicRegression
 class SimcalConfig:
     """Configuration for SIMCal calibration.
 
+    SIMCal projects weights onto monotone curves indexed by judge scores,
+    automatically selecting the direction (increasing/decreasing) that minimizes
+    L2 distance to the original weights. When L2 distances tie, the tie_break
+    parameter determines whether to prefer the direction with higher ESS or
+    lower variance.
+
+    Both ess_floor and var_cap constraints are enforced via a single convex
+    blend toward uniform weights: w ↦ 1 + (1-γ)(w-1), where γ ∈ [0,1] is
+    chosen to satisfy the tightest constraint.
+
     Args:
         ess_floor: Minimum effective sample size as fraction of n (e.g., 0.2 => ESS >= 0.2 * n)
+                  Note: This implies var_cap <= 1/ess_floor - 1
         var_cap: Maximum allowed variance of calibrated weights
+                Warning: If tighter than ESS-implied cap, the ESS constraint takes precedence
         epsilon: Small constant for numerical stability
         direction: "auto" (choose by L2), "increasing", or "decreasing"
         tie_break: How to break ties when L2 distances are equal ("ess" or "var")
+                  "ess": prefer direction with higher effective sample size
+                  "var": prefer direction with lower variance
     """
 
     ess_floor: Optional[float] = None
@@ -41,6 +55,20 @@ class SimcalConfig:
         if self.var_cap is not None and self.var_cap <= 0:
             raise ValueError(f"var_cap must be positive, got {self.var_cap}")
 
+        # Validate consistency between ess_floor and var_cap
+        if self.ess_floor is not None and self.var_cap is not None:
+            # ESS = n/(1 + Var) implies Var <= 1/ess_floor - 1
+            implied_var_cap = (1.0 / self.ess_floor) - 1.0
+            if self.var_cap > implied_var_cap:
+                import warnings
+
+                warnings.warn(
+                    f"var_cap={self.var_cap:.3f} is looser than ESS-implied cap "
+                    f"{implied_var_cap:.3f} from ess_floor={self.ess_floor}. "
+                    f"The ESS constraint will dominate.",
+                    UserWarning,
+                )
+
 
 class SIMCalibrator:
     """Score-Indexed Monotone Calibrator for importance weights.
@@ -58,25 +86,56 @@ class SIMCalibrator:
         """
         self.cfg = config
 
+    @staticmethod
+    def implied_var_cap(ess_floor: float) -> float:
+        """Compute the implied variance cap from an ESS floor constraint.
+
+        Since ESS = n/(1 + Var), requiring ESS >= ess_floor * n
+        implies Var <= 1/ess_floor - 1.
+
+        Args:
+            ess_floor: Minimum ESS as fraction of n (must be in (0, 1])
+
+        Returns:
+            Maximum allowed variance to satisfy the ESS constraint
+        """
+        if not (0 < ess_floor <= 1):
+            raise ValueError(f"ess_floor must be in (0, 1], got {ess_floor}")
+        return (1.0 / ess_floor) - 1.0
+
     def transform(
         self, w: np.ndarray, s: np.ndarray
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Calibrate weights using score-indexed monotone projection.
 
+        Algorithm:
+        1. Project weights onto both increasing and decreasing monotone curves
+           indexed by the score s (using isotonic regression)
+        2. Select the direction with smaller L2 distance to original weights
+           (or use tie_break criterion if distances are equal)
+        3. Blend the projected weights toward uniform to satisfy constraints:
+           w_cal = 1 + (1-γ)(w_proj - 1), where γ ∈ [0,1]
+        4. Choose γ to satisfy the tightest constraint (ESS floor or variance cap)
+
+        The blending preserves the mean-one property since both w_proj and
+        uniform weights have mean 1.
+
         Args:
-            w: Raw importance weights (must be positive)
+            w: Raw importance weights (must be positive, will be normalized to mean 1)
             s: Score index (e.g., judge scores) for ordering
 
         Returns:
             Tuple of (calibrated_weights, info_dict) where info_dict contains:
-                - direction: chosen monotone direction
+                - direction: chosen monotone direction ("increasing" or "decreasing")
                 - gamma: blending parameter (0=no blend, 1=uniform)
                 - var_before: variance of input weights
                 - var_after_proj: variance after projection
-                - var_after_blend: variance after blending
+                - var_after_blend: variance after blending (final)
                 - ess_before: ESS of input weights
                 - ess_after_proj: ESS after projection
-                - ess_after_blend: ESS after blending
+                - ess_after_blend: ESS after blending (final)
+                - l2_distance_increasing: L2 distance for increasing projection (if auto)
+                - l2_distance_decreasing: L2 distance for decreasing projection (if auto)
 
         Raises:
             ValueError: If weights contain non-positive, NaN, or infinite values

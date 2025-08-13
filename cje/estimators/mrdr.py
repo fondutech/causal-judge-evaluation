@@ -186,6 +186,20 @@ class MRDREstimator(DREstimator):
             super().fit()
             return
 
+        # Build prompt_id -> fold map from dataset metadata (if available)
+        # This ensures we reuse the same folds as reward calibration
+        cv_map = {}
+        if hasattr(self.sampler, "dataset") and self.sampler.dataset:
+            cv_map = {
+                str(s.prompt_id): int(s.metadata["cv_fold"])
+                for s in self.sampler.dataset.samples
+                if "cv_fold" in s.metadata and s.metadata["cv_fold"] is not None
+            }
+            if cv_map:
+                logger.info(
+                    f"Reusing calibration folds for MRDR: {len(cv_map)} samples with cv_fold metadata"
+                )
+
         # Fit policy-specific weighted models
         for policy in self.sampler.target_policies:
             # Get IPS weights for this policy
@@ -217,14 +231,11 @@ class MRDREstimator(DREstimator):
             model = WeightedIsotonicOutcomeModel(n_folds=self.n_folds)
             model.set_weights(omega)
 
-            # Fit with cross-fitting if we have calibrator with fold assignments
-            if self.calibrator is not None and hasattr(
-                self.calibrator, "fold_assignment"
-            ):
-                # Map prompt_ids to folds
-                fold_map = self.calibrator.fold_assignment
+            # Use cv_map if available (from calibration), otherwise create new folds
+            if cv_map:
+                # Reuse folds from calibration for consistency
                 fold_ids = np.array(
-                    [fold_map.get(pid, 0) for pid in prompt_ids], dtype=int
+                    [cv_map.get(pid, 0) for pid in prompt_ids], dtype=int
                 )
                 model.fit(
                     prompts, responses, rewards, judge_scores, fold_ids, prompt_ids
@@ -247,18 +258,18 @@ class MRDREstimator(DREstimator):
             )
 
         # Store prompt_id to fold mapping if available
-        if self.calibrator is not None and hasattr(self.calibrator, "fold_assignment"):
-            self._promptid_to_fold = self.calibrator.fold_assignment
-        else:
+        if cv_map:
+            # Use the cv_map we built from dataset metadata
+            self._promptid_to_fold = cv_map
+        elif self._policy_models:
             # Create from first policy model if available
-            if self._policy_models:
-                first_model = next(iter(self._policy_models.values()))
-                if hasattr(first_model, "_promptid_to_fold"):
-                    self._promptid_to_fold = first_model._promptid_to_fold
-                else:
-                    self._promptid_to_fold = {}
+            first_model = next(iter(self._policy_models.values()))
+            if hasattr(first_model, "_promptid_to_fold"):
+                self._promptid_to_fold = first_model._promptid_to_fold
             else:
                 self._promptid_to_fold = {}
+        else:
+            self._promptid_to_fold = {}
 
         logger.info(
             f"MRDR fitted with {len(self._policy_models)} policy-specific models"
