@@ -237,12 +237,16 @@ def _plot_single_policy_weight_smoothing(
 
     # Plot raw weights as thin line or scatter depending on size
     if n > 5000:
-        # For large datasets, subsample for raw weights visualization
+        # For large datasets, subsample then plot in sorted order
+        # We need to subsample from the original arrays, then sort the subsample
         subsample_idx = np.random.RandomState(42).choice(n, min(2000, n), replace=False)
-        subsample_idx.sort()
+        S_sub = S[subsample_idx]
+        W_raw_sub = W_raw[subsample_idx]
+        # Now sort the subsample by judge score
+        sub_sort_idx = np.argsort(S_sub)
         ax.plot(
-            S_sorted[subsample_idx],
-            W_raw_sorted[subsample_idx],
+            S_sub[sub_sort_idx],
+            W_raw_sub[sub_sort_idx],
             alpha=0.3,
             color="C0",
             linewidth=0.5,
