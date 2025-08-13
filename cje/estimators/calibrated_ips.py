@@ -1,41 +1,43 @@
-"""Calibrated Inverse Propensity Scoring (IPS) estimator.
+"""Calibrated Inverse Propensity Scoring (IPS) estimator with SIMCal.
 
-This is the core CJE estimator that uses isotonic calibration with variance control
-to stabilize IPS in heavy-tail regimes. It trades a small amount of bias for
-substantially reduced variance (i.e., not strictly unbiased).
+This is the core CJE estimator that uses Score-Indexed Monotone Calibration (SIMCal)
+to stabilize IPS in heavy-tail regimes. It projects weights onto monotone curves
+indexed by judge scores, choosing the direction that minimizes L2 distance, then
+blends toward uniform to meet variance/ESS constraints.
 """
 
 import numpy as np
-from typing import Dict, Optional, Set
+from typing import Dict, Optional, Set, Any
 import logging
 
 from .base_estimator import BaseCJEEstimator
 from ..data.models import EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..data.diagnostics import IPSDiagnostics, Status
-from ..calibration.isotonic import calibrate_to_target_mean
 from ..utils.diagnostics import compute_weight_diagnostics
 
 logger = logging.getLogger(__name__)
 
 
 class CalibratedIPS(BaseCJEEstimator):
-    """Variance-controlled IPS estimator using isotonic calibration.
+    """SIMCal-based IPS estimator with score-indexed weight calibration.
 
-    Uses SNIPS-style PAV calibration to reduce variance and heavy-tail
-    pathologies in importance weights. This is a deliberate variance-bias
-    tradeoff for more stable estimation (not strictly unbiased).
+    Uses Score-Indexed Monotone Calibration (SIMCal) to reduce variance and
+    heavy-tail pathologies in importance weights. Projects weights onto monotone
+    curves indexed by judge scores, automatically choosing increasing/decreasing
+    direction based on L2 distance, then blends toward uniform to meet constraints.
 
     Features:
-    - Single-pass PAV (no cross-fitting overhead)
-    - Closed-form variance-safe blending with feasibility handling
-    - Comprehensive diagnostics via DiagnosticSuite
+    - Automatic direction selection (increasing vs decreasing monotone)
+    - ESS floor and variance cap constraints
+    - Judge score-indexed calibration for better alignment
+    - Comprehensive diagnostics
 
     Args:
         sampler: PrecomputedSampler with data
         clip_weight: Maximum weight value before calibration (default None = no clipping)
-        enforce_variance_nonincrease: Prevent variance explosion (default True)
-        max_variance_ratio: Maximum allowed variance ratio (default 1.0 = no increase)
+        ess_floor: Minimum ESS as fraction of n (default 0.2 = 20% ESS)
+        var_cap: Maximum allowed variance of calibrated weights (default None = no cap)
         store_influence: Store per-sample influence functions (default False)
     """
 
@@ -43,16 +45,15 @@ class CalibratedIPS(BaseCJEEstimator):
         self,
         sampler: PrecomputedSampler,
         clip_weight: Optional[float] = None,
-        enforce_variance_nonincrease: bool = True,
-        max_variance_ratio: float = 1.0,
+        ess_floor: Optional[float] = 0.2,
+        var_cap: Optional[float] = None,
         store_influence: bool = False,
     ):
         super().__init__(sampler)
         self.clip_weight = clip_weight
-        self.enforce_variance_nonincrease = enforce_variance_nonincrease
-        self.max_variance_ratio = max_variance_ratio
+        self.ess_floor = ess_floor
+        self.var_cap = var_cap
         self.store_influence = store_influence
-        self.target_mean = 1.0  # Always use SNIPS/Hajek normalization
         self._influence_functions: Dict[str, np.ndarray] = {}
         self._no_overlap_policies: Set[str] = set()
         self._calibration_info: Dict[str, Dict] = {}  # Store calibration details
@@ -84,15 +85,26 @@ class CalibratedIPS(BaseCJEEstimator):
                 f"n_samples={len(raw_weights)}, raw_mean={raw_weights.mean():.3f}"
             )
 
-            # Calibrate weights - use judge scores as ordering index if available
-            calibrated, calib_info = calibrate_to_target_mean(
-                raw_weights,
-                target_mean=self.target_mean,
-                enforce_variance_nonincrease=self.enforce_variance_nonincrease,
-                max_variance_ratio=self.max_variance_ratio,
-                return_diagnostics=True,
-                ordering_index=judge_scores,  # Pass judge scores as the ordering index
+            # Use SIMCal calibration with judge scores as the index
+            if judge_scores is None:
+                raise ValueError(
+                    "Judge scores are required for SIMCal calibration. "
+                    "Ensure samples have 'judge_score' in metadata."
+                )
+
+            from ..calibration.simcal import SIMCalibrator, SimcalConfig
+
+            # Create SIMCal config
+            cfg = SimcalConfig(
+                ess_floor=self.ess_floor,
+                var_cap=self.var_cap,
+                direction="auto",  # Auto-select increasing/decreasing
+                tie_break="ess",  # Break ties by ESS
             )
+
+            # Calibrate with SIMCal
+            sim = SIMCalibrator(cfg)
+            calibrated, calib_info = sim.transform(raw_weights, judge_scores)
 
             # Cache results
             self._weights_cache[policy] = calibrated
@@ -166,6 +178,9 @@ class CalibratedIPS(BaseCJEEstimator):
             influence_functions=influence_functions if self.store_influence else None,
             metadata={
                 "target_policies": list(self.sampler.target_policies),
+                "calibration_method": "simcal",
+                "ess_floor": self.ess_floor,
+                "var_cap": self.var_cap,
                 "calibration_info": self._calibration_info,  # TODO: Move to diagnostics
             },
         )

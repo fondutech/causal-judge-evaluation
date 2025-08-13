@@ -134,13 +134,18 @@ class TestAnalyzeDataset:
             result = analyze_dataset(
                 test_file,
                 estimator="calibrated-ips",
-                estimator_config={"clip_weight": 10.0, "max_variance_ratio": 2.0},
+                estimator_config={
+                    "clip_weight": 10.0,
+                    "ess_floor": 0.3,
+                    "var_cap": 5.0,
+                },
             )
 
             # Config should be in metadata
             assert result.metadata.get("estimator_config") == {
                 "clip_weight": 10.0,
-                "max_variance_ratio": 2.0,
+                "ess_floor": 0.3,
+                "var_cap": 5.0,
             }
 
         finally:
