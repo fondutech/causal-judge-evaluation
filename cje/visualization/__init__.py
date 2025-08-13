@@ -10,7 +10,11 @@ This module provides plotting functions for:
 # Import from new modular structure
 from .calibration import plot_calibration_comparison
 from .estimates import plot_policy_estimates
-from .dashboards import plot_weight_dashboard, plot_dr_dashboard
+from .dashboards import (
+    plot_weight_dashboard,
+    plot_weight_dashboard_per_policy,
+    plot_dr_dashboard,
+)
 
 __all__ = [
     # Calibration
@@ -19,5 +23,6 @@ __all__ = [
     "plot_policy_estimates",
     # Dashboards
     "plot_weight_dashboard",
+    "plot_weight_dashboard_per_policy",
     "plot_dr_dashboard",
 ]

@@ -71,6 +71,7 @@ from oracle_comparison import (
 try:
     from cje.visualization import (
         plot_weight_dashboard,
+        plot_weight_dashboard_per_policy,
         plot_calibration_comparison,
         plot_policy_estimates,
         plot_dr_dashboard,
@@ -569,15 +570,30 @@ def generate_visualizations(
                 raw_weights_dict[policy] = weights
 
         if raw_weights_dict and calibrated_weights_dict:
-            # Pass diagnostics object if available
+            # Generate original combined dashboard
             fig, _ = plot_weight_dashboard(
                 raw_weights_dict,
                 calibrated_weights_dict,
                 n_samples=sampler.n_valid_samples,
                 save_path=plot_dir / "weight_dashboard",
                 diagnostics=results.diagnostics,  # Pass the new diagnostics object
+                sampler=sampler,  # Pass sampler for judge scores in new visualization
             )
             print(f"   ✓ Weight dashboard → {plot_dir}/weight_dashboard.png")
+            plt.close(fig)
+
+            # Generate per-policy dashboards with weight smoothing visualization
+            fig, _ = plot_weight_dashboard_per_policy(
+                raw_weights_dict,
+                calibrated_weights_dict,
+                n_samples=sampler.n_valid_samples,
+                save_path=plot_dir / "weight_dashboard_per_policy",
+                diagnostics=results.diagnostics,
+                sampler=sampler,
+            )
+            print(
+                f"   ✓ Per-policy weight dashboards → {plot_dir}/weight_dashboard_per_policy_*.png"
+            )
             plt.close(fig)
 
         # Calibration comparison
