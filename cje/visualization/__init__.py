@@ -15,6 +15,7 @@ from .dashboards import (
     plot_weight_dashboard_per_policy,
     plot_dr_dashboard,
 )
+from .combined_dashboard import plot_combined_weight_dashboard
 
 __all__ = [
     # Calibration
@@ -25,4 +26,5 @@ __all__ = [
     "plot_weight_dashboard",
     "plot_weight_dashboard_per_policy",
     "plot_dr_dashboard",
+    "plot_combined_weight_dashboard",
 ]

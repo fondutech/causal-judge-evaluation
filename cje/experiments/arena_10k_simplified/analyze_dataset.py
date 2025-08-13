@@ -72,6 +72,7 @@ try:
     from cje.visualization import (
         plot_weight_dashboard,
         plot_weight_dashboard_per_policy,
+        plot_combined_weight_dashboard,
         plot_calibration_comparison,
         plot_policy_estimates,
         plot_dr_dashboard,
@@ -568,16 +569,30 @@ def generate_visualizations(
                 raw_weights_dict[policy] = weights
 
         if raw_weights_dict and calibrated_weights_dict:
-            # Generate weight dashboard (plot_weight_dashboard now delegates to per_policy version)
-            fig, _ = plot_weight_dashboard(
+            # Generate combined overview dashboard
+            fig, _ = plot_combined_weight_dashboard(
                 raw_weights_dict,
                 calibrated_weights_dict,
                 n_samples=sampler.n_valid_samples,
-                save_path=plot_dir / "weight_dashboard",
+                save_path=plot_dir / "weight_dashboard_combined",
                 diagnostics=results.diagnostics,
                 sampler=sampler,
             )
-            print(f"   ✓ Weight dashboard → {plot_dir}/weight_dashboard.png")
+            print(f"   ✓ Combined dashboard → {plot_dir}/weight_dashboard_combined.png")
+            plt.close(fig)
+
+            # Generate per-policy detailed dashboard
+            fig, _ = plot_weight_dashboard_per_policy(
+                raw_weights_dict,
+                calibrated_weights_dict,
+                n_samples=sampler.n_valid_samples,
+                save_path=plot_dir / "weight_dashboard_per_policy",
+                diagnostics=results.diagnostics,
+                sampler=sampler,
+            )
+            print(
+                f"   ✓ Per-policy dashboard → {plot_dir}/weight_dashboard_per_policy.png"
+            )
             plt.close(fig)
 
         # Calibration comparison
