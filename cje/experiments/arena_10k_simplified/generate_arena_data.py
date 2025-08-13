@@ -131,13 +131,21 @@ def main() -> None:
     )
     parser.add_argument(
         "--skip-existing",
+        "--resume",
         action="store_true",
-        help="Skip steps where output files already exist",
+        default=True,
+        help="Skip steps where output files already exist (default: True)",
     )
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Force overwrite existing files (opposite of --skip-existing)",
+        help="Force overwrite existing files (disables resume/skip-existing)",
+    )
+    parser.add_argument(
+        "--no-resume",
+        dest="skip_existing",
+        action="store_false",
+        help="Disable resume/skip-existing behavior",
     )
     parser.add_argument(
         "--batch-size",
@@ -146,10 +154,6 @@ def main() -> None:
         help="Save progress every N samples for resilience (default: 20, set to 0 to disable)",
     )
     args = parser.parse_args()
-
-    # Check for conflicting flags
-    if args.skip_existing and args.force:
-        parser.error("Cannot use both --skip-existing and --force")
 
     # If --force is set, disable skip_existing
     if args.force:
@@ -160,7 +164,7 @@ def main() -> None:
     print(f"   Max tokens: {args.max_tokens}")
     print(f"   Batch size: {args.batch_size if args.batch_size > 0 else 'disabled'}")
     print(
-        f"   Mode: {'Force overwrite' if args.force else 'Skip existing' if args.skip_existing else 'Normal'}"
+        f"   Mode: {'Force overwrite' if args.force else 'Resume (skip existing)' if args.skip_existing else 'Overwrite'}"
     )
     print(f"   Output directory: {args.data_dir}")
 
@@ -183,14 +187,15 @@ def main() -> None:
         if file.exists():
             existing_files.append(file)
 
-    if existing_files and not args.force and not args.skip_existing:
+    # Only warn if we're about to overwrite (not resuming and not forcing)
+    if existing_files and not args.skip_existing and not args.force:
         print("\n⚠️  WARNING: The following files already exist:")
         for file in existing_files:
             print(f"   - {file}")
         print("\nThis operation will OVERWRITE these files!")
         print("Options:")
         print("  1. Continue and overwrite (type 'yes')")
-        print("  2. Skip existing files (rerun with --skip-existing)")
+        print("  2. Resume from existing files (default behavior, or use --resume)")
         print("  3. Force overwrite without asking (rerun with --force)")
         print("  4. Cancel (any other input)")
 
