@@ -8,9 +8,9 @@ Production-ready framework for unbiased LLM evaluation using causal inference.
 
 CJE provides a clean, production-ready implementation for:
 - **Unbiased Estimation**: Corrects for distribution shift between policies
-- **Variance Control**: SIMCal (Score-Indexed Monotone Calibration) prevents weight explosion  
+- **Variance Control**: Stacked SIMCal (Score-Indexed Monotone Calibration) prevents weight explosion  
 - **Doubly Robust**: Optional DR estimation for better bias-variance tradeoff
-- **Risk Minimization**: IF-based direction selection minimizes estimator variance
+- **Optimal Stacking**: Combines multiple weight candidates to minimize OOF variance
 - **Production Ready**: Clean API, comprehensive tests, type hints throughout
 
 ## Installation
@@ -69,8 +69,7 @@ calibrated_dataset, cal_result = calibrate_dataset(
 sampler = PrecomputedSampler(calibrated_dataset)
 estimator = CalibratedIPS(
     sampler,
-    select_direction_by="if_variance",  # Use IF-based selection
-    calibrator=cal_result.calibrator,  # For DR-aware selection
+    calibrator=cal_result.calibrator,  # For DR-aware stacking
 )
 results = estimator.fit_and_estimate()
 ```
@@ -89,9 +88,9 @@ results = estimator.fit_and_estimate()
 - Smart defaults with full configurability
 
 ### Estimators
-- **CalibratedIPS** - Variance-controlled IPS with SIMCal calibration (recommended)
-  - L2 or influence-function based direction selection
-  - Automatic DR-aware selection when calibrator available
+- **CalibratedIPS** - Variance-controlled IPS with stacked SIMCal calibration (recommended)
+  - Combines {baseline, increasing, decreasing} candidates optimally
+  - Automatic DR-aware stacking when calibrator available
 - **RawIPS** - Standard importance sampling with clipping
 - **DRCPOEstimator** - Doubly robust with cross-fitted isotonic outcome models
 - **MRDREstimator** - Policy-specific weighted outcome models for heterogeneous effects

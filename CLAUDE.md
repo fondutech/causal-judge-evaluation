@@ -49,11 +49,7 @@ calibrated_dataset, result = calibrate_dataset(
 
 # Run estimation
 sampler = PrecomputedSampler(calibrated_dataset)
-estimator = CalibratedIPS(
-    sampler,
-    select_direction_by="if_variance",  # Use IF-based selection
-    calibrator=result.calibrator,  # Pass for DR-aware selection
-)
+estimator = CalibratedIPS(sampler)
 results = estimator.fit_and_estimate()
 ```
 
@@ -124,8 +120,8 @@ Don't create complex abstractions for template selection - let the tools handle 
 3. **Explicit Failures**: Use `None` for failures, never magic values
 4. **Metadata Collection**: Non-core fields go in metadata automatically
 5. **Transparent Filtering**: Use `sampler.n_valid_samples` to see samples after filtering
-6. **Weight Calibration**: SIMCal with IF-based direction selection minimizes estimator risk
-7. **Three Isotonic Mappings**: Global f_all for rewards, cross-fitted f^(-k) for DR, SIMCal for weights
+6. **Stacked Weight Calibration**: SIMCal combines multiple candidates to minimize OOF variance
+7. **Three Isotonic Mappings**: Global f_all for rewards, cross-fitted f^(-k) for DR, stacked SIMCal for weights
 8. **DR via Inheritance**: DR inherits from CalibratedIPS to reuse weight machinery
 9. **Mandatory prompt_id**: Required for DR to align logged data with fresh draws
 10. **Fold ID Remapping**: Automatic remapping to [0..K-1] for subset compatibility
@@ -158,13 +154,10 @@ The codebase implements three distinct isotonic regressions, each with a specifi
    - **Cross-fitted**: `f^(-k)` for DR outcome models (via `predict_oof`)
    - **Usage**: `calibrate_dataset(enable_cross_fit=True)` for DR
 
-2. **Weight Calibration** (IPS stabilization via SIMCal)
+2. **Weight Calibration** (IPS stabilization via stacked SIMCal)
    - **Where**: `SIMCalibrator` in `calibration/simcal.py`
-   - **Method**: Score-indexed monotone projection + variance-safe blending
-   - **Direction selection**: 
-     - L2 distance (default)
-     - IPS influence function variance
-     - DR influence function variance (with cross-fitted residuals)
+   - **Method**: Stacks {baseline, increasing, decreasing} via OOF variance minimization
+   - **Automatic**: Uses DR residuals when calibrator available, else IPS rewards
    - **No cross-fitting**: Applied per-policy in `CalibratedIPS.fit()`
    - **Purpose**: Prevents weight explosion while preserving mean
 

@@ -1,9 +1,9 @@
-"""Calibrated Inverse Propensity Scoring (IPS) estimator with SIMCal.
+"""Calibrated Inverse Propensity Scoring (IPS) estimator with stacked SIMCal.
 
-This is the core CJE estimator that uses Score-Indexed Monotone Calibration (SIMCal)
-to stabilize IPS in heavy-tail regimes. It projects weights onto monotone curves
-indexed by judge scores, choosing the direction that minimizes either L2 distance
-or influence function variance, then blends toward uniform to meet variance/ESS constraints.
+This is the core CJE estimator that uses stacked Score-Indexed Monotone Calibration
+(SIMCal) to stabilize IPS in heavy-tail regimes. It combines {baseline, increasing,
+decreasing} candidates via convex optimization to minimize OOF influence function
+variance, then blends toward uniform to meet variance/ESS constraints.
 """
 
 import numpy as np
@@ -21,18 +21,19 @@ logger = logging.getLogger(__name__)
 
 
 class CalibratedIPS(BaseCJEEstimator):
-    """SIMCal-based IPS estimator with score-indexed weight calibration.
+    """Stacked SIMCal-based IPS estimator with optimal weight calibration.
 
-    Uses Score-Indexed Monotone Calibration (SIMCal) to reduce variance and
-    heavy-tail pathologies in importance weights. Projects weights onto monotone
-    curves indexed by judge scores, automatically choosing increasing/decreasing
-    direction based on L2 distance, then blends toward uniform to meet constraints.
+    Uses stacked Score-Indexed Monotone Calibration (SIMCal) to reduce variance and
+    heavy-tail pathologies in importance weights. Combines {baseline, increasing,
+    decreasing} candidates via convex optimization to minimize OOF influence function
+    variance, then blends toward uniform to meet constraints.
 
     Features:
-    - Automatic direction selection (increasing vs decreasing monotone)
+    - Stacked calibration combining multiple candidates optimally
+    - OOF influence function variance minimization
     - ESS floor and variance cap constraints
     - Judge score-indexed calibration for better alignment
-    - IF-based direction selection for risk minimization (optional)
+    - Automatic DR-aware calibration when calibrator available
     - Comprehensive diagnostics
 
     Args:
@@ -40,12 +41,9 @@ class CalibratedIPS(BaseCJEEstimator):
         clip_weight: Maximum weight value before calibration (default None = no clipping)
         ess_floor: Minimum ESS as fraction of n (default 0.2 = 20% ESS)
         var_cap: Maximum allowed variance of calibrated weights (default None = no cap)
-        calibrator: Optional JudgeCalibrator for DR-aware direction selection
-        select_direction_by: Method for direction selection:
-            "if_variance": (default) auto-select DR IF if calibrator available, else IPS IF
-            "l2": minimize L2 distance to raw weights
-            "ips_if": minimize IPS influence function variance
-            "dr_if": minimize DR influence function variance (requires calibrator)
+        calibrator: Optional JudgeCalibrator for DR influence functions
+        include_baseline: Whether to include raw weights in the stack (default True)
+        baseline_shrink: Shrinkage toward baseline for stability (default 0.05)
     """
 
     def __init__(
@@ -55,20 +53,22 @@ class CalibratedIPS(BaseCJEEstimator):
         ess_floor: Optional[float] = 0.2,
         var_cap: Optional[float] = None,
         calibrator: Optional[Any] = None,
-        select_direction_by: str = "if_variance",
+        include_baseline: bool = True,
+        baseline_shrink: float = 0.05,
     ):
         super().__init__(sampler)
         self.clip_weight = clip_weight
         self.ess_floor = ess_floor
         self.var_cap = var_cap
         self.calibrator = calibrator
-        self.select_direction_by = select_direction_by
+        self.include_baseline = include_baseline
+        self.baseline_shrink = baseline_shrink
         self._no_overlap_policies: Set[str] = set()
         self._calibration_info: Dict[str, Dict] = {}  # Store calibration details
         self._diagnostics: Optional[IPSDiagnostics] = None
 
     def fit(self) -> None:
-        """Fit weight calibration for all target policies."""
+        """Fit stacked weight calibration for all target policies."""
         # Get judge scores once (same for all policies)
         judge_scores = self.sampler.get_judge_scores()
 
@@ -100,67 +100,45 @@ class CalibratedIPS(BaseCJEEstimator):
                     "Ensure samples have 'judge_score' in metadata."
                 )
 
-            # Get rewards for this policy to enable IF-based selection
+            # Get rewards for this policy (always needed for influence functions)
             data = self.sampler.get_data_for_policy(policy)
             if not data:
                 logger.warning(f"No data for policy '{policy}'. Skipping.")
                 continue
             rewards = np.array([d["reward"] for d in data], dtype=float)
 
-            # Decide selection mode
-            # "if_variance" ⇒ try DR IF if possible, else IPS IF; explicit "ips_if"/"dr_if"/"l2" respected.
-            mode = self.select_direction_by
+            # Try to get DR residuals if calibrator available
             residuals = None
-            if mode in ("if_variance", "dr_if"):
-                # Try to compute cross-fitted residuals using the provided calibrator + fold ids
-                fold_ids = None
+            fold_ids = None
+            if self.calibrator is not None and hasattr(self.calibrator, "predict_oof"):
                 try:
+                    # Extract fold IDs from data
                     fold_list = [d.get("cv_fold") for d in data]
                     if all(v is not None for v in fold_list) and len(fold_list) == len(
                         judge_scores
                     ):
                         fold_ids = np.asarray(fold_list, dtype=int)
-                except Exception:
-                    fold_ids = None
-                if (
-                    mode != "ips_if"
-                    and self.calibrator is not None
-                    and hasattr(self.calibrator, "predict_oof")
-                    and fold_ids is not None
-                ):
-                    try:
+                        # Compute cross-fitted residuals
                         g_oof = self.calibrator.predict_oof(judge_scores, fold_ids)
                         residuals = rewards - g_oof
-                        sel_method = "dr_if"
-                    except Exception as e:
-                        logger.warning(
-                            f"DR residuals unavailable ({e}); falling back to IPS IF."
-                        )
-                        sel_method = "ips_if" if mode == "if_variance" else "l2"
-                else:
-                    sel_method = "ips_if" if mode == "if_variance" else "l2"
-            elif mode == "ips_if":
-                sel_method = "ips_if"
-            elif mode == "l2":
-                sel_method = "l2"
-            else:
-                # Treat anything else as l2 for backward compatibility
-                sel_method = "l2"
+                        logger.debug(f"Using DR residuals for policy '{policy}'")
+                except Exception as e:
+                    logger.debug(f"Could not compute DR residuals: {e}")
 
-            # Run SIMCal with requested selection rule
+            # Run stacked SIMCal calibration
             cfg = SimcalConfig(
                 ess_floor=self.ess_floor,
                 var_cap=self.var_cap,
-                direction="auto",
-                tie_break="ess",
-                select_direction_by=sel_method,
+                include_baseline=self.include_baseline,
+                baseline_shrink=self.baseline_shrink,
             )
             sim = SIMCalibrator(cfg)
             calibrated, calib_info = sim.transform(
                 raw_weights,
                 judge_scores,
-                rewards=rewards if sel_method == "ips_if" else None,
-                residuals=residuals if sel_method == "dr_if" else None,
+                rewards=rewards,  # Always provide rewards
+                residuals=residuals,  # Provide if available for DR
+                fold_ids=fold_ids,  # Provide if available for consistent OOF
             )
 
             # Cache results

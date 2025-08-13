@@ -1,73 +1,58 @@
-"""Score-Indexed Monotone Calibration (SIMCal) for importance weights.
+"""Stacked Score-Indexed Monotone Calibration (SIMCal) for importance weights.
 
-This module implements SIMCal, which projects weights onto monotone curves
-indexed by a score (e.g., judge score). It supports two direction-selection
-strategies:
-  • L2: choose the monotone direction that minimizes L2 distance to raw weights
-  • IF-based: choose the direction that minimizes the empirical variance of an
-    influence function (IPS or DR-correction), aligning selection with
-    downstream estimator risk.
+This module implements stacked SIMCal, which combines {baseline, increasing,
+decreasing} candidates via convex optimization to minimize out-of-fold (OOF)
+influence function variance.
 
-After projection, we blend toward uniform to satisfy ESS/variance caps.
+The stacking approach:
+1. Builds candidate weight vectors (raw, isotonic increasing/decreasing)
+2. Computes OOF influence functions for each candidate
+3. Solves a quadratic program on the simplex to find optimal mixture
+4. Applies uniform blending to satisfy ESS/variance constraints
 """
 
 from dataclasses import dataclass
-from typing import Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional, List
 import numpy as np
 from sklearn.isotonic import IsotonicRegression
+from sklearn.model_selection import KFold
+import warnings
 
 
 @dataclass
 class SimcalConfig:
-    """Configuration for SIMCal calibration.
+    """Configuration for stacked SIMCal calibration.
 
-    SIMCal projects weights onto monotone curves indexed by judge scores,
-    automatically selecting the direction (increasing/decreasing) that minimizes
-    L2 distance to the original weights. When L2 distances tie, the tie_break
-    parameter determines whether to prefer the direction with higher ESS or
-    lower variance.
-
-    Both ess_floor and var_cap constraints are enforced via a single convex
-    blend toward uniform weights: w ↦ 1 + (1-γ)(w-1), where γ ∈ [0,1] is
-    chosen to satisfy the tightest constraint.
+    Stacked SIMCal combines multiple candidate weight vectors (baseline,
+    increasing, decreasing) to minimize OOF influence function variance,
+    then applies uniform blending to meet ESS/variance constraints.
 
     Args:
-        ess_floor: Minimum effective sample size as fraction of n (e.g., 0.2 => ESS >= 0.2 * n)
-                  Note: This implies var_cap <= 1/ess_floor - 1
+        ess_floor: Minimum ESS as fraction of n (e.g., 0.2 => ESS >= 0.2 * n)
         var_cap: Maximum allowed variance of calibrated weights
-                Warning: If tighter than ESS-implied cap, the ESS constraint takes precedence
         epsilon: Small constant for numerical stability
-        direction: "auto" (choose by L2), "increasing", or "decreasing"
-        tie_break: How to break ties when L2 distances are equal ("ess" or "var")
-                  "ess": prefer direction with higher effective sample size
-                  "var": prefer direction with lower variance
-        select_direction_by: How to pick the monotone direction when direction="auto":
-                  "l2": (default) minimize L2 distance to the raw weights
-                  "ips_if": minimize empirical var of IPS IF (needs rewards)
-                  "dr_if": minimize empirical var of DR IF correction (needs residuals = R - g_oof(S))
+        include_baseline: Whether to include raw weights in the stack (default True)
+        ridge_lambda: Ridge regularization for covariance matrix (default 1e-8)
+        n_folds: Number of folds for OOF if fold_ids not provided (default 5)
+        baseline_shrink: Shrinkage toward baseline for stability (default 0.05)
     """
 
-    ess_floor: Optional[float] = None
+    ess_floor: Optional[float] = 0.2
     var_cap: Optional[float] = None
     epsilon: float = 1e-9
-    direction: str = "auto"
-    tie_break: str = "ess"
-    select_direction_by: str = "l2"
+    include_baseline: bool = True
+    ridge_lambda: float = 1e-8
+    n_folds: int = 5
+    baseline_shrink: float = 0.05
 
     def __post_init__(self) -> None:
-        if self.direction not in {"auto", "increasing", "decreasing"}:
-            raise ValueError(
-                f"direction must be 'auto', 'increasing', or 'decreasing', got {self.direction}"
-            )
-        if self.tie_break not in {"ess", "var"}:
-            raise ValueError(f"tie_break must be 'ess' or 'var', got {self.tie_break}")
         if self.ess_floor is not None and not (0 < self.ess_floor <= 1):
             raise ValueError(f"ess_floor must be in (0, 1], got {self.ess_floor}")
         if self.var_cap is not None and self.var_cap <= 0:
             raise ValueError(f"var_cap must be positive, got {self.var_cap}")
-        if self.select_direction_by not in {"l2", "ips_if", "dr_if"}:
+        if self.baseline_shrink < 0 or self.baseline_shrink > 1:
             raise ValueError(
-                f"select_direction_by must be one of 'l2','ips_if','dr_if', got {self.select_direction_by}"
+                f"baseline_shrink must be in [0, 1], got {self.baseline_shrink}"
             )
 
         # Validate consistency between ess_floor and var_cap
@@ -75,8 +60,6 @@ class SimcalConfig:
             # ESS = n/(1 + Var) implies Var <= 1/ess_floor - 1
             implied_var_cap = (1.0 / self.ess_floor) - 1.0
             if self.var_cap > implied_var_cap:
-                import warnings
-
                 warnings.warn(
                     f"var_cap={self.var_cap:.3f} is looser than ESS-implied cap "
                     f"{implied_var_cap:.3f} from ess_floor={self.ess_floor}. "
@@ -86,11 +69,11 @@ class SimcalConfig:
 
 
 class SIMCalibrator:
-    """Score-Indexed Monotone Calibrator for importance weights.
+    """Stacked Score-Indexed Monotone Calibrator.
 
-    Takes raw mean-one weights and a score index (e.g., judge scores),
-    projects onto monotone curves, chooses the closer one in L2,
-    then blends toward uniform to meet variance/ESS constraints.
+    Combines {baseline, increasing, decreasing} candidates to minimize
+    OOF influence function variance, then applies uniform blending to
+    meet ESS/variance constraints.
     """
 
     def __init__(self, config: SimcalConfig):
@@ -125,42 +108,34 @@ class SIMCalibrator:
         *,
         rewards: Optional[np.ndarray] = None,
         residuals: Optional[np.ndarray] = None,
+        fold_ids: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
-        """Calibrate weights using score-indexed monotone projection.
+        """Calibrate weights using stacked score-indexed monotone projection.
 
         Algorithm:
-        1. Project weights onto both increasing and decreasing monotone curves
-           indexed by the score s (using isotonic regression)
-        2. Select the direction with smaller L2 distance to original weights
-           (or use tie_break criterion if distances are equal)
-        3. Blend the projected weights toward uniform to satisfy constraints:
-           w_cal = 1 + (1-γ)(w_proj - 1), where γ ∈ [0,1]
-        4. Choose γ to satisfy the tightest constraint (ESS floor or variance cap)
-
-        The blending preserves the mean-one property since both w_proj and
-        uniform weights have mean 1.
+        1. Build candidate weight vectors: {baseline?, increasing, decreasing}
+        2. Compute OOF influence functions for each candidate
+        3. Solve quadratic program to find optimal mixture on simplex
+        4. Apply single γ-blend toward uniform for constraints
+        5. Optional: Apply baseline shrinkage for stability
 
         Args:
             w: Raw importance weights (must be positive, will be normalized to mean 1)
             s: Score index (e.g., judge scores) for ordering
-            rewards: Required if select_direction_by == "ips_if" (IPS IF risk)
-            residuals: Required if select_direction_by == "dr_if"
-                       (cross-fitted residuals R - g_oof(S))
+            rewards: Rewards for IPS influence functions (optional, uses weights only if None)
+            residuals: DR residuals (R - g_oof(S)) for DR influence functions
+            fold_ids: Pre-assigned fold IDs for OOF computation (optional)
 
         Returns:
             Tuple of (calibrated_weights, info_dict) where info_dict contains:
-                - direction: chosen monotone direction ("increasing" or "decreasing")
-                - gamma: blending parameter (0=no blend, 1=uniform)
-                - var_before: variance of input weights
-                - var_after_proj: variance after projection
-                - var_after_blend: variance after blending (final)
+                - mixture_weights: Optimal convex combination weights
+                - candidates: Names of candidate weight vectors
+                - gamma: Uniform blending parameter for constraints
+                - var_before: Variance of input weights
+                - var_after: Final variance after all adjustments
                 - ess_before: ESS of input weights
-                - ess_after_proj: ESS after projection
-                - ess_after_blend: ESS after blending (final)
-                - l2_distance_increasing: L2 distance for increasing projection (if auto)
-                - l2_distance_decreasing: L2 distance for decreasing projection (if auto)
-                - if_var_increasing / if_var_decreasing: IF variances if IF-based selection
-                - selection_method: "l2", "ips_if" or "dr_if"
+                - ess_after: Final ESS after all adjustments
+                - oof_variance_reduction: Ratio of stacked to best single candidate
 
         Raises:
             ValueError: If weights contain non-positive, NaN, or infinite values
@@ -180,151 +155,228 @@ class SIMCalibrator:
 
         # Ensure mean-one normalization
         w = w / w.mean()
+        n = len(w)
 
-        def _isotonic_projection(increasing: bool) -> np.ndarray:
-            """Project weights onto monotone curve."""
-            reg = IsotonicRegression(increasing=increasing, out_of_bounds="clip")
-            # Fit isotonic regression: s -> w
-            z = reg.fit(s, w).predict(s)
-            # Ensure positivity and mean-one
-            z = np.maximum(z, self.cfg.epsilon)
-            z = z / z.mean()
-            return np.asarray(z)
+        # Build candidate weight vectors
+        candidates = []
+        candidate_names = []
 
-        # Compute candidate projections
-        candidates = {}
-        if self.cfg.direction == "auto":
-            dirs = ["increasing", "decreasing"]
+        # 1. Baseline (raw weights)
+        if self.cfg.include_baseline:
+            candidates.append(w.copy())
+            candidate_names.append("baseline")
+
+        # 2. Isotonic increasing
+        iso_inc = IsotonicRegression(increasing=True, out_of_bounds="clip")
+        w_inc = iso_inc.fit(s, w).predict(s)
+        w_inc = np.maximum(w_inc, self.cfg.epsilon)
+        w_inc = w_inc / w_inc.mean()
+        candidates.append(w_inc)
+        candidate_names.append("increasing")
+
+        # 3. Isotonic decreasing
+        iso_dec = IsotonicRegression(increasing=False, out_of_bounds="clip")
+        w_dec = iso_dec.fit(s, w).predict(s)
+        w_dec = np.maximum(w_dec, self.cfg.epsilon)
+        w_dec = w_dec / w_dec.mean()
+        candidates.append(w_dec)
+        candidate_names.append("decreasing")
+
+        K = len(candidates)
+
+        # Determine what to use for influence functions
+        if residuals is not None:
+            # DR influence functions: w * (R - g_oof(S))
+            if_targets = residuals
+            if_type = "dr"
+        elif rewards is not None:
+            # IPS influence functions: w * R
+            if_targets = rewards
+            if_type = "ips"
         else:
-            dirs = [self.cfg.direction]
+            # Weight-only influence functions: w itself
+            if_targets = np.ones(n)  # Makes IF = w - 1
+            if_type = "weight"
 
-        for d in dirs:
-            candidates[d] = _isotonic_projection(increasing=(d == "increasing"))
-
-        # Helper: blend toward uniform to satisfy constraints and compute stats
-        def _blend_and_stats(z: np.ndarray) -> Dict[str, Any]:
-            v_proj = float(np.var(z))
-            gamma = 0.0
-            if v_proj > 0:
-                if self.cfg.ess_floor is not None:
-                    v_max_ess = (1.0 / self.cfg.ess_floor) - 1.0
-                    if v_proj > v_max_ess:
-                        gamma = max(gamma, 1.0 - np.sqrt(v_max_ess / v_proj))
-                if self.cfg.var_cap is not None and v_proj > self.cfg.var_cap:
-                    gamma = max(gamma, 1.0 - np.sqrt(self.cfg.var_cap / v_proj))
-            gamma = float(np.clip(gamma, 0.0, 1.0))
-            w_blend = 1.0 + (1.0 - gamma) * (z - 1.0)
-            w_blend = np.maximum(w_blend, self.cfg.epsilon)
-            w_blend = w_blend / w_blend.mean()
-            v_final = float(np.var(w_blend))
-            ess_proj = len(z) / (1.0 + v_proj)
-            ess_final = len(z) / (1.0 + v_final)
-            return dict(
-                v_proj=v_proj,
-                gamma=gamma,
-                w_final=w_blend,
-                v_final=v_final,
-                ess_proj=ess_proj,
-                ess_final=ess_final,
-            )
-
-        # Precompute per-direction stats after blending, to allow either selector
-        per_dir: Dict[str, Dict[str, Any]] = {}
-        for d, z in candidates.items():
-            per_dir[d] = _blend_and_stats(z)
-            per_dir[d]["sse"] = float(np.sum((z - w) ** 2))
-
-        # Choose direction
-        selection_method = self.cfg.select_direction_by
-        if len(candidates) == 1:
-            chosen = next(iter(candidates))
+        # Compute OOF influence functions
+        if fold_ids is not None:
+            # Use provided fold assignments
+            unique_folds = np.unique(fold_ids)
+            n_folds = len(unique_folds)
         else:
-            if selection_method == "l2":
-                sse_inc = per_dir["increasing"]["sse"]
-                sse_dec = per_dir["decreasing"]["sse"]
-                if abs(sse_inc - sse_dec) <= 1e-12:
-                    # Tie-break with post-blend ESS/Var
-                    if self.cfg.tie_break == "ess":
-                        chosen = (
-                            "increasing"
-                            if per_dir["increasing"]["ess_final"]
-                            >= per_dir["decreasing"]["ess_final"]
-                            else "decreasing"
-                        )
-                    else:  # "var"
-                        chosen = (
-                            "increasing"
-                            if per_dir["increasing"]["v_final"]
-                            <= per_dir["decreasing"]["v_final"]
-                            else "decreasing"
-                        )
-                else:
-                    chosen = "increasing" if sse_inc <= sse_dec else "decreasing"
-            else:
-                # IF-based selection: need rewards/residuals
-                if selection_method == "ips_if":
-                    if rewards is None:
-                        raise ValueError(
-                            "SIMCal(select_direction_by='ips_if') requires rewards."
-                        )
-                    a_inc = per_dir["increasing"]["w_final"] * rewards
-                    a_dec = per_dir["decreasing"]["w_final"] * rewards
-                    if_var_inc = float(np.var(a_inc - a_inc.mean()))
-                    if_var_dec = float(np.var(a_dec - a_dec.mean()))
-                elif selection_method == "dr_if":
-                    if residuals is None:
-                        raise ValueError(
-                            "SIMCal(select_direction_by='dr_if') requires residuals = rewards - g_oof(scores)."
-                        )
-                    b_inc = per_dir["increasing"]["w_final"] * residuals
-                    b_dec = per_dir["decreasing"]["w_final"] * residuals
-                    # Centered variance of the correction term
-                    if_var_inc = float(np.var(b_inc - b_inc.mean()))
-                    if_var_dec = float(np.var(b_dec - b_dec.mean()))
-                else:
-                    raise AssertionError("Unknown selection method")  # defensive
+            # Generate fold assignments
+            kf = KFold(n_splits=self.cfg.n_folds, shuffle=True, random_state=42)
+            fold_ids = np.zeros(n, dtype=int)
+            for fold_idx, (_, test_idx) in enumerate(kf.split(np.arange(n))):
+                fold_ids[test_idx] = fold_idx
+            n_folds = self.cfg.n_folds
 
-                per_dir["increasing"]["if_var"] = if_var_inc
-                per_dir["decreasing"]["if_var"] = if_var_dec
+        # Compute OOF influence matrix (n x K)
+        IF_matrix = np.zeros((n, K))
 
-                if abs(if_var_inc - if_var_dec) <= 1e-12:
-                    if self.cfg.tie_break == "ess":
-                        chosen = (
-                            "increasing"
-                            if per_dir["increasing"]["ess_final"]
-                            >= per_dir["decreasing"]["ess_final"]
-                            else "decreasing"
-                        )
-                    else:
-                        chosen = (
-                            "increasing"
-                            if per_dir["increasing"]["v_final"]
-                            <= per_dir["decreasing"]["v_final"]
-                            else "decreasing"
-                        )
-                else:
-                    chosen = "increasing" if if_var_inc <= if_var_dec else "decreasing"
+        for k, w_cand in enumerate(candidates):
+            # For each fold, compute influence relative to training mean
+            for fold_id in range(n_folds):
+                test_mask = fold_ids == fold_id
+                train_mask = ~test_mask
 
-        # Assemble output for chosen direction
-        stats = per_dir[chosen]
-        w_cal = stats["w_final"]
-        v_before = float(np.var(w))
+                if np.sum(train_mask) == 0:
+                    continue
+
+                # Compute mean on training folds
+                train_mean = np.mean(w_cand[train_mask] * if_targets[train_mask])
+
+                # OOF influence for test fold
+                IF_matrix[test_mask, k] = (
+                    w_cand[test_mask] * if_targets[test_mask] - train_mean
+                )
+
+        # Compute empirical covariance matrix
+        Sigma = np.cov(IF_matrix.T)  # K x K
+
+        # Add ridge regularization for stability
+        if self.cfg.ridge_lambda > 0:
+            reg_amount = self.cfg.ridge_lambda * np.trace(Sigma) / K
+            Sigma = Sigma + reg_amount * np.eye(K)
+
+        # Solve quadratic program on simplex: min_π π^T Σ π s.t. π ≥ 0, 1^T π = 1
+        mixture_weights = self._solve_simplex_qp(Sigma)
+
+        # Compute stacked weights
+        w_stacked = np.zeros(n)
+        for k, pi_k in enumerate(mixture_weights):
+            w_stacked += pi_k * candidates[k]
+
+        # Apply constraints via uniform blending
+        w_final, gamma = self._apply_constraints(w_stacked)
+
+        # Optional: Apply baseline shrinkage for stability
+        if self.cfg.baseline_shrink > 0:
+            w_final = (
+                1 - self.cfg.baseline_shrink
+            ) * w_final + self.cfg.baseline_shrink * w
+            w_final = w_final / w_final.mean()
+
+        # Compute diagnostics
+        var_before = float(np.var(w))
+        var_after = float(np.var(w_final))
+        ess_before = n / (1 + var_before)
+        ess_after = n / (1 + var_after)
+
+        # Compute variance reduction vs best single candidate
+        single_variances = [np.var(IF_matrix[:, k]) for k in range(K)]
+        best_single_var = min(single_variances)
+        stacked_var = np.var(IF_matrix @ mixture_weights)
+        variance_reduction = (
+            stacked_var / best_single_var if best_single_var > 0 else 1.0
+        )
+
         info = {
-            "direction": chosen,
-            "gamma": stats["gamma"],
-            "var_before": v_before,
-            "var_after_proj": stats["v_proj"],
-            "var_after_blend": stats["v_final"],
-            "ess_before": len(w) / (1.0 + v_before),
-            "ess_after_proj": stats["ess_proj"],
-            "ess_after_blend": stats["ess_final"],
-            "selection_method": selection_method,
+            "mixture_weights": mixture_weights.tolist(),
+            "candidates": candidate_names,
+            "gamma": gamma,
+            "var_before": var_before,
+            "var_after": var_after,
+            "ess_before": ess_before,
+            "ess_after": ess_after,
+            "oof_variance_reduction": float(variance_reduction),
+            "if_type": if_type,
+            "n_folds": n_folds,
+            "baseline_shrink": self.cfg.baseline_shrink,
         }
-        if len(candidates) > 1:
-            info["l2_distance_increasing"] = per_dir["increasing"]["sse"]
-            info["l2_distance_decreasing"] = per_dir["decreasing"]["sse"]
-            if "if_var" in per_dir["increasing"]:
-                info["if_var_increasing"] = per_dir["increasing"]["if_var"]
-                info["if_var_decreasing"] = per_dir["decreasing"]["if_var"]
 
-        return w_cal, info
+        return w_final, info
+
+    def _solve_simplex_qp(self, Sigma: np.ndarray) -> np.ndarray:
+        """Solve quadratic program on simplex using active set method.
+
+        Minimize π^T Σ π subject to π ≥ 0, 1^T π = 1
+
+        Args:
+            Sigma: K x K positive semi-definite covariance matrix
+
+        Returns:
+            Optimal mixture weights on simplex
+        """
+        K = Sigma.shape[0]
+
+        # Start with uniform weights
+        active_set = set(range(K))
+
+        max_iterations = 20
+        for _ in range(max_iterations):
+            # Solve on current active set
+            if len(active_set) == 0:
+                # Degenerate case - return uniform
+                return np.ones(K) / K
+
+            # Build reduced system
+            active_idx = sorted(active_set)
+            Sigma_active = Sigma[np.ix_(active_idx, active_idx)]
+
+            # Solve equality-constrained QP: min π^T Σ π s.t. 1^T π = 1
+            # Solution: π = Σ^{-1} 1 / (1^T Σ^{-1} 1)
+            try:
+                ones = np.ones(len(active_idx))
+                Sigma_inv_ones = np.linalg.solve(Sigma_active, ones)
+                denom = np.dot(ones, Sigma_inv_ones)
+
+                if abs(denom) < 1e-10:
+                    # Near-singular - use uniform on active set
+                    pi_active = ones / len(active_idx)
+                else:
+                    pi_active = Sigma_inv_ones / denom
+            except np.linalg.LinAlgError:
+                # Singular - use uniform on active set
+                pi_active = np.ones(len(active_idx)) / len(active_idx)
+
+            # Check for negative weights
+            if np.all(pi_active >= -1e-10):
+                # Feasible - construct full solution
+                pi_full = np.zeros(K)
+                for i, idx in enumerate(active_idx):
+                    pi_full[idx] = max(0, pi_active[i])
+
+                # Renormalize to ensure exact sum to 1
+                pi_full = pi_full / pi_full.sum()
+                return pi_full
+
+            # Remove most negative from active set
+            min_idx = np.argmin(pi_active)
+            active_set.remove(active_idx[min_idx])
+
+        # Fallback to uniform if no convergence
+        return np.ones(K) / K
+
+    def _apply_constraints(self, w: np.ndarray) -> Tuple[np.ndarray, float]:
+        """Apply ESS/variance constraints via uniform blending.
+
+        Args:
+            w: Mean-one weight vector
+
+        Returns:
+            Tuple of (constrained_weights, gamma) where gamma is the blending parameter
+        """
+        n = len(w)
+        var_w = np.var(w)
+        gamma = 0.0
+
+        if var_w > 0:
+            # Check ESS constraint
+            if self.cfg.ess_floor is not None:
+                var_max_ess = (1.0 / self.cfg.ess_floor) - 1.0
+                if var_w > var_max_ess:
+                    gamma = max(gamma, 1.0 - np.sqrt(var_max_ess / var_w))
+
+            # Check variance cap
+            if self.cfg.var_cap is not None and var_w > self.cfg.var_cap:
+                gamma = max(gamma, 1.0 - np.sqrt(self.cfg.var_cap / var_w))
+
+        gamma = float(np.clip(gamma, 0.0, 1.0))
+
+        # Apply blending: w ← 1 + (1-γ)(w-1)
+        w_constrained = 1.0 + (1.0 - gamma) * (w - 1.0)
+        w_constrained = np.maximum(w_constrained, self.cfg.epsilon)
+        w_constrained = w_constrained / w_constrained.mean()
+
+        return w_constrained, gamma
