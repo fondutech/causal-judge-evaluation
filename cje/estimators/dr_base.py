@@ -69,6 +69,10 @@ class DREstimator(BaseCJEEstimator):
         # Initialize the appropriate IPS estimator
         self.ips_estimator: Union[CalibratedIPS, RawIPS]
         if use_calibrated_weights:
+            # Pass calibrator to CalibratedIPS for DR-aware direction selection
+            if calibrator is not None:
+                kwargs = kwargs.copy()  # Don't modify original
+                kwargs["calibrator"] = calibrator
             self.ips_estimator = CalibratedIPS(sampler, **kwargs)
             logger.info("Using CalibratedIPS for importance weights in DR")
         else:

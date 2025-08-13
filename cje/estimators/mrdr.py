@@ -134,7 +134,7 @@ class MRDREstimator(DREstimator):
 
         outcome_model = IsotonicOutcomeModel(n_folds=n_folds)
 
-        # Initialize DR base
+        # Initialize DR base (which will pass calibrator to CalibratedIPS)
         super().__init__(
             sampler=sampler,
             outcome_model=outcome_model,

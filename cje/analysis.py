@@ -181,6 +181,12 @@ def _create_estimator(
     """Create the appropriate estimator."""
 
     if estimator_type == "calibrated-ips":
+        # Pass calibrator for DR-aware direction selection if available
+        if calibration_result and calibration_result.calibrator:
+            config = config.copy()  # Don't modify original
+            config["calibrator"] = calibration_result.calibrator
+            if verbose:
+                logger.info("Using calibrator for DR-aware SIMCal direction selection")
         return CalibratedIPS(sampler, **config)
 
     elif estimator_type == "raw-ips":
@@ -202,20 +208,42 @@ def _create_estimator(
     elif estimator_type == "mrdr":
         n_folds = config.get("n_folds", 5)
         omega_mode = config.get("omega_mode", "snips")
-        return MRDREstimator(
-            sampler,
-            n_folds=n_folds,
-            omega_mode=omega_mode,
-        )
+        # Pass calibrator if available for DR-aware weight selection
+        if calibration_result and calibration_result.calibrator:
+            if verbose:
+                logger.info("Using calibration models for MRDR")
+            return MRDREstimator(
+                sampler,
+                n_folds=n_folds,
+                omega_mode=omega_mode,
+                calibrator=calibration_result.calibrator,
+            )
+        else:
+            return MRDREstimator(
+                sampler,
+                n_folds=n_folds,
+                omega_mode=omega_mode,
+            )
 
     elif estimator_type == "tmle":
         n_folds = config.get("n_folds", 5)
         link = config.get("link", "logit")
-        return TMLEEstimator(
-            sampler,
-            n_folds=n_folds,
-            link=link,
-        )
+        # Pass calibrator if available for DR-aware weight selection
+        if calibration_result and calibration_result.calibrator:
+            if verbose:
+                logger.info("Using calibration models for TMLE")
+            return TMLEEstimator(
+                sampler,
+                n_folds=n_folds,
+                link=link,
+                calibrator=calibration_result.calibrator,
+            )
+        else:
+            return TMLEEstimator(
+                sampler,
+                n_folds=n_folds,
+                link=link,
+            )
 
     else:
         raise ValueError(f"Unknown estimator type: {estimator_type}")
