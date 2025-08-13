@@ -100,9 +100,7 @@ from .calibration import (
 # Utilities and diagnostics
 from .utils import (
     # Weight diagnostics
-    diagnose_weights,
     create_weight_summary_table,
-    WeightDiagnostics,
     # Extreme weights analysis
     analyze_extreme_weights,
 )
@@ -160,9 +158,7 @@ __all__ = [
     "LogProbResult",
     "LogProbStatus",
     # Diagnostics
-    "diagnose_weights",
     "create_weight_summary_table",
-    "WeightDiagnostics",
     "analyze_extreme_weights",
     # Calibration - isotonic regression
     "calibrate_to_target_mean",

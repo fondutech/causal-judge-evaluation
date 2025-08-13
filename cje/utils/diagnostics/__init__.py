@@ -11,7 +11,6 @@ from .weights import (
     tail_weight_ratio,
     mass_concentration,
     compute_weight_diagnostics,
-    diagnose_weights,
 )
 
 from .dr import (
@@ -31,7 +30,6 @@ __all__ = [
     "tail_weight_ratio",
     "mass_concentration",
     "compute_weight_diagnostics",
-    "diagnose_weights",
     # DR diagnostics
     "compute_dr_policy_diagnostics",
     "compute_dr_diagnostics_all",

@@ -422,22 +422,6 @@ class PrecomputedSampler:
         return len(self.formatted_data)
 
     @property
-    def n_samples_total(self) -> int:
-        """Total number of samples in the dataset (before filtering).
-
-        Deprecated: Use n_samples instead.
-        """
-        return self.dataset.n_samples
-
-    @property
-    def n_samples_valid(self) -> int:
-        """Number of valid samples for estimation.
-
-        Deprecated: Use n_valid_samples instead.
-        """
-        return self.n_valid_samples
-
-    @property
     def n_policies(self) -> int:
         """Number of target policies."""
         return len(self.target_policies)

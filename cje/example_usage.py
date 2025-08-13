@@ -12,8 +12,6 @@ from cje import (
     load_dataset_from_jsonl,
     calibrate_dataset,
     compute_teacher_forced_logprob,
-    diagnose_weights,
-    create_weight_summary_table,
     calibrate_judge_scores,
     Llama3TemplateConfig,
     HuggingFaceTemplateConfig,
@@ -21,6 +19,7 @@ from cje import (
     Dataset,
     Sample,
 )
+from cje.utils.diagnostics import compute_weight_diagnostics
 
 
 def create_example_data() -> None:
@@ -350,15 +349,18 @@ def advanced_diagnostics() -> None:
     for policy in sampler.target_policies:
         weights = estimator.get_weights(policy)
         if weights is not None:
-            # For pi_clone, expect weight ~1.0
-            expected = 1.0 if policy == "pi_clone" else None
-            diag = diagnose_weights(weights, policy, expected)
+            diag = compute_weight_diagnostics(weights, policy)
             all_diagnostics[policy] = diag
-            print(diag.summary())
+            # Print diagnostic summary
+            print(f"Policy {policy}:")
+            print(f"  ESS: {diag['ess_fraction']:.1%}")
+            print(
+                f"  Weight range: [{diag['min_weight']:.2e}, {diag['max_weight']:.2e}]"
+            )
+            print(
+                f"  Mean: {diag['mean_weight']:.4f}, Median: {diag['median_weight']:.4f}"
+            )
             print()
-
-    # Summary table
-    print("\n" + create_weight_summary_table(all_diagnostics))
 
 
 def main() -> None:

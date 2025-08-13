@@ -50,15 +50,15 @@ from cje import (
     FreshDrawDataset,
     FreshDrawSample,
     load_fresh_draws_auto,
-    diagnose_weights,
-    create_weight_summary_table,
     analyze_extreme_weights,
 )
 
 # DR diagnostics are now accessed directly from results.diagnostics
 from cje.utils.diagnostics.display import (
     format_dr_diagnostic_summary,
+    create_weight_summary_table,
 )
+from cje.utils.diagnostics import compute_weight_diagnostics
 
 # Local oracle comparison utilities (experiment-specific)
 from oracle_comparison import (
@@ -383,10 +383,9 @@ def display_weight_diagnostics(
     all_weight_diagnostics = {}
 
     # Base policy (uniform weights)
-    base_diag = diagnose_weights(
+    base_diag = compute_weight_diagnostics(
         np.ones(len(base_rewards)),
         "base",
-        extreme_quantile=0.99,
     )
     all_weight_diagnostics["base"] = base_diag
 
@@ -394,10 +393,9 @@ def display_weight_diagnostics(
     for policy in sampler.target_policies:
         weights = estimator.get_weights(policy)
         if weights is not None:
-            diag = diagnose_weights(
+            diag = compute_weight_diagnostics(
                 weights,
                 policy,
-                extreme_quantile=0.99,
             )
             all_weight_diagnostics[policy] = diag
 
@@ -406,13 +404,13 @@ def display_weight_diagnostics(
 
     # Print warnings if issues found
     has_issues = any(
-        d.consistency_flag != "GOOD" for d in all_weight_diagnostics.values()
+        d.get("ess_fraction", 1.0) < 0.1 for d in all_weight_diagnostics.values()
     )
     if has_issues:
         print("\n   ⚠️  Weight diagnostics warnings:")
         for policy, diag in all_weight_diagnostics.items():
-            if diag.consistency_flag != "GOOD":
-                print(f"\n   {diag.summary()}")
+            if diag.get("ess_fraction", 1.0) < 0.1:
+                print(f"   - {policy}: Low ESS ({diag['ess_fraction']:.1%})")
 
     return all_weight_diagnostics
 

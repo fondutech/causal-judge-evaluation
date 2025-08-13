@@ -1,12 +1,13 @@
 """Integration test showing complete workflow."""
 
+import numpy as np
 from cje import (
     PrecomputedSampler,
     CalibratedIPS,
     load_dataset_from_jsonl,
     calibrate_dataset,
-    diagnose_weights,
 )
+from cje.utils.diagnostics import compute_weight_diagnostics
 
 
 def test_end_to_end_pipeline() -> None:
@@ -46,9 +47,9 @@ def test_end_to_end_pipeline() -> None:
     print("\n4. Checking weight diagnostics...")
     weights = estimator.get_weights("pi_test")
     if weights is not None:
-        diag = diagnose_weights(weights, "pi_test")
-        print(f"   ✓ Mean weight: {diag.mean_weight:.3f}")
-        print(f"   ✓ ESS fraction: {diag.ess_fraction:.1%}")
+        diag = compute_weight_diagnostics(weights, "pi_test")
+        print(f"   ✓ Mean weight: {np.mean(weights):.3f}")
+        print(f"   ✓ ESS fraction: {diag['ess_fraction']:.1%}")
     else:
         print("   ⚠ No weights available for pi_test")
 

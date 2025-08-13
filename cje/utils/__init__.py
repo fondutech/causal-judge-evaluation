@@ -5,10 +5,6 @@ This module contains:
 - Visualization: Plotting utilities for weight diagnostics
 """
 
-from .diagnostics.weights import (
-    diagnose_weights,
-    WeightDiagnostics,
-)
 from .diagnostics.display import (
     create_weight_summary_table,
 )
@@ -31,9 +27,7 @@ except ImportError:
 
 __all__ = [
     # Weight diagnostics
-    "diagnose_weights",
     "create_weight_summary_table",
-    "WeightDiagnostics",
     # Extreme weights analysis
     "analyze_extreme_weights",
 ]
