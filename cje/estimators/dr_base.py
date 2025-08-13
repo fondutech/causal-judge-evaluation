@@ -495,7 +495,9 @@ class DREstimator(BaseCJEEstimator):
                 dm_component=dm_component,
                 ips_correction=ips_correction,
                 dr_estimate=estimates[idx],
-                fresh_rewards=None,  # We don't have fresh rewards separate
+                fresh_rewards=self._fresh_rewards.get(
+                    policy
+                ),  # Use stored logged rewards
                 outcome_predictions=self._outcome_predictions.get(policy),
                 influence_functions=self._influence_functions.get(policy),
                 unique_folds=list(range(self.n_folds)),
