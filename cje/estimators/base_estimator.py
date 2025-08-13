@@ -31,6 +31,7 @@ class BaseCJEEstimator(ABC):
         self.sampler = sampler
         self._fitted = False
         self._weights_cache: Dict[str, np.ndarray] = {}
+        self._influence_functions: Dict[str, np.ndarray] = {}
         self._results: Optional[EstimationResult] = None
 
     @abstractmethod
@@ -47,6 +48,29 @@ class BaseCJEEstimator(ABC):
         """Convenience method to fit and estimate in one call."""
         self.fit()
         return self.estimate()
+
+    def get_influence_functions(self, policy: Optional[str] = None) -> Optional[Any]:
+        """Get influence functions for a policy or all policies.
+
+        Influence functions capture the per-sample contribution to the estimate
+        and are essential for statistical inference (standard errors, confidence
+        intervals, hypothesis tests).
+
+        Args:
+            policy: Specific policy name, or None for all policies
+
+        Returns:
+            If policy specified: array of influence functions for that policy
+            If policy is None: dict of all influence functions by policy
+            Returns None if not yet estimated
+        """
+        if not self._influence_functions:
+            return None
+
+        if policy is not None:
+            return self._influence_functions.get(policy)
+
+        return self._influence_functions
 
     def get_weights(self, target_policy: str) -> Optional[np.ndarray]:
         """Get importance weights for a target policy.

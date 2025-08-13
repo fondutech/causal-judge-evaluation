@@ -24,19 +24,15 @@ class RawIPS(BaseCJEEstimator):
         self,
         sampler: PrecomputedSampler,
         clip_weight: float = 100.0,
-        store_influence: bool = False,
     ):
         """Initialize raw IPS estimator.
 
         Args:
             sampler: PrecomputedSampler with data
             clip_weight: Maximum weight value for variance control
-            store_influence: Store per-sample influence functions
         """
         super().__init__(sampler)
         self.clip_weight = clip_weight
-        self.store_influence = store_influence
-        self._influence_functions: Dict[str, np.ndarray] = {}
         self._diagnostics: Optional[IPSDiagnostics] = None
 
     def fit(self) -> None:
@@ -108,13 +104,11 @@ class RawIPS(BaseCJEEstimator):
             standard_errors.append(se)
             n_samples_used[policy] = n
 
-            # Store influence functions if requested
-            if self.store_influence:
-                influence_functions[policy] = influence
+            # Store influence functions (always needed for proper inference)
+            influence_functions[policy] = influence
 
         # Store influence functions for later use
-        if self.store_influence:
-            self._influence_functions = influence_functions
+        self._influence_functions = influence_functions
 
         # Create result with clean structure
         result = EstimationResult(
@@ -122,7 +116,7 @@ class RawIPS(BaseCJEEstimator):
             standard_errors=np.array(standard_errors),
             n_samples_used=n_samples_used,
             method="raw_ips",
-            influence_functions=influence_functions if self.store_influence else None,
+            influence_functions=influence_functions,
             metadata={
                 "target_policies": list(self.sampler.target_policies),
                 "clip_weight": self.clip_weight,

@@ -395,8 +395,8 @@ class MRDREstimator(DREstimator):
                 else 0.0
             )
 
-            if self.store_influence:
-                self._influence_functions[policy] = if_contrib
+            # Store influence functions (always needed for proper inference)
+            self._influence_functions[policy] = if_contrib
 
             estimates.append(psi)
             standard_errors.append(se)
@@ -434,9 +434,7 @@ class MRDREstimator(DREstimator):
             standard_errors=np.array(standard_errors, dtype=float),
             n_samples_used=n_samples_used,
             method="mrdr",
-            influence_functions=(
-                self._influence_functions if self.store_influence else None
-            ),
+            influence_functions=self._influence_functions,
             diagnostics=diagnostics,
             metadata=metadata,
         )

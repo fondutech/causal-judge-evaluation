@@ -206,9 +206,8 @@ class TMLEEstimator(DREstimator):
                 else 0.0
             )
 
-            # Store influence functions if requested (inherited from DREstimator)
-            if self.store_influence:
-                self._influence_functions[policy] = if_contrib
+            # Store influence functions (always needed for proper inference)
+            self._influence_functions[policy] = if_contrib
 
             estimates.append(psi)
             standard_errors.append(se)
@@ -338,11 +337,7 @@ class TMLEEstimator(DREstimator):
                 dr_estimate=estimates[idx],
                 fresh_rewards=None,  # We don't have separate fresh rewards
                 outcome_predictions=self._outcome_predictions.get(policy),
-                influence_functions=(
-                    self._influence_functions.get(policy)
-                    if self.store_influence
-                    else None
-                ),
+                influence_functions=self._influence_functions.get(policy),
                 unique_folds=list(range(self.n_folds)),
                 policy=policy,
             )
@@ -407,9 +402,7 @@ class TMLEEstimator(DREstimator):
             standard_errors=np.array(standard_errors, dtype=float),
             n_samples_used=n_samples_used,
             method="tmle",
-            influence_functions=(
-                self._influence_functions if self.store_influence else None
-            ),
+            influence_functions=self._influence_functions,
             diagnostics=diagnostics,  # Add the DRDiagnostics object
             metadata=metadata,
         )

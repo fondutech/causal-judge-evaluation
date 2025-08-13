@@ -38,7 +38,6 @@ class CalibratedIPS(BaseCJEEstimator):
         clip_weight: Maximum weight value before calibration (default None = no clipping)
         ess_floor: Minimum ESS as fraction of n (default 0.2 = 20% ESS)
         var_cap: Maximum allowed variance of calibrated weights (default None = no cap)
-        store_influence: Store per-sample influence functions (default False)
     """
 
     def __init__(
@@ -47,14 +46,11 @@ class CalibratedIPS(BaseCJEEstimator):
         clip_weight: Optional[float] = None,
         ess_floor: Optional[float] = 0.2,
         var_cap: Optional[float] = None,
-        store_influence: bool = False,
     ):
         super().__init__(sampler)
         self.clip_weight = clip_weight
         self.ess_floor = ess_floor
         self.var_cap = var_cap
-        self.store_influence = store_influence
-        self._influence_functions: Dict[str, np.ndarray] = {}
         self._no_overlap_policies: Set[str] = set()
         self._calibration_info: Dict[str, Dict] = {}  # Store calibration details
         self._diagnostics: Optional[IPSDiagnostics] = None
@@ -161,13 +157,11 @@ class CalibratedIPS(BaseCJEEstimator):
             se = float(np.std(influence, ddof=1) / np.sqrt(n))
             standard_errors.append(se)
 
-            # Store influence functions if requested
-            if self.store_influence:
-                influence_functions[policy] = influence
+            # Store influence functions (always needed for proper inference)
+            influence_functions[policy] = influence
 
         # Store influence functions for later use
-        if self.store_influence:
-            self._influence_functions = influence_functions
+        self._influence_functions = influence_functions
 
         # Create result with clean separation of concerns
         result = EstimationResult(
@@ -175,7 +169,7 @@ class CalibratedIPS(BaseCJEEstimator):
             standard_errors=np.array(standard_errors),
             n_samples_used=n_samples_used,
             method="calibrated_ips",
-            influence_functions=influence_functions if self.store_influence else None,
+            influence_functions=influence_functions,
             metadata={
                 "target_policies": list(self.sampler.target_policies),
                 "calibration_method": "simcal",

@@ -108,10 +108,6 @@ class DREstimator(BaseCJEEstimator):
         self._fresh_draws: Dict[str, FreshDrawDataset] = {}
         self._outcome_fitted = False
 
-        # Influence function storage (default True for proper diagnostics)
-        self.store_influence = kwargs.pop("store_influence", True)
-        self._influence_functions: Dict[str, np.ndarray] = {}
-
         # Store components for diagnostics
         self._dm_component: Dict[str, np.ndarray] = {}
         self._ips_correction: Dict[str, np.ndarray] = {}
@@ -464,12 +460,11 @@ class DREstimator(BaseCJEEstimator):
             )
             se = np.std(if_contributions, ddof=1) / np.sqrt(len(if_contributions))
 
-            # Store influence functions if requested
-            if self.store_influence:
-                self._influence_functions[policy] = if_contributions
-                logger.debug(
-                    f"Stored {len(if_contributions)} influence values for {policy}"
-                )
+            # Store influence functions (always needed for proper inference)
+            self._influence_functions[policy] = if_contributions
+            logger.debug(
+                f"Stored {len(if_contributions)} influence values for {policy}"
+            )
 
             estimates.append(dr_estimate)
             standard_errors.append(se)
@@ -498,11 +493,7 @@ class DREstimator(BaseCJEEstimator):
                 dr_estimate=estimates[idx],
                 fresh_rewards=None,  # We don't have fresh rewards separate
                 outcome_predictions=self._outcome_predictions.get(policy),
-                influence_functions=(
-                    self._influence_functions.get(policy)
-                    if self.store_influence
-                    else None
-                ),
+                influence_functions=self._influence_functions.get(policy),
                 unique_folds=list(range(self.n_folds)),
                 policy=policy,
             )
@@ -565,9 +556,7 @@ class DREstimator(BaseCJEEstimator):
             standard_errors=np.array(standard_errors),
             n_samples_used=n_samples_used,
             method="dr_base",
-            influence_functions=(
-                self._influence_functions if self.store_influence else None
-            ),
+            influence_functions=self._influence_functions,
             diagnostics=diagnostics,
             metadata=metadata,
         )
@@ -653,9 +642,7 @@ class DREstimator(BaseCJEEstimator):
                 outcome_rmse_mean=outcome_rmse_mean,
                 worst_if_tail_ratio=worst_if_tail,
                 dr_diagnostics_per_policy=dr_diagnostics_per_policy,
-                influence_functions=(
-                    self._influence_functions if self.store_influence else None
-                ),
+                influence_functions=self._influence_functions,
             )
         else:
             # No IPS diagnostics available, create minimal version
@@ -684,9 +671,7 @@ class DREstimator(BaseCJEEstimator):
                 outcome_rmse_mean=outcome_rmse_mean,
                 worst_if_tail_ratio=worst_if_tail,
                 dr_diagnostics_per_policy=dr_diagnostics_per_policy,
-                influence_functions=(
-                    self._influence_functions if self.store_influence else None
-                ),
+                influence_functions=self._influence_functions,
             )
 
         return diagnostics
