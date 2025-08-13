@@ -18,8 +18,8 @@ def create_weight_summary_table(
 
     Args:
         all_diagnostics: Either:
-            - Dictionary of WeightDiagnostics objects by policy (legacy)
-            - IPSDiagnostics or DRDiagnostics object (new)
+            - Dictionary of diagnostic values by policy
+            - IPSDiagnostics or DRDiagnostics object
 
     Returns:
         Formatted table string

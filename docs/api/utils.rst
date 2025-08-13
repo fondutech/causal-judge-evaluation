@@ -6,15 +6,9 @@ This section documents utility functions and diagnostics.
 Weight Diagnostics
 ------------------
 
-.. autofunction:: cje.diagnose_weights
+.. autofunction:: cje.compute_weight_diagnostics
 
 .. autofunction:: cje.create_weight_summary_table
-
-.. autoclass:: cje.utils.WeightDiagnostics
-   :members:
-   :show-inheritance:
-   
-   .. automethod:: summary
 
 Extreme Weights Analysis
 ------------------------

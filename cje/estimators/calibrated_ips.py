@@ -2,8 +2,8 @@
 
 This is the core CJE estimator that uses Score-Indexed Monotone Calibration (SIMCal)
 to stabilize IPS in heavy-tail regimes. It projects weights onto monotone curves
-indexed by judge scores, choosing the direction that minimizes L2 distance, then
-blends toward uniform to meet variance/ESS constraints.
+indexed by judge scores, choosing the direction that minimizes either L2 distance
+or influence function variance, then blends toward uniform to meet variance/ESS constraints.
 """
 
 import numpy as np
@@ -32,6 +32,7 @@ class CalibratedIPS(BaseCJEEstimator):
     - Automatic direction selection (increasing vs decreasing monotone)
     - ESS floor and variance cap constraints
     - Judge score-indexed calibration for better alignment
+    - IF-based direction selection for risk minimization (optional)
     - Comprehensive diagnostics
 
     Args:
@@ -40,7 +41,11 @@ class CalibratedIPS(BaseCJEEstimator):
         ess_floor: Minimum ESS as fraction of n (default 0.2 = 20% ESS)
         var_cap: Maximum allowed variance of calibrated weights (default None = no cap)
         calibrator: Optional JudgeCalibrator for DR-aware direction selection
-        select_direction_by: Method for direction selection ("l2" or "if_variance")
+        select_direction_by: Method for direction selection:
+            "if_variance": (default) auto-select DR IF if calibrator available, else IPS IF
+            "l2": minimize L2 distance to raw weights
+            "ips_if": minimize IPS influence function variance
+            "dr_if": minimize DR influence function variance (requires calibrator)
     """
 
     def __init__(

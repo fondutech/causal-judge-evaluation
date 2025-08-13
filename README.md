@@ -8,8 +8,9 @@ Production-ready framework for unbiased LLM evaluation using causal inference.
 
 CJE provides a clean, production-ready implementation for:
 - **Unbiased Estimation**: Corrects for distribution shift between policies
-- **Variance Control**: Isotonic calibration prevents weight explosion  
+- **Variance Control**: SIMCal (Score-Indexed Monotone Calibration) prevents weight explosion  
 - **Doubly Robust**: Optional DR estimation for better bias-variance tradeoff
+- **Risk Minimization**: IF-based direction selection minimizes estimator variance
 - **Production Ready**: Clean API, comprehensive tests, type hints throughout
 
 ## Installation
@@ -53,13 +54,24 @@ print(f"Best policy: {results.best_policy()}")
 # Lower-level API for more control
 from cje import (
     load_dataset_from_jsonl,
+    calibrate_dataset,
     PrecomputedSampler,
     CalibratedIPS
 )
 
 dataset = load_dataset_from_jsonl("data.jsonl")
-sampler = PrecomputedSampler(dataset)
-estimator = CalibratedIPS(sampler)
+calibrated_dataset, cal_result = calibrate_dataset(
+    dataset,
+    judge_field="judge_score",
+    oracle_field="oracle_label",
+    enable_cross_fit=True,  # For DR
+)
+sampler = PrecomputedSampler(calibrated_dataset)
+estimator = CalibratedIPS(
+    sampler,
+    select_direction_by="if_variance",  # Use IF-based selection
+    calibrator=cal_result.calibrator,  # For DR-aware selection
+)
 results = estimator.fit_and_estimate()
 ```
 
@@ -77,7 +89,9 @@ results = estimator.fit_and_estimate()
 - Smart defaults with full configurability
 
 ### Estimators
-- **CalibratedIPS** - Variance-controlled IPS with isotonic calibration (recommended)
+- **CalibratedIPS** - Variance-controlled IPS with SIMCal calibration (recommended)
+  - L2 or influence-function based direction selection
+  - Automatic DR-aware selection when calibrator available
 - **RawIPS** - Standard importance sampling with clipping
 - **DRCPOEstimator** - Doubly robust with cross-fitted isotonic outcome models
 - **MRDREstimator** - Policy-specific weighted outcome models for heterogeneous effects
