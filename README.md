@@ -180,6 +180,44 @@ export_results_json(results, "results.json")
 export_results_csv(results, "results.csv")
 ```
 
+## Fresh Draws for Doubly Robust Estimation
+
+When using DR estimators, you need fresh draws (new responses from target policies). Here's the workflow:
+
+### 1. Extract prompts with IDs from your logged data
+```python
+logged = load_dataset_from_jsonl("logged_data.jsonl")
+
+# Extract prompts with their IDs
+with open("prompts_for_fresh_draws.jsonl", "w") as f:
+    for sample in logged.samples:
+        json.dump({
+            "prompt_id": sample.prompt_id,
+            "prompt": sample.prompt
+        }, f)
+        f.write("\n")
+```
+
+### 2. Generate fresh draws (must include prompt_id)
+```json
+{
+  "prompt_id": "prompt_abc123",  
+  "target_policy": "premium",
+  "judge_score": 0.85,
+  "draw_idx": 0
+}
+```
+
+### 3. Load and use with DR estimator
+```python
+from cje import load_fresh_draws_from_jsonl
+
+fresh_draws = load_fresh_draws_from_jsonl("fresh_draws.jsonl")
+dr_estimator.add_fresh_draws("premium", fresh_draws["premium"])
+```
+
+**Note**: Fresh draws require explicit `prompt_id` to align with logged data. This is intentional - fresh draws are derivative data that must reference the logged dataset's IDs.
+
 ## Documentation
 
 Full documentation available at: https://causal-judge-evaluation.readthedocs.io
