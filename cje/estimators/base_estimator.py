@@ -22,13 +22,22 @@ class BaseCJEEstimator(ABC):
     def __init__(
         self,
         sampler: PrecomputedSampler,
+        run_diagnostics: bool = True,
+        run_gates: bool = False,
+        gate_config: Optional[Dict[str, Any]] = None,
     ):
         """Initialize estimator.
 
         Args:
             sampler: Data sampler with precomputed log probabilities
+            run_diagnostics: Whether to compute diagnostics (default True)
+            run_gates: Whether to run automated gates (default False)
+            gate_config: Configuration for diagnostic gates
         """
         self.sampler = sampler
+        self.run_diagnostics = run_diagnostics
+        self.run_gates = run_gates
+        self.gate_config = gate_config or {}
         self._fitted = False
         self._weights_cache: Dict[str, np.ndarray] = {}
         self._influence_functions: Dict[str, np.ndarray] = {}
@@ -47,7 +56,67 @@ class BaseCJEEstimator(ABC):
     def fit_and_estimate(self) -> EstimationResult:
         """Convenience method to fit and estimate in one call."""
         self.fit()
-        return self.estimate()
+        result = self.estimate()
+
+        # Run diagnostic gates if requested
+        if self.run_gates and result is not None:
+            result = self._run_diagnostic_gates(result)
+
+        return result
+
+    def _run_diagnostic_gates(self, result: EstimationResult) -> EstimationResult:
+        """Run diagnostic gates and add report to result.
+
+        Args:
+            result: Estimation result to check
+
+        Returns:
+            Updated result with gate report
+        """
+        from ..utils.diagnostics import run_diagnostic_gates
+
+        # Collect diagnostics for gates
+        diagnostics: Dict[str, Any] = {}
+
+        # Add weight diagnostics if available
+        if (
+            hasattr(result.diagnostics, "ess_per_policy")
+            and result.diagnostics.ess_per_policy
+        ):
+            weight_diags = {}
+            for policy in result.diagnostics.ess_per_policy:
+                weight_diags[policy] = {
+                    "ess": result.diagnostics.ess_per_policy.get(policy, 0)
+                    * result.diagnostics.n_samples_valid,
+                    "tail_index": result.metadata.get("tail_indices", {}).get(policy),
+                    "max_weight": result.diagnostics.max_weight_per_policy.get(policy),
+                }
+            diagnostics["weight_diagnostics"] = weight_diags
+
+        # Add orthogonality scores and other DR diagnostics
+        if "orthogonality_scores" in result.metadata:
+            diagnostics["orthogonality_scores"] = result.metadata[
+                "orthogonality_scores"
+            ]
+
+        # Add number of policies
+        diagnostics["n_policies"] = len(self.sampler.target_policies)
+
+        # Add FDR results if present
+        if "fdr_results" in result.metadata:
+            diagnostics["fdr_results"] = result.metadata["fdr_results"]
+
+        # Run gates
+        gate_report = run_diagnostic_gates(
+            diagnostics,
+            config=self.gate_config,
+            verbose=False,  # Don't print here, let caller decide
+        )
+
+        # Store gate report
+        result.gate_report = gate_report.to_dict()
+
+        return result
 
     def get_influence_functions(self, policy: Optional[str] = None) -> Optional[Any]:
         """Get influence functions for a policy or all policies.

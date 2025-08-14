@@ -166,6 +166,19 @@ class EstimationResult(BaseModel):
         None, description="Diagnostic information (IPSDiagnostics or DRDiagnostics)"
     )
 
+    # Diagnostic gates (Phase 4)
+    gate_report: Optional[Dict[str, Any]] = Field(
+        None, description="Automated diagnostic gate results"
+    )
+
+    # Robust inference (Phase 3)
+    robust_standard_errors: Optional[np.ndarray] = Field(
+        None, description="Robust standard errors (bootstrap/cluster)"
+    )
+    robust_confidence_intervals: Optional[List[Tuple[float, float]]] = Field(
+        None, description="Robust confidence intervals"
+    )
+
     # Configuration and context
     metadata: Dict[str, Any] = Field(
         default_factory=dict,
