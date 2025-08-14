@@ -35,6 +35,15 @@ from .stability import (
     compute_stability_diagnostics,
 )
 
+from .robust_inference import (
+    stationary_bootstrap_se,
+    moving_block_bootstrap_se,
+    cluster_robust_se,
+    benjamini_hochberg_correction,
+    compute_simultaneous_bands,
+    compute_robust_inference,
+)
+
 __all__ = [
     # Weight diagnostics
     "effective_sample_size",
@@ -55,6 +64,13 @@ __all__ = [
     "reliability_diagram",
     "eif_qq_plot_data",
     "compute_stability_diagnostics",
+    # Robust inference
+    "stationary_bootstrap_se",
+    "moving_block_bootstrap_se",
+    "cluster_robust_se",
+    "benjamini_hochberg_correction",
+    "compute_simultaneous_bands",
+    "compute_robust_inference",
     # Display utilities
     "create_weight_summary_table",
     "format_dr_diagnostic_summary",
