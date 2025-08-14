@@ -25,7 +25,13 @@ from typing import Optional
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from policy_config import POLICY_NAMES
+from experiment_config import (
+    POLICY_NAMES,
+    BATCH_SIZES,
+    DEFAULT_EXPERIMENT_PARAMS,
+    validate_environment,
+    print_experiment_config,
+)
 
 
 def run_command(
@@ -114,20 +120,20 @@ def main() -> None:
     parser.add_argument(
         "--n-samples",
         type=int,
-        default=1000,
-        help="Number of samples to generate (default: 1000)",
+        default=DEFAULT_EXPERIMENT_PARAMS["n_samples"],
+        help=f"Number of samples to generate (default: {DEFAULT_EXPERIMENT_PARAMS['n_samples']})",
     )
     parser.add_argument(
         "--max-tokens",
         type=int,
-        default=512,
-        help="Maximum tokens per response (default: 512)",
+        default=DEFAULT_EXPERIMENT_PARAMS["max_tokens"],
+        help=f"Maximum tokens per response (default: {DEFAULT_EXPERIMENT_PARAMS['max_tokens']})",
     )
     parser.add_argument(
         "--seed",
         type=int,
-        default=42,
-        help="Random seed for reproducibility (default: 42)",
+        default=DEFAULT_EXPERIMENT_PARAMS["seed"],
+        help=f"Random seed for reproducibility (default: {DEFAULT_EXPERIMENT_PARAMS['seed']})",
     )
     parser.add_argument(
         "--skip-existing",
@@ -150,10 +156,20 @@ def main() -> None:
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=20,
-        help="Save progress every N samples for resilience (default: 20, set to 0 to disable)",
+        default=BATCH_SIZES["response_generation"],
+        help=f"Save progress every N samples for resilience (default: {BATCH_SIZES['response_generation']}, set to 0 to disable)",
+    )
+    parser.add_argument(
+        "--show-config",
+        action="store_true",
+        help="Show experiment configuration and exit",
     )
     args = parser.parse_args()
+
+    # Show config if requested
+    if args.show_config:
+        print_experiment_config()
+        sys.exit(0)
 
     # If --force is set, disable skip_existing
     if args.force:
@@ -260,10 +276,9 @@ def main() -> None:
         cmd = (
             f"python pipeline_steps/add_scores_with_resume.py "
             f"{response_file} "
-            f"--type judge"
+            f"--type judge "
+            f"--batch-size {BATCH_SIZES['judge_scoring']}"
         )
-        if args.batch_size > 0:
-            cmd += f" --batch-size {args.batch_size}"
         if args.force:
             cmd += " --force"  # Only force rescore when explicitly requested
 
@@ -281,10 +296,9 @@ def main() -> None:
         cmd = (
             f"python pipeline_steps/add_scores_with_resume.py "
             f"{response_file} "
-            f"--type oracle"
+            f"--type oracle "
+            f"--batch-size {BATCH_SIZES['oracle_scoring']}"
         )
-        if args.batch_size > 0:
-            cmd += f" --batch-size {args.batch_size}"
         if args.force:
             cmd += " --force"  # Only force rescore when explicitly requested
 
@@ -336,16 +350,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # Check for API keys
-    if not os.getenv("FIREWORKS_API_KEY"):
-        print("❌ Error: FIREWORKS_API_KEY environment variable not set")
-        print("Please run: source /path/to/set_secrets.sh")
+    # Validate environment
+    if not validate_environment():
         sys.exit(1)
-
-    if not os.getenv("OPENAI_API_KEY"):
-        print(
-            "⚠️  Warning: OPENAI_API_KEY not set (required for judge/oracle evaluation)"
-        )
-        print("Continuing anyway - evaluation steps will fail")
 
     main()

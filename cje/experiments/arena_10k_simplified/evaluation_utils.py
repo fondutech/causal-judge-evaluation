@@ -16,9 +16,12 @@ from tqdm import tqdm
 from pydantic import BaseModel, Field
 from langchain.chat_models import init_chat_model
 
+# Import model configuration from centralized config
+from experiment_config import EVALUATION_MODELS
+
 # Default models
-DEFAULT_JUDGE_MODEL = "gpt-5-nano-2025-08-07"
-DEFAULT_ORACLE_MODEL = "gpt-5-2025-08-07"
+DEFAULT_JUDGE_MODEL = EVALUATION_MODELS["judge"]
+DEFAULT_ORACLE_MODEL = EVALUATION_MODELS["oracle"]
 
 
 # Data models
@@ -170,7 +173,7 @@ Provide your evaluation score (0-100):
                 return JudgeScore(
                     score=normalized_score,
                     metadata={
-                        "model": self.model,
+                        "judge_model": self.model,  # Store model name for reproducibility
                         "raw_score": result.score,  # Keep raw 0-100 score
                         "attempts": attempt + 1,
                     },

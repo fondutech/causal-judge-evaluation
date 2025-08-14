@@ -23,7 +23,7 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 sys.path.append(str(Path(__file__).parent.parent))  # Add arena_10k_simplified to path
 
-from policy_config import get_all_policies
+from experiment_config import get_all_policies, BATCH_SIZES
 
 
 class ErrorType(Enum):
@@ -465,8 +465,8 @@ def main() -> None:
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=20,
-        help="Save progress every N responses (0 to disable)",
+        default=BATCH_SIZES["response_generation"],
+        help=f"Save progress every N responses (0 to disable, default: {BATCH_SIZES['response_generation']})",
     )
     parser.add_argument(
         "--max-retries",

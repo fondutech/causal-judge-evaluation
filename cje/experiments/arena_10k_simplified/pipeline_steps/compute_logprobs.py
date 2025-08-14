@@ -18,7 +18,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 sys.path.append(str(Path(__file__).parent.parent))  # Add arena_10k_simplified to path
 
 from cje import compute_chat_logprob
-from policy_config import POLICIES, get_policy_config, POLICY_NAMES
+from experiment_config import POLICIES, get_policy_config, POLICY_NAMES, BATCH_SIZES
 
 
 def load_existing_logprobs(output_file: str) -> Dict[str, Dict]:
@@ -289,8 +289,8 @@ def main() -> None:
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=0,
-        help="Save progress every N log probs (0 to disable)",
+        default=BATCH_SIZES["logprob_computation"],
+        help=f"Save progress every N log probs (0 to disable, default: {BATCH_SIZES['logprob_computation']})",
     )
 
     args = parser.parse_args()

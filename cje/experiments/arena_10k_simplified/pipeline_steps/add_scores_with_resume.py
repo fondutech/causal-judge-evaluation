@@ -20,6 +20,7 @@ from evaluation_utils import (
     DEFAULT_JUDGE_MODEL,
     DEFAULT_ORACLE_MODEL,
 )
+from experiment_config import BATCH_SIZES
 
 
 def load_existing_scores(
@@ -93,8 +94,10 @@ def add_scores_with_resume(
     evaluator: Any,
     score_field: str = "judge_score",
     desc: str = "Scoring",
-    batch_size: int = 50,
-    save_every: int = 50,  # Default to batch_size for consistent saves
+    batch_size: int = BATCH_SIZES["judge_scoring"],
+    save_every: int = BATCH_SIZES[
+        "judge_scoring"
+    ],  # Default to batch_size for consistent saves
     force_rescore: bool = False,
 ) -> Dict[str, Any]:
     """Add scores with resume capability and progress tracking.
@@ -201,6 +204,16 @@ def add_scores_with_resume(
                     score = result.scores[i] if result.scores[i] is not None else None
                     records[record_idx]["metadata"][score_field] = score
 
+                    # Also store metadata about the scoring (model name, etc)
+                    if result.metadata and i < len(result.metadata):
+                        score_metadata = result.metadata[i]
+                        if score_metadata and isinstance(score_metadata, dict):
+                            # Store judge_model if present
+                            if "judge_model" in score_metadata:
+                                records[record_idx]["metadata"]["judge_model"] = (
+                                    score_metadata["judge_model"]
+                                )
+
                     if score is not None:
                         scores_added += 1
                     else:
@@ -214,7 +227,7 @@ def add_scores_with_resume(
                 pbar.update(len(batch_indices))
 
             # Save progress periodically
-            # With default save_every=50 matching batch_size=50, this saves after each batch
+            # Save progress periodically based on save_every parameter
             if scores_added > 0 and scores_added % save_every == 0:
                 save_progress(records, output_file)
                 pbar.set_postfix({"saved": scores_added, "failed": failed_count})
@@ -316,13 +329,16 @@ def main() -> int:
         "--type", choices=["judge", "oracle"], default="judge", help="Type of scoring"
     )
     parser.add_argument(
-        "--batch-size", type=int, default=50, help="Batch size for API calls"
+        "--batch-size",
+        type=int,
+        default=BATCH_SIZES["judge_scoring"],
+        help=f"Batch size for API calls (default: {BATCH_SIZES['judge_scoring']})",
     )
     parser.add_argument(
         "--save-every",
         type=int,
-        default=50,
-        help="Save progress every N scores (default: 50, matches batch size)",
+        default=BATCH_SIZES["judge_scoring"],
+        help=f"Save progress every N scores (default: {BATCH_SIZES['judge_scoring']}, matches batch size)",
     )
     parser.add_argument(
         "--force", action="store_true", help="Force rescore even if scores exist"

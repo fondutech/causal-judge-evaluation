@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 import pandas as pd
 
-from policy_config import POLICY_NAMES
+from experiment_config import POLICY_NAMES
 
 
 ABLATION_CONFIG: Dict[str, Any] = {

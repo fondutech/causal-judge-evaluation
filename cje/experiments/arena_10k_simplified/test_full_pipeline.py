@@ -49,7 +49,7 @@ def verify_dataset(test_dir: Path, n_samples: int) -> Dict[str, Any]:
             results["errors"].append(f"Expected {n_samples} prompts, got {n_prompts}")
 
     # Check responses for each policy
-    from policy_config import POLICY_NAMES
+    from experiment_config import POLICY_NAMES
 
     for policy in POLICY_NAMES:
         response_file = test_dir / "responses" / f"{policy}_responses.jsonl"

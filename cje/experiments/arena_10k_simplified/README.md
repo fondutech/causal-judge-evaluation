@@ -5,8 +5,11 @@ CJE pipeline using ChatBot Arena dataset for evaluating LLM policies.
 ## Quick Start
 
 ```bash
+# View experiment configuration
+poetry run python generate_arena_data.py --show-config
+
 # Generate data with retry logic and progress tracking
-poetry run python generate_arena_data.py --n-samples 1000 --batch-size 20
+poetry run python generate_arena_data.py --n-samples 1000
 
 # Analyze with calibration
 poetry run python analyze_dataset.py --data data/cje_dataset.jsonl --oracle-coverage 0.5
@@ -131,11 +134,10 @@ poetry run python analyze_dataset.py --data data/cje_dataset.jsonl --no-plots
 
 ### Data Generation
 - `--n-samples`: Number of prompts (default: 1000)
-- `--batch-size`: Save interval (default: 20)
-- `--max-retries`: Retry attempts (default: 5)
 - `--max-tokens`: Response length (default: 512)
 - `--skip-existing`: Resume from existing files (default: True)
 - `--force`: Overwrite everything
+- `--show-config`: Display experiment configuration and exit
 
 
 ### Scoring
@@ -150,14 +152,25 @@ poetry run python analyze_dataset.py --data data/cje_dataset.jsonl --no-plots
 - `--no-plots`: Skip visualizations
 - `--quiet`: Minimal output
 
-## Policies
+## Configuration
 
-From `policy_config.py`:
-- **base**: Standard assistant (70B)
-- **clone**: Identical to base
-- **parallel_universe_prompt**: Alternative style
-- **unhelpful**: Poor responses
-- **premium**: High-quality (405B)
+All experiment configuration is centralized in `experiment_config.py`:
+
+### Evaluation Models
+- **Judge**: `gpt-4.1-nano-2025-04-14` (~0.5s/call, 13x faster than gpt-5-nano)
+- **Oracle**: `gpt-5-2025-08-07` (~2s/call, higher quality)
+
+### Policies
+- **base**: Standard assistant (Llama 70B)
+- **clone**: Identical to base (control)
+- **parallel_universe_prompt**: Alternative prompting style
+- **unhelpful**: Adversarial responses
+- **premium**: High-quality (Llama 405B)
+
+### Batch Sizes (optimized for resilience)
+- Response generation: 20 (saves every ~30-60s)
+- Judge scoring: 50 (saves every ~25s)
+- Oracle scoring: 50 (saves every ~100s)
 
 ## Error Handling
 
