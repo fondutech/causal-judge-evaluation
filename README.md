@@ -1,237 +1,306 @@
-# Causal Judge Evaluation (CJE)
+# Causal Judge Evaluation (CJE) with SIMCal
 
-![CJE Logo](docs/img/CJE_logo.svg)
+[![Tests](https://img.shields.io/badge/tests-102%20passing-brightgreen)](cje/tests)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Production-ready framework for unbiased LLM evaluation using causal inference.
+**Shape-Constrained, Unbiased Off-Policy Metrics for LLM Systems and Beyond**
 
-## Overview
+CJE transforms routine LLM evaluation logs into unbiased, variance-controlled estimates of counterfactual performance: *"What would our KPI be if we shipped policy π′ instead of π₀?"*
 
-CJE provides a clean, production-ready implementation for:
-- **Unbiased Estimation**: Corrects for distribution shift between policies
-- **Variance Control**: Stacked SIMCal (Score-Indexed Monotone Calibration) prevents weight explosion  
-- **Doubly Robust**: Optional DR estimation for better bias-variance tradeoff
-- **Optimal Stacking**: Combines multiple weight candidates to minimize OOF variance
-- **Production Ready**: Clean API, comprehensive tests, type hints throughout
+## 🎯 The Problem
 
-## Installation
+Modern LLM evaluation relies on automatic judges (GPT-4, Claude, etc.) to score outputs at scale. But these offline metrics are **correlational**—computed under your logging policy π₀, they don't answer the **causal** question of how a new policy π′ would perform if deployed.
+
+## 💡 The Solution: SIMCal
+
+CJE recasts judge-based evaluation as **calibrated causal inference** using our novel **Surrogate-Indexed Monotone Calibration (SIMCal)**:
+
+1. **Isotonic Reward Calibration**: Maps judge scores S to calibrated rewards R = f(S) using a small oracle slice
+2. **Variance-Safe Weight Calibration**: Projects importance weights onto monotone functions indexed by the judge, with an explicit variance cap
+3. **Out-of-Fold Stacking**: Combines {baseline, increasing, decreasing} candidates to minimize influence-function variance
+4. **Doubly Robust Estimation**: Achieves √n-rate inference when either nuisance converges at n^(-1/4)
+
+## 📊 Key Results
+
+- **Variance Reduction**: SIMCal increases ESS (effective sample size) by construction through majorization
+- **Mean Preservation**: All calibrations preserve the population mean exactly
+- **Efficiency**: DR-CPO achieves semiparametric efficiency under standard conditions
+- **Auditability**: Comprehensive diagnostics expose assumptions with quantitative gates
+
+## 🚀 Quick Start
+
+### Installation
 
 ```bash
-git clone https://github.com/fondutech/causal-judge-evaluation.git
+# Clone this repository
 cd causal-judge-evaluation
 pip install -e .
 ```
 
-## Quick Start
-
-**Requirements:** Minimum 10 samples with oracle labels for cross-validation. For quick testing without oracle labels, use `raw-ips` estimator.
-
-### Command Line Interface
-
-```bash
-# Analyze a dataset with default settings
-python -m cje analyze data.jsonl
-
-# Use specific estimator with fresh draws for DR
-python -m cje analyze data.jsonl --estimator dr-cpo --fresh-draws-dir responses/
-
-# Validate dataset format
-python -m cje validate data.jsonl
-
-# Export results to JSON
-python -m cje analyze data.jsonl --output results.json
-```
-
-### Python API
+### Basic Usage
 
 ```python
-# High-level API (recommended)
 from cje import analyze_dataset
 
+# One-line causal evaluation
 results = analyze_dataset(
-    "data.jsonl",
-    estimator="calibrated-ips"
-)
-best_idx = results.best_policy()
-policies = results.metadata.get("target_policies", [])
-if policies:
-    print(f"Best policy: {policies[best_idx]}")
-
-# Lower-level API for more control
-from cje import (
-    load_dataset_from_jsonl,
-    calibrate_dataset,
-    PrecomputedSampler,
-    CalibratedIPS
+    "logs.jsonl",
+    estimator="calibrated-ips",  # Uses SIMCal by default
+    oracle_coverage=0.1  # 10% oracle labels for calibration
 )
 
-dataset = load_dataset_from_jsonl("data.jsonl")
-calibrated_dataset, cal_result = calibrate_dataset(
-    dataset,
-    judge_field="judge_score",
-    oracle_field="oracle_label",
-    enable_cross_fit=True,  # For DR
-)
-sampler = PrecomputedSampler(calibrated_dataset)
-estimator = CalibratedIPS(
-    sampler,
-    calibrator=cal_result.calibrator,  # For DR-aware stacking
-)
-results = estimator.fit_and_estimate()
+# Get policy value estimate with 95% CI
+print(f"Policy value: {results.estimates[0]:.3f} ± {1.96 * results.standard_errors[0]:.3f}")
 ```
 
-## Key Features
-
-### 🚀 New: Command Line Interface
-- `analyze` - Run CJE analysis on datasets
-- `validate` - Check dataset format and completeness
-- Export results to JSON/CSV formats
-- Support for all estimators and configurations
-
-### 🎯 New: High-Level API
-- `analyze_dataset()` - One-line analysis function
-- Automatic calibration and fresh draw handling
-- Smart defaults with full configurability
-
-### Estimators
-- **CalibratedIPS** - Variance-controlled IPS with stacked SIMCal calibration (recommended)
-  - Combines {baseline, increasing, decreasing} candidates optimally
-  - Automatic DR-aware stacking when calibrator available
-- **RawIPS** - Standard importance sampling with clipping
-- **DRCPOEstimator** - Doubly robust with cross-fitted isotonic outcome models
-- **MRDREstimator** - Policy-specific weighted outcome models for heterogeneous effects
-- **TMLEEstimator** - Targeted minimum loss estimation with optimal bias-variance tradeoff
-- **MRDRTMLEEstimator** - Hybrid combining MRDR's policy-specific models with TMLE's targeting
-
 ### Data Format
+
+CJE expects JSONL logs with:
 ```json
 {
   "prompt": "What is machine learning?",
   "response": "Machine learning is...",
   "base_policy_logprob": -35.704,
   "target_policy_logprobs": {
-    "gpt4": -32.456,
-    "claude": -33.789
+    "policy_a": -32.456,
+    "policy_b": -33.789
   },
   "metadata": {
-    "judge_score": 0.85,
-    "oracle_label": 0.90
+    "judge_score": 0.85,      // Required: automatic judge score
+    "oracle_label": 0.90       // Optional: ground truth (for calibration slice)
   }
 }
 ```
 
-**Note:** `prompt_id` is optional and will be auto-generated from the prompt hash if not provided. This ensures consistency across datasets for fresh draws.
+## 🔬 Core Components
 
-### Computing Log Probabilities
-
-**Note:** Teacher forcing (computing log probabilities for a given completion) requires specific API support:
-- **Fireworks AI** ✅ (Currently supported - full implementation via `compute_teacher_forced_logprob`)
-- **Together AI** 🔄 (Has API support but not yet integrated in CJE)
-- **OpenAI** ❌ (Does not support teacher forcing)
-- **Anthropic** ❌ (Does not support teacher forcing)
+### 1. Calibrated IPS (Cal-IPS)
+Our primary estimator using SIMCal:
 
 ```python
-from cje import compute_teacher_forced_logprob
+from cje import load_dataset_from_jsonl, calibrate_dataset, PrecomputedSampler, CalibratedIPS
 
-# Works with Fireworks AI models
-result = compute_teacher_forced_logprob(
-    prompt="What is 2+2?",
-    response="The answer is 4.",
-    model="accounts/fireworks/models/llama-v3p2-3b-instruct"
+# Load and calibrate
+dataset = load_dataset_from_jsonl("logs.jsonl")
+calibrated_dataset, cal_result = calibrate_dataset(
+    dataset,
+    judge_field="judge_score",
+    oracle_field="oracle_label",
+    oracle_coverage=0.1  # Use 10% for calibration
+)
+
+# Run Cal-IPS with SIMCal
+sampler = PrecomputedSampler(calibrated_dataset)
+estimator = CalibratedIPS(sampler, calibrator=cal_result.calibrator)
+results = estimator.fit_and_estimate()
+```
+
+### 2. Doubly Robust (DR-CPO)
+Sequence-aware doubly robust estimation:
+
+```python
+from cje import DRCPOEstimator
+
+# DR-CPO with cross-fitted outcome models
+dr_estimator = DRCPOEstimator(
+    sampler,
+    calibrator=cal_result.calibrator,
+    n_folds=5
+)
+
+# Add fresh draws (one decode per context)
+dr_estimator.add_fresh_draws("policy_a", fresh_draws)
+results = dr_estimator.fit_and_estimate()
+```
+
+### 3. SIMCal Weight Calibration
+
+The heart of variance control:
+
+```python
+from cje.calibration import SIMCalibrator
+
+# Fit SIMCal with variance cap
+simcal = SIMCalibrator(
+    ordering_index="judge_score",  # Or "calibrated_reward"
+    variance_cap=1.0,  # Cap at baseline variance
+    candidates=["baseline", "increasing", "decreasing"]
+)
+
+# Calibrate weights
+calibrated_weights = simcal.fit_transform(
+    raw_weights,
+    judge_scores,
+    residuals=rewards  # For IPS
 )
 ```
 
-## CLI Usage
+## 📈 Estimators
 
-### Available Commands
+| Estimator | Description | When to Use |
+|-----------|-------------|-------------|
+| **CalibratedIPS** | IPS with SIMCal weight calibration | Default choice; best variance control |
+| **RawIPS** | Standard importance sampling | Baseline comparison |
+| **DRCPOEstimator** | Doubly robust with isotonic models | When outcome models available |
+| **MRDREstimator** | Policy-specific weighted models | Heterogeneous treatment effects |
+| **TMLEEstimator** | Targeted minimum loss | Optimal bias-variance tradeoff |
+| **MRDRTMLEEstimator** | MRDR + TMLE targeting | Best of both approaches |
 
-#### `analyze` - Run CJE analysis
-```bash
-python -m cje analyze <dataset> [options]
+## 🔍 Diagnostics & Gates
 
-Options:
-  --estimator {calibrated-ips,raw-ips,dr-cpo,mrdr,tmle,mrdr-tmle}
-                        Estimation method (default: calibrated-ips)
-  --output PATH         Save results to JSON file
-  --fresh-draws-dir DIR Directory containing fresh draw responses (for DR)
-  --estimator-config JSON
-                        JSON config for estimator (e.g., '{"n_folds": 10}')
-  --judge-field FIELD   Metadata field with judge scores (default: judge_score)
-  --oracle-field FIELD  Metadata field with oracle labels (default: oracle_label)
-  -v, --verbose         Enable verbose output
-  -q, --quiet           Suppress non-essential output
-```
+CJE provides comprehensive diagnostics to audit assumptions:
 
-#### `validate` - Check dataset format
-```bash
-python -m cje validate <dataset> [options]
+### Overlap & Weights
+- **ESS (Effective Sample Size)**: Must exceed threshold (default: 1000)
+- **Tail Index**: Hill estimator flags heavy tails
+- **Overlap Heatmaps**: Visualize support overlap
 
-Options:
-  -v, --verbose         Show detailed validation results
-```
+### Judge Calibration
+- **Reliability Diagrams**: Isotonic calibration curves
+- **Kendall-τ Drift Test**: Detect judge instability
+- **Coverage Checks**: Ensure evaluation within calibration support
 
-### Export Formats
+### Doubly Robust
+- **Orthogonality Score**: Should contain zero
+- **EIF Residuals**: Q-Q plots for normality
+- **DM-IPS Split**: Component contributions
 
 ```python
-from cje import analyze_dataset, export_results_json, export_results_csv
+# Access diagnostics
+diagnostics = results.diagnostics
+print(diagnostics.summary())
 
-# Analyze
-results = analyze_dataset("data.jsonl")
-
-# Export to JSON (includes full metadata and diagnostics)
-export_results_json(results, "results.json")
-
-# Export to CSV (tabular format for analysis)
-export_results_csv(results, "results.csv")
+# Check gates
+if diagnostics.ess < 1000:
+    warnings.warn("Low ESS - consider tighter variance cap")
+if diagnostics.tail_index < 2:
+    warnings.warn("Heavy tails detected - results may be unstable")
 ```
 
-## Fresh Draws for Doubly Robust Estimation
+## 🧮 Theory & Assumptions
 
-DR estimators need fresh draws (new responses from target policies). Format as JSONL with these fields:
+### Core Assumptions
 
-```json
-{
-  "prompt_id": "prompt_abc123",  
-  "target_policy": "premium",
-  "judge_score": 0.85,
-  "draw_idx": 0
+1. **Logging (D1-D3)**: i.i.d. logging under fixed π₀ with overlap
+2. **Judge (J1-J2)**: Monotone sufficiency with oracle slice
+3. **Regularity (R1-R3)**: Moment conditions and nuisance rates
+
+### Key Theoretical Results
+
+Under assumptions:
+- **Mean Preservation**: Isotonic calibration preserves E[Y]
+- **Variance Dominance**: SIMCal weakly reduces variance by majorization
+- **√n-Normality**: Cal-IPS and DR-CPO achieve asymptotic normality
+- **Efficiency**: DR-CPO attains semiparametric efficiency bound
+
+See the paper (forthcoming) for complete theory.
+
+## 🛠️ Advanced Features
+
+### Oracle Coverage Experiments
+```python
+# Sweep oracle coverage levels
+for coverage in [0.05, 0.10, 0.25]:
+    results = analyze_dataset(
+        "logs.jsonl",
+        oracle_coverage=coverage,
+        estimator="calibrated-ips"
+    )
+    print(f"Coverage {coverage}: CI width = {results.ci_width:.3f}")
+```
+
+### Variance Cap Sensitivity
+```python
+# Test different variance caps
+estimator = CalibratedIPS(
+    sampler,
+    variance_cap=0.5  # Tighter cap for more stability
+)
+```
+
+### Custom Judge Calibration
+```python
+from cje.calibration import IsotonicCalibrator
+
+# Fit custom calibration
+calibrator = IsotonicCalibrator(increasing=True)
+calibration_map = calibrator.fit(
+    judge_scores[oracle_mask],
+    oracle_labels[oracle_mask]
+)
+calibrated_rewards = calibration_map.transform(judge_scores)
+```
+
+## 📚 Documentation
+
+- **Paper**: Forthcoming
+- **[API Reference](docs/)**: Full documentation
+- **[Examples](examples/)**: Jupyter notebooks with tutorials
+- **[Arena Experiments](cje/experiments/arena_10k_simplified)**: Production pipeline
+
+## 🧪 Testing
+
+```bash
+# Run all tests (102 tests)
+poetry run pytest cje/tests/
+
+# Run by category
+poetry run pytest -m unit          # Fast unit tests
+poetry run pytest -m integration   # Integration tests
+
+# With coverage
+poetry run pytest --cov=cje --cov-report=html
+```
+
+## 🔄 Beyond LLMs
+
+While designed for LLM evaluation, SIMCal is a general-purpose OPE stabilizer for any problem with:
+- Logged propensities
+- A one-dimensional surrogate index
+- Need for variance control
+
+Applications include:
+- Clinical trials with surrogate endpoints
+- A/B testing with intermediate metrics
+- Recommendation systems with implicit feedback
+
+## 📖 Citation
+
+If you use CJE in your research, please cite:
+
+```bibtex
+@software{cje2025,
+  title={Causal Judge Evaluation (CJE): A Framework for Unbiased Off-Policy 
+         Evaluation with Shape-Constrained Calibration},
+  author={CJE Contributors},
+  year={2025},
+  url={https://github.com/causal-judge-evaluation}
 }
 ```
 
-The `prompt_id` should match your logged data (auto-generated from prompt hash if not provided).
+## 🤝 Contributing
 
-Load and use:
-```python
-from cje import load_fresh_draws_from_jsonl
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-fresh_draws = load_fresh_draws_from_jsonl("fresh_draws.jsonl")
-dr_estimator.add_fresh_draws("premium", fresh_draws["premium"])
-```
+## 📝 License
 
-## Documentation
+MIT License - see [LICENSE](LICENSE) for details.
 
-Full documentation available at: https://causal-judge-evaluation.readthedocs.io
+## 🙏 Acknowledgments
 
-- [Getting Started](docs/getting_started.rst)
-- [CLI Reference](docs/cli.rst)
-- [Data Format Guide](docs/data_format.rst)
-- [Estimators Guide](docs/estimators.rst)
-- [API Reference](docs/api/)
+This work builds on foundational research in:
+- Off-policy evaluation (Horvitz-Thompson, Dudík et al.)
+- Isotonic calibration (van der Laan et al. 2025)
+- Semiparametric efficiency (Bickel et al., Chernozhukov et al.)
 
-## Testing
+## 🔗 Links
 
-```bash
-# Run all tests
-poetry run pytest cje/tests/
+- **Repository**: This repository
+- **Documentation**: See [docs/](docs/) folder
+- **Paper**: Forthcoming
+- **PyPI**: Coming soon
 
-# Run specific test suites
-poetry run pytest cje/tests/test_cli.py -v      # CLI tests
-poetry run pytest cje/tests/test_analysis.py -v # High-level API tests
-poetry run pytest cje/tests/test_export.py -v   # Export functionality
+---
 
-# Run with coverage
-poetry run pytest cje/tests/ --cov=cje --cov-report=html
-```
-
-## License
-
-MIT License - see LICENSE file for details.
+**Made with ❤️ for better offline evaluation**

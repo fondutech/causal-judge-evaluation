@@ -8,8 +8,7 @@ Installation
 
 .. code-block:: bash
 
-   git clone https://github.com/fondutech/causal-judge-evaluation.git
-   cd causal-judge-evaluation
+   # From the repository root
    pip install -e .
 
 Required dependencies:
