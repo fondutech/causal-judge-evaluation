@@ -92,7 +92,7 @@ def exponential_backoff_with_jitter(
     delay = min(base_delay * (2**attempt), max_delay)
     # Add jitter: ±25% of the delay
     jitter = delay * 0.25 * (2 * random.random() - 1)
-    return max(0.1, delay + jitter)
+    return float(max(0.1, delay + jitter))
 
 
 def call_fireworks_with_retry(
@@ -127,7 +127,8 @@ def call_fireworks_with_retry(
         try:
             response = requests.post(url, json=payload, headers=headers, timeout=30)
             response.raise_for_status()
-            return response.json()
+            result: Dict[str, Any] = response.json()
+            return result
 
         except Exception as e:
             last_error = e
@@ -233,8 +234,8 @@ def generate_responses(
     if not api_key:
         raise ValueError("FIREWORKS_API_KEY environment variable required")
 
-    # Load existing responses if resuming
-    existing_responses = load_existing_responses(output_file) if batch_size else {}
+    # Load existing responses if resuming (always check for existing work)
+    existing_responses = load_existing_responses(output_file)
 
     # Track statistics
     stats = {
@@ -251,8 +252,8 @@ def generate_responses(
             prompt_data = json.loads(line)
             prompt_id = prompt_data.get("prompt_id")
 
-            # Skip if already exists and using batching
-            if batch_size and prompt_id in existing_responses:
+            # Skip if already exists
+            if prompt_id in existing_responses:
                 existing_resp = existing_responses[prompt_id]
                 # Check if it was a failed response
                 if existing_resp.get("response") is None and not skip_failed:
@@ -307,7 +308,8 @@ def generate_responses(
     output_f = None
     if batch_size:
         # We'll rewrite the entire file with updated responses
-        temp_file = f"{output_file}.tmp"
+        # Include PID to avoid collision with parallel runs
+        temp_file = f"{output_file}.tmp.{os.getpid()}"
         # Don't copy existing file - we'll write all responses fresh
         output_f = open(temp_file, "w")
 

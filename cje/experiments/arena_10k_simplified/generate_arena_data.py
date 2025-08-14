@@ -121,7 +121,7 @@ def main() -> None:
         "--max-tokens",
         type=int,
         default=512,
-        help="Maximum tokens per response (default: 256)",
+        help="Maximum tokens per response (default: 512)",
     )
     parser.add_argument(
         "--seed",
@@ -264,8 +264,8 @@ def main() -> None:
         )
         if args.batch_size > 0:
             cmd += f" --batch-size {args.batch_size}"
-        if not args.skip_existing:
-            cmd += " --force"  # Force rescore if not skipping
+        if args.force:
+            cmd += " --force"  # Only force rescore when explicitly requested
 
         run_command(cmd)
 
@@ -285,8 +285,8 @@ def main() -> None:
         )
         if args.batch_size > 0:
             cmd += f" --batch-size {args.batch_size}"
-        if not args.skip_existing:
-            cmd += " --force"  # Force rescore if not skipping
+        if args.force:
+            cmd += " --force"  # Only force rescore when explicitly requested
 
         run_command(cmd)
 

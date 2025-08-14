@@ -71,7 +71,10 @@ def save_progress(
         output_file: Output file path
         temp_suffix: Suffix for temp file
     """
-    temp_file = output_file + temp_suffix
+    import os
+
+    # Include PID to avoid collision with parallel runs
+    temp_file = f"{output_file}{temp_suffix}.{os.getpid()}"
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -253,7 +256,7 @@ def add_scores_with_resume(
 
 
 def add_judge_scores_with_resume(
-    input_file: str, output_file: str, model: str = DEFAULT_JUDGE_MODEL, **kwargs
+    input_file: str, output_file: str, model: str = DEFAULT_JUDGE_MODEL, **kwargs: Any
 ) -> Dict[str, Any]:
     """Add judge scores with resume capability.
 
@@ -278,7 +281,7 @@ def add_judge_scores_with_resume(
 
 
 def add_oracle_labels_with_resume(
-    input_file: str, output_file: str, model: str = DEFAULT_ORACLE_MODEL, **kwargs
+    input_file: str, output_file: str, model: str = DEFAULT_ORACLE_MODEL, **kwargs: Any
 ) -> Dict[str, Any]:
     """Add oracle labels with resume capability.
 
@@ -302,7 +305,7 @@ def add_oracle_labels_with_resume(
     )
 
 
-def main():
+def main() -> int:
     """CLI for adding scores with resume capability."""
     import argparse
 

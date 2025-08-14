@@ -11,9 +11,8 @@ poetry run python generate_arena_data.py --n-samples 1000 --batch-size 20
 # Analyze with calibration
 poetry run python analyze_dataset.py --data data/cje_dataset.jsonl --oracle-coverage 0.5
 
-# If needed, check and retry failed responses
-grep -c '"response": null' data/responses/*.jsonl
-poetry run python pipeline_steps/generate_responses.py --prompts data/prompts.jsonl --output-dir data/responses
+# Test the pipeline
+poetry run python test_full_pipeline.py --n-samples 10
 ```
 
 ## Pipeline Overview
@@ -37,7 +36,7 @@ poetry run python pipeline_steps/generate_responses.py --prompts data/prompts.js
 - Exponential backoff with jitter
 - Smart error classification (retryable vs non-retryable)
 - Automatic retry of failed responses
-- Recovery script for stubborn failures
+- Resume capability for interrupted runs
 
 **Scoring (Judge/Oracle):**
 - Resume from exact interruption point
@@ -104,7 +103,7 @@ poetry run python pipeline_steps/generate_responses.py \
   --skip-failed
 ```
 
-### Scoring with Resume
+### Manual Scoring (if needed)
 ```bash
 # Score with automatic resume
 poetry run python pipeline_steps/add_scores_with_resume.py data/responses/base_responses.jsonl --type judge
@@ -131,11 +130,11 @@ poetry run python analyze_dataset.py --data data/cje_dataset.jsonl --no-plots
 ## Parameters
 
 ### Data Generation
-- `--n-samples`: Number of prompts
+- `--n-samples`: Number of prompts (default: 1000)
 - `--batch-size`: Save interval (default: 20)
 - `--max-retries`: Retry attempts (default: 5)
-- `--max-tokens`: Response length (default: 256)
-- `--skip-existing`: Resume from existing files
+- `--max-tokens`: Response length (default: 512)
+- `--skip-existing`: Resume from existing files (default: True)
 - `--force`: Overwrite everything
 
 
@@ -252,7 +251,24 @@ with open('data/responses/clone_responses.jsonl') as f:
 print(Counter(errors))
 ```
 
+## Testing
+
+```bash
+# Test full pipeline with small sample
+poetry run python test_full_pipeline.py --n-samples 10
+
+# Test resume functionality
+poetry run python test_resume_pipeline.py
+```
+
 ## Implementation Notes
+
+### Simplified Architecture
+The pipeline now has a cleaner structure:
+- Single scoring script (`add_scores_with_resume.py`) handles both judge and oracle
+- All scripts support resume from interruption
+- Production pipeline (`generate_arena_data.py`) is the single entry point
+- Tests verify the actual production code path
 
 ### MRDR Omega Weights
 The MRDR estimator now uses `omega_mode="w"` by default (changed from "snips") for better stability:
