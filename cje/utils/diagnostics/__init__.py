@@ -27,6 +27,14 @@ from .display import (
     format_dr_diagnostic_summary,
 )
 
+from .stability import (
+    kendall_tau_drift,
+    sequential_drift_detection,
+    reliability_diagram,
+    eif_qq_plot_data,
+    compute_stability_diagnostics,
+)
+
 __all__ = [
     # Weight diagnostics
     "effective_sample_size",
@@ -41,6 +49,12 @@ __all__ = [
     "compute_dr_diagnostics_all",
     "compute_orthogonality_score",
     "compute_dm_ips_decomposition",
+    # Stability diagnostics
+    "kendall_tau_drift",
+    "sequential_drift_detection",
+    "reliability_diagram",
+    "eif_qq_plot_data",
+    "compute_stability_diagnostics",
     # Display utilities
     "create_weight_summary_table",
     "format_dr_diagnostic_summary",
