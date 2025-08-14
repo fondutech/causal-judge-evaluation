@@ -1,11 +1,14 @@
 """Base class for CJE estimators."""
 
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, TYPE_CHECKING
 import numpy as np
 
 from ..data.models import Dataset, EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
+
+if TYPE_CHECKING:
+    from ..diagnostics import DiagnosticSuite, DiagnosticConfig
 
 
 class BaseCJEEstimator(ABC):
@@ -23,6 +26,7 @@ class BaseCJEEstimator(ABC):
         self,
         sampler: PrecomputedSampler,
         run_diagnostics: bool = True,
+        diagnostic_config: Optional["DiagnosticConfig"] = None,
         run_gates: bool = False,
         gate_config: Optional[Dict[str, Any]] = None,
     ):
@@ -31,17 +35,20 @@ class BaseCJEEstimator(ABC):
         Args:
             sampler: Data sampler with precomputed log probabilities
             run_diagnostics: Whether to compute diagnostics (default True)
+            diagnostic_config: Configuration for diagnostics (uses defaults if None)
             run_gates: Whether to run automated gates (default False)
             gate_config: Configuration for diagnostic gates
         """
         self.sampler = sampler
         self.run_diagnostics = run_diagnostics
+        self.diagnostic_config = diagnostic_config
         self.run_gates = run_gates
         self.gate_config = gate_config or {}
         self._fitted = False
         self._weights_cache: Dict[str, np.ndarray] = {}
         self._influence_functions: Dict[str, np.ndarray] = {}
         self._results: Optional[EstimationResult] = None
+        self._diagnostic_suite: Optional["DiagnosticSuite"] = None
 
     @abstractmethod
     def fit(self) -> None:
@@ -58,8 +65,31 @@ class BaseCJEEstimator(ABC):
         self.fit()
         result = self.estimate()
 
-        # Run diagnostic gates if requested
-        if self.run_gates and result is not None:
+        # Run unified diagnostics if enabled
+        if self.run_diagnostics and result is not None:
+            from ..diagnostics import DiagnosticRunner, DiagnosticConfig
+
+            # Create config if not provided
+            if self.diagnostic_config is None:
+                self.diagnostic_config = DiagnosticConfig(
+                    run_gates=self.run_gates,
+                    gate_config=self.gate_config,
+                )
+
+            # Run diagnostics
+            runner = DiagnosticRunner(self.diagnostic_config)
+            self._diagnostic_suite = runner.run(self, result)
+
+            # Store in result for access
+            result.diagnostic_suite = self._diagnostic_suite
+
+            # Populate legacy fields for backward compatibility
+            if hasattr(result, "diagnostics") and result.diagnostics:
+                # Keep existing diagnostics (IPSDiagnostics/DRDiagnostics)
+                pass
+
+        # Legacy gate running (if diagnostics disabled but gates enabled)
+        elif self.run_gates and result is not None:
             result = self._run_diagnostic_gates(result)
 
         return result
@@ -188,3 +218,11 @@ class BaseCJEEstimator(ABC):
         if self._results and self._results.diagnostics:
             return self._results.diagnostics
         return None
+
+    def get_diagnostic_suite(self) -> Optional["DiagnosticSuite"]:
+        """Get the unified diagnostic suite from the last estimation.
+
+        Returns:
+            DiagnosticSuite if computed, None otherwise
+        """
+        return self._diagnostic_suite

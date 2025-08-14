@@ -35,6 +35,9 @@ def tail_weight_ratio(
 ) -> float:
     """Compute ratio of high to low quantiles.
 
+    DEPRECATED: Use hill_tail_index() instead for more theoretically grounded
+    tail behavior assessment.
+
     Args:
         weights: Importance weights
         q_low: Lower quantile (default 0.05 to avoid instability)
@@ -192,28 +195,25 @@ def compute_weight_diagnostics(
 ) -> Dict[str, Any]:
     """Compute weight diagnostics for a single policy.
 
-    Returns dict with: ess_fraction, max_weight, tail_ratio_99_5, tail_index, status
+    Returns dict with: ess_fraction, max_weight, tail_index (if computed), status
     """
     n = len(weights)
     ess = effective_sample_size(weights)
     ess_fraction = ess / n if n > 0 else 0.0
 
-    # Tail ratio (p99/p5)
-    tail_ratio = tail_weight_ratio(weights, 0.05, 0.99)
-
-    # Hill tail index (new)
+    # Hill tail index (primary tail measure)
     if compute_hill and n >= 50:  # Need reasonable sample size
         tail_index = hill_tail_index(weights)
     else:
         tail_index = None
 
-    # Determine status (updated to include tail index)
-    if ess_fraction < 0.01 or tail_ratio > 1000:
+    # Determine status based on ESS and tail index
+    if ess_fraction < 0.01:
         status = Status.CRITICAL
     elif tail_index is not None and tail_index < 1:
         # Very heavy tail - infinite mean risk
         status = Status.CRITICAL
-    elif ess_fraction < 0.1 or tail_ratio > 100:
+    elif ess_fraction < 0.1:
         status = Status.WARNING
     elif tail_index is not None and tail_index < 2:
         # Heavy tail - infinite variance risk
@@ -224,7 +224,6 @@ def compute_weight_diagnostics(
     result = {
         "ess_fraction": ess_fraction,
         "max_weight": float(weights.max()),
-        "tail_ratio_99_5": tail_ratio,
         "status": status,
     }
 

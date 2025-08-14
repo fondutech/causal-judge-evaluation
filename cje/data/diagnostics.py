@@ -43,7 +43,12 @@ class IPSDiagnostics:
     # Per-policy weight metrics
     ess_per_policy: Dict[str, float]
     max_weight_per_policy: Dict[str, float]
-    weight_tail_ratio_per_policy: Dict[str, float]  # p99/p5
+    weight_tail_ratio_per_policy: Optional[Dict[str, float]] = (
+        None  # DEPRECATED: Use tail_indices
+    )
+    tail_indices: Optional[Dict[str, Optional[float]]] = (
+        None  # Hill tail index per policy
+    )
 
     # ========== Calibration Diagnostics (None for RawIPS) ==========
     calibration_rmse: Optional[float] = None
@@ -69,10 +74,24 @@ class IPSDiagnostics:
 
     @property
     def worst_weight_tail_ratio(self) -> float:
-        """Worst tail ratio across policies."""
+        """Worst tail ratio across policies.
+
+        DEPRECATED: Use worst_tail_index instead.
+        """
         if self.weight_tail_ratio_per_policy:
             return max(self.weight_tail_ratio_per_policy.values())
         return 0.0
+
+    @property
+    def worst_tail_index(self) -> Optional[float]:
+        """Lowest (worst) Hill tail index across policies."""
+        if self.tail_indices:
+            valid_indices = [
+                idx for idx in self.tail_indices.values() if idx is not None
+            ]
+            if valid_indices:
+                return min(valid_indices)
+        return None
 
     @property
     def is_calibrated(self) -> bool:
@@ -130,10 +149,23 @@ class IPSDiagnostics:
             if max_w > 100:
                 issues.append(f"Extreme max weight for {policy}: {max_w:.1f}")
 
-        # Check for heavy tails
-        for policy, tail_ratio in self.weight_tail_ratio_per_policy.items():
-            if tail_ratio > 100:
-                issues.append(f"Heavy tail for {policy}: ratio={tail_ratio:.1f}")
+        # Check for heavy tails using Hill index
+        if self.tail_indices:
+            for policy, tail_idx in self.tail_indices.items():
+                if tail_idx is not None:
+                    if tail_idx < 1.5:
+                        issues.append(
+                            f"Extremely heavy tail for {policy}: α={tail_idx:.2f} (infinite mean risk)"
+                        )
+                    elif tail_idx < 2.0:
+                        issues.append(
+                            f"Heavy tail for {policy}: α={tail_idx:.2f} (infinite variance)"
+                        )
+        # Fallback to deprecated tail ratio if available
+        elif self.weight_tail_ratio_per_policy:
+            for policy, tail_ratio in self.weight_tail_ratio_per_policy.items():
+                if tail_ratio > 100:
+                    issues.append(f"Heavy tail for {policy}: ratio={tail_ratio:.1f}")
 
         # R² should be <= 1
         if self.calibration_r2 is not None and self.calibration_r2 > 1.0:

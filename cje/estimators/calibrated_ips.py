@@ -14,7 +14,7 @@ from .base_estimator import BaseCJEEstimator
 from ..data.models import EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..data.diagnostics import IPSDiagnostics, Status
-from ..utils.diagnostics import compute_weight_diagnostics, hill_tail_index
+from ..utils.diagnostics import compute_weight_diagnostics
 from ..calibration.simcal import SIMCalibrator, SimcalConfig
 
 logger = logging.getLogger(__name__)
@@ -59,7 +59,13 @@ class CalibratedIPS(BaseCJEEstimator):
         run_gates: bool = False,
         gate_config: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__(sampler, run_diagnostics, run_gates, gate_config)
+        super().__init__(
+            sampler=sampler,
+            run_diagnostics=run_diagnostics,
+            diagnostic_config=None,  # Will use defaults
+            run_gates=run_gates,
+            gate_config=gate_config,
+        )
         self.clip_weight = clip_weight
         self.ess_floor = ess_floor
         self.var_cap = var_cap
@@ -301,7 +307,6 @@ class CalibratedIPS(BaseCJEEstimator):
         # Compute weight diagnostics
         ess_per_policy = {}
         max_weight_per_policy = {}
-        tail_ratio_per_policy = {}
         tail_indices = {}
         overall_ess = 0.0
         total_n = 0
@@ -309,17 +314,14 @@ class CalibratedIPS(BaseCJEEstimator):
         for policy in policies:
             weights = self.get_weights(policy)
             if weights is not None and len(weights) > 0:
-                w_diag = compute_weight_diagnostics(weights, policy)
+                w_diag = compute_weight_diagnostics(weights, policy, compute_hill=True)
                 ess_per_policy[policy] = w_diag["ess_fraction"]
                 max_weight_per_policy[policy] = w_diag["max_weight"]
-                tail_ratio_per_policy[policy] = w_diag["tail_ratio_99_5"]
 
-                # Compute Hill tail index for heavy-tail detection
-                try:
-                    tail_idx = hill_tail_index(weights)
-                    tail_indices[policy] = tail_idx
-                except Exception:
-                    # Hill estimator can fail for some weight distributions
+                # Hill tail index is now computed in compute_weight_diagnostics
+                if "tail_index" in w_diag:
+                    tail_indices[policy] = w_diag["tail_index"]
+                else:
                     tail_indices[policy] = None
 
                 # Track overall
@@ -330,11 +332,18 @@ class CalibratedIPS(BaseCJEEstimator):
         # Compute overall weight ESS
         weight_ess = overall_ess / total_n if total_n > 0 else 0.0
 
-        # Determine status based on ESS and tail ratios
-        worst_tail = max(tail_ratio_per_policy.values()) if tail_ratio_per_policy else 0
-        if weight_ess < 0.01 or worst_tail > 1000:
+        # Determine status based on ESS and tail indices
+        worst_tail_idx = min(
+            (idx for idx in tail_indices.values() if idx is not None),
+            default=float("inf"),
+        )
+        if weight_ess < 0.01:
             weight_status = Status.CRITICAL
-        elif weight_ess < 0.1 or worst_tail > 100:
+        elif worst_tail_idx < 1.5:  # Very heavy tails
+            weight_status = Status.CRITICAL
+        elif weight_ess < 0.1:
+            weight_status = Status.WARNING
+        elif worst_tail_idx < 2.0:  # Heavy tails (infinite variance)
             weight_status = Status.WARNING
         else:
             weight_status = Status.GOOD
@@ -370,7 +379,7 @@ class CalibratedIPS(BaseCJEEstimator):
             weight_status=weight_status,
             ess_per_policy=ess_per_policy,
             max_weight_per_policy=max_weight_per_policy,
-            weight_tail_ratio_per_policy=tail_ratio_per_policy,
+            tail_indices=tail_indices,  # Use Hill indices instead of tail ratios
             # Calibration fields
             calibration_rmse=calibration_rmse,
             calibration_r2=calibration_r2,

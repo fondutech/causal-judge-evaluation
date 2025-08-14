@@ -66,7 +66,13 @@ class DREstimator(BaseCJEEstimator):
         gate_config: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ):
-        super().__init__(sampler, run_diagnostics, run_gates, gate_config)
+        super().__init__(
+            sampler=sampler,
+            run_diagnostics=run_diagnostics,
+            diagnostic_config=None,  # Will use defaults
+            run_gates=run_gates,
+            gate_config=gate_config,
+        )
 
         self.n_folds = n_folds
         self.calibrator = calibrator

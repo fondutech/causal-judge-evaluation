@@ -166,6 +166,11 @@ class EstimationResult(BaseModel):
         None, description="Diagnostic information (IPSDiagnostics or DRDiagnostics)"
     )
 
+    # Unified diagnostics (Phase 5)
+    diagnostic_suite: Optional[Any] = Field(
+        None, description="Unified diagnostic suite with all diagnostic information"
+    )
+
     # Diagnostic gates (Phase 4)
     gate_report: Optional[Dict[str, Any]] = Field(
         None, description="Automated diagnostic gate results"
