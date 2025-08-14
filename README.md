@@ -23,6 +23,8 @@ pip install -e .
 
 ## Quick Start
 
+**Requirements:** Minimum 10 samples with oracle labels for cross-validation. For quick testing without oracle labels, use `raw-ips` estimator.
+
 ### Command Line Interface
 
 ```bash
@@ -112,6 +114,8 @@ results = estimator.fit_and_estimate()
   }
 }
 ```
+
+**Note:** `prompt_id` is optional and will be auto-generated from the prompt hash if not provided. This ensures consistency across datasets for fresh draws.
 
 ### Computing Log Probabilities
 

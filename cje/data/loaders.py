@@ -97,9 +97,9 @@ class DatasetLoader:
 
         # Convert raw data to samples
         samples = []
-        for record in data:
+        for idx, record in enumerate(data):
             try:
-                sample = self._convert_record_to_sample(record)
+                sample = self._convert_record_to_sample(record, idx)
                 samples.append(sample)
             except (KeyError, ValueError) as e:
                 # Skip invalid records
@@ -127,12 +127,28 @@ class DatasetLoader:
                 policies.update(record[self.target_policy_logprobs_field].keys())
         return sorted(list(policies))
 
-    def _convert_record_to_sample(self, record: Dict[str, Any]) -> Sample:
-        """Convert a single record to a Sample."""
-        # Get prompt_id - required top-level field
+    def _convert_record_to_sample(self, record: Dict[str, Any], idx: int = 0) -> Sample:
+        """Convert a single record to a Sample.
+
+        Args:
+            record: Raw data record
+            idx: Index in dataset (used as fallback if prompt is also missing)
+        """
+        # Get prompt_id - auto-generate if missing
         prompt_id = record.get("prompt_id")
         if prompt_id is None:
-            raise ValueError("Record missing required 'prompt_id' field")
+            # Auto-generate from prompt hash for consistency across datasets
+            # This ensures fresh draws will map to the same prompt_id
+            prompt = record.get(self.prompt_field, "")
+            if prompt:
+                import hashlib
+
+                # Use first 12 chars of SHA256 for readable but unique ID
+                prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:12]
+                prompt_id = f"prompt_{prompt_hash}"
+            else:
+                # Fallback to index if no prompt either
+                prompt_id = f"sample_{idx:06d}"
 
         # Extract reward if present (handle nested format)
         reward = None

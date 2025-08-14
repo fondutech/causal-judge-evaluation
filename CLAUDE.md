@@ -101,7 +101,10 @@ Expected JSONL format:
 }
 ```
 
-Note: `reward` field is added during analysis, not data generation.
+Notes:
+- `prompt_id` is optional - auto-generated from prompt hash if missing
+- `reward` field is added during analysis, not data generation
+- Minimum 10 samples needed for cross-validation with oracle labels
 
 ## 🤖 Template Handling
 

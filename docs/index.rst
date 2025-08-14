@@ -44,7 +44,7 @@ Key Features
 ------------
 
 - **Unbiased Estimation**: Corrects for distribution shift between policies
-- **Variance Control**: Isotonic calibration prevents weight explosion
+- **Variance Control**: Stacked SIMCal prevents weight explosion
 - **Doubly Robust**: Optional DR estimation for better bias-variance tradeoff
 - **Production Ready**: Clean API, comprehensive tests, type hints throughout
 
