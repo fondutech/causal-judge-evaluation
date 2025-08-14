@@ -46,6 +46,7 @@ from cje import (
     DRCPOEstimator,
     MRDREstimator,
     TMLEEstimator,
+    MRDRTMLEEstimator,
     FreshDrawDataset,
     FreshDrawSample,
     load_fresh_draws_auto,
@@ -229,6 +230,49 @@ def setup_estimator(
         )
 
         return tmle_estimator
+
+    elif args.estimator == "mrdr-tmle":
+        n_folds = estimator_config.get("n_folds", 5)
+        omega_mode = estimator_config.get("omega_mode", "w")
+        link = estimator_config.get("link", "logit")
+
+        # MRDR-TMLE benefits from cross-fitted calibration
+        if args.oracle_coverage < 1.0 and (not cal_result or not cal_result.calibrator):
+            print(
+                "   ⚠️  MRDR-TMLE works best with cross-fitted calibration. Re-calibrating..."
+            )
+            validate_no_unnecessary_calibration(
+                calibrated_dataset, args.oracle_coverage, cal_result
+            )
+            calibrated_dataset, cal_result = calibrate_dataset(
+                calibrated_dataset,
+                judge_field="judge_score",
+                oracle_field="oracle_label",
+                enable_cross_fit=True,
+                n_folds=n_folds,
+            )
+            sampler = PrecomputedSampler(calibrated_dataset)
+
+        mrdr_tmle_estimator = MRDRTMLEEstimator(
+            sampler,
+            n_folds=n_folds,
+            omega_mode=omega_mode,
+            link=link,
+            calibrator=cal_result.calibrator if cal_result else None,
+        )
+        print(f"   Using MRDR-TMLE with omega_mode='{omega_mode}', link='{link}'")
+
+        # Load fresh draws
+        print("   Loading fresh draws for MRDR-TMLE estimation...")
+        add_fresh_draws_to_estimator(
+            mrdr_tmle_estimator,
+            sampler,
+            args.data,
+            calibrated_dataset,
+            estimator_config,
+        )
+
+        return mrdr_tmle_estimator
 
     else:
         raise ValueError(f"Unknown estimator: {args.estimator}")
@@ -684,7 +728,7 @@ def main() -> int:
     parser.add_argument("--no-plots", action="store_true", help="Disable plots")
     parser.add_argument(
         "--estimator",
-        choices=["calibrated-ips", "raw-ips", "dr-cpo", "mrdr", "tmle"],
+        choices=["calibrated-ips", "raw-ips", "dr-cpo", "mrdr", "tmle", "mrdr-tmle"],
         default="calibrated-ips",
         help="Estimation method",
     )

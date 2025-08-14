@@ -37,6 +37,7 @@ try:
     from .estimators.dr_base import DREstimator, DRCPOEstimator
     from .estimators.mrdr import MRDREstimator
     from .estimators.tmle import TMLEEstimator
+    from .estimators.mrdr_tmle import MRDRTMLEEstimator
     from .estimators.outcome_models import (
         BaseOutcomeModel,
         IsotonicOutcomeModel,
@@ -201,6 +202,7 @@ if _dr_available:
             "DRCPOEstimator",
             "MRDREstimator",
             "TMLEEstimator",
+            "MRDRTMLEEstimator",
             # Outcome models
             "BaseOutcomeModel",
             "IsotonicOutcomeModel",
