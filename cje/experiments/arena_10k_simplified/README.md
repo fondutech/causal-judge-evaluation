@@ -11,8 +11,9 @@ poetry run python generate_arena_data.py --n-samples 1000 --batch-size 20
 # Analyze with calibration
 poetry run python analyze_dataset.py --data data/cje_dataset.jsonl --oracle-coverage 0.5
 
-# Recover any failed responses
-poetry run python regenerate_failed_responses.py
+# If needed, check and retry failed responses
+grep -c '"response": null' data/responses/*.jsonl
+poetry run python pipeline_steps/generate_responses.py --prompts data/prompts.jsonl --output-dir data/responses
 ```
 
 ## Pipeline Overview
@@ -82,17 +83,25 @@ poetry run python generate_arena_data.py --n-samples 1000 --force
 
 ### Response Recovery
 ```bash
-# Check for failures (dry run)
-poetry run python regenerate_failed_responses.py --dry-run
+# Check for failures
+grep '"response": null' data/responses/*.jsonl | wc -l
 
-# Regenerate failed responses
-poetry run python regenerate_failed_responses.py
+# Regenerate failed responses (just re-run the same command!)
+poetry run python pipeline_steps/generate_responses.py \
+  --prompts data/prompts.jsonl \
+  --output-dir data/responses
 
 # Target specific policies
-poetry run python regenerate_failed_responses.py --policies clone unhelpful
+poetry run python pipeline_steps/generate_responses.py \
+  --prompts data/prompts.jsonl \
+  --output-dir data/responses \
+  --policies clone unhelpful
 
-# Aggressive retry for stubborn failures
-poetry run python regenerate_failed_responses.py --max-retries 10 --batch-size 5
+# Skip failed responses (don't retry)
+poetry run python pipeline_steps/generate_responses.py \
+  --prompts data/prompts.jsonl \
+  --output-dir data/responses \
+  --skip-failed
 ```
 
 ### Scoring with Resume
@@ -129,11 +138,6 @@ poetry run python analyze_dataset.py --data data/cje_dataset.jsonl --no-plots
 - `--skip-existing`: Resume from existing files
 - `--force`: Overwrite everything
 
-### Response Recovery
-- `--policies`: Specific policies to regenerate
-- `--max-retries`: Maximum retry attempts
-- `--batch-size`: Responses per save
-- `--dry-run`: Analyze without regenerating
 
 ### Scoring
 - `--type`: `judge` or `oracle`
