@@ -721,6 +721,31 @@ def main() -> int:
         if rewards_exist > 0:
             print(f"   ✓ Using {rewards_exist} pre-computed rewards from dataset")
             calibrated_dataset = dataset
+
+            # Check if we have fold IDs for cross-fitted predictions
+            has_fold_ids = all(
+                "cv_fold" in s.metadata for s in dataset.samples[:10]
+            )  # Check first 10 samples
+
+            if not has_fold_ids and args.oracle_field in dataset.samples[0].metadata:
+                # Run calibration just to get cross-fitted models for SIMCal
+                print("   Fitting cross-fitted models for SIMCal ordering index...")
+                try:
+                    _, cal_result = calibrate_dataset(
+                        dataset,
+                        judge_field=args.judge_field,
+                        oracle_field=args.oracle_field,
+                        enable_cross_fit=True,
+                        n_folds=5,
+                    )
+                    # Add fold IDs to existing dataset
+                    if cal_result.fold_ids is not None:
+                        for i, sample in enumerate(calibrated_dataset.samples):
+                            sample.metadata["cv_fold"] = int(cal_result.fold_ids[i])
+                    print(f"   ✓ Cross-fitted models ready")
+                except Exception as e:
+                    print(f"   ⚠️  Could not fit cross-fitted models: {e}")
+                    cal_result = None
         elif args.use_oracle or args.oracle_coverage == 1.0:
             print("   Using oracle labels directly as rewards...")
             oracle_count = 0
@@ -729,7 +754,26 @@ def main() -> int:
                     sample.reward = float(sample.metadata[args.oracle_field])
                     oracle_count += 1
             print(f"   ✓ Assigned {oracle_count} oracle labels as rewards")
+
+            # Still run cross-fitted calibration to get fold models for SIMCal ordering
+            # This gives us g_oof even when rewards = oracle labels
+            print("   Fitting cross-fitted models for SIMCal ordering index...")
+            _, cal_result = calibrate_dataset(
+                dataset,
+                judge_field=args.judge_field,
+                oracle_field=args.oracle_field,
+                enable_cross_fit=True,
+                n_folds=5,
+            )
+            # Use the dataset with oracle rewards but add CV fold info
             calibrated_dataset = dataset
+            # Add fold IDs to metadata for cross-fitted predictions
+            if cal_result.fold_ids is not None:
+                for i, sample in enumerate(calibrated_dataset.samples):
+                    sample.metadata["cv_fold"] = int(cal_result.fold_ids[i])
+            print(
+                f"   ✓ Cross-fitted models ready (RMSE: {cal_result.calibration_rmse:.3f})"
+            )
         else:
             print(f"   Calibrating with {args.oracle_coverage:.0%} oracle coverage...")
             random.seed(42)
