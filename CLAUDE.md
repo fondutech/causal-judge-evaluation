@@ -4,12 +4,18 @@ Core guidance for Claude Code when working with the CJE repository.
 
 ## 🎯 Project Philosophy
 
-The `cje/` directory is the production implementation focusing on:
-- Clear separation of concerns
-- Type safety with Pydantic models  
-- Explicit error handling (no magic fallbacks)
-- Simple, composable abstractions
-- YAGNI (You Aren't Gonna Need It) - avoid premature abstraction
+**Do One Thing Well** - The Unix philosophy guides this codebase:
+- Each tool has a single, well-defined purpose
+- Complex workflows are the user's responsibility to orchestrate
+- Tools compose naturally without hidden coupling
+- Prefer explicit pipelines over "smart" automation
+
+Core principles:
+- Clear separation of concerns (one responsibility per module)
+- Type safety with Pydantic models (explicit contracts)
+- Explicit error handling (no magic fallbacks or silent failures)
+- Simple, composable abstractions (avoid framework-itis)
+- YAGNI (You Aren't Gonna Need It) - don't build what isn't needed
 
 ## 📝 Documentation Principles
 
@@ -35,207 +41,116 @@ cje/                      # Production implementation
 ## 🚀 Quick Start
 
 ```python
-from cje import load_dataset_from_jsonl, calibrate_dataset, PrecomputedSampler, CalibratedIPS
+from cje import analyze_dataset
 
-# Load data (no rewards required)
-dataset = load_dataset_from_jsonl("data.jsonl")
-
-# Calibrate if needed
-calibrated_dataset, result = calibrate_dataset(
-    dataset, 
-    judge_field="judge_score",
-    oracle_field="oracle_label"
-)
-
-# Run estimation
-sampler = PrecomputedSampler(calibrated_dataset)
-estimator = CalibratedIPS(sampler)
-results = estimator.fit_and_estimate()
+results = analyze_dataset("data.jsonl", estimator="calibrated-ips")
 ```
 
-## 🔧 Essential Commands
+For detailed API usage, see the main README.
+
+## 🔧 Testing
 
 ```bash
-# Run tests
 poetry run pytest cje/
-
-# Run experiments
-cd cje/experiments/arena_10k_simplified
-
-# Step 1: Generate data (no calibration)
-poetry run python generate_arena_data.py --n-samples 1000
-
-# Step 2: Analyze with calibration
-poetry run python analyze_dataset.py --data data/cje_dataset.jsonl --oracle-coverage 0.5
 ```
+
+For specific experiment commands, see the README in each experiment directory.
 
 ## 🔑 API Keys
 
-Required keys:
-- `OPENAI_API_KEY` - For judge and oracle evaluation
-- `FIREWORKS_API_KEY` - For response generation and log probabilities
-
-```bash
-source /Users/eddielandesberg/PycharmProjects/causal-judge-evaluation/set_secrets.sh
-```
-
-## 🧾 Command Best Practices
-
-- Run "source set_secrets.sh" in the same line as other commands when they depend on api keys
+Set environment variables for API access:
+- `OPENAI_API_KEY` - Judge and oracle evaluation
+- `FIREWORKS_API_KEY` - Response generation and log probabilities
 
 ## 📊 Data Format
 
-Expected JSONL format:
-```json
-{
-  "prompt": "What is 2+2?",
-  "response": "4",
-  "base_policy_logprob": -35.704,
-  "target_policy_logprobs": {
-    "pi_improved": -32.123
-  },
-  "metadata": {
-    "judge_score": 0.8,
-    "oracle_label": 0.85
-  }
-}
-```
-
-Notes:
-- `prompt_id` is optional - auto-generated from prompt hash if missing
-- `reward` field is added during analysis, not data generation
-- Minimum 10 samples needed for cross-validation with oracle labels
-
-## 🤖 Template Handling
-
-For Fireworks models, templates are auto-detected:
-```python
-# Just pass None for template_config
-result = compute_chat_logprob(chat, model)  # Auto-detects for Fireworks
-```
-
-Don't create complex abstractions for template selection - let the tools handle it.
+CJE expects JSONL with log probabilities and optional judge scores. Fields like `prompt_id` and `reward` are auto-generated as needed. See data format documentation for details.
 
 ## 🏗️ Key Architectural Decisions
 
-1. **Clean Separation**: Data generation vs analysis are separate steps
-2. **Optional Rewards**: Datasets can exist without rewards  
-3. **Explicit Failures**: Use `None` for failures, never magic values
-4. **Metadata Collection**: Non-core fields go in metadata automatically
-5. **Transparent Filtering**: Use `sampler.n_valid_samples` to see samples after filtering
-6. **Stacked Weight Calibration**: SIMCal combines multiple candidates to minimize OOF variance
-7. **Three Isotonic Mappings**: Global f_all for rewards, cross-fitted f^(-k) for DR, stacked SIMCal for weights
-8. **DR via Inheritance**: DR inherits from CalibratedIPS to reuse weight machinery
-9. **Mandatory prompt_id**: Required for DR to align logged data with fresh draws
-10. **Fold ID Remapping**: Automatic remapping to [0..K-1] for subset compatibility
+1. **Do One Thing**: Each script/function has exactly one responsibility
+2. **Clean Separation**: Data generation vs analysis are separate steps
+3. **Optional Everything**: Rewards, prompt_id, oracle labels - all optional with sensible defaults
+4. **Explicit Failures**: Use `None` for failures, never magic values
+5. **No Hidden State**: Tools don't remember previous runs or modify global state
+6. **User Orchestrates**: Complex workflows are shell scripts, not hidden automation
+7. **Metadata Collection**: Non-core fields go in metadata automatically
+8. **Transparent Filtering**: Use `sampler.n_valid_samples` to see samples after filtering
+9. **Three Isotonic Mappings**: Global f_all for rewards, cross-fitted f^(-k) for DR, stacked SIMCal for weights
+10. **DR via Inheritance**: DR inherits from CalibratedIPS to reuse weight machinery
 
-## ⚠️ Common Pitfalls
+## 🚨 Code Review Red Flags
 
-1. **Wrong field names**: Use `base_policy_logprob`, not `p0_logprob`
-2. **Magic fallbacks**: Never use -100.0 or similar as fallbacks
-3. **Mixing concerns**: Calibration happens in analysis, not data prep
-4. **Assuming rewards exist**: Check before using PrecomputedSampler
+- **Overengineering**: Workflow engines, state management, retry logic
+- **Hidden coupling**: Tools depending on each other's output formats
+- **Magic values**: Using -100.0 or similar as fallbacks
+- **Mixed concerns**: Calibration during data generation
+- **Multiple responsibilities**: Classes doing more than one thing
+- **Unnecessary abstractions**: Code only used once
+- **"Smart" tools**: Trying to do everything or hide complexity
+- **Hidden state**: Global configuration or stateful libraries
 
-## 🚨 Red Flags in Code Review
+## 🔬 Calibration Strategy
 
-- Imports from old legacy paths
-- Magic numbers as fallbacks
-- Classes with multiple responsibilities
-- Calibration during data generation
-- Unnecessary abstractions (if it's only used once, inline it)
-- String-based dispatch when direct calls would suffice
+CJE uses three distinct calibration approaches:
+1. **Reward Calibration**: Maps judge scores to oracle labels
+2. **Weight Calibration**: Stacked SIMCal prevents weight explosion
+3. **DR Outcome Models**: Cross-fitted for orthogonality
 
-## 🔬 Three Isotonic Mappings
-
-The codebase implements three distinct isotonic regressions, each with a specific purpose:
-
-**Important Update (Aug 2024)**: Weight calibration now correctly uses judge scores as the ordering index by default (as specified in CJE paper Section 2.2). Ties in judge scores are handled by pooling weights within tied groups before applying PAV.
-
-1. **Reward Calibration** (judge → oracle)
-   - **Where**: `JudgeCalibrator` in `calibration/judge.py`
-   - **Global model**: `f_all` for stable reward labels (`Sample.reward`)
-   - **Cross-fitted**: `f^(-k)` for DR outcome models (via `predict_oof`)
-   - **Usage**: `calibrate_dataset(enable_cross_fit=True)` for DR
-
-2. **Weight Calibration** (IPS stabilization via stacked SIMCal)
-   - **Where**: `SIMCalibrator` in `calibration/simcal.py`
-   - **Method**: Stacks {baseline, increasing, decreasing} via OOF variance minimization
-   - **Automatic**: Uses DR residuals when calibrator available, else IPS rewards
-   - **No cross-fitting**: Applied per-policy in `CalibratedIPS.fit()`
-   - **Purpose**: Prevents weight explosion while preserving mean
-
-3. **DR Outcome Model** (g(s))
-   - **Preferred**: `CalibratorBackedOutcomeModel` - reuses f^(-k) from calibration
-   - **Fallback**: `IsotonicOutcomeModel` - refits if no calibrator passed
-   - **Always cross-fitted**: Preserves orthogonality for DR
+The implementation details are in `cje/calibration/`.
 
 ## 🤖 Doubly Robust (DR) Design
 
-### Architecture
-- **DR inherits from CalibratedIPS**: Reuses all weight machinery
-- **Outcome models are composed**: Easy to swap different models
-- **Cross-fitting in outcome models**: Each model handles its own k-fold logic
-- **Fresh draws are separate**: Added via `add_fresh_draws()` after creation
-- **CalibratorBackedOutcomeModel**: Reuses cross-fitted calibrators from reward calibration
+**Key insight**: DR inherits from CalibratedIPS to reuse weight machinery.
 
-### Key Classes
-```python
-# Estimator hierarchy
-DREstimator(CalibratedIPS)  # Base DR with IPS correction
-├── DRCPOEstimator          # Default with isotonic outcome model
-├── MRDREstimator           # Policy-specific weighted outcome models
-└── TMLEEstimator           # Targeted minimum loss estimation
+Fresh draws are the user's responsibility:
+- Generate responses with your pipeline
+- Score them with your judge
+- Format as simple JSONL
+- Attach to estimator with `add_fresh_draws()`
 
-# Outcome model hierarchy  
-BaseOutcomeModel (ABC)            # Handles cross-fitting infrastructure
-├── IsotonicOutcomeModel         # Default: g(x,a,s) = f(s)
-├── CalibratorBackedOutcomeModel # Reuses calibrator's f^(-k) models
-└── LinearOutcomeModel            # Example custom model
-```
-
-### Cross-Fitting for DR
-```python
-# ALWAYS enable cross-fitting and pass calibrator for DR
-calibrated_dataset, result = calibrate_dataset(
-    dataset,
-    enable_cross_fit=True,  # Fits both f_all and f^(-k)
-    n_folds=5
-)
-
-# ALWAYS pass calibrator to avoid redundant fitting
-sampler = PrecomputedSampler(calibrated_dataset)
-dr = DRCPOEstimator(sampler, calibrator=result.calibrator, n_folds=5)
-# This reuses the cross-fitted models from calibration (efficient!)
-```
-
-### Implementation Pattern
-Users only implement single-model logic:
-```python
-class CustomOutcomeModel(BaseOutcomeModel):
-    def _fit_single_model(self, prompts, responses, rewards, judge_scores):
-        # Train one model
-        
-    def _predict_single_model(self, model, prompts, responses, judge_scores):
-        # Predict with one model
-```
-
-The base class handles all cross-fitting complexity.
+**Asymmetry is intentional**: Logged data is authoritative, fresh draws augment it. We provide the math, you provide the data pipeline.
 
 ## 🎨 Design Principles
 
-1. **YAGNI (You Aren't Gonna Need It)**
+1. **Do One Thing Well**
+   - Each tool solves exactly one problem
+   - Composition happens in shell scripts, not library code
+   - If you need two things done, use two tools
+
+2. **YAGNI (You Aren't Gonna Need It)**
    - Don't create abstractions for single use cases
    - Inline code that's only called from one place
    - Remove layers that don't add value
 
-2. **Explicit is Better than Implicit**
+3. **Explicit is Better than Implicit**
    - No magic strings or hidden behavior
    - Clear function signatures and return types
    - Obvious data flow
 
-3. **Fail Fast and Clearly**
+4. **Fail Fast and Clearly**
    - Return None or raise exceptions, never magic values
    - Helpful error messages that guide users
    - Don't hide failures
 
-Remember: The goal is to be **simple, correct, and maintainable**.
+5. **Users Are Smart**
+   - Don't try to "protect" users from complexity
+   - Give them the tools, let them build the workflows
+   - Document the pieces, not prescriptive processes
+
+## 🚫 What We Don't Do
+
+CJE is a library, not a framework. We explicitly avoid:
+
+1. **Workflow Orchestration**: Use shell scripts, Make, or Airflow - not our job
+2. **Retry Logic**: Use systemd, cron, or bash loops - not our job
+3. **State Management**: Use files, databases, or queues - not our job
+4. **Progress Tracking**: Use tqdm in your scripts - not our job
+5. **Configuration Management**: Use environment vars or config files - not our job
+6. **Data Validation Workflows**: We validate structure, you validate semantics
+7. **End-to-End Pipelines**: We provide pieces, you build pipelines
+
+If you find yourself wanting CJE to "manage" something, stop. That's your job.
+The library provides the math and data structures. You provide the glue.
+
+Remember: The goal is to be **simple, correct, and maintainable** - not clever.
