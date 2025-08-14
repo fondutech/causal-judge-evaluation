@@ -41,34 +41,24 @@ Basic Usage
 Fresh Draws
 -----------
 
-DR requires "fresh draws" - samples generated from the target policy:
+DR requires "fresh draws" - samples generated from the target policy.
 
-**Real Fresh Draws** (Best)
+**Your Responsibility**
 
-Generate actual samples from your target policy:
+CJE doesn't generate fresh draws for you. That's your pipeline to build:
+
+1. Generate responses from your target policy
+2. Score them with your judge
+3. Format as JSONL with ``prompt_id``, ``target_policy``, ``judge_score``
+4. Load and attach to estimator
 
 .. code-block:: python
 
-   # Generate responses from target policy
-   prompts = dataset.get_prompts()
-   fresh_responses = []
+   from cje.utils.fresh_draws import load_fresh_draws_from_jsonl
    
-   for prompt in prompts:
-       response = generate_from_target_policy(prompt)
-       judge_score = evaluate_with_judge(prompt, response)
-       fresh_responses.append({
-           "prompt_id": prompt.id,
-           "response": response,
-           "judge_score": judge_score
-       })
-   
-   # Load into DR
-   fresh_dataset = FreshDrawDataset(
-       target_policy="gpt4",
-       draws_per_prompt=1,
-       samples=fresh_responses
-   )
-   dr.add_fresh_draws("gpt4", fresh_dataset)
+   # You generated these offline with your own pipeline
+   fresh_draws = load_fresh_draws_from_jsonl("gpt4_fresh.jsonl")
+   dr.add_fresh_draws("gpt4", fresh_draws["gpt4"])
 
 **Synthetic Fresh Draws** (For Testing)
 

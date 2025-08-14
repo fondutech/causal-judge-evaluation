@@ -11,7 +11,6 @@ Core fields required in every sample:
 .. code-block:: json
 
    {
-     "prompt_id": "unique_id_123",
      "prompt": "string",
      "response": "string", 
      "base_policy_logprob": -12.345,
@@ -19,6 +18,14 @@ Core fields required in every sample:
        "policy1": -10.123,
        "policy2": -11.456
      }
+   }
+
+Optional but recommended:
+
+.. code-block:: json
+
+   {
+     "prompt_id": "unique_id_123"  // Auto-generated from prompt hash if missing
    }
 
 For evaluation, you need one of these approaches:
@@ -36,8 +43,8 @@ For evaluation, you need one of these approaches:
 Field Descriptions
 ------------------
 
-**prompt_id** (string)
-   Unique identifier for the prompt. Required for DR estimation, cross-validation, and analysis.
+**prompt_id** (string, optional)
+   Unique identifier for the prompt. Auto-generated from SHA256 hash of prompt text if not provided. Useful for DR estimation alignment and debugging.
 
 **prompt** (string)
    The input prompt or question

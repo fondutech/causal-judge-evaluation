@@ -32,13 +32,14 @@ CJE helps you answer: **"What would happen if we deployed this new model?"**
 The key insight: You can reuse historical data from your current model (base policy) 
 to evaluate new models (target policies) without actually deploying them.
 
-Core Workflow
+What You Need
 -------------
 
-1. **Prepare Data**: Collect prompts and responses from your base policy
-2. **Compute Log Probabilities**: Calculate how likely each policy is to generate the responses  
-3. **Get Judge Scores**: Use an AI judge to evaluate response quality
-4. **Run CJE**: Get unbiased estimates of target policy performance
+- Prompts and responses from your current model
+- Log probabilities from models you want to evaluate
+- Judge scores (or oracle labels for calibration)
+
+CJE handles the causal inference; you handle the data generation.
 
 Quickest Start: Command Line
 -----------------------------
@@ -74,7 +75,10 @@ The simplest way to analyze a dataset programmatically:
    )
    
    # Check results
-   print(f"Best policy: {results.best_policy()}")
+   best_idx = results.best_policy()
+   policies = results.metadata.get("target_policies", [])
+   if policies:
+       print(f"Best policy: {policies[best_idx]}")
    print(f"Estimates: {results.estimates}")
    print(f"Standard errors: {results.standard_errors}")
    
@@ -142,7 +146,7 @@ Your data should be in JSONL format with these required fields:
 
 Key fields:
 
-- ``prompt_id``: Unique identifier for the prompt (required)
+- ``prompt_id``: Unique identifier (optional - auto-generated from prompt hash if missing)
 - ``base_policy_logprob``: Log probability from your current model
 - ``target_policy_logprobs``: Log probabilities from models you want to evaluate
 - ``metadata``: Additional fields like judge scores and oracle labels

@@ -23,22 +23,15 @@ Install and run your first evaluation:
 
 .. code-block:: python
 
-   from cje import (
-       load_dataset_from_jsonl,
-       PrecomputedSampler, 
-       CalibratedIPS
-   )
+   from cje import analyze_dataset
    
-   # Load data with precomputed log probabilities
-   dataset = load_dataset_from_jsonl("data.jsonl")
-   
-   # Create sampler and estimator
-   sampler = PrecomputedSampler(dataset)
-   estimator = CalibratedIPS(sampler)
+   # One-line analysis with automatic calibration
+   results = analyze_dataset("data.jsonl", estimator="calibrated-ips")
    
    # Get unbiased policy estimates
-   results = estimator.fit_and_estimate()
-   print(f"Best policy: {results.best_policy()}")
+   best_idx = results.best_policy()
+   print(f"Best policy index: {best_idx}")
+   print(f"Estimates: {results.estimates}")
 
 Key Features
 ------------

@@ -51,7 +51,10 @@ results = analyze_dataset(
     "data.jsonl",
     estimator="calibrated-ips"
 )
-print(f"Best policy: {results.best_policy()}")
+best_idx = results.best_policy()
+policies = results.metadata.get("target_policies", [])
+if policies:
+    print(f"Best policy: {policies[best_idx]}")
 
 # Lower-level API for more control
 from cje import (
@@ -182,7 +185,7 @@ export_results_csv(results, "results.csv")
 
 ## Fresh Draws for Doubly Robust Estimation
 
-DR estimators need fresh draws (new responses from target policies). Fresh draws must include `prompt_id` to align with logged data:
+DR estimators need fresh draws (new responses from target policies). Format as JSONL with these fields:
 
 ```json
 {
@@ -192,6 +195,8 @@ DR estimators need fresh draws (new responses from target policies). Fresh draws
   "draw_idx": 0
 }
 ```
+
+The `prompt_id` should match your logged data (auto-generated from prompt hash if not provided).
 
 Load and use:
 ```python
