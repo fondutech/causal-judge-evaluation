@@ -30,6 +30,9 @@ from datetime import datetime
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
+# Import experiment configuration
+from experiment_config import ANALYSIS_CONFIG
+
 # Set up logging
 log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -735,8 +738,18 @@ def main() -> int:
     parser.add_argument(
         "--estimator-config", type=json.loads, help="Estimator config JSON"
     )
-    parser.add_argument("--extreme-threshold-high", type=float, default=100.0)
-    parser.add_argument("--extreme-threshold-low", type=float, default=0.01)
+    parser.add_argument(
+        "--extreme-threshold-high",
+        type=float,
+        default=ANALYSIS_CONFIG["extreme_threshold_high"],
+        help=f"Upper threshold for extreme weight detection (default: {ANALYSIS_CONFIG['extreme_threshold_high']})",
+    )
+    parser.add_argument(
+        "--extreme-threshold-low",
+        type=float,
+        default=ANALYSIS_CONFIG["extreme_threshold_low"],
+        help=f"Lower threshold for extreme weight detection (default: {ANALYSIS_CONFIG['extreme_threshold_low']})",
+    )
 
     args = parser.parse_args()
 
@@ -780,7 +793,7 @@ def main() -> int:
                         judge_field=args.judge_field,
                         oracle_field=args.oracle_field,
                         enable_cross_fit=True,
-                        n_folds=5,
+                        n_folds=ANALYSIS_CONFIG["n_folds"],
                     )
                     # Add fold IDs to existing dataset
                     if cal_result.fold_ids is not None:
@@ -807,7 +820,7 @@ def main() -> int:
                 judge_field=args.judge_field,
                 oracle_field=args.oracle_field,
                 enable_cross_fit=True,
-                n_folds=5,
+                n_folds=ANALYSIS_CONFIG["n_folds"],
             )
             # Use the dataset with oracle rewards but add CV fold info
             calibrated_dataset = dataset
@@ -851,7 +864,7 @@ def main() -> int:
                 judge_field=args.judge_field,
                 oracle_field=args.oracle_field,
                 enable_cross_fit=True,
-                n_folds=5,
+                n_folds=ANALYSIS_CONFIG["n_folds"],
             )
             print(f"   ✓ Calibrated using {cal_result.n_oracle} oracle labels")
             print(f"   ✓ Calibration RMSE: {cal_result.calibration_rmse:.3f}")

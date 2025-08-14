@@ -145,6 +145,16 @@ DATA_QUALITY = {
     "content_moderation_threshold": 0.3,  # Filters ~0.28% most problematic prompts from Arena
 }
 
+# ============================================================================
+# ANALYSIS SETTINGS
+# ============================================================================
+
+ANALYSIS_CONFIG = {
+    "n_folds": 5,  # Number of cross-validation folds for DR estimators
+    "extreme_threshold_high": 100.0,  # Upper threshold for extreme weight detection
+    "extreme_threshold_low": 0.01,  # Lower threshold for extreme weight detection
+}
+
 
 # ============================================================================
 # UTILITY FUNCTIONS
