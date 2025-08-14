@@ -1,5 +1,6 @@
 """Integration test showing complete workflow."""
 
+import pytest
 import numpy as np
 from cje import (
     PrecomputedSampler,
@@ -10,6 +11,7 @@ from cje import (
 from cje.utils.diagnostics import compute_weight_diagnostics
 
 
+@pytest.mark.integration
 def test_end_to_end_pipeline() -> None:
     """Run full integration test with existing test data."""
 

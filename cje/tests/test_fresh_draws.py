@@ -139,45 +139,6 @@ class TestLoadFreshDrawsAuto:
         assert result.n_samples == 1
         assert result.samples[0].response == "Custom location"
 
-    @pytest.mark.skip(reason="Additional file patterns not yet implemented")
-    def test_auto_load_pattern_matching(self) -> None:
-        """Test different file naming patterns are recognized."""
-        test_cases = [
-            ("policy_a_responses.jsonl", True),
-            ("policy_a.jsonl", True),
-            ("responses_policy_a.jsonl", True),
-            ("fresh_draws_policy_a.jsonl", True),
-            ("policy_a_fresh.jsonl", True),
-            ("unrelated.jsonl", False),
-        ]
-
-        for filename, should_find in test_cases:
-            # Clean directory
-            for old_file in self.responses_dir.glob("*.jsonl"):
-                old_file.unlink()
-
-            # Create test file
-            fresh_data = {
-                "prompt_id": "id_0",
-                "response": "Test",
-                "judge_score": 0.8,
-                "logprob": -5.0,
-            }
-            with open(self.responses_dir / filename, "w") as f:
-                f.write(json.dumps(fresh_data) + "\n")
-
-            if should_find:
-                result = load_fresh_draws_auto(
-                    data_dir=self.data_dir, policy="policy_a"
-                )
-                assert result.n_samples == 1
-            else:
-                with pytest.raises(FileNotFoundError):
-                    load_fresh_draws_auto(
-                        data_dir=self.data_dir,
-                        policy="policy_a",
-                    )
-
     def test_auto_load_validates_content(self) -> None:
         """Test auto-loading validates fresh draw file content."""
         # Create invalid fresh draw file (missing required fields)
@@ -193,23 +154,6 @@ class TestLoadFreshDrawsAuto:
 
         with pytest.raises(Exception):  # Should raise validation error
             load_fresh_draws_auto(data_dir=self.data_dir, policy="policy_a")
-
-    @pytest.mark.skip(
-        reason="Logging capture issue - function works but test needs update"
-    )
-    def test_auto_load_logging(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Test auto-loading logs appropriate messages."""
-        import logging
-
-        caplog.set_level(logging.INFO)
-
-        # Test successful load
-        self.create_fresh_draws_file("policy_a")
-
-        result = load_fresh_draws_auto(data_dir=self.data_dir, policy="policy_a")
-
-        # Should log where it found the file
-        assert "Found fresh draws" in caplog.text or "Loading" in caplog.text
 
     def test_auto_load_caching(self) -> None:
         """Test that auto-loading can utilize caching if implemented."""

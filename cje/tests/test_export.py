@@ -221,51 +221,6 @@ class TestExportCSV:
         finally:
             Path(output_path).unlink()
 
-    @pytest.mark.skip(reason="Diagnostic columns in CSV not yet implemented")
-    def test_export_csv_with_diagnostics(self) -> None:
-        """Test CSV export includes diagnostic columns when available."""
-        result = EstimationResult(
-            estimates=np.array([0.7, 0.8]),
-            standard_errors=np.array([0.01, 0.02]),
-            method="calibrated_ips",
-            n_samples_used={"policy_a": 100, "policy_b": 98},
-            metadata={
-                "target_policies": ["policy_a", "policy_b"],
-                "diagnostics": {
-                    "policy_a": {
-                        "weights": {"ess": 85.5, "cv": 0.45},
-                        "status": "green",
-                    },
-                    "policy_b": {
-                        "weights": {"ess": 45.2, "cv": 1.2},
-                        "status": "yellow",
-                    },
-                },
-            },
-        )
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
-            output_path = f.name
-
-        try:
-            export_results_csv(result, output_path)
-
-            with open(output_path, "r") as f:
-                reader = csv.DictReader(f)
-                rows = list(reader)
-
-            # Check diagnostic columns
-            assert float(rows[0]["ess"]) == 85.5
-            assert float(rows[0]["cv"]) == 0.45
-            assert rows[0]["status"] == "green"
-
-            assert float(rows[1]["ess"]) == 45.2
-            assert float(rows[1]["cv"]) == 1.2
-            assert rows[1]["status"] == "yellow"
-
-        finally:
-            Path(output_path).unlink()
-
     def test_export_csv_missing_diagnostics(self) -> None:
         """Test CSV export handles missing diagnostics gracefully."""
         result = EstimationResult(

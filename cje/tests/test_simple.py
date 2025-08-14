@@ -1,9 +1,11 @@
 """Minimal tests without file I/O."""
 
-from cje import calibrate_judge_scores
+import pytest
 import numpy as np
+from cje import calibrate_judge_scores
 
 
+@pytest.mark.unit
 def test_judge_calibration() -> None:
     """Test judge calibration directly."""
 
