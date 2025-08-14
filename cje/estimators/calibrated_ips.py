@@ -238,14 +238,7 @@ class CalibratedIPS(BaseCJEEstimator):
             },
         )
 
-        # Build simplified diagnostics (this will compute tail indices and store them)
-        diagnostics = self._build_diagnostics(result)
-        result.diagnostics = diagnostics
-
-        # Store diagnostics for later access
-        self._diagnostics = diagnostics
-
-        # Store for later access
+        # Store for later access (diagnostics will be computed by fit_and_estimate)
         self._results = result
 
         return result

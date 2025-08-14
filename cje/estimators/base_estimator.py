@@ -84,9 +84,30 @@ class BaseCJEEstimator(ABC):
             result.diagnostic_suite = self._diagnostic_suite
 
             # Populate legacy fields for backward compatibility
-            if hasattr(result, "diagnostics") and result.diagnostics:
-                # Keep existing diagnostics (IPSDiagnostics/DRDiagnostics)
-                pass
+            if not hasattr(result, "diagnostics") or result.diagnostics is None:
+                # Create legacy diagnostics from suite
+                from ..data.diagnostics_compat import (
+                    create_ips_diagnostics_from_suite,
+                    create_dr_diagnostics_from_suite,
+                )
+
+                if self._is_dr_estimator():
+                    # Create IPS diagnostics first for DR
+                    ips_diag = create_ips_diagnostics_from_suite(
+                        self._diagnostic_suite,
+                        result.n_samples_used,
+                    )
+                    result.diagnostics = create_dr_diagnostics_from_suite(
+                        self._diagnostic_suite,
+                        result.n_samples_used,
+                        ips_diagnostics=ips_diag,
+                    )
+                else:
+                    # IPS-based estimator
+                    result.diagnostics = create_ips_diagnostics_from_suite(
+                        self._diagnostic_suite,
+                        result.n_samples_used,
+                    )
 
         # Legacy gate running (if diagnostics disabled but gates enabled)
         elif self.run_gates and result is not None:
@@ -226,3 +247,12 @@ class BaseCJEEstimator(ABC):
             DiagnosticSuite if computed, None otherwise
         """
         return self._diagnostic_suite
+
+    def _is_dr_estimator(self) -> bool:
+        """Check if this is a DR-based estimator.
+
+        Returns:
+            True if this is a DR variant, False otherwise
+        """
+        class_name = self.__class__.__name__
+        return any(x in class_name for x in ["DR", "MRDR", "TMLE"])

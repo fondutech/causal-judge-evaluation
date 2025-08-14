@@ -586,20 +586,6 @@ class DREstimator(BaseCJEEstimator):
                     for p, d in dr_diagnostics_per_policy.items()
                 }
 
-        # Get IPS diagnostics from the IPS estimator
-        ips_diag = None
-        if hasattr(self.ips_estimator, "get_diagnostics"):
-            ips_diag = self.ips_estimator.get_diagnostics()
-
-        # Build DRDiagnostics object
-        diagnostics = self._build_dr_diagnostics(
-            estimates=estimates,
-            standard_errors=standard_errors,
-            n_samples_used=n_samples_used,
-            dr_diagnostics_per_policy=dr_diagnostics_per_policy,
-            ips_diagnostics=ips_diag,
-        )
-
         # Build metadata (keep dr_diagnostics for backward compatibility with visualization)
         metadata = {
             "target_policies": list(self.sampler.target_policies),
@@ -616,7 +602,7 @@ class DREstimator(BaseCJEEstimator):
             n_samples_used=n_samples_used,
             method="dr_base",
             influence_functions=self._influence_functions,
-            diagnostics=diagnostics,
+            diagnostics=None,  # Will be populated by fit_and_estimate in base class
             metadata=metadata,
         )
 

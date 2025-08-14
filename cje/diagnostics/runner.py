@@ -34,9 +34,9 @@ class DiagnosticConfig:
     compute_weights: bool = True
 
     # Optional diagnostics
-    check_stability: bool = False
+    check_stability: bool = True  # Changed to True - drift detection is important!
     check_dr_quality: bool = True  # Only for DR estimators
-    compute_robust_se: bool = False
+    compute_robust_se: bool = False  # Keep expensive bootstrap off by default
     run_gates: bool = False
 
     # Parameters
@@ -190,10 +190,23 @@ class DiagnosticRunner:
 
         # Extract confidence intervals if available
         confidence_intervals = None
-        if result.confidence_intervals is not None:
+        if (
+            hasattr(result, "confidence_intervals")
+            and result.confidence_intervals is not None
+        ):
             confidence_intervals = {}
             for i, policy in enumerate(estimator.sampler.target_policies):
                 confidence_intervals[policy] = tuple(result.confidence_intervals[i])
+        elif (
+            hasattr(result, "robust_confidence_intervals")
+            and result.robust_confidence_intervals is not None
+        ):
+            # Try robust CI field
+            confidence_intervals = {}
+            for i, policy in enumerate(estimator.sampler.target_policies):
+                confidence_intervals[policy] = tuple(
+                    result.robust_confidence_intervals[i]
+                )
 
         return EstimationSummary(
             estimates=estimates,
@@ -268,13 +281,16 @@ class DiagnosticRunner:
 
         This connects the orphaned robust_inference module to the main pipeline.
         """
-        # Get influence functions
-        influence_functions = result.metadata.get("dr_influence", {})
+        # Get influence functions - check primary location first
+        influence_functions = None
 
+        # Primary location: result.influence_functions (where DR stores them)
+        if hasattr(result, "influence_functions") and result.influence_functions:
+            influence_functions = result.influence_functions
+
+        # Fallback: check metadata (legacy location)
         if not influence_functions:
-            # Try to get from result.influence_functions
-            if hasattr(result, "influence_functions") and result.influence_functions:
-                influence_functions = result.influence_functions
+            influence_functions = result.metadata.get("dr_influence", {})
 
         # Compute robust inference
         robust_dict = compute_robust_inference(
