@@ -93,7 +93,9 @@ class CalibratedIPS(BaseCJEEstimator):
                 f"n_samples={len(raw_weights)}, raw_mean={raw_weights.mean():.3f}"
             )
 
-            # Use SIMCal calibration with judge scores as the index
+            # Use SIMCal calibration with appropriate ordering index
+            # When calibrator available: use cross-fitted g(s) for better alignment with DR
+            # Otherwise: fall back to raw judge scores
             if judge_scores is None:
                 raise ValueError(
                     "Judge scores are required for SIMCal calibration. "
@@ -107,9 +109,10 @@ class CalibratedIPS(BaseCJEEstimator):
                 continue
             rewards = np.array([d["reward"] for d in data], dtype=float)
 
-            # Try to get DR residuals if calibrator available
+            # Try to get DR residuals and cross-fitted rewards if calibrator available
             residuals = None
             fold_ids = None
+            g_oof = None
             if self.calibrator is not None and hasattr(self.calibrator, "predict_oof"):
                 try:
                     # Extract fold IDs from data
@@ -118,12 +121,20 @@ class CalibratedIPS(BaseCJEEstimator):
                         judge_scores
                     ):
                         fold_ids = np.asarray(fold_list, dtype=int)
-                        # Compute cross-fitted residuals
+                        # Compute cross-fitted predictions
                         g_oof = self.calibrator.predict_oof(judge_scores, fold_ids)
                         residuals = rewards - g_oof
                         logger.debug(f"Using DR residuals for policy '{policy}'")
+                        logger.debug(
+                            f"Using cross-fitted rewards as SIMCal ordering index"
+                        )
                 except Exception as e:
                     logger.debug(f"Could not compute DR residuals: {e}")
+
+            # Determine the ordering index for SIMCal
+            # Use cross-fitted calibrated rewards if available, otherwise raw judge scores
+            # This aligns the monotone projection with the actual nuisance function used in DR
+            ordering_index = g_oof if g_oof is not None else judge_scores
 
             # Run stacked SIMCal calibration
             cfg = SimcalConfig(
@@ -135,7 +146,7 @@ class CalibratedIPS(BaseCJEEstimator):
             sim = SIMCalibrator(cfg)
             calibrated, calib_info = sim.transform(
                 raw_weights,
-                judge_scores,
+                ordering_index,  # Now uses g_oof when available, judge_scores otherwise
                 rewards=rewards,  # Always provide rewards
                 residuals=residuals,  # Provide if available for DR
                 fold_ids=fold_ids,  # Provide if available for consistent OOF
