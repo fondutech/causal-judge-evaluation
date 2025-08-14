@@ -43,7 +43,7 @@ def create_parser() -> argparse.ArgumentParser:
 
     analyze_parser.add_argument(
         "--estimator",
-        choices=["calibrated-ips", "raw-ips", "dr-cpo", "mrdr", "tmle"],
+        choices=["calibrated-ips", "raw-ips", "dr-cpo", "mrdr", "tmle", "mrdr-tmle"],
         default="calibrated-ips",
         help="Estimation method (default: calibrated-ips)",
     )
@@ -57,6 +57,13 @@ def create_parser() -> argparse.ArgumentParser:
     analyze_parser.add_argument(
         "--fresh-draws-dir",
         help="Directory containing fresh draw response files (for DR estimators)",
+    )
+
+    analyze_parser.add_argument(
+        "--oracle-coverage",
+        type=float,
+        default=1.0,
+        help="Fraction of samples with oracle labels to use for calibration (default: 1.0)",
     )
 
     analyze_parser.add_argument(
@@ -129,6 +136,7 @@ def run_analysis(args: argparse.Namespace) -> int:
             "estimator": args.estimator,
             "judge_field": args.judge_field,
             "oracle_field": args.oracle_field,
+            "oracle_coverage": args.oracle_coverage,
         }
 
         if args.estimator_config:

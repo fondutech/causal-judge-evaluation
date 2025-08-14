@@ -60,7 +60,7 @@ def test_validate_data_with_judge_scores_only() -> None:
         data, judge_field="judge_score", oracle_field="oracle_label"
     )
     assert not is_valid
-    assert any("No oracle labels found" in issue for issue in issues)
+    assert any("No valid oracle labels found" in issue for issue in issues)
 
 
 def test_validate_insufficient_oracle_samples() -> None:

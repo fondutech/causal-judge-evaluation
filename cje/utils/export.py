@@ -98,11 +98,13 @@ def export_results_csv(
 
     # Prepare rows
     rows = []
-    headers = ["policy", "estimate", "standard_error", "n_samples"]
+    headers = ["policy", "estimate", "standard_error"]
 
     if include_ci:
         headers.extend(["ci_lower", "ci_upper"])
         ci_lower, ci_upper = results.confidence_interval(alpha=0.05)
+
+    headers.extend(["n_samples", "method"])
 
     # Add data for each policy
     target_policies = results.metadata.get("target_policies", [])
@@ -112,6 +114,7 @@ def export_results_csv(
             "estimate": results.estimates[i],
             "standard_error": results.standard_errors[i],
             "n_samples": results.n_samples_used.get(policy, 0),
+            "method": results.method,
         }
 
         if include_ci:

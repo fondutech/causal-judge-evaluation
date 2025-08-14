@@ -41,6 +41,7 @@ def test_extreme_weights() -> None:
             "reward": 0.7,
             "base_policy_logprob": -50.0,  # Very low prob under base
             "target_policy_logprobs": {"pi_test": -5.0},  # Very high prob under target
+            "metadata": {"judge_score": 0.7},  # Add judge score for SIMCal
         }
         for i in range(10)
     ]
@@ -69,6 +70,7 @@ def test_all_missing() -> None:
             "target_policy_logprobs": {
                 "pi_test": -9.0 if i < 5 else None
             },  # More missing
+            "metadata": {"judge_score": 0.7},  # Add judge score for SIMCal
         }
         for i in range(10)
     ]
