@@ -5,91 +5,266 @@ CJE pipeline using ChatBot Arena dataset for evaluating LLM policies.
 ## Quick Start
 
 ```bash
-# Generate test data (50 samples)
-poetry run python test_pipeline.py --n-samples 50
-
-# Or run production pipeline (with batch saving for resilience)
+# Generate data with retry logic and progress tracking
 poetry run python generate_arena_data.py --n-samples 1000 --batch-size 20
+
+# Analyze with calibration
 poetry run python analyze_dataset.py --data data/cje_dataset.jsonl --oracle-coverage 0.5
+
+# Recover any failed responses
+poetry run python regenerate_failed_responses.py
 ```
 
 ## Pipeline Overview
 
-### 1. Data Generation (`generate_arena_data.py`)
-- Extracts prompts from ChatBot Arena
-- Generates responses from different policies
-- Adds judge scores and oracle labels
-- Computes log probabilities
-- Combines into single JSONL file
+1. **Data Generation** (`generate_arena_data.py`)
+   - Extracts prompts from ChatBot Arena
+   - Generates responses from different policies
+   - Adds judge scores and oracle labels (with resume capability)
+   - Computes log probabilities
 
-### 2. Analysis (`analyze_dataset.py`)
-- Calibrates judge scores to oracle labels (based on `--oracle-coverage`)
-- Runs CJE estimation with importance weight calibration
-- Outputs results and diagnostics
-- Generates visualizations (unless `--no-plots` specified):
-  - Weight diagnostics dashboard
-  - Judge calibration comparison
-  - Policy performance forest plot
+2. **Analysis** (`analyze_dataset.py`)
+   - Calibrates judge scores to oracle labels
+   - Runs CJE estimation (IPS, DR-CPO, MRDR, TMLE)
+   - Generates visualizations and diagnostics
 
-## Directory Structure
+## Key Features
 
+### 🔄 Retry Logic & Recovery
+
+**Response Generation:**
+- Exponential backoff with jitter
+- Smart error classification (retryable vs non-retryable)
+- Automatic retry of failed responses
+- Recovery script for stubborn failures
+
+**Scoring (Judge/Oracle):**
+- Resume from exact interruption point
+- Skip already-scored records
+- Save progress after each batch (50 scores)
+- Clear progress bars with ETA
+
+### 📊 Progress Tracking
+
+All operations show detailed progress:
 ```
-├── pipeline_steps/         # Individual data generation steps
-├── data/                   # Generated data (production)
-├── test_e2e_data/         # Test data (50 samples)
-├── generate_arena_data.py # Main data generation script
-├── analyze_dataset.py     # Analysis and calibration
-└── test_pipeline.py       # Quick test of full pipeline
+Judge scoring: 100%|████████| 2498/2498 [05:32<00:00, 7.52score/s]
 ```
 
-## Key Parameters
+With status updates:
+```
+📊 Status:
+  Total records:     5000
+  Already scored:    2500  <- Resumes from here!
+  Need scoring:      2500
+```
+
+### 💾 Incremental Saving
+
+- **Responses**: Save after each batch (default: 20)
+- **Scores**: Save after each batch (default: 50)
+- **Atomic writes**: Use temp file + rename to prevent corruption
+- **Configurable**: Adjust `--batch-size` and `--save-every`
+
+## Common Commands
 
 ### Data Generation
-- `--n-samples`: Number of prompts to use
-- `--batch-size`: Save progress every N samples (default: 20, set to 0 to disable)
-- `--skip-existing`: Skip steps where output files already exist
-- `--force`: Force overwrite existing files (opposite of --skip-existing)
-- `--max-tokens`: Maximum tokens per response (default: 256)
+```bash
+# Standard generation
+poetry run python generate_arena_data.py --n-samples 1000
+
+# Resume interrupted run (same command!)
+poetry run python generate_arena_data.py --n-samples 1000
+
+# Force regenerate everything
+poetry run python generate_arena_data.py --n-samples 1000 --force
+```
+
+### Response Recovery
+```bash
+# Check for failures (dry run)
+poetry run python regenerate_failed_responses.py --dry-run
+
+# Regenerate failed responses
+poetry run python regenerate_failed_responses.py
+
+# Target specific policies
+poetry run python regenerate_failed_responses.py --policies clone unhelpful
+
+# Aggressive retry for stubborn failures
+poetry run python regenerate_failed_responses.py --max-retries 10 --batch-size 5
+```
+
+### Scoring with Resume
+```bash
+# Score with automatic resume
+poetry run python pipeline_steps/add_scores_with_resume.py data/responses/base_responses.jsonl --type judge
+
+# Force re-score
+poetry run python pipeline_steps/add_scores_with_resume.py data/responses/base_responses.jsonl --type judge --force
+
+# Custom batch size for faster saves
+poetry run python pipeline_steps/add_scores_with_resume.py data/responses/base_responses.jsonl --type oracle --batch-size 25
+```
 
 ### Analysis
-- `--oracle-coverage`: Fraction of oracle labels for calibration (0.0-1.0)
-  - 1.0 = use oracle labels directly as rewards
-  - <1.0 = calibrate judge scores using subset
-- `--estimator`: Choose between `calibrated-ips` (default) or `raw-ips`
-- `--plot-dir`: Directory for visualization outputs (default: `data/plots/`)
-- `--no-plots`: Disable visualization generation
+```bash
+# With specific estimator
+poetry run python analyze_dataset.py --data data/cje_dataset.jsonl --estimator mrdr
+
+# Different oracle coverage levels
+poetry run python analyze_dataset.py --data data/cje_dataset.jsonl --oracle-coverage 0.25
+
+# Skip visualizations for speed
+poetry run python analyze_dataset.py --data data/cje_dataset.jsonl --no-plots
+```
+
+## Parameters
+
+### Data Generation
+- `--n-samples`: Number of prompts
+- `--batch-size`: Save interval (default: 20)
+- `--max-retries`: Retry attempts (default: 5)
+- `--max-tokens`: Response length (default: 256)
+- `--skip-existing`: Resume from existing files
+- `--force`: Overwrite everything
+
+### Response Recovery
+- `--policies`: Specific policies to regenerate
+- `--max-retries`: Maximum retry attempts
+- `--batch-size`: Responses per save
+- `--dry-run`: Analyze without regenerating
+
+### Scoring
+- `--type`: `judge` or `oracle`
+- `--batch-size`: Scores per API call (default: 50)
+- `--save-every`: Save frequency (default: 50)
+- `--force`: Override existing scores
+
+### Analysis
+- `--oracle-coverage`: Fraction for calibration (0.0-1.0)
+- `--estimator`: `calibrated-ips`, `dr-cpo`, `mrdr`, `tmle`
+- `--no-plots`: Skip visualizations
+- `--quiet`: Minimal output
 
 ## Policies
 
-Policies are dynamically discovered from `policy_config.py`:
-- **base**: Standard helpful assistant (llama-v3p3-70b-instruct)
-- **clone**: Identical to base (control)
-- **unhelpful**: Deliberately poor responses
-- **premium**: High-quality model (llama-v3p1-405b-instruct)
+From `policy_config.py`:
+- **base**: Standard assistant (70B)
+- **clone**: Identical to base
+- **parallel_universe_prompt**: Alternative style
+- **unhelpful**: Poor responses
+- **premium**: High-quality (405B)
 
-All policies are evaluated on the same base policy responses using importance weighting.
+## Error Handling
 
-## Resilience Features
+### Retryable Errors (automatic retry)
+- HTTP 429 (Rate Limit)
+- HTTP 500, 502, 503, 530 (Server Errors)
+- Connection errors
+- Timeouts
 
-### Batch Saving
-The pipeline saves progress incrementally to handle interruptions:
-- Responses and log probabilities are saved every `--batch-size` samples
-- Uses atomic writes (temp file + rename) to prevent corruption
-- Automatically resumes from last saved position
-- Detects and skips corrupted lines during resume
+### Non-Retryable Errors (fail immediately)
+- HTTP 400 (Bad Request)
+- HTTP 401 (Unauthorized)
+- HTTP 403 (Forbidden)
+- HTTP 404 (Not Found)
 
-### Retry Logic
-Log probability computation includes automatic retry for transient failures:
-- 3 attempts with exponential backoff (1s, 2s, 4s delays)
-- Handles network issues, rate limits, and temporary API errors
-- Single API call per sample (simplified from median-of-3 approach)
+## Reward Flow
 
-### Resume Example
-```bash
-# Start generation (interrupt with Ctrl+C anytime)
-poetry run python generate_arena_data.py --n-samples 1000 --batch-size 20
+When running analysis, rewards are assigned based on data availability:
 
-# Resume from where you left off (same command)
-poetry run python generate_arena_data.py --n-samples 1000 --batch-size 20
-# Output: "📂 Resuming from previous run: 340 already completed"
+1. **Pre-computed rewards** → Use as-is
+2. **100% oracle coverage** → Use oracle labels directly (no calibration)
+3. **<100% oracle coverage** → Calibrate judge scores to partial oracle
+
+⚠️ **Important**: With 100% oracle coverage, oracle labels are used directly without calibration to preserve all information.
+
+## Troubleshooting
+
+**High failure rates?**
+- Check API quotas and status
+- Use smaller batch sizes
+- Increase retry parameters
+- Try different times (API load varies)
+
+**Interrupted run?**
+- Just re-run the same command - all scripts auto-resume
+- Check progress with `--dry-run` flags
+- No work is lost with incremental saves
+
+**Memory issues?**
+- Use `--no-plots` to skip visualizations
+- Process smaller batches
+- Reduce `--n-samples`
+
+## Files Generated
+
 ```
+data/
+├── prompts.jsonl                 # Extracted prompts
+├── responses/
+│   ├── base_responses.jsonl      # Policy responses with scores
+│   ├── clone_responses.jsonl
+│   ├── parallel_universe_prompt_responses.jsonl
+│   ├── unhelpful_responses.jsonl
+│   └── premium_responses.jsonl
+├── logprobs/
+│   └── *_logprobs.jsonl          # Log probabilities
+├── cje_dataset.jsonl             # Combined dataset for analysis
+└── plots/                        # Visualization outputs
+    ├── weight_dashboard.png
+    ├── calibration_comparison.png
+    ├── policy_estimates.png
+    └── extreme_weights_analysis.txt
+```
+
+## Advanced Usage
+
+### Custom Oracle Coverage Experiments
+```bash
+for coverage in 0.1 0.25 0.5 0.75 1.0; do
+    poetry run python analyze_dataset.py \
+      --data data/cje_dataset.jsonl \
+      --oracle-coverage $coverage \
+      --estimator dr-cpo \
+      --plot-dir data/plots/coverage_${coverage}
+done
+```
+
+### Debugging Failed Responses
+```python
+import json
+from collections import Counter
+
+# Check error distribution
+errors = []
+with open('data/responses/clone_responses.jsonl') as f:
+    for line in f:
+        data = json.loads(line)
+        if data.get('response') is None:
+            errors.append(data.get('error_type', 'unknown'))
+
+print(Counter(errors))
+```
+
+## Implementation Notes
+
+### MRDR Omega Weights
+The MRDR estimator now uses `omega_mode="w"` by default (changed from "snips") for better stability:
+- Avoids extreme weight concentration
+- Achieves positive R² values
+- Lower RMSE in outcome predictions
+- See [`cje/estimators/MRDR_OMEGA_WEIGHTS.md`](../../estimators/MRDR_OMEGA_WEIGHTS.md) for details
+
+### Save Strategy
+Default configuration saves after each batch:
+- **Responses**: Every 20 items (~30-60 seconds of work)
+- **Scores**: Every 50 items (~10 seconds of work)
+- **Maximum loss**: One batch worth of work
+- **Trade-off**: Balances safety vs I/O overhead
+
+## Further Reading
+
+- [Main CJE Documentation](../../README.md) - Core library details
+- [CLAUDE.md](../../CLAUDE.md) - Development guidelines

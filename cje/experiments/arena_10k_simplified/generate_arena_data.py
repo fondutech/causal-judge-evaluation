@@ -256,17 +256,18 @@ def main() -> None:
     for policy in policies:
         response_file = data_dir / "responses" / f"{policy}_responses.jsonl"
 
-        # Check if judge scores already exist
-        if args.skip_existing and response_file.exists():
-            with open(response_file) as f:
-                first_line = json.loads(f.readline())
-                if "judge_score" in first_line.get("metadata", {}):
-                    print(f"⏭️  Skipping judge scoring for {policy} (scores exist)")
-                    continue
-
-        run_command(
-            f"python pipeline_steps/add_judge_scores.py " f"--input {response_file}"
+        # Use the new scoring script with resume capability
+        cmd = (
+            f"python pipeline_steps/add_scores_with_resume.py "
+            f"{response_file} "
+            f"--type judge"
         )
+        if args.batch_size > 0:
+            cmd += f" --batch-size {args.batch_size}"
+        if not args.skip_existing:
+            cmd += " --force"  # Force rescore if not skipping
+
+        run_command(cmd)
 
     # Step 4: Add oracle labels
     print("\n" + "=" * 60)
@@ -276,17 +277,18 @@ def main() -> None:
     for policy in policies:
         response_file = data_dir / "responses" / f"{policy}_responses.jsonl"
 
-        # Check if oracle labels already exist
-        if args.skip_existing and response_file.exists():
-            with open(response_file) as f:
-                first_line = json.loads(f.readline())
-                if "oracle_label" in first_line.get("metadata", {}):
-                    print(f"⏭️  Skipping oracle labeling for {policy} (labels exist)")
-                    continue
-
-        run_command(
-            f"python pipeline_steps/add_oracle_labels.py " f"--input {response_file}"
+        # Use the new scoring script with resume capability
+        cmd = (
+            f"python pipeline_steps/add_scores_with_resume.py "
+            f"{response_file} "
+            f"--type oracle"
         )
+        if args.batch_size > 0:
+            cmd += f" --batch-size {args.batch_size}"
+        if not args.skip_existing:
+            cmd += " --force"  # Force rescore if not skipping
+
+        run_command(cmd)
 
     # Step 5: Compute log probabilities
     print("\n" + "=" * 60)
