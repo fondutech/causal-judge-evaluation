@@ -552,6 +552,7 @@ def generate_visualizations(
                 save_path=plot_dir / "weight_dashboard_per_policy",
                 diagnostics=results.diagnostics,
                 sampler=sampler,
+                calibrator=cal_result.calibrator if cal_result else None,
             )
             print(
                 f"   ✓ Per-policy dashboard → {plot_dir}/weight_dashboard_per_policy.png"

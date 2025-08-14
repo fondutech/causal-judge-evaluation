@@ -178,10 +178,10 @@ def plot_weight_dashboard_detailed(
     diagnostics: Optional[Any] = None,
     **kwargs: Any,
 ) -> Tuple[plt.Figure, Dict[str, Any]]:
-    """Create per-policy weight dashboards with judge score visualization.
+    """Create per-policy weight dashboards with ordering index visualization.
 
     Creates a grid of subplots, one dashboard per policy, each showing:
-    - Weight smoothing by judge score (when available)
+    - Weight smoothing by ordering index (g_oof when available, else judge score)
     - ESS and tail diagnostics
     - Clear per-policy view
 
@@ -194,6 +194,7 @@ def plot_weight_dashboard_detailed(
         random_seed: Random seed for reproducibility
         diagnostics: Optional IPSDiagnostics or DRDiagnostics object
         **kwargs: Must include either 'judge_scores' dict or 'sampler'
+                 Can also include 'ordering_indices' dict and 'calibrator'
 
     Returns:
         Tuple of (matplotlib Figure, metrics dict)
@@ -203,9 +204,11 @@ def plot_weight_dashboard_detailed(
     policies = list(raw_weights_dict.keys())
     n_policies = len(policies)
 
-    # Get judge scores
+    # Get judge scores and ordering indices
     judge_scores_dict = kwargs.get("judge_scores", {})
+    ordering_indices_dict = kwargs.get("ordering_indices", {})
     sampler = kwargs.get("sampler")
+    calibrator = kwargs.get("calibrator")
 
     # Extract judge scores from sampler if not provided directly
     if not judge_scores_dict and sampler is not None:
@@ -217,6 +220,32 @@ def plot_weight_dashboard_detailed(
                 valid = ~np.isnan(scores)
                 if valid.sum() > 0:
                     judge_scores_dict[policy] = scores[valid]
+
+    # Try to compute ordering indices (g_oof) if not provided but calibrator available
+    if not ordering_indices_dict and calibrator is not None and sampler is not None:
+        if hasattr(calibrator, "predict_oof"):
+            ordering_indices_dict = {}
+            for policy in policies:
+                data = sampler.get_data_for_policy(policy)
+                if data:
+                    # Get judge scores and fold IDs
+                    judge_scores = np.array(
+                        [d.get("judge_score", np.nan) for d in data]
+                    )
+                    fold_list = [d.get("cv_fold") for d in data]
+
+                    # Check if we have valid fold IDs
+                    if all(v is not None for v in fold_list) and len(fold_list) == len(
+                        judge_scores
+                    ):
+                        fold_ids = np.asarray(fold_list, dtype=int)
+                        try:
+                            # Compute cross-fitted predictions
+                            g_oof = calibrator.predict_oof(judge_scores, fold_ids)
+                            if g_oof is not None and not np.all(g_oof == 0):
+                                ordering_indices_dict[policy] = g_oof
+                        except:
+                            pass  # Fall back to judge scores
 
     # Determine grid layout
     if n_policies <= 2:
@@ -254,6 +283,13 @@ def plot_weight_dashboard_detailed(
             else raw_w
         )
         judge_scores = judge_scores_dict.get(policy, None)
+        ordering_index = ordering_indices_dict.get(policy, None)
+
+        # Use ordering index if available, otherwise fall back to judge scores
+        plot_index = ordering_index if ordering_index is not None else judge_scores
+        index_label = (
+            "Calibrated Reward g(s)" if ordering_index is not None else "Judge Score"
+        )
 
         # Compute metrics for this policy
         ess_raw = compute_ess(raw_w)
@@ -277,13 +313,16 @@ def plot_weight_dashboard_detailed(
             "top1_raw": top1_raw,
             "top1_cal": top1_cal,
             "n_samples": len(raw_w),
+            "ordering_index_used": (
+                "g_oof" if ordering_index is not None else "judge_score"
+            ),
         }
 
-        if judge_scores is not None and len(judge_scores) == len(raw_w):
-            # Plot weight smoothing by score
+        if plot_index is not None and len(plot_index) == len(raw_w):
+            # Plot weight smoothing by ordering index
             _plot_single_policy_weight_smoothing(
                 ax,
-                judge_scores,
+                plot_index,
                 raw_w,
                 cal_w,
                 policy,
@@ -292,6 +331,7 @@ def plot_weight_dashboard_detailed(
                 uplift,
                 top1_raw,
                 top1_cal,
+                index_label=index_label,
             )
         else:
             # Fallback: simple histogram comparison
@@ -709,7 +749,7 @@ def _plot_summary_table(
 
 def _plot_single_policy_weight_smoothing(
     ax: Any,
-    judge_scores: np.ndarray,
+    ordering_index: np.ndarray,
     raw_w: np.ndarray,
     cal_w: np.ndarray,
     policy: str,
@@ -718,24 +758,29 @@ def _plot_single_policy_weight_smoothing(
     uplift: float,
     top1_raw: float,
     top1_cal: float,
+    index_label: str = "Judge Score",
 ) -> None:
-    """Plot weights vs judge scores with calibration effect."""
+    """Plot weights vs ordering index with calibration effect.
+
+    The ordering index can be either judge scores or calibrated rewards g(s),
+    depending on what was used for SIMCal calibration.
+    """
 
     # Filter to valid values
     mask = (
-        np.isfinite(judge_scores)
+        np.isfinite(ordering_index)
         & np.isfinite(raw_w)
         & np.isfinite(cal_w)
         & (raw_w > 0)
         & (cal_w > 0)
     )
-    S = judge_scores[mask]
+    S = ordering_index[mask]
     W_raw = raw_w[mask]
     W_cal_actual = cal_w[mask]
 
     n = len(S)
 
-    # Sort by judge scores
+    # Sort by ordering index
     sort_idx = np.argsort(S)
     S_sorted = S[sort_idx]
     W_raw_sorted = W_raw[sort_idx]
@@ -791,7 +836,7 @@ def _plot_single_policy_weight_smoothing(
         f"Var ratio: {var_ratio_actual:.2f}",
         fontsize=10,
     )
-    ax.set_xlabel("Judge Score", fontsize=9)
+    ax.set_xlabel(index_label, fontsize=9)
     ax.set_ylabel("Weight (log scale)", fontsize=9)
     ax.legend(loc="best", fontsize=8, frameon=False)
     ax.grid(True, alpha=0.3, which="both", linestyle=":")
