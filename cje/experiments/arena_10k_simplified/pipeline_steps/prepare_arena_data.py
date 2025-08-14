@@ -3,8 +3,8 @@
 Prepare ChatBot Arena data for CJE experiments.
 
 Downloads ChatBot Arena conversations and extracts unique prompts.
-This follows the key insight from the old codebase: deduplicate contexts
-to ensure we're comparing fresh responses from our policies.
+Key approach: Deduplicate contexts to ensure we're comparing fresh
+responses from our policies rather than reusing existing Arena responses.
 """
 
 import json
@@ -17,6 +17,8 @@ import sys
 
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 sys.path.append(str(Path(__file__).parent.parent))  # Add arena_10k_simplified to path
+
+from experiment_config import DATA_QUALITY
 
 
 def is_moderation_flagged(moderation_data: Dict[str, Any]) -> bool:
@@ -36,11 +38,12 @@ def is_moderation_flagged(moderation_data: Dict[str, Any]) -> bool:
         return False
 
     # Check scores directly since 'flagged' is unreliable
-    # Threshold of 0.3 filters ~0.28% of prompts (the most problematic ones)
+    # This threshold filters ~0.28% of prompts (the most problematic ones)
     scores = moderation_data.get("category_scores", {})
+    threshold = DATA_QUALITY["content_moderation_threshold"]
 
     for score in scores.values():
-        if score > 0.3:
+        if score > threshold:
             return True
 
     return False
@@ -113,7 +116,7 @@ def prepare_arena_prompts(
     dataset = load_dataset("agie-ai/lmsys-chatbot_arena_conversations", split="train")
     print(f"Downloaded {len(dataset):,} conversations")
 
-    # Extract unique prompts (key insight from old codebase)
+    # Extract unique prompts (avoid duplicate contexts)
     prompts = []
     seen = set()
     n_moderation_filtered = 0

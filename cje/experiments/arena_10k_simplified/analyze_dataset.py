@@ -10,7 +10,6 @@ This script demonstrates comprehensive CJE analysis with:
 - Experimental features (oracle coverage simulation)
 
 Experiment-specific features (kept local):
-- migrate_prompt_id_if_needed(): Legacy data format migration
 - Oracle coverage simulation: For research experiments
 
 Core library features used:
@@ -86,58 +85,6 @@ try:
     VIZ_AVAILABLE = True
 except ImportError:
     VIZ_AVAILABLE = False
-
-
-def migrate_prompt_id_if_needed(filepath: str) -> None:
-    """Migrate prompt_id from metadata to top-level for backward compatibility.
-
-    This is specific to this experiment's legacy data format.
-    """
-    path = Path(filepath)
-    if not path.exists():
-        return
-
-    with open(path, "r") as f:
-        first_line = f.readline()
-        if not first_line:
-            return
-
-        try:
-            first_record = json.loads(first_line)
-            if "prompt_id" in first_record or "prompt_id" not in first_record.get(
-                "metadata", {}
-            ):
-                return  # No migration needed
-        except json.JSONDecodeError:
-            return
-
-    print(f"   ⚠️  Migrating prompt_id from metadata to top-level")
-    lines = []
-
-    with open(path, "r") as f:
-        f.seek(0)  # Reset to beginning
-        for line in f:
-            if not line.strip():
-                lines.append(line)
-                continue
-
-            try:
-                data = json.loads(line)
-                if (
-                    "prompt_id" not in data
-                    and "metadata" in data
-                    and "prompt_id" in data["metadata"]
-                ):
-                    data["prompt_id"] = data["metadata"]["prompt_id"]
-                    del data["metadata"]["prompt_id"]
-                lines.append(json.dumps(data) + "\n")
-            except json.JSONDecodeError:
-                lines.append(line)
-
-    with open(path, "w") as f:
-        f.writelines(lines)
-
-    print(f"   ✓ Migration complete")
 
 
 def add_fresh_draws_to_estimator(
@@ -759,7 +706,6 @@ def main() -> int:
     try:
         # Step 1: Load data
         print("\n1. Loading dataset...")
-        migrate_prompt_id_if_needed(args.data)  # Local migration for legacy data
         dataset = load_dataset_from_jsonl(args.data)
         print(f"   ✓ Loaded {dataset.n_samples} samples")
         print(f"   ✓ Target policies: {dataset.target_policies}")

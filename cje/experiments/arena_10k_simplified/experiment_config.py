@@ -137,6 +137,14 @@ DEFAULT_EXPERIMENT_PARAMS = {
     "seed": 42,
 }
 
+# ============================================================================
+# DATA QUALITY SETTINGS
+# ============================================================================
+
+DATA_QUALITY = {
+    "content_moderation_threshold": 0.3,  # Filters ~0.28% most problematic prompts from Arena
+}
+
 
 # ============================================================================
 # UTILITY FUNCTIONS
