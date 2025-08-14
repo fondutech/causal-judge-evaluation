@@ -100,6 +100,7 @@ results = estimator.fit_and_estimate()
 - **DRCPOEstimator** - Doubly robust with cross-fitted isotonic outcome models
 - **MRDREstimator** - Policy-specific weighted outcome models for heterogeneous effects
 - **TMLEEstimator** - Targeted minimum loss estimation with optimal bias-variance tradeoff
+- **MRDRTMLEEstimator** - Hybrid combining MRDR's policy-specific models with TMLE's targeting
 
 ### Data Format
 ```json
@@ -148,7 +149,7 @@ result = compute_teacher_forced_logprob(
 python -m cje analyze <dataset> [options]
 
 Options:
-  --estimator {calibrated-ips,raw-ips,dr-cpo,mrdr,tmle}
+  --estimator {calibrated-ips,raw-ips,dr-cpo,mrdr,tmle,mrdr-tmle}
                         Estimation method (default: calibrated-ips)
   --output PATH         Save results to JSON file
   --fresh-draws-dir DIR Directory containing fresh draw responses (for DR)
