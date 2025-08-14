@@ -17,6 +17,146 @@ def _p_value_from_z(z: float) -> float:
     return float(2 * (1 - stats.norm.cdf(abs(z))))
 
 
+def compute_orthogonality_score(
+    weights: np.ndarray,
+    rewards: np.ndarray,
+    outcome_predictions: np.ndarray,
+    return_ci: bool = True,
+    alpha: float = 0.05,
+) -> Dict[str, Any]:
+    """Compute the orthogonality score for DR estimation.
+
+    The orthogonality score is E[W * (R - q̂)], which should be zero
+    under correct specification and proper cross-fitting.
+
+    Args:
+        weights: Importance weights (should be mean-one)
+        rewards: Observed rewards
+        outcome_predictions: Outcome model predictions q̂(X, A)
+        return_ci: Whether to compute confidence interval
+        alpha: Significance level for CI (default 0.05 for 95% CI)
+
+    Returns:
+        Dictionary with:
+        - 'score': The orthogonality score
+        - 'se': Standard error of the score
+        - 'ci_lower': Lower bound of CI (if return_ci=True)
+        - 'ci_upper': Upper bound of CI (if return_ci=True)
+        - 'p_value': P-value for test that score = 0
+        - 'passes_test': Boolean, True if CI contains 0
+
+    References:
+        Section 9.3 of the CJE paper on orthogonality diagnostics.
+    """
+    n = len(weights)
+
+    # Compute the orthogonality score
+    residuals = rewards - outcome_predictions
+    score_components = weights * residuals
+    score = np.mean(score_components)
+
+    # Compute standard error
+    se = np.std(score_components) / np.sqrt(n)
+
+    # Test statistic
+    z_stat = score / se if se > 0 else 0
+    p_value = _p_value_from_z(z_stat)
+
+    result = {
+        "score": float(score),
+        "se": float(se),
+        "z_statistic": float(z_stat),
+        "p_value": float(p_value),
+    }
+
+    if return_ci:
+        # Critical value for two-sided test
+        z_crit = stats.norm.ppf(1 - alpha / 2)
+        ci_lower = score - z_crit * se
+        ci_upper = score + z_crit * se
+
+        result["ci_lower"] = float(ci_lower)
+        result["ci_upper"] = float(ci_upper)
+        result["passes_test"] = ci_lower <= 0 <= ci_upper
+
+    return result
+
+
+def compute_dm_ips_decomposition(
+    g_hat: np.ndarray,
+    weights: np.ndarray,
+    rewards: np.ndarray,
+    q_hat: np.ndarray,
+) -> Dict[str, Any]:
+    """Compute the DM-IPS decomposition for DR estimation.
+
+    Decomposes the DR estimate into:
+    - Direct Method (DM): E[ĝ(X)]
+    - IPS Augmentation: E[Ŵ * (R - q̂(X, A))]
+
+    Args:
+        g_hat: Outcome model predictions under target policy ĝ(X)
+        weights: Importance weights Ŵ
+        rewards: Observed rewards R
+        q_hat: Outcome model predictions under logging policy q̂(X, A)
+
+    Returns:
+        Dictionary with:
+        - 'dm_component': Direct method estimate
+        - 'ips_augmentation': IPS correction term
+        - 'total': Total DR estimate
+        - 'dm_se': Standard error of DM component
+        - 'ips_se': Standard error of IPS component
+        - 'dm_contribution': Fraction of estimate from DM
+        - 'ips_contribution': Fraction of estimate from IPS
+        - 'correlation': Correlation between components
+    """
+    n = len(weights)
+
+    # DM component
+    dm_component = np.mean(g_hat)
+    dm_se = np.std(g_hat) / np.sqrt(n)
+
+    # IPS augmentation
+    residuals = rewards - q_hat
+    ips_terms = weights * residuals
+    ips_augmentation = np.mean(ips_terms)
+    ips_se = np.std(ips_terms) / np.sqrt(n)
+
+    # Total DR estimate
+    total = dm_component + ips_augmentation
+
+    # Component contributions (as fractions)
+    if abs(total) > 1e-10:
+        dm_contribution = abs(dm_component) / (
+            abs(dm_component) + abs(ips_augmentation)
+        )
+        ips_contribution = abs(ips_augmentation) / (
+            abs(dm_component) + abs(ips_augmentation)
+        )
+    else:
+        dm_contribution = 0.5
+        ips_contribution = 0.5
+
+    # Correlation between components
+    if len(g_hat) > 1:
+        corr_matrix = np.corrcoef(g_hat, ips_terms)
+        correlation = corr_matrix[0, 1] if not np.isnan(corr_matrix[0, 1]) else 0.0
+    else:
+        correlation = 0.0
+
+    return {
+        "dm_component": float(dm_component),
+        "ips_augmentation": float(ips_augmentation),
+        "total": float(total),
+        "dm_se": float(dm_se),
+        "ips_se": float(ips_se),
+        "dm_contribution": float(dm_contribution),
+        "ips_contribution": float(ips_contribution),
+        "correlation": float(correlation),
+    }
+
+
 def compute_dr_policy_diagnostics(
     dm_component: np.ndarray,
     ips_correction: np.ndarray,

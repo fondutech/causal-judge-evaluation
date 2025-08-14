@@ -18,7 +18,11 @@ from ..data.diagnostics import DRDiagnostics, IPSDiagnostics
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..data.fresh_draws import FreshDrawDataset
 from ..utils.fresh_draws import validate_fresh_draws
-from ..utils.diagnostics.dr import compute_dr_policy_diagnostics
+from ..utils.diagnostics.dr import (
+    compute_dr_policy_diagnostics,
+    compute_orthogonality_score,
+    compute_dm_ips_decomposition,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +121,8 @@ class DREstimator(BaseCJEEstimator):
         self._ips_correction: Dict[str, np.ndarray] = {}
         self._fresh_rewards: Dict[str, np.ndarray] = {}
         self._outcome_predictions: Dict[str, np.ndarray] = {}
+        self._orthogonality_scores: Dict[str, Dict[str, Any]] = {}
+        self._dm_ips_decompositions: Dict[str, Dict[str, Any]] = {}
 
         # Generate fold assignments for cross-fitting
         n_samples = len(sampler.dataset.samples)
@@ -505,6 +511,24 @@ class DREstimator(BaseCJEEstimator):
                 f"(DM={dm_term:.4f}, IPS_corr={ips_correction:.4f})"
             )
 
+            # Compute orthogonality score (new)
+            ortho_result = compute_orthogonality_score(
+                weights=weights,
+                rewards=logged_rewards,
+                outcome_predictions=g_logged,
+                return_ci=True,
+            )
+            self._orthogonality_scores[policy] = ortho_result
+
+            # Compute DM-IPS decomposition (new)
+            decomp_result = compute_dm_ips_decomposition(
+                g_hat=g_fresh,
+                weights=weights,
+                rewards=logged_rewards,
+                q_hat=g_logged,
+            )
+            self._dm_ips_decompositions[policy] = decomp_result
+
         # Build DR diagnostics using stored components
         dr_diagnostics_per_policy: Dict[str, Dict[str, Any]] = {}
 
@@ -566,6 +590,8 @@ class DREstimator(BaseCJEEstimator):
             "weight_method": "calibrated" if self.use_calibrated_weights else "raw",
             "dr_diagnostics": dr_diagnostics_per_policy,  # Keep for visualization
             "dr_overview": dr_overview,
+            "orthogonality_scores": self._orthogonality_scores,  # New: orthogonality diagnostics
+            "dm_ips_decompositions": self._dm_ips_decompositions,  # New: DM-IPS breakdown
         }
 
         return EstimationResult(

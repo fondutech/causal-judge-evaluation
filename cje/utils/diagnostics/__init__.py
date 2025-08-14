@@ -11,11 +11,15 @@ from .weights import (
     tail_weight_ratio,
     mass_concentration,
     compute_weight_diagnostics,
+    hill_tail_index,
+    hill_tail_index_stable,
 )
 
 from .dr import (
     compute_dr_policy_diagnostics,
     compute_dr_diagnostics_all,
+    compute_orthogonality_score,
+    compute_dm_ips_decomposition,
 )
 
 from .display import (
@@ -30,9 +34,13 @@ __all__ = [
     "tail_weight_ratio",
     "mass_concentration",
     "compute_weight_diagnostics",
+    "hill_tail_index",
+    "hill_tail_index_stable",
     # DR diagnostics
     "compute_dr_policy_diagnostics",
     "compute_dr_diagnostics_all",
+    "compute_orthogonality_score",
+    "compute_dm_ips_decomposition",
     # Display utilities
     "create_weight_summary_table",
     "format_dr_diagnostic_summary",
