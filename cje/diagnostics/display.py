@@ -123,13 +123,6 @@ def format_diagnostic_suite(suite: DiagnosticSuite, verbosity: str = "normal") -
                     status = "✅" if sig else "❌"
                     lines.append(f"  {status} {policy}")
 
-        # Gate report
-        if suite.gate_report:
-            lines.append("\n" + "=" * 60)
-            lines.append("DIAGNOSTIC GATES")
-            lines.append("=" * 60)
-            lines.append(suite.gate_report.format_terminal(verbose=True))
-
         # Recommendations
         recs = suite.get_recommendations()
         if recs:
@@ -139,13 +132,10 @@ def format_diagnostic_suite(suite: DiagnosticSuite, verbosity: str = "normal") -
             for rec in recs:
                 lines.append(rec)
 
-        # Computation metadata
+        # Metadata
         lines.append("\n" + "=" * 60)
         lines.append("METADATA")
         lines.append("=" * 60)
-        lines.append(f"Estimator Type: {suite.estimator_type}")
-        if suite.computation_time:
-            lines.append(f"Computation Time: {suite.computation_time:.2f}s")
         if suite.timestamp:
             lines.append(f"Timestamp: {suite.timestamp}")
 

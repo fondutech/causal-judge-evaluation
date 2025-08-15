@@ -56,15 +56,11 @@ class CalibratedIPS(BaseCJEEstimator):
         include_baseline: bool = True,
         baseline_shrink: float = 0.05,
         run_diagnostics: bool = True,
-        run_gates: bool = False,
-        gate_config: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
             sampler=sampler,
             run_diagnostics=run_diagnostics,
             diagnostic_config=None,  # Will use defaults
-            run_gates=run_gates,
-            gate_config=gate_config,
         )
         self.clip_weight = clip_weight
         self.ess_floor = ess_floor

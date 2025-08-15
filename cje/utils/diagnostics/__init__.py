@@ -44,20 +44,6 @@ from .robust_inference import (
     compute_robust_inference,
 )
 
-from .gates import (
-    GateStatus,
-    GateResult,
-    GateReport,
-    DiagnosticGate,
-    OverlapGate,
-    JudgeGate,
-    OrthogonalityGate,
-    MultiplicityGate,
-    NormalityGate,
-    GateRunner,
-    run_diagnostic_gates,
-)
-
 __all__ = [
     # Weight diagnostics
     "effective_sample_size",
@@ -88,16 +74,4 @@ __all__ = [
     # Display utilities
     "create_weight_summary_table",
     "format_dr_diagnostic_summary",
-    # Gates
-    "GateStatus",
-    "GateResult",
-    "GateReport",
-    "DiagnosticGate",
-    "OverlapGate",
-    "JudgeGate",
-    "OrthogonalityGate",
-    "MultiplicityGate",
-    "NormalityGate",
-    "GateRunner",
-    "run_diagnostic_gates",
 ]

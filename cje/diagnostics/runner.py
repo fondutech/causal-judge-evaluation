@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, TYPE_CHECKING
 import numpy as np
-import time
 
 from .suite import (
     DiagnosticSuite,
@@ -18,7 +17,6 @@ from ..utils.diagnostics import (
     effective_sample_size,
     compute_stability_diagnostics,
     compute_robust_inference,
-    run_diagnostic_gates,
 )
 
 if TYPE_CHECKING:
@@ -37,15 +35,11 @@ class DiagnosticConfig:
     check_stability: bool = True  # Changed to True - drift detection is important!
     check_dr_quality: bool = True  # Only for DR estimators
     compute_robust_se: bool = False  # Keep expensive bootstrap off by default
-    run_gates: bool = False
 
     # Parameters
     n_bootstrap: int = 4000
     bootstrap_method: str = "stationary"
     fdr_alpha: float = 0.05
-
-    # Gate configuration
-    gate_config: Optional[Dict[str, Any]] = None
 
     # Performance
     lazy_computation: bool = False  # Compute only when accessed
@@ -80,8 +74,6 @@ class DiagnosticRunner:
         Returns:
             Complete diagnostic suite
         """
-        start_time = time.time()
-
         # Check cache if enabled
         if self.config.cache_results and self._cache is not None:
             return self._cache
@@ -94,7 +86,6 @@ class DiagnosticRunner:
         suite = DiagnosticSuite(
             weight_diagnostics=weight_diagnostics,
             estimation_summary=estimation_summary,
-            estimator_type=estimator.__class__.__name__,
         )
 
         # Conditional diagnostics
@@ -116,16 +107,6 @@ class DiagnosticRunner:
                 suite.robust_inference = self._compute_robust_inference(result)
             except Exception as e:
                 print(f"Warning: Robust inference failed: {e}")
-
-        # Run gates if requested
-        if self.config.run_gates:
-            try:
-                suite.gate_report = self._run_gates(suite, estimator)
-            except Exception as e:
-                print(f"Warning: Gate checking failed: {e}")
-
-        # Record computation time
-        suite.computation_time = time.time() - start_time
 
         # Cache if enabled
         if self.config.cache_results:
@@ -313,66 +294,6 @@ class DiagnosticRunner:
             fdr_adjusted=robust_dict.get("fdr_adjusted"),
             fdr_alpha=self.config.fdr_alpha,
         )
-
-    def _run_gates(self, suite: DiagnosticSuite, estimator: "BaseCJEEstimator") -> Any:
-        """Run diagnostic gates on the suite."""
-        # Convert suite to format expected by gates
-        diagnostics_dict = self._suite_to_gate_format(suite, estimator)
-
-        # Run gates
-        gate_report = run_diagnostic_gates(
-            diagnostics_dict,
-            config=self.config.gate_config,
-            verbose=False,
-        )
-
-        return gate_report
-
-    def _suite_to_gate_format(
-        self, suite: DiagnosticSuite, estimator: "BaseCJEEstimator"
-    ) -> Dict[str, Any]:
-        """Convert DiagnosticSuite to format expected by gates."""
-        result: Dict[str, Any] = {}
-
-        # Weight diagnostics
-        result["weight_diagnostics"] = {
-            policy: {
-                "ess": metrics.ess,
-                "tail_index": metrics.hill_index,
-                "max_weight": metrics.max_weight,
-            }
-            for policy, metrics in suite.weight_diagnostics.items()
-        }
-
-        # Number of policies
-        result["n_policies"] = len(estimator.sampler.target_policies)
-
-        # Stability diagnostics
-        if suite.stability:
-            result["stability_diagnostics"] = {
-                "drift_detection": {
-                    "has_drift": suite.stability.has_drift,
-                    "max_tau_change": suite.stability.max_tau_change,
-                },
-                "calibration": {
-                    "ece": suite.stability.ece,
-                },
-            }
-
-        # DR quality
-        if suite.dr_quality:
-            result["orthogonality_scores"] = {
-                policy: {"score": score}
-                for policy, score in suite.dr_quality.orthogonality_scores.items()
-            }
-
-        # FDR results
-        if suite.robust_inference and suite.robust_inference.fdr_adjusted:
-            result["fdr_results"] = {
-                "n_significant": suite.robust_inference.n_significant_fdr,
-            }
-
-        return result
 
     def _is_dr_estimator(self, estimator: "BaseCJEEstimator") -> bool:
         """Check if estimator is a DR variant."""

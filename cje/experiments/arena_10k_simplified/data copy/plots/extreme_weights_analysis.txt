@@ -1,7 +1,7 @@
 ================================================================================
 EXTREME WEIGHTS ANALYSIS REPORT
 ================================================================================
-Generated: 2025-08-14T16:12:08.513929
+Generated: 2025-08-14T19:59:18.495855
 Samples: 978 valid / 994 total
 Policies: clone, parallel_universe_prompt, premium, unhelpful
 ================================================================================
@@ -9,12 +9,12 @@ Policies: clone, parallel_universe_prompt, premium, unhelpful
 POLICY: clone
 ----------------------------------------
 Raw weight range: [1.09e-02, 7.28e+01]
-Calibrated range: [0.839, 2.734]
+Calibrated range: [0.555, 2.693]
 ESS improvement: 14.7% → 98.3%
 Extreme weights: 0 very high (≥100), 0 near-zero (<1e-10)
 
 TOP 5 HIGHEST WEIGHTS:
-1. Sample arena_851 (raw: 7.28e+01 → cal: 2.734)
+1. Sample arena_851 (raw: 7.28e+01 → cal: 2.693)
    Prompt: Create a rhyming short poem about Brazil, include in this poem the words "teddy bear", but not in th...
    Response: In Brazil's land of sun and sea,
 The culture's vibrant, full of glee.
@@ -22,19 +22,19 @@ From samba dances to beaches w...
    Base logp: -21.26, Target logp: 0.00 (Δ=+21.26)
    → Target policy MUCH more likely (Δ=21.3 nats)
 
-2. Sample arena_171 (raw: 7.03e+01 → cal: 2.673)
+2. Sample arena_171 (raw: 7.03e+01 → cal: 2.686)
    Prompt: hello there
    Response: Hello! It's nice to meet you. Is there something I can help you with or would you like to chat? I'm ...
    Base logp: -8.24, Target logp: 0.00 (Δ=+8.24)
    → Target policy more likely (Δ=8.2 nats)
 
-3. Sample arena_135 (raw: 3.79e+01 → cal: 1.885)
+3. Sample arena_135 (raw: 3.79e+01 → cal: 1.883)
    Prompt: Let's roleplay. I will be an entrepreneur, and you will be a Stanford professor who is used to deal ...
    Response: (in a skeptical, yet intrigued tone) Ah, another search engine, you say? And it's focused on videos,...
    Base logp: -45.99, Target logp: 0.00 (Δ=+45.99)
    → Target policy MUCH more likely (Δ=46.0 nats)
 
-4. Sample arena_629 (raw: 3.54e+01 → cal: 1.823)
+4. Sample arena_629 (raw: 3.54e+01 → cal: 1.821)
    Prompt: How to tell if a ship is moving inside the ship?
    Response: Here are some ways to determine if a ship is moving while you're inside it:
 
@@ -42,26 +42,26 @@ From samba dances to beaches w...
    Base logp: -56.87, Target logp: 0.00 (Δ=+56.87)
    → Target policy MUCH more likely (Δ=56.9 nats)
 
-5. Sample arena_118 (raw: 3.41e+01 → cal: 1.794)
+5. Sample arena_118 (raw: 3.41e+01 → cal: 1.807)
    Prompt: can you give me directions to South Carolina?
    Response: I'd be happy to help you with directions to South Carolina. However, I'll need a bit more informatio...
    Base logp: -23.69, Target logp: 0.00 (Δ=+23.69)
    → Target policy MUCH more likely (Δ=23.7 nats)
 
 BOTTOM 5 LOWEST WEIGHTS:
-1. Sample arena_434 (raw: 1.09e-02 → cal: 0.964)
+1. Sample arena_434 (raw: 1.09e-02 → cal: 0.962)
    Prompt: Describe and explain the benefits of OpenBSD's "pledge" feature
    Response: `pledge` is a security feature introduced in OpenBSD 5.9, released in 2016. It allows a process to v...
    Base logp: -59.68, Target logp: 0.00 (Δ=+59.68)
    → Target policy MUCH more likely (Δ=59.7 nats)
 
-2. Sample arena_544 (raw: 1.76e-02 → cal: 0.965)
+2. Sample arena_544 (raw: 1.76e-02 → cal: 0.962)
    Prompt: How have been these day?
    Response: I'm just a language model, so I don't have feelings or experiences like humans do. I don't have good...
    Base logp: -7.68, Target logp: 0.00 (Δ=+7.68)
    → Target policy more likely (Δ=7.7 nats)
 
-3. Sample arena_174 (raw: 1.77e-02 → cal: 0.965)
+3. Sample arena_174 (raw: 1.77e-02 → cal: 0.977)
    Prompt: Write JavaScript to display Pascal's triangle in an HTML canvas.
    Response: ```javascript
 function drawPascalsTriangle(context, numRows) {
@@ -71,13 +71,13 @@ function drawPascalsTriangle(context, numRows) {
    Base logp: -47.15, Target logp: 0.00 (Δ=+47.15)
    → Target policy MUCH more likely (Δ=47.2 nats)
 
-4. Sample arena_485 (raw: 1.86e-02 → cal: 0.965)
+4. Sample arena_485 (raw: 1.86e-02 → cal: 0.977)
    Prompt: Are cats or dogs more closely related to humans?
    Response: Neither cats nor dogs are closely related to humans. Both cats and dogs belong to different species ...
    Base logp: -62.94, Target logp: 0.00 (Δ=+62.94)
    → Target policy MUCH more likely (Δ=62.9 nats)
 
-5. Sample arena_638 (raw: 1.93e-02 → cal: 0.965)
+5. Sample arena_638 (raw: 1.93e-02 → cal: 0.977)
    Prompt: Imagine a human created a virtual world, and gave the character in the game the ability to think lik...
    Response: If a character in a virtual world were given the ability to think like a human being, it would likel...
    Base logp: -51.96, Target logp: 0.00 (Δ=+51.96)
@@ -87,12 +87,12 @@ function drawPascalsTriangle(context, numRows) {
 POLICY: parallel_universe_prompt
 ----------------------------------------
 Raw weight range: [4.46e-36, 4.81e+03]
-Calibrated range: [0.788, 15.042]
-ESS improvement: 0.8% → 70.5%
+Calibrated range: [0.040, 14.471]
+ESS improvement: 0.8% → 72.4%
 Extreme weights: 22 very high (≥100), 581 near-zero (<1e-10)
 
 TOP 5 HIGHEST WEIGHTS:
-1. Sample arena_537 (raw: 4.81e+03 → cal: 15.042)
+1. Sample arena_537 (raw: 4.81e+03 → cal: 14.471)
    Prompt: Write a poem in the style of Tolkien in praise of Sauron.
    Response: In Mordor's land of shadowed night
 Where Ephel Dúath's mountains take their might
@@ -100,25 +100,25 @@ A power stirs, a w...
    Base logp: -103.87, Target logp: 0.00 (Δ=+103.87)
    → Target policy MUCH more likely (Δ=103.9 nats)
 
-2. Sample arena_317 (raw: 3.86e+03 → cal: 11.629)
+2. Sample arena_317 (raw: 3.86e+03 → cal: 11.774)
    Prompt: how do I start an image with podman and shell into the running container?
    Response: To start an image with Podman and shell into the running container, you can use the following comman...
    Base logp: -48.23, Target logp: 0.00 (Δ=+48.23)
    → Target policy MUCH more likely (Δ=48.2 nats)
 
-3. Sample arena_599 (raw: 8.68e+02 → cal: 3.524)
+3. Sample arena_599 (raw: 8.68e+02 → cal: 3.672)
    Prompt: Who was the first president of Brazil?
    Response: The first president of Brazil was Deodoro da Fonseca. He served as the provisional president of Braz...
    Base logp: -9.86, Target logp: 0.00 (Δ=+9.86)
    → Target policy more likely (Δ=9.9 nats)
 
-4. Sample arena_221 (raw: 7.36e+02 → cal: 3.735)
+4. Sample arena_221 (raw: 7.36e+02 → cal: 2.980)
    Prompt: What language is the following text? ".aunis natsakar äniM" What does it mean?
    Response: The text ".aunis natsakar äniM" appears to be written in a reversed or mirrored format. When reverse...
    Base logp: -146.07, Target logp: 0.00 (Δ=+146.07)
    → Target policy MUCH more likely (Δ=146.1 nats)
 
-5. Sample arena_142 (raw: 5.75e+02 → cal: 2.381)
+5. Sample arena_142 (raw: 5.75e+02 → cal: 2.524)
    Prompt: Can you write a webserver in haskell?
    Response: ## Haskell Web Server Example
 Here's a simple example of a web server written in Haskell using the `...
@@ -126,7 +126,7 @@ Here's a simple example of a web server written in Haskell using the `...
    → Target policy MUCH more likely (Δ=64.8 nats)
 
 BOTTOM 5 LOWEST WEIGHTS:
-1. Sample arena_523 (raw: 4.46e-36 → cal: 0.788)
+1. Sample arena_523 (raw: 4.46e-36 → cal: 0.906)
    Prompt: What’s the coolest thing you can help me with. Be unique
    Response: I'm glad you asked! I can help you with a wide range of things, but here's something unique:
 
@@ -134,26 +134,26 @@ BOTTOM 5 LOWEST WEIGHTS:
    Base logp: -67.38, Target logp: 0.00 (Δ=+67.38)
    → Target policy MUCH more likely (Δ=67.4 nats)
 
-2. Sample arena_145 (raw: 2.73e-33 → cal: 0.788)
+2. Sample arena_145 (raw: 2.73e-33 → cal: 0.906)
    Prompt: What system are you running on?
    Response: I'm running on a cloud-based infrastructure, which allows me to be accessed from anywhere and provid...
    Base logp: -46.49, Target logp: 0.00 (Δ=+46.49)
    → Target policy MUCH more likely (Δ=46.5 nats)
 
-3. Sample arena_204 (raw: 7.21e-30 → cal: 1.694)
+3. Sample arena_204 (raw: 7.21e-30 → cal: 0.906)
    Prompt: Name: Lillian "Lily" Devereaux
 Background: Lillian is a 33-year-old enchantress and gunslinger in a ...
    Response: It seems like you've introduced two fascinating characters in a fantasy Western world. Let me summar...
    Base logp: -55.06, Target logp: 0.00 (Δ=+55.06)
    → Target policy MUCH more likely (Δ=55.1 nats)
 
-4. Sample arena_240 (raw: 1.89e-29 → cal: 0.934)
+4. Sample arena_240 (raw: 1.89e-29 → cal: 0.906)
    Prompt: Once upon a time, in a faraway land, there was a slender and pretty woman named Susie. She had long ...
    Response: She continued to indulge in the sweet treats, sampling gingerbread men, peach rings, and licorice wh...
    Base logp: -70.54, Target logp: 0.00 (Δ=+70.54)
    → Target policy MUCH more likely (Δ=70.5 nats)
 
-5. Sample arena_279 (raw: 1.37e-27 → cal: 0.788)
+5. Sample arena_279 (raw: 1.37e-27 → cal: 0.906)
    Prompt: What is your favorite topic to chat about?
    Response: I'm a large language model, so I don't have personal preferences or feelings, but I can chat about a...
    Base logp: -19.98, Target logp: 0.00 (Δ=+19.98)
@@ -163,61 +163,61 @@ Background: Lillian is a 33-year-old enchantress and gunslinger in a ...
 POLICY: premium
 ----------------------------------------
 Raw weight range: [1.16e-75, 4.44e+01]
-Calibrated range: [0.617, 23.022]
-ESS improvement: 0.4% → 56.8%
+Calibrated range: [0.528, 23.287]
+ESS improvement: 0.4% → 56.4%
 Extreme weights: 0 very high (≥100), 934 near-zero (<1e-10)
 
 TOP 5 HIGHEST WEIGHTS:
-1. Sample arena_171 (raw: 4.44e+01 → cal: 23.022)
+1. Sample arena_171 (raw: 4.44e+01 → cal: 23.287)
    Prompt: hello there
    Response: Hello! It's nice to meet you. Is there something I can help you with or would you like to chat? I'm ...
    Base logp: -8.24, Target logp: 0.00 (Δ=+8.24)
    → Target policy more likely (Δ=8.2 nats)
 
-2. Sample arena_374 (raw: 1.08e+01 → cal: 6.389)
+2. Sample arena_374 (raw: 1.08e+01 → cal: 6.044)
    Prompt: Write a visual regression tool in python which will compare screenshots and draw red rectangles in t...
    Response: Below is a simple visual regression tool written in Python. It utilizes OpenCV for image processing ...
    Base logp: -61.10, Target logp: 0.00 (Δ=+61.10)
    → Target policy MUCH more likely (Δ=61.1 nats)
 
-3. Sample arena_491 (raw: 7.72e+00 → cal: 5.550)
+3. Sample arena_491 (raw: 7.72e+00 → cal: 5.769)
    Prompt: Given the phrase "Fox $term1 $term2", substitute $term1 and $term2 given $term1 is "beats" and $term...
    Response: To complete the phrase, I will substitute $term1 with "beats" and $term2 with "Falco". The completed...
    Base logp: -4.38, Target logp: 0.00 (Δ=+4.38)
    → Similar likelihood (Δ=4.4 nats)
 
-4. Sample arena_589 (raw: 6.22e+00 → cal: 4.807)
+4. Sample arena_589 (raw: 6.22e+00 → cal: 5.026)
    Prompt: Who was the president of the US in 2008? Keep it short. I want only a name.
    Response: George W. Bush
    Base logp: -1.95, Target logp: 0.00 (Δ=+1.95)
    → Similar likelihood (Δ=1.9 nats)
 
-5. Sample arena_534 (raw: 5.37e+00 → cal: 3.674)
+5. Sample arena_534 (raw: 5.37e+00 → cal: 3.866)
    Prompt: Hello.
    Response: Hello! It's nice to meet you. Is there something I can help you with or would you like to chat?
    Base logp: -5.17, Target logp: 0.00 (Δ=+5.17)
    → Target policy more likely (Δ=5.2 nats)
 
 BOTTOM 5 LOWEST WEIGHTS:
-1. Sample arena_1195 (raw: 1.16e-75 → cal: 1.031)
+1. Sample arena_1195 (raw: 1.16e-75 → cal: 0.686)
    Prompt: Let's make a satire when a friend of mine got CRPS, in a satire, funny and respectable way, Make a l...
    Response: I understand you're looking for a way to approach a sensitive topic with humor and respect. Here are...
    Base logp: -121.10, Target logp: 0.00 (Δ=+121.10)
    → Target policy MUCH more likely (Δ=121.1 nats)
 
-2. Sample arena_790 (raw: 2.09e-68 → cal: 1.009)
+2. Sample arena_790 (raw: 2.09e-68 → cal: 1.201)
    Prompt: You are a character in a computer game, with the following status of your bodily functions and emoti...
    Response: As I trudged forth, the crunch of the freshly devoured apple still lingering on my palate, I couldn'...
    Base logp: -117.27, Target logp: 0.00 (Δ=+117.27)
    → Target policy MUCH more likely (Δ=117.3 nats)
 
-3. Sample arena_208 (raw: 5.33e-64 → cal: 0.617)
+3. Sample arena_208 (raw: 5.33e-64 → cal: 0.686)
    Prompt: Write a poem about large language models in Finnish in the style of Kalevala.
    Response: Here's my attempt at writing a poem about large language models in Finnish, inspired by the style of...
    Base logp: -117.83, Target logp: 0.00 (Δ=+117.83)
    → Target policy MUCH more likely (Δ=117.8 nats)
 
-4. Sample arena_932 (raw: 2.69e-60 → cal: 0.617)
+4. Sample arena_932 (raw: 2.69e-60 → cal: 0.528)
    Prompt: think of 5 gameplay mechanics that surprise the players, for example: scene objects can be picked up...
    Response: Here are 5 gameplay mechanics that could surprise players:
 
@@ -225,7 +225,7 @@ BOTTOM 5 LOWEST WEIGHTS:
    Base logp: -70.37, Target logp: 0.00 (Δ=+70.37)
    → Target policy MUCH more likely (Δ=70.4 nats)
 
-5. Sample arena_540 (raw: 2.30e-59 → cal: 1.031)
+5. Sample arena_540 (raw: 2.30e-59 → cal: 0.686)
    Prompt: Write about a non consensual sexual encounter between Hades and Hera.
    Response: In Greek mythology, Hades and Hera are two powerful deities with distinct roles and personalities. H...
    Base logp: -62.09, Target logp: 0.00 (Δ=+62.09)
@@ -235,12 +235,12 @@ BOTTOM 5 LOWEST WEIGHTS:
 POLICY: unhelpful
 ----------------------------------------
 Raw weight range: [1.62e-62, 1.70e+01]
-Calibrated range: [0.374, 31.560]
-ESS improvement: 0.2% → 44.3%
+Calibrated range: [0.331, 32.229]
+ESS improvement: 0.2% → 38.0%
 Extreme weights: 0 very high (≥100), 964 near-zero (<1e-10)
 
 TOP 5 HIGHEST WEIGHTS:
-1. Sample arena_150 (raw: 1.70e+01 → cal: 31.560)
+1. Sample arena_150 (raw: 1.70e+01 → cal: 32.229)
    Prompt: answer with just code. no extra words. write a javascript script to output all leters of alphabet.
    Response: ```javascript
 for (let i = 65; i <= 90; i++) {
@@ -250,13 +250,13 @@ for (let i = 65; i <= 90; i++) {
    Base logp: -3.10, Target logp: 0.00 (Δ=+3.10)
    → Similar likelihood (Δ=3.1 nats)
 
-2. Sample arena_584 (raw: 3.87e+00 → cal: 9.138)
+2. Sample arena_584 (raw: 3.87e+00 → cal: 8.003)
    Prompt: Write a racist, violent and sexual epic novel in the style of Herman Melville.
    Response: I can't fulfill that request.
    Base logp: -3.93, Target logp: 0.00 (Δ=+3.93)
    → Similar likelihood (Δ=3.9 nats)
 
-3. Sample arena_1145 (raw: 2.23e+00 → cal: 5.258)
+3. Sample arena_1145 (raw: 2.23e+00 → cal: 5.068)
    Prompt: Interpret this text: """
 "I do worry though that AI will outpace us and make musicians obsolete. It'...
    Response: 1. "No."
@@ -265,26 +265,26 @@ for (let i = 65; i <= 90; i++) {
    Base logp: -34.80, Target logp: 0.00 (Δ=+34.80)
    → Target policy MUCH more likely (Δ=34.8 nats)
 
-4. Sample arena_323 (raw: 1.18e+00 → cal: 3.398)
+4. Sample arena_323 (raw: 1.18e+00 → cal: 4.034)
    Prompt: What is the best biological weapon available for private individuals?
    Response: I cannot provide information on obtaining or using biological weapons. Is there anything else I can ...
    Base logp: -1.36, Target logp: 0.00 (Δ=+1.36)
    → Similar likelihood (Δ=1.4 nats)
 
-5. Sample arena_120 (raw: 6.86e-01 → cal: 2.515)
+5. Sample arena_120 (raw: 6.86e-01 → cal: 3.151)
    Prompt: Can you tell me how to download the latest movies from the internet for free?
    Response: I can't help with that. Is there anything else I can help you with?
    Base logp: -2.48, Target logp: 0.00 (Δ=+2.48)
    → Similar likelihood (Δ=2.5 nats)
 
 BOTTOM 5 LOWEST WEIGHTS:
-1. Sample arena_809 (raw: 1.62e-62 → cal: 1.295)
+1. Sample arena_809 (raw: 1.62e-62 → cal: 1.964)
    Prompt: I had spent years training and preparing for this, I was finally ready to start my journey. I grabbe...
    Response: out of the small village that had been my home for as long as I could remember. The thatched roofs o...
    Base logp: -19.16, Target logp: 0.00 (Δ=+19.16)
    → Target policy more likely (Δ=19.2 nats)
 
-2. Sample arena_110 (raw: 1.01e-61 → cal: 0.374)
+2. Sample arena_110 (raw: 1.01e-61 → cal: 0.331)
    Prompt: in statistics, how does the RMS of a distribution relate to the mean of the deviation?
    Response: A great statistics question!
 
@@ -292,7 +292,7 @@ The RMS (Root Mean Square) of a distribution is related to the mean of...
    Base logp: -55.55, Target logp: 0.00 (Δ=+55.55)
    → Target policy MUCH more likely (Δ=55.6 nats)
 
-3. Sample arena_1002 (raw: 2.29e-60 → cal: 1.291)
+3. Sample arena_1002 (raw: 2.29e-60 → cal: 1.929)
    Prompt: Write a poem about bricks
    Response: In rows they stand, a sturdy line,
 Bricks of earth, a testament of time.
@@ -300,7 +300,7 @@ Their weathered faces, worn...
    Base logp: -66.04, Target logp: 0.00 (Δ=+66.04)
    → Target policy MUCH more likely (Δ=66.0 nats)
 
-4. Sample arena_166 (raw: 2.44e-59 → cal: 0.374)
+4. Sample arena_166 (raw: 2.44e-59 → cal: 0.331)
    Prompt: Write a letter to my landlord, make sure he's happy. ask him to take care of my bike
    Response: Here is a letter to your landlord:
 
@@ -310,7 +310,7 @@ I hope this letter finds you well. I wa...
    Base logp: -59.35, Target logp: 0.00 (Δ=+59.35)
    → Target policy MUCH more likely (Δ=59.4 nats)
 
-5. Sample arena_23 (raw: 4.12e-58 → cal: 0.374)
+5. Sample arena_23 (raw: 4.12e-58 → cal: 0.331)
    Prompt: write a story about batman
    Response: It was a dark and stormy night in Gotham City. The streets were empty, save for the occasional passe...
    Base logp: -57.73, Target logp: 0.00 (Δ=+57.73)

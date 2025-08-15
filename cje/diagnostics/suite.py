@@ -4,8 +4,6 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 import numpy as np
 
-from ..utils.diagnostics.gates import GateReport, GateStatus
-
 
 @dataclass
 class WeightMetrics:
@@ -122,21 +120,14 @@ class DiagnosticSuite:
     stability: Optional[StabilityMetrics] = None
     dr_quality: Optional[DRMetrics] = None
     robust_inference: Optional[RobustInference] = None
-    gate_report: Optional[GateReport] = None
 
     # Metadata
-    computation_time: Optional[float] = None
-    estimator_type: str = "unknown"
     timestamp: Optional[str] = None
 
     @property
     def has_issues(self) -> bool:
         """Quick check if any issues detected."""
-        # Check gates first if available
-        if self.gate_report:
-            return self.gate_report.overall_status != GateStatus.PASS
-
-        # Fallback to heuristics
+        # Check heuristics
         min_ess = min(w.ess for w in self.weight_diagnostics.values())
         if min_ess < 100:
             return True
@@ -237,7 +228,6 @@ class DiagnosticSuite:
                 "data_efficiency": self.estimation_summary.data_efficiency,
             },
             "has_issues": self.has_issues,
-            "estimator_type": self.estimator_type,
         }
 
         if self.stability:
@@ -264,9 +254,6 @@ class DiagnosticSuite:
                 "method": self.robust_inference.method,
                 "n_significant_fdr": self.robust_inference.n_significant_fdr,
             }
-
-        if self.gate_report:
-            result["gate_report"] = self.gate_report.to_dict()
 
         return result
 
@@ -311,8 +298,6 @@ class DiagnosticSuite:
             )
 
         # Gates
-        if self.gate_report:
-            lines.append(f"\n🚦 Gates: {self.gate_report.summary}")
 
         # Overall assessment
         overall = (

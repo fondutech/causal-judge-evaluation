@@ -74,8 +74,8 @@ def create_ips_diagnostics_from_suite(
         calibration_rmse = suite.stability.ece
 
     return IPSDiagnostics(
-        estimator_type=suite.estimator_type,
-        method=suite.estimator_type.lower().replace("estimator", ""),
+        estimator_type="IPS",  # Default for compatibility
+        method="ips",
         n_samples_total=suite.estimation_summary.n_samples,
         n_samples_valid=suite.estimation_summary.n_valid_samples,
         n_policies=len(policies),

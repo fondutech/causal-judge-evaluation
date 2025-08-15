@@ -62,16 +62,12 @@ class DREstimator(BaseCJEEstimator):
         calibrator: Optional[Any] = None,
         random_seed: int = 42,
         run_diagnostics: bool = True,
-        run_gates: bool = False,
-        gate_config: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ):
         super().__init__(
             sampler=sampler,
             run_diagnostics=run_diagnostics,
             diagnostic_config=None,  # Will use defaults
-            run_gates=run_gates,
-            gate_config=gate_config,
         )
 
         self.n_folds = n_folds
@@ -91,7 +87,6 @@ class DREstimator(BaseCJEEstimator):
             self.ips_estimator = CalibratedIPS(
                 sampler,
                 run_diagnostics=run_diagnostics,
-                run_gates=False,  # Don't run gates here
                 **kwargs,
             )
             logger.info("Using CalibratedIPS for importance weights in DR")

@@ -138,14 +138,8 @@ def setup_estimator(
     """Set up the appropriate estimator based on args."""
     estimator_config = args.estimator_config or {}
 
-    # Common gate settings for all estimators
-    gate_kwargs = {
-        "run_gates": args.gates if hasattr(args, "gates") else False,
-        "gate_config": args.gate_config if hasattr(args, "gate_config") else None,
-    }
-
     if args.estimator == "calibrated-ips":
-        return CalibratedIPS(sampler, **gate_kwargs)
+        return CalibratedIPS(sampler)
 
     elif args.estimator == "raw-ips":
         clip_weight = estimator_config.get("clip_weight", 100.0)
@@ -158,11 +152,10 @@ def setup_estimator(
                 sampler,
                 n_folds=n_folds,
                 calibrator=cal_result.calibrator,
-                **gate_kwargs,
             )
             print("   Using CalibratorBackedOutcomeModel (reusing calibration models)")
         else:
-            dr_estimator = DRCPOEstimator(sampler, n_folds=n_folds, **gate_kwargs)
+            dr_estimator = DRCPOEstimator(sampler, n_folds=n_folds)
             print("   Using IsotonicOutcomeModel (refitting models)")
 
         # Load fresh draws
@@ -197,9 +190,7 @@ def setup_estimator(
             )
             sampler = PrecomputedSampler(calibrated_dataset)
 
-        mrdr_estimator = MRDREstimator(
-            sampler, n_folds=n_folds, omega_mode=omega_mode, **gate_kwargs
-        )
+        mrdr_estimator = MRDREstimator(sampler, n_folds=n_folds, omega_mode=omega_mode)
         print(f"   Using MRDR with omega_mode='{omega_mode}'")
 
         # Load fresh draws
@@ -234,9 +225,7 @@ def setup_estimator(
             )
             sampler = PrecomputedSampler(calibrated_dataset)
 
-        tmle_estimator = TMLEEstimator(
-            sampler, n_folds=n_folds, link=link, **gate_kwargs
-        )
+        tmle_estimator = TMLEEstimator(sampler, n_folds=n_folds, link=link)
         print(f"   Using TMLE with link='{link}'")
 
         # Load fresh draws
@@ -402,27 +391,56 @@ def display_weight_diagnostics(
     """Display weight diagnostics and return diagnostic data."""
     print(f"\n5. Weight diagnostics:")
 
-    base_rewards = [
-        s.reward for s in calibrated_dataset.samples if s.reward is not None
-    ]
-    all_weight_diagnostics = {}
+    # MINIMAL CHANGE: Check if DiagnosticSuite already has weight diagnostics
+    suite = getattr(estimator, "_diagnostic_suite", None)
+    if suite is not None and suite.weight_diagnostics:
+        # Use pre-computed diagnostics from suite
+        all_weight_diagnostics = {}
 
-    # Base policy (uniform weights)
-    base_diag = compute_weight_diagnostics(
-        np.ones(len(base_rewards)),
-        "base",
-    )
-    all_weight_diagnostics["base"] = base_diag
+        # Add base policy (uniform weights)
+        base_rewards = [
+            s.reward for s in calibrated_dataset.samples if s.reward is not None
+        ]
+        base_diag = compute_weight_diagnostics(
+            np.ones(len(base_rewards)),
+            "base",
+        )
+        all_weight_diagnostics["base"] = base_diag
 
-    # Target policies
-    for policy in sampler.target_policies:
-        weights = estimator.get_weights(policy)
-        if weights is not None:
-            diag = compute_weight_diagnostics(
-                weights,
-                policy,
-            )
+        # Convert suite metrics to legacy format for display
+        for policy, metrics in suite.weight_diagnostics.items():
+            diag = {
+                "ess": metrics.ess,
+                "ess_fraction": metrics.ess / suite.estimation_summary.n_valid_samples,
+                "max_weight": metrics.max_weight,
+                "cv": metrics.cv,
+                "n_unique": metrics.n_unique,
+                "tail_index": metrics.hill_index,
+            }
             all_weight_diagnostics[policy] = diag
+    else:
+        # Original computation path
+        base_rewards = [
+            s.reward for s in calibrated_dataset.samples if s.reward is not None
+        ]
+        all_weight_diagnostics = {}
+
+        # Base policy (uniform weights)
+        base_diag = compute_weight_diagnostics(
+            np.ones(len(base_rewards)),
+            "base",
+        )
+        all_weight_diagnostics["base"] = base_diag
+
+        # Target policies
+        for policy in sampler.target_policies:
+            weights = estimator.get_weights(policy)
+            if weights is not None:
+                diag = compute_weight_diagnostics(
+                    weights,
+                    policy,
+                )
+                all_weight_diagnostics[policy] = diag
 
     # Print summary table
     print("\n" + create_weight_summary_table(all_weight_diagnostics))
@@ -440,69 +458,32 @@ def display_weight_diagnostics(
     return all_weight_diagnostics
 
 
-def display_gate_report(results: Any) -> None:
-    """Display diagnostic gate results if available."""
-    if not hasattr(results, "gate_report") or not results.gate_report:
-        return
-
-    from cje.utils.diagnostics.gates import GateStatus, GateReport
-
-    # Reconstruct GateReport from dict for formatting
-    gate_dict = results.gate_report
-
-    print(f"\n7. Diagnostic Gates:")
-    print("   " + "=" * 56)
-
-    # Overall status with color
-    status = gate_dict.get("overall_status", "UNKNOWN")
-    summary = gate_dict.get("summary", "No summary")
-
-    status_symbol = {"PASS": "✅", "WARN": "⚠️", "FAIL": "❌"}.get(status, "❓")
-
-    print(f"   {status_symbol} Overall: {summary}")
-    print()
-
-    # Individual gate results
-    for gate_result in gate_dict.get("gate_results", []):
-        name = gate_result.get("name", "Unknown")
-        gate_status = gate_result.get("status", "UNKNOWN")
-        message = gate_result.get("message", "")
-
-        gate_symbol = {"PASS": "✅", "WARN": "⚠️", "FAIL": "❌"}.get(gate_status, "❓")
-
-        print(f"   {gate_symbol} {name}: {message}")
-
-        # Show threshold details if available
-        if (
-            gate_result.get("threshold") is not None
-            and gate_result.get("observed") is not None
-        ):
-            print(
-                f"      (observed={gate_result['observed']:.3f}, threshold={gate_result['threshold']:.3f})"
-            )
-
-    print("   " + "=" * 56)
-
-    # Print recommendations based on failures
-    failures = [
-        r for r in gate_dict.get("gate_results", []) if r.get("status") == "FAIL"
-    ]
-    if failures:
-        print("\n   ⚠️  Gate failures detected. Recommendations:")
-        for failure in failures:
-            name = failure.get("name", "")
-            if "Overlap" in name:
-                print("      • Consider increasing sample size or adjusting policies")
-            elif "Judge" in name:
-                print("      • Refresh oracle slice or recalibrate judge")
-            elif "Orthogonality" in name:
-                print("      • Check DR model specification or increase fresh draws")
-            elif "Multiplicity" in name:
-                print("      • Apply FDR correction for multiple comparisons")
-
-
 def display_dr_diagnostics(results: Any, args: Any) -> None:
     """Display DR diagnostics if available."""
+    # MINIMAL CHANGE: Check for DiagnosticSuite first (new path)
+    if hasattr(results, "diagnostic_suite") and results.diagnostic_suite is not None:
+        # New unified diagnostics are available - use them but keep display same
+        suite = results.diagnostic_suite
+        if suite.dr_quality is not None:
+            print(f"\n6. Doubly Robust diagnostics:")
+            # Create a simple dict format for the existing formatter
+            dr_diag_dict = {
+                "orthogonality_scores": suite.dr_quality.orthogonality_scores,
+                "dm_contributions": suite.dr_quality.dm_contributions,
+                "ips_contributions": suite.dr_quality.ips_contributions,
+            }
+            summary = format_dr_diagnostic_summary(dr_diag_dict)
+            for line in summary.split("\n"):
+                print(f"   {line}")
+
+            # Check for issues using stability info if available
+            if suite.stability and suite.stability.has_drift:
+                print("\n   ⚠️  Warning: Distribution drift detected")
+                print(
+                    f"      Affected policies: {', '.join(suite.stability.drift_policies)}"
+                )
+            return
+
     # Check if we have DR diagnostics in the new format (DRDiagnostics object)
     if hasattr(results, "diagnostics") and results.diagnostics is not None:
         from cje.data.diagnostics import DRDiagnostics
@@ -804,16 +785,6 @@ def main() -> int:
     parser.add_argument("--plot-dir", type=str, help="Plot directory")
     parser.add_argument("--no-plots", action="store_true", help="Disable plots")
     parser.add_argument(
-        "--gates",
-        action="store_true",
-        help="Run diagnostic gates to check estimation quality",
-    )
-    parser.add_argument(
-        "--gate-config",
-        type=json.loads,
-        help='Gate configuration JSON (e.g., \'{"overlap": {"min_ess": 500}}\')',
-    )
-    parser.add_argument(
         "--estimator",
         choices=["calibrated-ips", "raw-ips", "dr-cpo", "mrdr", "tmle", "mrdr-tmle"],
         default="calibrated-ips",
@@ -972,11 +943,7 @@ def main() -> int:
         # Step 6: DR diagnostics (if applicable)
         display_dr_diagnostics(results, args)
 
-        # Step 7: Diagnostic gates (if requested)
-        if args.gates and results.gate_report:
-            display_gate_report(results)
-
-        # Step 8: Extreme weights analysis
+        # Step 7: Extreme weights analysis
         analyze_extreme_weights_report(estimator, sampler, calibrated_dataset, args)
 
         # Restore oracle labels for visualization if they were masked
