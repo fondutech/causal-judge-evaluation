@@ -1,28 +1,10 @@
-"""Unified diagnostic system for CJE.
+"""Diagnostics module - simplified after removing DiagnosticSuite.
 
-This module provides a single source of truth for all diagnostics,
-consolidating previously scattered diagnostic computations.
+The DiagnosticSuite abstraction has been removed per CLAUDE.md principles (YAGNI).
+All estimators now create IPSDiagnostics or DRDiagnostics directly.
+
+This module is kept as a placeholder for potential future diagnostic utilities.
 """
 
-from .suite import (
-    DiagnosticSuite,
-    WeightMetrics,
-    EstimationSummary,
-    StabilityMetrics,
-    DRMetrics,
-    RobustInference,
-)
-from .runner import DiagnosticRunner, DiagnosticConfig
-from .display import format_diagnostic_suite
-
-__all__ = [
-    "DiagnosticSuite",
-    "WeightMetrics",
-    "EstimationSummary",
-    "StabilityMetrics",
-    "DRMetrics",
-    "RobustInference",
-    "DiagnosticRunner",
-    "DiagnosticConfig",
-    "format_diagnostic_suite",
-]
+# This module is intentionally empty after removing DiagnosticSuite
+__all__: list[str] = []

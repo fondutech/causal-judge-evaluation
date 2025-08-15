@@ -511,34 +511,7 @@ def display_weight_diagnostics(
 
             return all_weight_diagnostics
 
-    # MINIMAL CHANGE: Check if DiagnosticSuite already has weight diagnostics
-    suite = getattr(estimator, "_diagnostic_suite", None)
-    if suite is not None and suite.weight_diagnostics:
-        # Use pre-computed diagnostics from suite
-        all_weight_diagnostics = {}
-
-        # Add base policy (uniform weights)
-        base_rewards = [
-            s.reward for s in calibrated_dataset.samples if s.reward is not None
-        ]
-        base_diag = compute_weight_diagnostics(
-            np.ones(len(base_rewards)),
-            "base",
-        )
-        all_weight_diagnostics["base"] = base_diag
-
-        # Convert suite metrics to legacy format for display
-        for policy, metrics in suite.weight_diagnostics.items():
-            diag = {
-                "ess": metrics.ess,
-                "ess_fraction": metrics.ess / suite.estimation_summary.n_valid_samples,
-                "max_weight": metrics.max_weight,
-                "cv": metrics.cv,
-                "n_unique": metrics.n_unique,
-                "tail_index": metrics.hill_index,
-            }
-            all_weight_diagnostics[policy] = diag
-    else:
+        # DiagnosticSuite has been removed - all estimators create diagnostics directly
         # Original computation path
         base_rewards = [
             s.reward for s in calibrated_dataset.samples if s.reward is not None
@@ -625,31 +598,7 @@ def display_weight_diagnostics(
 
 def display_dr_diagnostics(results: Any, args: Any) -> None:
     """Display DR diagnostics if available."""
-    # MINIMAL CHANGE: Check for DiagnosticSuite first (new path)
-    if hasattr(results, "diagnostic_suite") and results.diagnostic_suite is not None:
-        # New unified diagnostics are available - use them but keep display same
-        suite = results.diagnostic_suite
-        if suite.dr_quality is not None:
-            print(f"\n6. Doubly Robust diagnostics:")
-            # The suite.dr_quality is a DRQuality object, not the full diagnostics
-            # We need to check if we have the actual DRDiagnostics in results
-            if hasattr(results, "diagnostics") and results.diagnostics is not None:
-                summary = format_dr_diagnostic_summary(results.diagnostics)
-            else:
-                # Fallback - create minimal display
-                summary = "   DR diagnostics not available in expected format"
-            for line in summary.split("\n"):
-                print(f"   {line}")
-
-            # Check for issues using stability info if available
-            if suite.stability and suite.stability.has_drift:
-                print("\n   ⚠️  Warning: Distribution drift detected")
-                print(
-                    f"      Affected policies: {', '.join(suite.stability.drift_policies)}"
-                )
-            return
-
-    # Check if we have DR diagnostics in the new format (DRDiagnostics object)
+    # DiagnosticSuite has been removed - check for DRDiagnostics directly
     if hasattr(results, "diagnostics") and results.diagnostics is not None:
         from cje.data.diagnostics import DRDiagnostics
 
