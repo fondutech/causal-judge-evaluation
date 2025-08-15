@@ -20,10 +20,7 @@ BaseCJEEstimator (abstract)
 ## Core Concepts
 
 ### 1. Importance Sampling (IPS)
-The foundation of off-policy evaluation. Reweights logged data to estimate performance under new policies:
-```
-E[R|π_target] = E[W * R|π_base] where W = π_target(a|x) / π_base(a|x)
-```
+The foundation of off-policy evaluation. Reweights logged data to estimate performance under new policies using importance weights W = π_target/π_base.
 
 ### 2. Weight Calibration (SIMCal)
 Stabilizes importance weights through Surrogate-Indexed Monotone Calibration:
@@ -32,11 +29,7 @@ Stabilizes importance weights through Surrogate-Indexed Monotone Calibration:
 - Maintains mean-1 property for unbiasedness
 
 ### 3. Doubly Robust (DR) Estimation
-Combines direct method (outcome model) with IPS correction:
-```
-DR = E[g(fresh_draws)] + E[W * (R - g(logged_data))]
-```
-Provides two chances to get the estimate right - if either the outcome model OR the weights are correct, DR is consistent.
+Combines direct method (outcome model) with IPS correction. Provides two chances to get the estimate right - if either the outcome model OR the weights are correct, DR is consistent.
 
 ### 4. Multiple Robustness (MRDR)
 Achieves robustness to:
@@ -45,10 +38,7 @@ Achieves robustness to:
 - Both simultaneously (via cross-fitting)
 
 ### 5. Targeted Learning (TMLE)
-Optimally combines outcome models and importance weights through targeted fluctuation:
-- Starts with initial outcome model
-- Updates it to minimize influence function variance
-- Achieves optimal asymptotic efficiency
+Optimally combines outcome models and importance weights through targeted fluctuation to achieve optimal asymptotic efficiency.
 
 ## File Structure
 
@@ -80,16 +70,18 @@ estimators/
 
 ### Use **DRCPOEstimator** when:
 - You have poor overlap (ESS < 20%)
-- Fresh draws are available
+- Fresh draws are available (REQUIRED)
 - You want basic doubly robust estimation
 
 ### Use **MRDREstimator** when:
 - You need robustness to both weight and outcome model misspecification
+- Fresh draws are available (REQUIRED for all DR methods)
 - You have sufficient data for cross-fitting
 - You want policy-specific outcome models
 
 ### Use **TMLEEstimator** when:
 - You want optimal asymptotic efficiency
+- Fresh draws are available (REQUIRED for all DR methods)
 - You have well-specified models
 - You need the most sophisticated estimation
 
@@ -168,9 +160,9 @@ DR estimators can incorporate fresh draws (new responses from target policies):
 ```python
 from cje.data.fresh_draws import FreshDrawDataset
 
-# Add fresh draws to estimator
+# Add fresh draws to estimator (per policy)
 fresh_data = FreshDrawDataset(samples=[...])
-estimator.add_fresh_draws(fresh_data)
+estimator.add_fresh_draws('target_policy', fresh_data)
 
 # Estimate uses both logged and fresh data
 result = estimator.fit_and_estimate()
@@ -178,7 +170,18 @@ result = estimator.fit_and_estimate()
 
 ## Refusal Gates
 
-Estimators implement safety gates that refuse estimation when reliability thresholds are violated:
+Estimators implement safety gates that refuse estimation when reliability thresholds are violated.
+
+### Why Percentage-Based ESS Gates?
+
+We use percentage-based ESS thresholds (e.g., ESS < 30%) rather than absolute thresholds for several reasons:
+
+1. **Scale Invariance**: Works consistently across datasets of any size without configuration
+2. **Measures Overlap Quality**: Low ESS% indicates severe distribution mismatch, not just sample size  
+3. **Practical Reliability**: When only 30% of data is effectively used, the estimate is dominated by a small subset, making it practically questionable even if statistically valid
+4. **System Simplicity**: One threshold concept that's self-documenting and easy to explain
+
+A 30% ESS threshold means 70% of your data is essentially ignored - this indicates a fundamental problem with policy overlap that more samples won't fix.
 
 ### RawIPS Gates
 - Refuses if ESS < 1% OR >95% weights near-zero
@@ -228,25 +231,7 @@ Each estimator has comprehensive tests in `cje/tests/`:
 ## Advanced Topics
 
 ### Custom Estimators
-To create a new estimator:
-
-1. Inherit from `BaseCJEEstimator` or `DREstimator`
-2. Implement `fit()` and `estimate()` methods
-3. Create appropriate diagnostics
-4. Store influence functions
-
-Example:
-```python
-class MyEstimator(BaseCJEEstimator):
-    def fit(self):
-        # Prepare estimator
-        self._fitted = True
-    
-    def estimate(self):
-        # Compute estimates
-        # Build diagnostics
-        # Return EstimationResult
-```
+Inherit from `BaseCJEEstimator` or `DREstimator` and implement `fit()` and `estimate()`. Always compute and store influence functions in `_influence_functions`.
 
 ### Omega Weight Configuration (MRDR)
 MRDR supports different weighting schemes for outcome models:
@@ -257,12 +242,7 @@ MRDR supports different weighting schemes for outcome models:
 See MRDR_OMEGA_WEIGHTS.md for detailed comparison.
 
 ### TMLE Fluctuation
-TMLE iteratively updates outcome models:
-1. Fit initial outcome model
-2. Compute clever covariate (importance weights)
-3. Fit fluctuation parameter via logistic regression
-4. Update predictions
-5. Repeat until convergence
+TMLE uses iterative targeted updates with clever covariate (importance weights) to achieve optimal efficiency.
 
 ## References
 
@@ -271,6 +251,13 @@ TMLE iteratively updates outcome models:
 - **TMLE**: van der Laan & Rubin (2006)
 - **SIMCal**: CJE paper (2024)
 - **MRDR**: Multiple robustness framework (2024)
+
+## Common Issues
+
+- **Estimates are NaN**: Check ESS in diagnostics. Likely poor overlap - try CalibratedIPS or DR methods.
+- **ESS always too low**: Policies may be too different. Consider collecting more diverse base data.
+- **DR fails without fresh draws**: All DR methods REQUIRE fresh draws. Generate them first.
+- **Different results between runs**: Set random seeds for reproducibility in cross-fitting.
 
 ## Summary
 

@@ -228,7 +228,9 @@ class CalibratedIPS(BaseCJEEstimator):
             )
 
             # Refuse if multiple indicators suggest unreliability
-            # Lower thresholds to catch the unhelpful policy catastrophic failure
+            # We use percentage-based gates because they measure distribution overlap quality,
+            # not just statistical power. Poor overlap means the estimate is dominated by
+            # a small subset of data, making it practically unreliable even if statistically valid.
             refuse = False
             reasons = []
 
@@ -247,9 +249,14 @@ class CalibratedIPS(BaseCJEEstimator):
                 reasons.append(f"top_5%={top_5pct_weight:.1%} with CV={cv_weights:.1f}")
 
             if refuse:
+                # Provide detailed explanation of what low ESS means practically
                 logger.error(
-                    f"Policy '{policy}' likely unreliable ({', '.join(reasons)}). "
-                    f"Refusing to provide potentially catastrophic estimate."
+                    f"Cannot reliably estimate policy '{policy}': only {ess:.1%} effective overlap. "
+                    f"This means {(1-ess)*100:.0f}% of your data is essentially ignored. "
+                    f"Reasons for refusal: {', '.join(reasons)}. "
+                    f"Solutions: (1) Use policies with better overlap, "
+                    f"(2) Try DR methods with fresh draws, "
+                    f"(3) Collect data from more diverse base policies."
                 )
                 estimates.append(np.nan)
                 standard_errors.append(np.nan)

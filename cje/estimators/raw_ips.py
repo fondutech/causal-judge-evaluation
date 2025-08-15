@@ -103,9 +103,11 @@ class RawIPS(BaseCJEEstimator):
 
             if ess < 0.01 or near_zero > 0.95:
                 logger.error(
-                    f"Policy '{policy}' has extreme weight concentration: "
-                    f"ESS={ess:.1%}, {near_zero:.1%} near-zero weights. "
-                    f"Refusing to provide unreliable estimate."
+                    f"Policy '{policy}' has extreme distribution mismatch: "
+                    f"Only {ess:.1%} effective overlap. "
+                    f"{near_zero:.1%} of weights are near-zero, meaning almost all data is ignored. "
+                    f"Raw IPS cannot provide meaningful estimates with such poor overlap. "
+                    f"Consider using CalibratedIPS or DR methods instead."
                 )
                 estimates.append(np.nan)
                 standard_errors.append(np.nan)
