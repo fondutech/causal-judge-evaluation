@@ -254,7 +254,7 @@ def main() -> None:
         print("⏭️  Skipping response generation (all files exist)")
     else:
         cmd = (
-            f"python pipeline_steps/generate_responses.py "
+            f"python data_generation/generate_responses.py "
             f"--prompts {data_dir}/prompts.jsonl "
             f"--output-dir {data_dir}/responses "
             f"--max-responses {args.n_samples} "
@@ -274,7 +274,7 @@ def main() -> None:
 
         # Use the new scoring script with resume capability
         cmd = (
-            f"python pipeline_steps/add_scores_with_resume.py "
+            f"python data_generation/add_scores_with_resume.py "
             f"{response_file} "
             f"--type judge "
             f"--batch-size {BATCH_SIZES['judge_scoring']}"
@@ -294,7 +294,7 @@ def main() -> None:
 
         # Use the new scoring script with resume capability
         cmd = (
-            f"python pipeline_steps/add_scores_with_resume.py "
+            f"python data_generation/add_scores_with_resume.py "
             f"{response_file} "
             f"--type oracle "
             f"--batch-size {BATCH_SIZES['oracle_scoring']}"
@@ -319,7 +319,7 @@ def main() -> None:
         print("⏭️  Skipping logprob computation (all files exist)")
     else:
         cmd = (
-            f"python pipeline_steps/compute_logprobs.py "
+            f"python data_generation/compute_logprobs.py "
             f"--responses-dir {data_dir}/responses "
             f"--output-dir {data_dir}/logprobs"
         )
@@ -335,7 +335,7 @@ def main() -> None:
     cje_dataset_file = data_dir / "cje_dataset.jsonl"
 
     run_command(
-        f"python pipeline_steps/prepare_cje_data.py "
+        f"python data_generation/prepare_cje_data.py "
         f"--responses-dir {data_dir}/responses "
         f"--logprobs-dir {data_dir}/logprobs "
         f"--output {cje_dataset_file}",
