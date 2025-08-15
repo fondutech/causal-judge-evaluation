@@ -287,7 +287,12 @@ class CalibratedIPS(BaseCJEEstimator):
             },
         )
 
-        # Store for later access (diagnostics will be computed by fit_and_estimate)
+        # Build and attach diagnostics directly
+        diagnostics = self._build_diagnostics(result)
+        result.diagnostics = diagnostics
+        self._diagnostics = diagnostics
+
+        # Store for later access
         self._results = result
 
         return result

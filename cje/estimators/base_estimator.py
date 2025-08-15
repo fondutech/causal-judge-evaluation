@@ -1,14 +1,11 @@
 """Base class for CJE estimators."""
 
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, TYPE_CHECKING
+from typing import Optional, Dict, Any
 import numpy as np
 
 from ..data.models import Dataset, EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
-
-if TYPE_CHECKING:
-    from ..diagnostics import DiagnosticSuite, DiagnosticConfig
 
 
 class BaseCJEEstimator(ABC):
@@ -19,21 +16,21 @@ class BaseCJEEstimator(ABC):
     - estimate(): Compute estimates and diagnostics
 
     The estimate() method must populate EstimationResult.diagnostics
-    with a complete DiagnosticSuite.
+    with IPSDiagnostics or DRDiagnostics as appropriate.
     """
 
     def __init__(
         self,
         sampler: PrecomputedSampler,
         run_diagnostics: bool = True,
-        diagnostic_config: Optional["DiagnosticConfig"] = None,
+        diagnostic_config: Optional[Dict[str, Any]] = None,
     ):
         """Initialize estimator.
 
         Args:
             sampler: Data sampler with precomputed log probabilities
             run_diagnostics: Whether to compute diagnostics (default True)
-            diagnostic_config: Configuration for diagnostics (uses defaults if None)
+            diagnostic_config: Optional configuration dict (for future use)
         """
         self.sampler = sampler
         self.run_diagnostics = run_diagnostics
@@ -42,7 +39,6 @@ class BaseCJEEstimator(ABC):
         self._weights_cache: Dict[str, np.ndarray] = {}
         self._influence_functions: Dict[str, np.ndarray] = {}
         self._results: Optional[EstimationResult] = None
-        self._diagnostic_suite: Optional["DiagnosticSuite"] = None
 
     @abstractmethod
     def fit(self) -> None:
@@ -59,46 +55,21 @@ class BaseCJEEstimator(ABC):
         self.fit()
         result = self.estimate()
 
-        # Run unified diagnostics if enabled
+        # All estimators now create diagnostics directly in estimate()
+        # The DiagnosticSuite system has been removed for simplicity
+        # per CLAUDE.md principles (YAGNI, Do One Thing Well)
+
+        # Verify diagnostics were created
         if self.run_diagnostics and result is not None:
-            from ..diagnostics import DiagnosticRunner, DiagnosticConfig
-
-            # Create config if not provided
-            if self.diagnostic_config is None:
-                self.diagnostic_config = DiagnosticConfig()
-
-            # Run diagnostics
-            runner = DiagnosticRunner(self.diagnostic_config)
-            self._diagnostic_suite = runner.run(self, result)
-
-            # Store in result for access
-            result.diagnostic_suite = self._diagnostic_suite
-
-            # Populate legacy fields for backward compatibility
             if not hasattr(result, "diagnostics") or result.diagnostics is None:
-                # Create legacy diagnostics from suite
-                from ..data.diagnostics_compat import (
-                    create_ips_diagnostics_from_suite,
-                    create_dr_diagnostics_from_suite,
-                )
+                # This shouldn't happen anymore, but log a warning
+                import logging
 
-                if self._is_dr_estimator():
-                    # Create IPS diagnostics first for DR
-                    ips_diag = create_ips_diagnostics_from_suite(
-                        self._diagnostic_suite,
-                        result.n_samples_used,
-                    )
-                    result.diagnostics = create_dr_diagnostics_from_suite(
-                        self._diagnostic_suite,
-                        result.n_samples_used,
-                        ips_diagnostics=ips_diag,
-                    )
-                else:
-                    # IPS-based estimator
-                    result.diagnostics = create_ips_diagnostics_from_suite(
-                        self._diagnostic_suite,
-                        result.n_samples_used,
-                    )
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"{self.__class__.__name__} did not create diagnostics. "
+                    "All estimators should create IPSDiagnostics or DRDiagnostics directly."
+                )
 
         return result
 
@@ -172,14 +143,6 @@ class BaseCJEEstimator(ABC):
         if self._results and self._results.diagnostics:
             return self._results.diagnostics
         return None
-
-    def get_diagnostic_suite(self) -> Optional["DiagnosticSuite"]:
-        """Get the unified diagnostic suite from the last estimation.
-
-        Returns:
-            DiagnosticSuite if computed, None otherwise
-        """
-        return self._diagnostic_suite
 
     def _is_dr_estimator(self) -> bool:
         """Check if this is a DR-based estimator.
