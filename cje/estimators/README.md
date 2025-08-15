@@ -23,10 +23,8 @@ BaseCJEEstimator (abstract)
 The foundation of off-policy evaluation. Reweights logged data to estimate performance under new policies using importance weights W = π_target/π_base.
 
 ### 2. Weight Calibration (SIMCal)
-Stabilizes importance weights through Surrogate-Indexed Monotone Calibration:
-- Projects weights to be monotone with judge scores
-- Enforces variance constraints to prevent explosion
-- Maintains mean-1 property for unbiasedness
+Stabilizes importance weights through monotone projection with variance control.
+See `cje/calibration/README.md` for algorithm details.
 
 ### 3. Doubly Robust (DR) Estimation
 Combines direct method (outcome model) with IPS correction. Provides two chances to get the estimate right - if either the outcome model OR the weights are correct, DR is consistent.
@@ -245,7 +243,6 @@ TMLE uses iterative targeted updates with clever covariate (importance weights) 
 - **IPS**: Horvitz & Thompson (1952)
 - **Doubly Robust**: Robins et al. (1994)
 - **TMLE**: van der Laan & Rubin (2006)
-- **SIMCal**: CJE paper (2024)
 - **MRDR**: Multiple robustness framework (2024)
 
 ## Common Issues

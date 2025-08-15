@@ -117,43 +117,29 @@ Example: CalibratedIPS may refuse estimation based on combinations of ESS, weigh
 
 ## Key Diagnostic Metrics
 
-### 1. Effective Sample Size (ESS)
-Measures how many "effective" samples remain after weighting:
-```
-ESS = (Σw)² / Σw²
-```
+### Effective Sample Size (ESS)
+Measures how many "effective" samples remain after weighting.
 - **ESS > 30%**: Good overlap
-- **ESS 10-30%**: Moderate overlap issues
+- **ESS 10-30%**: Moderate overlap issues  
 - **ESS < 10%**: Severe overlap problems
 
-### 2. Hill Tail Index
-Estimates the tail behavior of importance weights using the Hill estimator:
-```
-α = k / Σ(log(X_i) - log(X_{k+1})) for top k order statistics
-```
-Default uses k = 5% of samples. Interpretation:
-- **α ≥ 2**: Finite variance, acceptable for inference
-- **α ∈ [1, 2)**: Infinite variance, WARNING status
-- **α < 1**: Infinite mean, CRITICAL status
-- **None**: Returned for uniform weights (undefined)
+### Hill Tail Index
+Estimates tail behavior of importance weights (k = 5% of samples).
+- **α ≥ 2**: Finite variance, acceptable
+- **α ∈ [1, 2)**: Infinite variance, WARNING
+- **α < 1**: Infinite mean, CRITICAL
 
-### 3. Calibration R²
-Measures judge-to-oracle calibration quality:
-```
-R² = 1 - Var(oracle - f(judge)) / Var(oracle)
-```
-- **R² ≥ 0.5**: Good calibration (no impact on status)
-- **R² ∈ [0, 0.5)**: Moderate calibration (WARNING status)
-- **R² < 0**: Poor calibration (CRITICAL status)
+### Calibration R²
+Measures judge-to-oracle calibration quality.
+- **R² ≥ 0.5**: Good calibration
+- **R² ∈ [0, 0.5)**: Moderate calibration
+- **R² < 0**: Poor calibration
 
-### 4. Weight Concentration
-Fraction of samples with near-zero weight:
-```
-concentration = |{w < 1e-10}| / n
-```
+### Weight Concentration
+Fraction of samples with near-zero weight.
 - **< 50%**: Acceptable
 - **50-85%**: Concerning
-- **> 85%**: Critical concentration
+- **> 85%**: Critical
 
 ## Usage Examples
 
@@ -170,30 +156,16 @@ if diagnostics.overall_status == Status.CRITICAL:
     print(diagnostics.summary())
 ```
 
-### Detailed Weight Analysis
+### Detailed Analysis
 ```python
-# Get per-policy weight diagnostics
+# Check per-policy metrics
 for policy in diagnostics.policies:
-    ess = diagnostics.ess_per_policy[policy]
-    max_w = diagnostics.max_weight_per_policy[policy]
-    tail = diagnostics.tail_indices.get(policy)
-    
-    print(f"{policy}:")
-    print(f"  ESS: {ess:.1%}")
-    print(f"  Max weight: {max_w:.1f}")
-    print(f"  Tail index: {tail:.2f}" if tail else "  Tail index: N/A")
-```
+    print(f"{policy}: ESS={diagnostics.ess_per_policy[policy]:.1%}")
 
-### DR Decomposition Analysis
-```python
+# For DR estimators
 if isinstance(diagnostics, DRDiagnostics):
-    print(f"Direct method contribution: {diagnostics.dm_contribution:.1%}")
-    print(f"IPS correction: {diagnostics.ips_contribution:.1%}")
-    
-    # Check outcome model quality
-    for policy, r2 in diagnostics.dm_r2_per_policy.items():
-        if r2 < 0:
-            print(f"⚠️ {policy}: Negative R² ({r2:.3f}) - model misspecified")
+    min_r2, max_r2 = diagnostics.outcome_r2_range
+    print(f"Outcome R² range: [{min_r2:.3f}, {max_r2:.3f}]")
 ```
 
 ### Export for Analysis
@@ -226,11 +198,7 @@ DR estimators inherit IPS gates and add warnings (but continue) when:
 
 ## Visualization
 
-Diagnostics can be visualized through the analysis module:
-
-### Weight Diagnostics Display
-When running `analyze_dataset.py`, weight diagnostics are displayed automatically:
-
+Weight diagnostics are displayed automatically when running `analyze_dataset.py`:
 ```
 Weight Summary
 ----------------------------------------------------------------------
@@ -239,29 +207,9 @@ Policy                             ESS   Max Weight Status
 clone                             45.2%      12.3456 GOOD      
 parallel_universe_prompt          38.7%      18.9012 WARNING   
 ----------------------------------------------------------------------
-Overall                           41.9%      18.9012 GOOD      
 ```
 
-Display utilities in `utils/diagnostics/display.py` include:
-- `create_weight_summary_table()` - Formats weight diagnostics as a table
-- `format_dr_diagnostic_summary()` - Formats DR diagnostics with decompositions
-- `format_diagnostic_comparison()` - Compares two diagnostic objects side by side
-
-These utilities work with both diagnostic objects and legacy dictionary formats.
-
-### Calibration Analysis
-The calibration quality is shown during data loading:
-```python
-# Automatically displayed when oracle_coverage is used
-results = analyze_dataset(
-    "data.jsonl", 
-    estimator="calibrated-ips",
-    oracle_coverage=0.5
-)
-# Shows calibration R² and RMSE
-```
-
-Note: Full visualization dashboards are described in `docs/visualization.rst`
+Display utilities in `display.py` format diagnostics for tables and comparisons.
 
 ## Interpreting Diagnostics
 
@@ -306,126 +254,38 @@ Note: Full visualization dashboards are described in `docs/visualization.rst`
 - **Cause**: Model misspecification
 - **Solution**: Check for distribution shift, add features
 
-## Implementation Details
+## Implementation Notes
 
-### Diagnostic Computation Flow
-
-```
-Dataset → Sampler → Estimator.fit()
-                           ↓
-                    Estimator.estimate()
-                           ↓
-                 compute_weight_diagnostics()
-                 compute_dr_diagnostics() [if DR]
-                           ↓
-                    _build_diagnostics()
-                           ↓
-                 Diagnostics attached to Result
-                           ↓
-                    User receives Result
-```
-
-### How Estimators Build Diagnostics
-
-```python
-# Pattern for IPS estimators
-def _build_diagnostics(self, result):
-    # 1. Compute weight metrics per policy
-    for policy in policies:
-        weights = self.get_weights(policy)
-        w_diag = compute_weight_diagnostics(weights, policy)
-    
-    # 2. Determine overall status
-    if ess < 0.01:
-        status = Status.CRITICAL
-    
-    # 3. Return immutable diagnostic object
-    return IPSDiagnostics(...)
-```
-
-### Memory Efficiency
+### Memory Considerations
 - Diagnostics store summary statistics, not raw data
-- Influence functions always computed and stored for ALL estimators (IPS, CalibratedIPS, DR)
-- Stored in `EstimationResult.influence_functions` as Dict[str, np.ndarray]
-- Essential for proper statistical inference and standard errors
+- Influence functions stored in `EstimationResult.influence_functions`
 - Can be large for many samples - consider memory when processing large datasets
-- Per-fold diagnostics aggregated to save space
-- Computed properties calculated on-demand via @property decorators
 
-### Dependencies
-- **External**: numpy, scipy.stats (minimal)
-- **Internal**: Unidirectional flow from data → computation → presentation
-- **No circular dependencies** or hidden state
-
-### Extensibility
-New diagnostic metrics can be added by:
-1. Extending the dataclass (add field)
-2. Adding computation function to `utils/diagnostics/`
-3. Calling in estimator's `_build_diagnostics()`
-4. Updating `summary()` and `to_dict()` methods
-5. Adding visualization support if needed
+### Adding New Metrics
+1. Extend the dataclass in `models.py`
+2. Add computation function to appropriate module
+3. Call in estimator's `_build_diagnostics()`
+4. Update `summary()` and `to_dict()` methods
 
 ## Advanced Topics
 
-### Cross-Validation Diagnostics
-For cross-fitted estimators:
-```python
-# Access per-fold diagnostics
-for fold_idx, fold_diag in enumerate(diagnostics.fold_diagnostics):
-    print(f"Fold {fold_idx}: R² = {fold_diag.dm_r2:.3f}")
-```
-
 ### Influence Function Analysis
 ```python
-# Access influence functions (always stored in EstimationResult)
-if results.influence_functions:
-    import numpy as np
-    
-    for policy, ifs in results.influence_functions.items():
-        # Check for outliers
-        z_scores = np.abs((ifs - np.mean(ifs)) / np.std(ifs))
-        n_outliers = np.sum(z_scores > 3)
-        print(f"{policy}: {n_outliers} influential points")
-        
-        # Influence functions are used for:
-        # 1. Computing standard errors (SE = std(IF) / sqrt(n))
-        # 2. Policy comparison with proper covariance
-        # 3. Detecting influential observations
-        # 4. Bootstrap and robust inference
+# Access influence functions (always stored)
+for policy, ifs in results.influence_functions.items():
+    z_scores = np.abs((ifs - np.mean(ifs)) / np.std(ifs))
+    n_outliers = np.sum(z_scores > 3)
+    print(f"{policy}: {n_outliers} influential points")
 ```
 
-### Custom Diagnostic Thresholds
-```python
-from cje.diagnostics import compute_weight_diagnostics
-
-# Use custom thresholds
-diag = compute_weight_diagnostics(
-    weights,
-    policy_name,
-    ess_critical=0.05,      # More strict
-    tail_warning=3.0,        # Less strict
-    concentration_limit=0.95  # More lenient
-)
-```
-
-### Drift Detection (Available but Not Integrated)
-
-The Kendall-τ drift test from the paper is **implemented** but **intentionally not integrated** into the main pipeline:
-
+### Drift Detection
+The Kendall-τ drift test is available but not integrated (Unix philosophy - you orchestrate):
 ```python
 from cje.diagnostics import kendall_tau_drift
-
-# User's responsibility to orchestrate
-historical_scores = load_your_historical_data()
-current_scores = judge.score(anchor_prompts)
-
 drift_result = kendall_tau_drift(historical_scores, current_scores)
 if drift_result["tau"] < 0.5:
-    print("Severe drift detected!")
-    # User decides action: refresh oracle, recalibrate, etc.
+    print("Drift detected!")
 ```
-
-This follows Unix philosophy: CJE provides the computational tool, users build the monitoring workflow. Managing anchor sets and historical state is outside CJE's scope.
 
 ## References
 

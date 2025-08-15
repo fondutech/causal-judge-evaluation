@@ -53,6 +53,32 @@ After implementing:
 - Commit without explicit request
 - Fix what isn't broken
 
+## Documentation Standards
+
+### Module README Structure
+When creating READMEs for CJE modules (estimators/, calibration/, diagnostics/, etc.):
+
+1. **Overview** (2-3 sentences)
+2. **When to Use** (decision guide)
+3. **File Structure** (simple tree)
+4. **Core Concepts** (brief explanations)
+5. **Common Interface** (main usage pattern)
+6. **Key Design Decisions** (architectural choices)
+7. **Common Issues** (troubleshooting)
+8. **Performance** (if relevant)
+9. **Summary** (2-3 sentences)
+
+Target lengths:
+- Simple modules: ~250 lines
+- Complex modules: ~350 lines
+- Never exceed 400 lines (move details to docstrings)
+
+### Documentation Principles
+- Focus on WHY not just WHAT
+- Avoid stale-prone implementation details
+- Cross-reference instead of duplicating
+- Keep math practical with interpretations
+
 ## Understanding CJE
 
 **What CJE Does**: Unbiased off-policy evaluation of LLMs using causal inference.
