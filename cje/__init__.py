@@ -43,8 +43,9 @@ try:
         IsotonicOutcomeModel,
         LinearOutcomeModel,
     )
-    from .data.fresh_draws import FreshDrawSample, FreshDrawDataset
-    from .utils.fresh_draws import (
+    from .data.fresh_draws import (
+        FreshDrawSample,
+        FreshDrawDataset,
         load_fresh_draws_from_jsonl,
         validate_fresh_draws,
         create_synthetic_fresh_draws,

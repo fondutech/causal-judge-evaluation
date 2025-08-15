@@ -16,8 +16,7 @@ from .outcome_models import IsotonicOutcomeModel, CalibratorBackedOutcomeModel
 from ..data.models import EstimationResult
 from ..diagnostics import DRDiagnostics, IPSDiagnostics
 from ..data.precomputed_sampler import PrecomputedSampler
-from ..data.fresh_draws import FreshDrawDataset
-from ..utils.fresh_draws import validate_fresh_draws
+from ..data.fresh_draws import FreshDrawDataset, validate_fresh_draws
 from ..diagnostics.dr import (
     compute_dr_policy_diagnostics,
     compute_orthogonality_score,
