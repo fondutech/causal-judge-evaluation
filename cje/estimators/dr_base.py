@@ -747,6 +747,22 @@ class DREstimator(BaseCJEEstimator):
             return None
         return self.ips_estimator.get_weights(policy)
 
+    def get_weight_diagnostics(self) -> Optional[IPSDiagnostics]:
+        """Get weight diagnostics from internal IPS estimator.
+
+        This helper method provides easy access to weight diagnostics
+        for DR estimators, which internally use an IPS estimator for weights.
+
+        Returns:
+            IPSDiagnostics object from the internal IPS estimator, or None
+        """
+        if hasattr(self.ips_estimator, "get_diagnostics"):
+            diag = self.ips_estimator.get_diagnostics()
+            # Ensure it's IPSDiagnostics (not some other type)
+            if isinstance(diag, IPSDiagnostics):
+                return diag
+        return None
+
     def get_diagnostics(self) -> Dict[str, Any]:
         """Get diagnostic information about the estimation.
 
