@@ -1,205 +1,184 @@
 # CLAUDE.md
 
-Core guidance for Claude Code when working with the CJE repository.
+Context and guardrails for working with CJE.
 
-## 🎯 Project Philosophy
+## Core Principle
 
-**Do One Thing Well** - The Unix philosophy guides this codebase:
-- Each tool has a single, well-defined purpose
-- Complex workflows are the user's responsibility to orchestrate
-- Tools compose naturally without hidden coupling
-- Prefer explicit pipelines over "smart" automation
+**Think Before Doing** - I have good judgment AFTER gathering context.
+I make poor decisions when I rush to implement.
 
-Core principles:
-- Clear separation of concerns (one responsibility per module)
-- Type safety with Pydantic models (explicit contracts)
-- Explicit error handling (no magic fallbacks or silent failures)
-- Simple, composable abstractions (avoid framework-itis)
-- YAGNI (You Aren't Gonna Need It) - don't build what isn't needed
+## Before ANY Implementation
 
-## 📝 Documentation Principles
+**STOP and gather context:**
+1. Search for existing patterns in the codebase
+2. Read related files completely
+3. Understand why things are the way they are
+4. Consider implications and edge cases
+5. THEN propose an approach
 
-- Keep documentation minimal and focused on core concepts
-- **CRITICAL: Avoid content that will go stale** - if it depends on other files, it will drift
-- Focus on principles and patterns rather than specific code
-- Update README.md for user-facing changes, keep CLAUDE.md for timeless guidance
+I often have good insights after proper investigation.
+I often make mistakes when I skip this step.
 
-### Directory-Level Documentation
+## Questions to Ask Myself
 
-Every major directory within `cje/` that contains non-trivial core implementations should have its own README.md. These READMEs are **for internal developers** (not end users) and should follow these principles:
+Before implementing:
+- Have I searched for how this is done elsewhere in the codebase?
+- Do I understand WHY the current design exists?
+- Am I about to reinvent something that already exists?
+- Is this the simplest solution that works?
 
-1. **Architecture-focused**: Describe the overall design and how components fit together
-2. **Interface-focused**: Document the common interfaces and contracts, not implementation details  
-3. **Change-resilient**: Focus on patterns and principles that won't change with every PR
-4. **Self-contained**: Minimize references to other documentation that might drift
-5. **Developer-oriented**: Include troubleshooting, common issues, and testing guidance
+During implementation:
+- Am I more than 3 files deep? (Stop and check if on track)
+- Am I breaking something that already works?
+- Would a smaller change suffice?
 
-#### ⚠️ Anti-Patterns to Avoid
+After implementing:
+- Can the user maintain this?
+- Did I explain the key decisions?
+- Are the tests still passing?
 
-**DO NOT** include in READMEs:
-- Specific thresholds or magic numbers (they change)
-- Lists of all files with descriptions (use `ls` instead)
-- Cross-references to specific line numbers
-- Implementation details like variable names or internal methods
-- Anything you wouldn't want to update when refactoring
+## What NOT to Do
 
-**INSTEAD** focus on:
-- Conceptual overview and design rationale
-- Common patterns used throughout the module
-- Interface contracts that rarely change
-- Troubleshooting guidance based on symptoms, not code
+**Never** add these to CJE:
+- Workflow orchestration (users compose tools)
+- State management (each run is independent)
+- Retry logic (fail fast and clear)
+- Magic values (None/NaN for failures)
+- Clever abstractions (YAGNI)
 
-#### Examples
+**Never** do these as Claude:
+- Implement before understanding context
+- Create new files when editing would work
+- Make docs unless explicitly asked
+- Commit without explicit request
+- Fix what isn't broken
 
-❌ **Bad**: "The ESS threshold is set to 0.30 in line 238 of calibrated_ips.py"
-✅ **Good**: "Estimators use ESS thresholds to ensure reliability"
+## Understanding CJE
 
-❌ **Bad**: "The `_weights_cache` dictionary stores computed weights"
-✅ **Good**: "Weights are cached to avoid recomputation"
+**What CJE Does**: Unbiased off-policy evaluation of LLMs using causal inference.
+Answers: "What would our metrics be if we deployed policy π' instead of π₀?"
 
-❌ **Bad**: "See utils/diagnostics.py for the implementation"
-✅ **Good**: "Diagnostics follow a three-tier status system"
+**The Core Problem**: Offline "LLM-as-judge" scores are correlational - computed under 
+logging policy π₀, they don't answer the counterfactual question. CJE recasts judge-based 
+evaluation as calibrated causal inference.
 
-Current directories with READMEs:
-- `cje/calibration/` - Three distinct calibration approaches (reward, weight, DR)
-- `cje/data/` - Data models and validation patterns
-- `cje/diagnostics/` - Three-tier diagnostic architecture
-- `cje/estimators/` - Estimator hierarchy and selection guide
-- `cje/experiments/` - Experiment orchestration patterns
-
-Each README should:
-- Explain the directory's single responsibility
-- Describe key design decisions and trade-offs
-- Show usage patterns without implementation details
-- Reference interfaces, not concrete implementations
-
-## 📁 Repository Structure
-
+**Core Flow**:
 ```
-cje/                      # Production implementation
-├── calibration/          # Calibration utilities (isotonic, judge calibration)
-├── data/                 # Data models, loading, validation
-├── estimators/           # IPS, DR, MRDR, TMLE estimators
-├── utils/                # Utilities (diagnostics, export, fresh draws)
-├── visualization/        # Plotting and dashboard generation
-├── teacher_forcing/      # Log probability computation
-├── experiments/          # Arena experiment pipeline
-└── tests/                # Comprehensive test suite
+logs.jsonl → calibrate_dataset() → estimator.fit_and_estimate() → results
+                    ↓                         ↓
+            (maps judge→oracle)    (applies SIMCal + computes estimates)
 ```
 
-## 🚀 Quick Start
+**Why SIMCal Works** (theoretical guarantees):
+- Mean preservation: Calibration never changes E[W] = 1
+- Variance reduction: Monotone projection always reduces variance (majorization)
+- Variance safety: Cap ensures Var(W_calibrated) ≤ ρ·Var(W_baseline)
+- √n inference: DR achieves efficiency bound when assumptions hold
 
-```python
-from cje import analyze_dataset
+**Key Components**:
+- `data/` - Dataset, Sample models with validation
+- `calibration/` - Isotonic regression, SIMCal, judge calibration
+- `estimators/` - IPS, CalibratedIPS, DR, MRDR, TMLE
+- `diagnostics/` - IPSDiagnostics, DRDiagnostics, reliability gates
+- `experiments/arena_10k_simplified/` - Full pipeline example
 
-results = analyze_dataset("data.jsonl", estimator="calibrated-ips")
+**Three Calibrations** (keep these straight):
+1. **Reward**: Isotonic f: judge → oracle on small slice (preserves mean)
+2. **Weight**: SIMCal - projects onto monotone functions, weakly reduces variance by majorization
+3. **Outcome**: Cross-fitted g(X) predictions for DR orthogonality
+
+**Estimator Hierarchy**:
+```
+BaseCJEEstimator
+├── RawIPS (baseline, no calibration)
+├── CalibratedIPS (SIMCal weights, production default)
+└── DREstimator (abstract)
+    ├── DRCPOEstimator (basic DR)
+    ├── MRDREstimator (multiply robust)
+    └── TMLEEstimator (targeted learning)
 ```
 
-For detailed API usage, see the main README.
+**Data Requirements**:
+- Always: `prompt`, `response`, `base_policy_logprob`, `target_policy_logprobs`
+- For calibration: `metadata.judge_score` 
+- For oracle calibration: Some samples with `metadata.oracle_label`
+- For DR: Fresh draws via `add_fresh_draws()`
 
-## 🔧 Testing
+**Key Concepts**:
+- **ESS (Effective Sample Size)**: (Σw)²/Σw² - measures effective overlap
+- **SIMCal**: OOF stacking of {baseline, ↑, ↓} candidates + variance cap ρ
+  - Projects weights onto monotone functions of judge score S
+  - Weakly reduces variance by majorization (always increases ESS)
+  - Blend → reproject enforces Var(W) ≤ ρ·Var(baseline)
+- **Oracle slice**: Small random subsample with ground truth for reward calibration
+- **Cross-fitting**: Train on k-1 folds, predict on kth (orthogonality for DR)
+- **Influence functions**: Per-sample contributions, enable √n inference
+- **Refusal gates**: Return NaN when ESS < threshold or tail index < 2
+
+**Key Assumptions** (simplified):
+- **(D2) Overlap**: π₀(a|x) > 0 whenever π'(a|x) > 0
+- **(J1) Oracle slice**: Simple random subsample with ground truth Y
+- **(J2-M) Judge monotone sufficiency**: E[Y|S] is monotone, E[W|S] is monotone
+- **(R3) DR rates**: Either weights or outcome model converges at n^(-1/4)
+
+## Technical Context
 
 ```bash
-poetry run pytest cje/
+source set_secrets.sh  # API setup
+poetry run pytest cje/ # Run tests
+python analyze_dataset.py --data data.jsonl --estimator calibrated-ips
 ```
 
-For specific experiment commands, see the README in each experiment directory.
+**Common Issues**:
+- "ESS too low" → Policies too different, need DR with fresh draws
+- "NaN estimates" → Check diagnostics.summary(), likely catastrophic overlap
+- "Import errors" → Wrong directory or missing poetry install
+- "No module named cje" → Need `pip install -e .` or `poetry install`
 
-## 🔑 API Keys
+## Navigation Patterns
 
-Set environment variables for API access:
-- `OPENAI_API_KEY` - Judge and oracle evaluation
-- `FIREWORKS_API_KEY` - Response generation and log probabilities
+**To find examples of X**:
+```bash
+# Find how something is used
+grep -r "SIMCal" cje/ --include="*.py"
 
-## 📊 Data Format
+# Find test examples
+grep -r "test.*calibrat" cje/tests/
 
-CJE expects JSONL with log probabilities and optional judge scores. Fields like `prompt_id` and `reward` are auto-generated as needed. See data format documentation for details.
+# Find where a class is defined
+grep -r "class.*CalibratedIPS" cje/
+```
 
-## 🏗️ Key Architectural Decisions
+**Key files to check**:
+- `analyze_dataset.py` - Main entry point, shows full flow
+- `cje/tests/test_integration.py` - End-to-end examples
+- `experiments/arena_10k_simplified/` - Production pipeline
 
-1. **Do One Thing**: Each script/function has exactly one responsibility
-2. **Clean Separation**: Data generation vs analysis are separate steps
-3. **Optional Everything**: Rewards, prompt_id, oracle labels - all optional with sensible defaults
-4. **Explicit Failures**: Use `None` for failures, never magic values
-5. **No Hidden State**: Tools don't remember previous runs or modify global state
-6. **User Orchestrates**: Complex workflows are shell scripts, not hidden automation
-7. **Metadata Collection**: Non-core fields go in metadata automatically
-8. **Transparent Filtering**: Use `sampler.n_valid_samples` to see samples after filtering
-9. **Three Isotonic Mappings**: Global f_all for rewards, cross-fitted f^(-k) for DR, stacked SIMCal for weights
-10. **DR via Inheritance**: DR inherits from CalibratedIPS to reuse weight machinery
+## My Best Practices
 
-## 🚨 Code Review Red Flags
+1. **Research first** - grep/read before implementing
+2. **Start minimal** - Can always add more
+3. **Test immediately** - Run tests after changes
+4. **Explain changes** - User should understand what I did
+5. **Stay focused** - Return to user's actual goal
 
-- **Overengineering**: Workflow engines, state management, retry logic
-- **Hidden coupling**: Tools depending on each other's output formats
-- **Magic values**: Using -100.0 or similar as fallbacks
-- **Mixed concerns**: Calibration during data generation
-- **Multiple responsibilities**: Classes doing more than one thing
-- **Unnecessary abstractions**: Code only used once
-- **"Smart" tools**: Trying to do everything or hide complexity
-- **Hidden state**: Global configuration or stateful libraries
+## When to Be Skeptical
 
-## 🔬 Calibration Strategy
+CJE results are suspect when:
+- ESS is very low (< 10% typical, < 1% critical)
+- Judge scores drift over time (check Kendall τ)
+- Policies are very different from logging policy
+- Oracle slice is small or non-random
+- DR orthogonality score CI doesn't contain 0
 
-CJE uses three distinct calibration approaches:
-1. **Reward Calibration**: Maps judge scores to oracle labels
-2. **Weight Calibration**: Stacked SIMCal prevents weight explosion
-3. **DR Outcome Models**: Cross-fitted for orthogonality
+Always check `diagnostics.summary()` before trusting estimates.
 
-The implementation details are in `cje/calibration/`.
+## Remember
 
-## 🤖 Doubly Robust (DR) Design
+The user knows their problem better than I do.
+My job is execution, not strategy.
+Simple and working beats perfect and complex.
 
-**Key insight**: DR inherits from CalibratedIPS to reuse weight machinery.
+**I think better when I slow down and gather context.**
 
-Fresh draws are the user's responsibility:
-- Generate responses with your pipeline
-- Score them with your judge
-- Format as simple JSONL
-- Attach to estimator with `add_fresh_draws()`
-
-**Asymmetry is intentional**: Logged data is authoritative, fresh draws augment it. We provide the math, you provide the data pipeline.
-
-## 🎨 Design Principles
-
-1. **Do One Thing Well**
-   - Each tool solves exactly one problem
-   - Composition happens in shell scripts, not library code
-   - If you need two things done, use two tools
-
-2. **YAGNI (You Aren't Gonna Need It)**
-   - Don't create abstractions for single use cases
-   - Inline code that's only called from one place
-   - Remove layers that don't add value
-
-3. **Explicit is Better than Implicit**
-   - No magic strings or hidden behavior
-   - Clear function signatures and return types
-   - Obvious data flow
-
-4. **Fail Fast and Clearly**
-   - Return None or raise exceptions, never magic values
-   - Helpful error messages that guide users
-   - Don't hide failures
-
-5. **Users Are Smart**
-   - Don't try to "protect" users from complexity
-   - Give them the tools, let them build the workflows
-   - Document the pieces, not prescriptive processes
-
-## 🚫 What We Don't Do
-
-CJE is a library, not a framework. We explicitly avoid:
-
-1. **Workflow Orchestration**: Use shell scripts, Make, or Airflow - not our job
-2. **Retry Logic**: Use systemd, cron, or bash loops - not our job
-3. **State Management**: Use files, databases, or queues - not our job
-4. **Progress Tracking**: Use tqdm in your scripts - not our job
-5. **Configuration Management**: Use environment vars or config files - not our job
-6. **Data Validation Workflows**: We validate structure, you validate semantics
-7. **End-to-End Pipelines**: We provide pieces, you build pipelines
-
-If you find yourself wanting CJE to "manage" something, stop. That's your job.
-The library provides the math and data structures. You provide the glue.
-
-Remember: The goal is to be **simple, correct, and maintainable** - not clever.
+When the user says "let's just leave things be and focus on simplicity" - listen.
