@@ -44,7 +44,7 @@ teacher_forcing/
 Computes log P(response|prompt) by feeding the concatenated prompt+response to the model and extracting token-level log probabilities. This avoids sampling bias from autoregressive generation.
 
 ### 2. One-Call vs Two-Call Approaches
-- **One-call**: Uses byte counting to find prompt/response boundary (89% success rate)
+- **One-call**: Uses byte counting to find prompt/response boundary (~89% of cases)
 - **Two-call**: Fallback using difference of two API calls (100% reliability)
 
 ### 3. Chat Templates
@@ -92,14 +92,18 @@ result = compute_chat_logprob(
 ```python
 from cje.teacher_forcing import (
     HuggingFaceTemplateConfig,
+    Llama3TemplateConfig,
     convert_chat_to_completions
 )
 
 # For HuggingFace models
-config = HuggingFaceTemplateConfig("meta-llama/Llama-3.2-3B-Instruct")
+hf_config = HuggingFaceTemplateConfig("meta-llama/Llama-3.2-3B-Instruct")
+
+# For Llama 3 models with explicit template
+llama3_config = Llama3TemplateConfig()
 
 # Convert chat to completion format
-prompt_only, prompt_plus_reply = convert_chat_to_completions(chat, config)
+prompt_only, prompt_plus_reply = convert_chat_to_completions(chat, hf_config)
 ```
 
 ## Implementation Details
@@ -168,9 +172,9 @@ Every result includes metadata about the computation method, token counts, and f
 
 ## Performance
 
-### Efficiency Metrics
+### Typical Metrics
 - **One-call success rate**: ~89% of requests
-- **Average latency**: 200-400ms (one-call), 400-800ms (two-call)
+- **API latency**: 200-400ms (one-call), 400-800ms (two-call) 
 - **Token limit**: Handles up to model's context length
 
 ### Optimization Tips
