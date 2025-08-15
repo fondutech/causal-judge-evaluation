@@ -67,6 +67,49 @@ CJE recasts judge-based evaluation as **calibrated causal inference** using our 
                     └───────────────────────────┘
 ```
 
+#### Notation & Terminology
+
+**Data & Policies:**
+- **π₀**: Logging/base policy (what generated your data)
+- **π′**: Target policy (what you want to evaluate)
+- **X**: Context/prompt input
+- **A**: Completion/response from the policy
+- **S**: Judge score ∈ [0,1] (from automatic evaluator like GPT-4)
+- **Y**: Oracle label ∈ [0,1] (human ground truth)
+- **R**: Calibrated reward ∈ [0,1] (isotonic transformation of S)
+
+**Transformations & Weights:**
+- **f**: Isotonic calibration function (S → R mapping)
+- **p_π(A|X)**: Probability of response A under policy π
+- **W_π′**: Raw importance weights = exp(log p_π′(A|X) - log p_π₀(A|X))
+- **W_c**: Calibrated weights (after SIMCal transformation)
+- **ρ**: Variance cap parameter (controls weight stability)
+
+**Estimation:**
+- **V̂**: Estimated policy value E[R(π′)]
+- **ĝ_bπ′(X)**: Marginalized outcome model E[R|X] under π′
+- **q̂_b(X,A)**: Baseline outcome model E[R|X,A]
+- **mean(·)**: Empirical average over samples
+
+**Algorithms & Methods:**
+- **PAV**: Pool-Adjacent-Violators (isotonic regression algorithm)
+- **SIMCal**: Surrogate-Indexed Monotone Calibration
+- **OOF**: Out-of-fold cross-fitting (prevents overfitting)
+- **TF Cache**: Teacher Forcing cache (stores log probabilities)
+- **Hájek**: Self-normalized importance sampling (ensures E[W]=1)
+
+**Diagnostics:**
+- **ESS**: Effective Sample Size = (Σw)²/Σw² (overlap quality)
+- **Hill index**: Tail heaviness measure (should be ≥ 2)
+- **CI**: Confidence interval (typically 95%)
+
+**Key Assumptions:**
+- **(D1)**: Fixed logger - π₀ doesn't change during data collection
+- **(D2)**: Overlap - all actions have p_π₀(A|X) > 0
+- **(J1)**: I.I.D. oracle slice - random subset for calibration
+- **(J2-M)**: Judge monotonicity - higher S → higher E[Y|S]
+- **(R3)**: Rate conditions - nuisance functions converge at n^(-1/4)
+
 ### Key Components
 
 1. **Isotonic Reward Calibration**: Maps judge scores S to calibrated rewards R = f(S) using a small oracle slice
@@ -83,12 +126,27 @@ CJE recasts judge-based evaluation as **calibrated causal inference** using our 
 
 ## 🚀 Quick Start
 
+### Prerequisites
+
+- Python 3.10+
+- Poetry (for dependency management)
+- Fireworks API key (for log probability computation)
+
 ### Installation
 
 ```bash
+# Clone the repository
 git clone https://github.com/fondutech/causal-judge-evaluation.git
 cd causal-judge-evaluation
+
+# Install with poetry (recommended)
+poetry install
+
+# Or install with pip
 pip install -e .
+
+# Set your API key
+export FIREWORKS_API_KEY="your-api-key"
 ```
 
 ### Basic Usage
@@ -105,6 +163,31 @@ results = analyze_dataset(
 
 # Get policy value estimate with 95% CI
 print(f"Policy value: {results.estimates[0]:.3f} ± {1.96 * results.standard_errors[0]:.3f}")
+```
+
+### Complete Example: Comparing Model Versions
+
+```python
+from cje import analyze_dataset
+
+# Evaluate if switching from Llama-3-8B (π₀) to Llama-3-70B (π′) improves quality
+# Note: Both models must support teacher forcing (i.e., be available via Fireworks)
+results = analyze_dataset(
+    "llama_logs.jsonl",  # Your logged Llama-3-8B conversations
+    estimator="calibrated-ips",
+    oracle_coverage=0.05,  # 5% human labels
+    target_policies=["llama-3-70b", "llama-3.1-70b"]  # Compare larger models
+)
+
+# Compare policies
+for i, policy in enumerate(["llama-3-70b", "llama-3.1-70b"]):
+    estimate = results.estimates[i]
+    stderr = results.standard_errors[i]
+    print(f"{policy}: {estimate:.3f} ± {1.96*stderr:.3f}")
+    
+# Check diagnostics
+if results.diagnostics.ess < 1000:
+    print("⚠️ Warning: Low effective sample size - consider more data")
 ```
 
 ### Data Format
@@ -287,9 +370,15 @@ calibrated_rewards = calibration_map.transform(judge_scores)
 
 ## 📚 Documentation
 
+### Module Documentation
+- **[Calibration](cje/calibration/)**: SIMCal algorithm, isotonic regression, weight calibration
+- **[Data](cje/data/)**: Data models, loaders, validation
+- **[Teacher Forcing](cje/teacher_forcing/)**: Log probability computation
+- **[Estimators](cje/estimators/)**: IPS, DR, TMLE implementations
+- **[Diagnostics](cje/diagnostics/)**: Comprehensive diagnostic system
+
+### Guides & Examples
 - **Paper**: Forthcoming
-- **[API Reference](docs/)**: Full documentation
-- **[Diagnostics Guide](cje/diagnostics/)**: Comprehensive diagnostic system
 - **[Examples](examples/)**: Jupyter notebooks with tutorials
 - **[Arena Experiments](cje/experiments/arena_10k_simplified)**: Production pipeline
 
