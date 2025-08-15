@@ -168,7 +168,7 @@ class RawIPS(BaseCJEEstimator):
         # Compute weight diagnostics
         ess_per_policy = {}
         max_weight_per_policy = {}
-        tail_ratio_per_policy = {}
+        tail_index_per_policy = {}
         overall_ess = 0.0
         total_n = 0
 
@@ -178,7 +178,9 @@ class RawIPS(BaseCJEEstimator):
                 w_diag = compute_weight_diagnostics(weights, policy)
                 ess_per_policy[policy] = w_diag["ess_fraction"]
                 max_weight_per_policy[policy] = w_diag["max_weight"]
-                tail_ratio_per_policy[policy] = w_diag["tail_ratio_99_5"]
+                # Use tail_index if available (Hill estimator)
+                if "tail_index" in w_diag:
+                    tail_index_per_policy[policy] = w_diag["tail_index"]
 
                 # Track overall
                 n = len(weights)
@@ -188,11 +190,16 @@ class RawIPS(BaseCJEEstimator):
         # Compute overall weight ESS
         weight_ess = overall_ess / total_n if total_n > 0 else 0.0
 
-        # Determine status based on ESS and tail ratios
-        worst_tail = max(tail_ratio_per_policy.values()) if tail_ratio_per_policy else 0
-        if weight_ess < 0.01 or worst_tail > 1000:
+        # Determine status based on ESS and tail index
+        # For tail index: < 1 is critical (infinite mean), < 2 is warning (infinite variance)
+        worst_tail_index = (
+            min(tail_index_per_policy.values())
+            if tail_index_per_policy
+            else float("inf")
+        )
+        if weight_ess < 0.01 or worst_tail_index < 1:
             weight_status = Status.CRITICAL
-        elif weight_ess < 0.1 or worst_tail > 100:
+        elif weight_ess < 0.1 or worst_tail_index < 2:
             weight_status = Status.WARNING
         else:
             weight_status = Status.GOOD
@@ -212,7 +219,7 @@ class RawIPS(BaseCJEEstimator):
             weight_status=weight_status,
             ess_per_policy=ess_per_policy,
             max_weight_per_policy=max_weight_per_policy,
-            weight_tail_ratio_per_policy=tail_ratio_per_policy,
+            tail_indices=tail_index_per_policy if tail_index_per_policy else None,
             # No calibration fields for RawIPS
         )
 

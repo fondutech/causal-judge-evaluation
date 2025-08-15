@@ -1,72 +1,82 @@
 @startuml
+' --------- Minimal, compile-safe styling ---------
 skinparam shadowing false
-skinparam dpi 180
+skinparam monochrome false
 skinparam defaultTextAlignment left
-skinparam Rectangle {
-  RoundCorner 8
-  BorderColor #2F3A4A
-  FontStyle bold
-}
 skinparam Arrow {
   Color #6B7280
 }
-top to bottom direction
-
-rectangle "<b>Causal Judge Evaluation (CJE) — Engineering Overview</b>" as TITLE #FFFFFF
-
-rectangle "<b>Data</b>" as DATA #E9F2FF {
-  rectangle "Logs\n(prompts, completions,\nlogging policy props)" as LOGS
-  rectangle "Judge scores S\n(from LLM or human grader)" as SCORES
-  rectangle "Oracle slice\n(sampled & human-labeled)" as ORACLE
+skinparam Rectangle {
+  BorderColor #2F3A4A
+  RoundCorner 8
+  FontStyle bold
+}
+skinparam note {
+  BorderColor #A3A3A3
+  BackgroundColor #FCFCFC
 }
 
-rectangle "<b>Calibrations</b>" as CAL #DDEFE6 {
-  rectangle "Reward calibration\nLearn f(S) on oracle labels\n(maps judge scores to calibrated reward)" as RC
-  rectangle "SIMCal weight calibration\nSmooth & stabilize policy weights\n(monotone in S, variance-capped)" as SIM
+rectangle "Causal Judge Evaluation (CJE) — Engineering Overview" as TITLE #FFFFFF
+
+' --------- Row 1: Data ---------
+together {
+  rectangle "Logs\n(prompts, completions,\nlog-policy props l0)" as D_LOGS  #E9F2FF
+  rectangle "Judge scores S\n(LLM or human grader)"             as D_SCORES #E9F2FF
+  rectangle "Oracle slice\n(sampled & labeled)"                 as D_ORACLE #E9F2FF
 }
+D_LOGS -[hidden]-> D_SCORES -[hidden]-> D_ORACLE
 
-rectangle "<b>Estimators</b>" as EST #FFF4E5 {
-  rectangle "Cal-IPS:\nWeighted average of calibrated rewards" as CALIPS
-  rectangle "DR-CPO:\nWeighted average of model residuals + predicted reward" as DRCPO
+' --------- Row 2: Calibrations ---------
+together {
+  rectangle "SIMCal (weights)\nSmooth & stabilize policy weights\n(monotone in S, mean-one,\nvariance-capped rho)" as C_SIM #EAF4EE
+  rectangle "Reward calibration\nLearn f(S) on oracle labels\n(mean-preserving map to R)" as C_RC #EAF4EE
 }
+C_SIM -[hidden]-> C_RC
 
-rectangle "<b>Outputs</b>" as OUT #ECECEC {
-  rectangle "Policy value estimate\nwith confidence interval" as OUT1
-  rectangle "Diagnostics\n(ESS, tail risk, overlap, judge drift)" as OUT2
+' --------- Row 3: Estimators ---------
+together {
+  rectangle "Cal-IPS\nWeighted average of calibrated rewards\nZhat = E_n[ W_cal * R ]" as E_IPS   #FFF4E5
+  rectangle "DR-CPO\nResiduals + predicted reward (doubly robust)\nZhat = E_n[ ghat_pi'(X) + W_cal*(R - mhat(X,A)) ]" as E_DRCPO #FFF4E5
 }
+E_IPS -[hidden]-> E_DRCPO
 
-' Data → Calibrations
-LOGS --> SIM : base policy weights
-SCORES --> SIM : index by judge score
-SCORES --> RC
-ORACLE --> RC : fit mapping f(S)
+' --------- Row 4: Outputs ---------
+together {
+  rectangle "Policy value\nV(pi') with confidence interval"  as O_VAL  #ECECEC
+  rectangle "Diagnostics\nESS, tail risk, overlap, judge drift" as O_DIAG #ECECEC
+}
+O_VAL -[hidden]-> O_DIAG
 
-' Calibrations → Estimators
-RC --> CALIPS
-RC --> DRCPO
-SIM --> CALIPS
-SIM --> DRCPO
+' --------- Straight-down flows ---------
+D_LOGS   --> C_SIM    : base policy weights
+D_SCORES --> C_SIM    : index by S
+D_SCORES --> C_RC     : scores S
+D_ORACLE --> C_RC     : labels
 
-' Estimators → Outputs
-CALIPS --> OUT1
-DRCPO  --> OUT1
-CALIPS --> OUT2
-DRCPO  --> OUT2
-SIM    --> OUT2
-RC     --> OUT2
+C_SIM --> E_IPS       : W_cal
+C_RC  --> E_IPS       : R = f(S)
 
-note right of SIM
+C_SIM --> E_DRCPO     : W_cal
+C_RC  --> E_DRCPO     : R = f(S)
+
+E_IPS   --> O_VAL
+E_DRCPO --> O_VAL
+C_SIM   --> O_DIAG
+E_IPS   --> O_DIAG
+E_DRCPO --> O_DIAG
+
+' --------- Notes ---------
+note right of C_SIM
 Stabilizes importance weights:
-• mean-one normalization
-• monotone in judge score
-• variance cap to avoid heavy tails
-• optional targeting for IPS accuracy
+- mean-one normalization
+- monotone in judge score
+- variance cap to avoid heavy tails
+- optional targeting for IPS accuracy
 end note
 
-note right of DRCPO
-Doubly Robust = combines
-model predictions with
-calibrated weights so that
-either is enough for accuracy.
+note right of E_DRCPO
+Doubly robust = either the weights
+or the reward model suffices for accuracy
+(sqrt(n) + efficiency under cross-fitting).
 end note
 @enduml
