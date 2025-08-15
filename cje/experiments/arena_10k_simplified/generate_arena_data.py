@@ -92,7 +92,7 @@ def create_prompts(
     print(f"Preparing {n_samples} prompts from ChatBot Arena dataset...")
 
     # Import the prepare function
-    from pipeline_steps.prepare_arena_data import prepare_arena_prompts
+    from data_generation.prepare_arena_data import prepare_arena_prompts
 
     # Generate prompts
     prompts = prepare_arena_prompts(

@@ -123,7 +123,7 @@ def main() -> None:
     print(f"Judge scores before: {scores_before}")
 
     # Force rescore to test
-    cmd = f"poetry run python pipeline_steps/add_scores_with_resume.py {base_responses} --type judge --batch-size 5"
+    cmd = f"poetry run python data_generation/add_scores_with_resume.py {base_responses} --type judge --batch-size 5"
 
     # Interrupt during scoring
     proc = run_with_interrupt(cmd, interrupt_after=5.0)
@@ -147,8 +147,8 @@ def main() -> None:
     print("\n📝 Test 4: Parallel temp file safety")
 
     # Start two scoring processes in parallel
-    cmd1 = f"poetry run python pipeline_steps/add_scores_with_resume.py {base_responses} --type judge --force &"
-    cmd2 = f"poetry run python pipeline_steps/add_scores_with_resume.py {test_dir}/responses/clone_responses.jsonl --type judge &"
+    cmd1 = f"poetry run python data_generation/add_scores_with_resume.py {base_responses} --type judge --force &"
+    cmd2 = f"poetry run python data_generation/add_scores_with_resume.py {test_dir}/responses/clone_responses.jsonl --type judge &"
 
     print("Starting parallel scoring processes...")
     subprocess.run(cmd1 + " " + cmd2 + " wait", shell=True)

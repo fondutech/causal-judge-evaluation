@@ -7,7 +7,7 @@ test_e2e_data copy/
 test_batch/
 
 # Analysis outputs
-analysis/
+# Note: analysis/ is now a source directory, not an output directory
 *.json
 
 # Temp files from batch saving
