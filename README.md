@@ -42,12 +42,38 @@ print(f"Policy value: {results.estimates[0]:.3f} ± {1.96 * results.standard_err
 
 ## 📊 How It Works
 
-CJE uses a three-stage pipeline to transform biased judge scores into unbiased policy estimates:
+CJE transforms biased judge scores into unbiased policy estimates through a principled pipeline:
 
 ```
-[Your Logs] → [Calibration] → [Importance Weighting] → [SIMCal] → [Unbiased Estimate]
-     ↓              ↓                    ↓                  ↓              ↓
-Judge scores → Oracle slice → Teacher forcing → Variance control → Policy value
+     INPUTS                    CALIBRATION                 WEIGHTING
+┌─────────────────┐      ┌──────────────────┐      ┌─────────────────┐
+│   Your Logs     │      │   Oracle Slice   │      │ Teacher Forcing │
+│                 │      │                  │      │                 │
+│ • Prompts (X)   │  +   │ • 5% human labels│  →   │ • Compute log   │
+│ • Responses (A) │      │ • Learn f: S → Y │      │   p_π′(A|X)     │
+│ • Judge scores  │      │ • Isotonic fit   │      │ • W = exp(Δ log)│
+│ • log p_π₀(A|X) │      │                  │      │                 │
+└─────────────────┘      └──────────────────┘      └─────────────────┘
+         ↓                        ↓                         ↓
+         ↓                        ↓                         ↓
+    All samples          ┌────────────────────┐    ┌──────────────────┐
+    get calibrated       │ Calibrated Rewards│    │  SIMCal Weights  │
+    rewards R = f(S)     │                   │    │                  │
+                         │ • R = f(S) for    │    │ • W_c = monotone │
+                         │   all samples     │    │   projection     │
+                         │ • Unbiased if     │    │ • Variance cap ρ │
+                         │   judge monotone  │    │ • Preserves mean │
+                         └────────────────────┘    └──────────────────┘
+                                  ↓                         ↓
+                                  └─────────┬───────────────┘
+                                            ↓
+                                  ┌────────────────────┐
+                                  │   Final Estimate   │
+                                  │                    │
+                                  │  V̂ = mean(W_c × R) │
+                                  │  SE = std(W_c × R)/√n│
+                                  │  95% CI: V̂ ± 1.96SE│
+                                  └────────────────────┘
 ```
 
 ### Key Innovation: SIMCal
@@ -88,8 +114,8 @@ CJE expects JSONL logs with:
 {
   "prompt": "What is machine learning?",
   "response": "Machine learning is...",
-  "base_policy_logprob": -35.704,
-  "target_policy_logprobs": {
+  "base_policy_logprob": -35.704,  // Log P(response|prompt) under π₀
+  "target_policy_logprobs": {       // Optional: pre-computed for efficiency
     "policy_a": -32.456,
     "policy_b": -33.789
   },
@@ -161,9 +187,7 @@ results = estimator.fit_and_estimate()
 
 ## 📚 Documentation
 
-- **[Installation Guide](docs/INSTALLATION.md)**: Detailed setup instructions
-- **[API Reference](docs/API.md)**: Complete API documentation
-- **[Theory & Methods](docs/THEORY.md)**: Mathematical foundations
+- **[Theory & Methods](docs/THEORY.md)**: Mathematical foundations and detailed pipeline
 - **[Examples](examples/)**: Jupyter notebooks with tutorials
 
 ### Module Documentation
