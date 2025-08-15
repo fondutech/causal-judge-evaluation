@@ -108,8 +108,9 @@ from .utils import (
 
 # Import visualization utilities if available
 try:
-    from .utils import (
-        plot_weight_dashboard,
+    from .visualization import (
+        plot_weight_dashboard_summary,
+        plot_weight_dashboard_detailed,
         plot_calibration_comparison,
         plot_policy_estimates,
     )
@@ -187,7 +188,8 @@ __all__ = [
 if _viz_available:
     __all__.extend(
         [
-            "plot_weight_dashboard",
+            "plot_weight_dashboard_summary",
+            "plot_weight_dashboard_detailed",
             "plot_calibration_comparison",
             "plot_policy_estimates",
         ]

@@ -11,11 +11,9 @@ This module provides plotting functions organized by domain:
 from .calibration import plot_calibration_comparison
 from .estimates import plot_policy_estimates
 
-# Import weight dashboards (with backward-compatible aliases)
+# Import weight dashboards
 from .weight_dashboards import (
-    plot_weight_dashboard,  # Alias for plot_weight_dashboard_summary
     plot_weight_dashboard_summary,
-    plot_weight_dashboard_per_policy,  # Alias for plot_weight_dashboard_detailed
     plot_weight_dashboard_detailed,
 )
 
@@ -28,9 +26,7 @@ __all__ = [
     # Policy estimates
     "plot_policy_estimates",
     # Weight dashboards
-    "plot_weight_dashboard",
     "plot_weight_dashboard_summary",
-    "plot_weight_dashboard_per_policy",
     "plot_weight_dashboard_detailed",
     # DR dashboards
     "plot_dr_dashboard",

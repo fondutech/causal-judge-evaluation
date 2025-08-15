@@ -75,22 +75,22 @@ All visualization functions follow consistent patterns:
 
 ```python
 from cje.visualization import (
-    plot_weight_dashboard,  # Alias for plot_weight_dashboard_summary
-    plot_weight_dashboard_per_policy,  # Alias for plot_weight_dashboard_detailed
+    plot_weight_dashboard_summary,
+    plot_weight_dashboard_detailed,
     plot_dr_dashboard,
     plot_calibration_comparison,
     plot_policy_estimates
 )
 
 # Weight diagnostics - summary dashboard (6 panels)
-fig, metrics = plot_weight_dashboard(
+fig, metrics = plot_weight_dashboard_summary(
     raw_weights_dict=raw_weights,
     calibrated_weights_dict=calibrated_weights,
-    save_path="diagnostics/weights.png"
+    save_path="diagnostics/weights_summary.png"
 )
 
 # Weight diagnostics - detailed per-policy view
-fig, metrics = plot_weight_dashboard_per_policy(
+fig, metrics = plot_weight_dashboard_detailed(
     raw_weights_dict=raw_weights,
     calibrated_weights_dict=calibrated_weights,
     judge_scores=judge_scores,  # Optional for correlation analysis
@@ -131,7 +131,7 @@ Complex diagnostics are organized into focused panels:
 Two complementary weight visualizations:
 - **Summary dashboard**: 6-panel overview across all policies
 - **Detailed dashboard**: Per-policy analysis with judge score correlation
-- Both accessible via legacy aliases for backward compatibility
+- Each serves distinct analysis needs with clear naming
 
 ### 3. **Automatic Metric Computation**
 Visualizations compute and display key metrics:
@@ -157,7 +157,7 @@ pip install matplotlib[gui]
 ### "Figure too small for content"
 Adjust figsize parameter:
 ```python
-plot_weight_dashboard(..., figsize=(16, 14))
+plot_weight_dashboard_summary(..., figsize=(16, 14))
 ```
 
 ### "Missing diagnostics object"

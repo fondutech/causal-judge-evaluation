@@ -14,8 +14,8 @@ import warnings
 try:
     import matplotlib.pyplot as plt
     from cje.visualization import (
-        plot_weight_dashboard,
-        plot_weight_dashboard_per_policy,
+        plot_weight_dashboard_summary,
+        plot_weight_dashboard_detailed,
         plot_calibration_comparison,
         plot_policy_estimates,
         plot_dr_dashboard,
@@ -121,7 +121,7 @@ def _generate_weight_dashboards(
 
     if raw_weights_dict and calibrated_weights_dict:
         # Generate combined overview dashboard (6-panel summary)
-        fig, _ = plot_weight_dashboard(
+        fig, _ = plot_weight_dashboard_summary(
             raw_weights_dict,
             calibrated_weights_dict,
             n_samples=sampler.n_valid_samples,
@@ -132,7 +132,7 @@ def _generate_weight_dashboards(
         plt.close(fig)
 
         # Generate per-policy detailed dashboard
-        fig, _ = plot_weight_dashboard_per_policy(
+        fig, _ = plot_weight_dashboard_detailed(
             raw_weights_dict,
             calibrated_weights_dict,
             n_samples=sampler.n_valid_samples,

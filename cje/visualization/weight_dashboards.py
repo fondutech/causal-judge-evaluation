@@ -898,7 +898,3 @@ def _plot_single_policy_weight_histogram(
 # ============================================================================
 # Backward compatibility aliases
 # ============================================================================
-
-# These maintain backward compatibility with existing code
-plot_weight_dashboard = plot_weight_dashboard_summary
-plot_weight_dashboard_per_policy = plot_weight_dashboard_detailed

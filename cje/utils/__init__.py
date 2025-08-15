@@ -16,9 +16,11 @@ from .extreme_weights_analysis import (
 )
 
 # Import visualization functions if matplotlib is available
+# Note: visualization functions have moved to cje.visualization module
 try:
-    from .visualization import (
-        plot_weight_dashboard,
+    from ..visualization import (
+        plot_weight_dashboard_summary,
+        plot_weight_dashboard_detailed,
         plot_calibration_comparison,
         plot_policy_estimates,
     )
@@ -37,8 +39,9 @@ __all__ = [
 if _visualization_available:
     __all__.extend(
         [
-            # Visualization
-            "plot_weight_dashboard",
+            # Visualization (re-exported for backward compatibility)
+            "plot_weight_dashboard_summary",
+            "plot_weight_dashboard_detailed",
             "plot_calibration_comparison",
             "plot_policy_estimates",
         ]
