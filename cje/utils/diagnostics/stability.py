@@ -44,13 +44,15 @@ def kendall_tau_drift(
 
     tau, p_value = stats.kendalltau(scores_1, scores_2)
 
-    # Detect significant drift
-    drift_detected = (
-        p_value < 0.05 and tau < 0.8
-    )  # Drift if correlation drops below 0.8
+    # Detect significant drift (handle NaN)
+    drift_detected = False
+    if not np.isnan(tau) and not np.isnan(p_value):
+        drift_detected = p_value < 0.05 and tau < 0.8
 
-    # Interpretation
-    if tau > 0.9:
+    # Interpretation (handle NaN)
+    if np.isnan(tau):
+        interpretation = "Cannot compute stability (constant values)"
+    elif tau > 0.9:
         interpretation = "Excellent stability (τ > 0.9)"
     elif tau > 0.8:
         interpretation = "Good stability (0.8 < τ ≤ 0.9)"
@@ -132,8 +134,13 @@ def sequential_drift_detection(
         if result["drift_detected"]:
             drift_points.append(i + 1)
 
-    # Overall stability as minimum tau
-    overall_stability = min(tau_sequence) if tau_sequence else 1.0
+    # Overall stability as minimum tau (handle NaN and None values)
+    if tau_sequence:
+        # Filter out NaN and None values before taking min
+        valid_taus = [t for t in tau_sequence if t is not None and not np.isnan(t)]
+        overall_stability = min(valid_taus) if valid_taus else np.nan
+    else:
+        overall_stability = 1.0
 
     return {
         "tau_sequence": tau_sequence,
@@ -326,18 +333,26 @@ def compute_stability_diagnostics(
     Returns:
         Dictionary with stability metrics
     """
-    # Extract judge scores
-    judge_scores = []
+    # Extract judge scores and oracle labels separately
+    all_judge_scores = []
     oracle_labels = []
+    paired_judge_scores = []
 
     for sample in dataset.samples:
         if judge_field in sample.metadata:
-            judge_scores.append(sample.metadata[judge_field])
+            judge_score = sample.metadata[judge_field]
+            all_judge_scores.append(judge_score)
 
+            # Collect oracle labels separately for calibration checking
             if oracle_field and oracle_field in sample.metadata:
-                oracle_labels.append(sample.metadata[oracle_field])
+                oracle_label = sample.metadata[oracle_field]
+                # Only include non-None oracle labels
+                if oracle_label is not None:
+                    oracle_labels.append(oracle_label)
+                    paired_judge_scores.append(judge_score)
 
-    judge_scores = np.array(judge_scores)
+    # Use all judge scores for drift detection
+    judge_scores = np.array(all_judge_scores)
     n = len(judge_scores)
 
     if n == 0:
@@ -367,25 +382,46 @@ def compute_stability_diagnostics(
     }
 
     # If we have oracle labels, check calibration stability
-    if len(oracle_labels) == len(judge_scores):
+    if len(oracle_labels) > 0:
         oracle_labels = np.array(oracle_labels)
+        paired_judge_scores = np.array(paired_judge_scores)
 
-        # Overall correlation
-        overall_tau, _ = stats.kendalltau(judge_scores, oracle_labels)
-        result["overall_tau_with_oracle"] = float(overall_tau)
+        # Overall correlation (using only paired data)
+        overall_tau, _ = stats.kendalltau(paired_judge_scores, oracle_labels)
+        # Handle potential None or NaN from kendalltau
+        if overall_tau is None:
+            result["overall_tau_with_oracle"] = np.nan
+        else:
+            result["overall_tau_with_oracle"] = float(overall_tau)
 
-        # Check correlation stability across batches
+        # Check correlation stability across batches (using paired data)
         tau_per_batch = []
-        for i in range(n_batches):
-            start = i * batch_size
-            end = min((i + 1) * batch_size, n)
+        n_paired = len(paired_judge_scores)
+        paired_batch_size = max(
+            10, n_paired // 10
+        )  # At least 10, or 10% of paired data
+        n_paired_batches = n_paired // paired_batch_size
 
-            batch_tau, _ = stats.kendalltau(
-                judge_scores[start:end], oracle_labels[start:end]
-            )
-            tau_per_batch.append(batch_tau)
+        for i in range(n_paired_batches):
+            start = i * paired_batch_size
+            end = min((i + 1) * paired_batch_size, n_paired)
+
+            if end - start >= 2:  # Need at least 2 points for correlation
+                batch_tau, _ = stats.kendalltau(
+                    paired_judge_scores[start:end], oracle_labels[start:end]
+                )
+                # Ensure we handle potential None values from kendalltau
+                if batch_tau is None:
+                    tau_per_batch.append(np.nan)
+                else:
+                    tau_per_batch.append(batch_tau)
 
         result["tau_with_oracle_per_batch"] = tau_per_batch
-        result["tau_stability"] = float(np.std(tau_per_batch))
+        # Handle NaN and None values in tau_per_batch when computing std
+        valid_taus = [t for t in tau_per_batch if t is not None and not np.isnan(t)]
+        if valid_taus:
+            result["tau_stability"] = float(np.std(valid_taus))
+        else:
+            result["tau_stability"] = np.nan
 
     return result

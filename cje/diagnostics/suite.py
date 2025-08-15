@@ -128,9 +128,10 @@ class DiagnosticSuite:
     def has_issues(self) -> bool:
         """Quick check if any issues detected."""
         # Check heuristics
-        min_ess = min(w.ess for w in self.weight_diagnostics.values())
-        if min_ess < 100:
-            return True
+        if self.weight_diagnostics:
+            min_ess = min(w.ess for w in self.weight_diagnostics.values())
+            if min_ess < 100:
+                return True
 
         # Check for heavy tails
         if any(w.has_heavy_tails for w in self.weight_diagnostics.values()):
@@ -160,22 +161,31 @@ class DiagnosticSuite:
                 recs.append(f"   → Consider increasing sample size")
 
             if metrics.has_heavy_tails:
-                recs.append(
-                    f"⚠️ {policy}: Heavy tails detected (α={metrics.hill_index:.2f})"
+                tail_desc = (
+                    f" (α={metrics.hill_index:.2f})"
+                    if metrics.hill_index is not None
+                    else ""
                 )
+                recs.append(f"⚠️ {policy}: Heavy tails detected{tail_desc}")
                 recs.append(f"   → Use DR estimation or enable variance regularization")
             elif metrics.has_marginal_tails:
-                recs.append(
-                    f"⚠️ {policy}: Marginal tail behavior (α={metrics.hill_index:.2f})"
+                tail_desc = (
+                    f" (α={metrics.hill_index:.2f})"
+                    if metrics.hill_index is not None
+                    else ""
                 )
+                recs.append(f"⚠️ {policy}: Marginal tail behavior{tail_desc}")
                 recs.append(f"   → Monitor variance, consider DR if unstable")
 
         # Stability issues
         if self.stability:
             if self.stability.has_drift:
-                recs.append(
-                    f"⚠️ Judge drift detected (Δτ={self.stability.max_tau_change:.3f})"
-                )
+                if self.stability.max_tau_change is not None:
+                    recs.append(
+                        f"⚠️ Judge drift detected (Δτ={self.stability.max_tau_change:.3f})"
+                    )
+                else:
+                    recs.append(f"⚠️ Judge drift detected")
                 recs.append(f"   → Refresh oracle labels or retrain judge")
 
             if self.stability.ece and self.stability.ece > 0.1:

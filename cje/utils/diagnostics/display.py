@@ -39,13 +39,21 @@ def create_weight_summary_table(
         for policy in diag.policies:
             ess = diag.ess_per_policy.get(policy, 0.0)
             max_w = diag.max_weight_per_policy.get(policy, 1.0)
-            # Determine status based on ESS
-            if ess > 0.5:
-                status = "GOOD"
-            elif ess > 0.2:
-                status = "WARNING"
+            # Use per-policy status if available
+            if (
+                hasattr(diag, "status_per_policy")
+                and diag.status_per_policy
+                and policy in diag.status_per_policy
+            ):
+                status = diag.status_per_policy[policy].value
             else:
-                status = "CRITICAL"
+                # Fallback: Determine status based on ESS
+                if ess > 0.5:
+                    status = "GOOD"
+                elif ess > 0.2:
+                    status = "WARNING"
+                else:
+                    status = "CRITICAL"
 
             lines.append(f"{policy:<30} {ess:>7.1%} {max_w:>12.4f} {status:<10}")
 

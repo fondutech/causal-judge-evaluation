@@ -203,6 +203,59 @@ class CalibratedIPS(BaseCJEEstimator):
             n = len(rewards)
             n_samples_used[policy] = n
 
+            # SAFETY CHECK: Refuse to provide unreliable estimates
+            # Following CLAUDE.md: "Fail Fast and Clearly"
+
+            # Check effective sample size
+            ess = np.sum(weights) ** 2 / np.sum(weights**2) / n
+
+            # Check weight concentration: What fraction of total weight is on top 5% of samples?
+            sorted_weights = np.sort(weights)[::-1]
+            top_5pct_count = max(1, int(0.05 * n))
+            top_5pct_weight = np.sum(sorted_weights[:top_5pct_count]) / np.sum(weights)
+
+            # Check raw weights for hidden problems (calibration can mask issues)
+            raw_weights = self.get_raw_weights(policy)
+            raw_near_zero = 0.0
+            if raw_weights is not None:
+                raw_near_zero = np.sum(raw_weights < 1e-10) / len(raw_weights)
+
+            # Coefficient of variation as additional check
+            cv_weights = (
+                np.std(weights) / np.mean(weights)
+                if np.mean(weights) > 0
+                else float("inf")
+            )
+
+            # Refuse if multiple indicators suggest unreliability
+            # Lower thresholds to catch the unhelpful policy catastrophic failure
+            refuse = False
+            reasons = []
+
+            if ess < 0.30:  # Less than 30% effective sample size
+                refuse = True
+                reasons.append(f"ESS={ess:.1%}")
+
+            if raw_near_zero > 0.85:  # More than 85% of raw weights near zero
+                refuse = True
+                reasons.append(f"raw_near_zero={raw_near_zero:.1%}")
+
+            if (
+                top_5pct_weight > 0.30 and cv_weights > 2.0
+            ):  # High concentration AND high variability
+                refuse = True
+                reasons.append(f"top_5%={top_5pct_weight:.1%} with CV={cv_weights:.1f}")
+
+            if refuse:
+                logger.error(
+                    f"Policy '{policy}' likely unreliable ({', '.join(reasons)}). "
+                    f"Refusing to provide potentially catastrophic estimate."
+                )
+                estimates.append(np.nan)
+                standard_errors.append(np.nan)
+                influence_functions[policy] = np.full(n, np.nan)
+                continue
+
             # Compute weighted estimate
             estimate = float(np.sum(weights * rewards) / n)
             estimates.append(estimate)
@@ -297,6 +350,7 @@ class CalibratedIPS(BaseCJEEstimator):
         ess_per_policy = {}
         max_weight_per_policy = {}
         tail_indices = {}
+        status_per_policy = {}
         overall_ess = 0.0
         total_n = 0
 
@@ -306,6 +360,7 @@ class CalibratedIPS(BaseCJEEstimator):
                 w_diag = compute_weight_diagnostics(weights, policy, compute_hill=True)
                 ess_per_policy[policy] = w_diag["ess_fraction"]
                 max_weight_per_policy[policy] = w_diag["max_weight"]
+                status_per_policy[policy] = w_diag["status"]  # Store per-policy status
 
                 # Hill tail index is now computed in compute_weight_diagnostics
                 if "tail_index" in w_diag:
@@ -368,6 +423,7 @@ class CalibratedIPS(BaseCJEEstimator):
             weight_status=weight_status,
             ess_per_policy=ess_per_policy,
             max_weight_per_policy=max_weight_per_policy,
+            status_per_policy=status_per_policy,
             tail_indices=tail_indices,  # Use Hill indices instead of tail ratios
             # Calibration fields
             calibration_rmse=calibration_rmse,

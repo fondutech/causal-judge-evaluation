@@ -43,6 +43,7 @@ class IPSDiagnostics:
     # Per-policy weight metrics
     ess_per_policy: Dict[str, float]
     max_weight_per_policy: Dict[str, float]
+    status_per_policy: Optional[Dict[str, Status]] = None  # Per-policy status
     weight_tail_ratio_per_policy: Optional[Dict[str, float]] = (
         None  # DEPRECATED: Use tail_indices
     )

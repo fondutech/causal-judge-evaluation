@@ -1,53 +1,40 @@
 @startuml
-' --------- Minimal, compile-safe styling ---------
 skinparam shadowing false
 skinparam monochrome false
 skinparam defaultTextAlignment left
-skinparam Arrow {
-  Color #6B7280
-}
-skinparam Rectangle {
-  BorderColor #2F3A4A
-  RoundCorner 8
-  FontStyle bold
-}
-skinparam note {
-  BorderColor #A3A3A3
-  BackgroundColor #FCFCFC
-}
+skinparam Arrow { Color #6B7280 }
+skinparam Rectangle { BorderColor #2F3A4A; RoundCorner 8; FontStyle bold }
+skinparam note { BorderColor #A3A3A3; BackgroundColor #FCFCFC }
 
 rectangle "Causal Judge Evaluation (CJE) — Engineering Overview" as TITLE #FFFFFF
 
-' --------- Row 1: Data ---------
-together {
-  rectangle "Logs\n(prompts, completions,\nlog-policy props l0)" as D_LOGS  #E9F2FF
-  rectangle "Judge scores S\n(LLM or human grader)"             as D_SCORES #E9F2FF
-  rectangle "Oracle slice\n(sampled & labeled)"                 as D_ORACLE #E9F2FF
-}
-D_LOGS -[hidden]-> D_SCORES -[hidden]-> D_ORACLE
+' ---- Data (row 1) ----
+rectangle "Logs\n(prompts, completions,\nlog-policy props l0)" as D_LOGS  #E9F2FF
+rectangle "Judge scores S\n(LLM or human grader)"             as D_SCORES #E9F2FF
+rectangle "Oracle slice\n(sampled & labeled)"                 as D_ORACLE #E9F2FF
 
-' --------- Row 2: Calibrations ---------
-together {
-  rectangle "SIMCal (weights)\nSmooth & stabilize policy weights\n(monotone in S, mean-one,\nvariance-capped rho)" as C_SIM #EAF4EE
-  rectangle "Reward calibration\nLearn f(S) on oracle labels\n(mean-preserving map to R)" as C_RC #EAF4EE
-}
+D_LOGS -[hidden]-> D_SCORES
+D_SCORES -[hidden]-> D_ORACLE
+
+' ---- Calibrations (row 2) ----
+rectangle "SIMCal (weights)\nSmooth & stabilize policy weights\n(monotone in S, mean-one,\nvariance-capped rho)" as C_SIM #EAF4EE
+rectangle "Reward calibration\nLearn f(S) on oracle labels\n(mean-preserving map to R)" as C_RC #EAF4EE
+
 C_SIM -[hidden]-> C_RC
 
-' --------- Row 3: Estimators ---------
-together {
-  rectangle "Cal-IPS\nWeighted average of calibrated rewards\nZhat = E_n[ W_cal * R ]" as E_IPS   #FFF4E5
-  rectangle "DR-CPO\nResiduals + predicted reward (doubly robust)\nZhat = E_n[ ghat_pi'(X) + W_cal*(R - mhat(X,A)) ]" as E_DRCPO #FFF4E5
-}
+' ---- Estimators (row 3) ----
+rectangle "Cal-IPS\nWeighted average of calibrated rewards\nZhat = E_n[ W_cal * R ]" as E_IPS   #FFF4E5
+rectangle "DR-CPO\nResiduals + predicted reward (doubly robust)\nZhat = E_n[ ghat_pi'(X) + W_cal*(R - mhat(X,A)) ]" as E_DRCPO #FFF4E5
+
 E_IPS -[hidden]-> E_DRCPO
 
-' --------- Row 4: Outputs ---------
-together {
-  rectangle "Policy value\nV(pi') with confidence interval"  as O_VAL  #ECECEC
-  rectangle "Diagnostics\nESS, tail risk, overlap, judge drift" as O_DIAG #ECECEC
-}
+' ---- Outputs (row 4) ----
+rectangle "Policy value\nV(pi') with confidence interval"  as O_VAL  #ECECEC
+rectangle "Diagnostics\nESS, tail risk, overlap, judge drift" as O_DIAG #ECECEC
+
 O_VAL -[hidden]-> O_DIAG
 
-' --------- Straight-down flows ---------
+' ---- Flows ----
 D_LOGS   --> C_SIM    : base policy weights
 D_SCORES --> C_SIM    : index by S
 D_SCORES --> C_RC     : scores S
@@ -65,7 +52,6 @@ C_SIM   --> O_DIAG
 E_IPS   --> O_DIAG
 E_DRCPO --> O_DIAG
 
-' --------- Notes ---------
 note right of C_SIM
 Stabilizes importance weights:
 - mean-one normalization
@@ -75,8 +61,8 @@ Stabilizes importance weights:
 end note
 
 note right of E_DRCPO
-Doubly robust = either the weights
+Doubly robust: either the weights
 or the reward model suffices for accuracy
-(sqrt(n) + efficiency under cross-fitting).
+(sqrt(n) inference under cross-fitting).
 end note
 @enduml

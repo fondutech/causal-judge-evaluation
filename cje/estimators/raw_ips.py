@@ -91,6 +91,28 @@ class RawIPS(BaseCJEEstimator):
                     f"Data/weight mismatch for {policy}: {len(rewards)} vs {len(weights)}"
                 )
 
+            # SAFETY CHECK: Refuse to provide unreliable estimates
+            # Following CLAUDE.md: "Fail Fast and Clearly"
+            n = len(weights)
+            ess = (
+                np.sum(weights) ** 2 / np.sum(weights**2) / n
+            )  # Effective sample size fraction
+            near_zero = np.sum(weights < 1e-10) / len(
+                weights
+            )  # Fraction with near-zero weight
+
+            if ess < 0.01 or near_zero > 0.95:
+                logger.error(
+                    f"Policy '{policy}' has extreme weight concentration: "
+                    f"ESS={ess:.1%}, {near_zero:.1%} near-zero weights. "
+                    f"Refusing to provide unreliable estimate."
+                )
+                estimates.append(np.nan)
+                standard_errors.append(np.nan)
+                n_samples_used[policy] = 0
+                influence_functions[policy] = np.full(n, np.nan)
+                continue
+
             # Standard IPS estimate
             weighted_rewards = weights * rewards
             estimate = weighted_rewards.mean()
@@ -169,6 +191,7 @@ class RawIPS(BaseCJEEstimator):
         ess_per_policy = {}
         max_weight_per_policy = {}
         tail_index_per_policy = {}
+        status_per_policy = {}
         overall_ess = 0.0
         total_n = 0
 
@@ -178,6 +201,7 @@ class RawIPS(BaseCJEEstimator):
                 w_diag = compute_weight_diagnostics(weights, policy)
                 ess_per_policy[policy] = w_diag["ess_fraction"]
                 max_weight_per_policy[policy] = w_diag["max_weight"]
+                status_per_policy[policy] = w_diag["status"]  # Store per-policy status
                 # Use tail_index if available (Hill estimator)
                 if "tail_index" in w_diag:
                     tail_index_per_policy[policy] = w_diag["tail_index"]
@@ -219,6 +243,7 @@ class RawIPS(BaseCJEEstimator):
             weight_status=weight_status,
             ess_per_policy=ess_per_policy,
             max_weight_per_policy=max_weight_per_policy,
+            status_per_policy=status_per_policy,
             tail_indices=tail_index_per_policy if tail_index_per_policy else None,
             # No calibration fields for RawIPS
         )

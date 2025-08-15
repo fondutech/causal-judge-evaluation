@@ -349,12 +349,45 @@ def display_results(
         print(f"     Std Error: {se:.3f}")
         print(f"     95% CI: [{ci_l:.3f}, {ci_u:.3f}]")
 
-    # Best policy
+    # Best policy (handle NaN values properly)
     all_estimates = [base_mean] + list(results.estimates)
     all_policies = ["base"] + target_policies
-    best_idx = np.argmax(all_estimates)
-    best_policy = all_policies[best_idx]
-    print(f"\n   🏆 Best policy: {best_policy}")
+
+    # Filter out NaN values for best policy selection
+    valid_estimates = [
+        (est, pol) for est, pol in zip(all_estimates, all_policies) if not np.isnan(est)
+    ]
+
+    if valid_estimates:
+        best_estimate, best_policy = max(valid_estimates, key=lambda x: x[0])
+        print(f"\n   🏆 Best policy: {best_policy}")
+    else:
+        print(f"\n   ⚠️ No valid estimates available for best policy selection")
+
+    # Add sanity check for extreme estimates (P0 fix from FIX_PLAN.md)
+    for i, (policy, estimate) in enumerate(zip(all_policies, all_estimates)):
+        if (
+            not np.isnan(estimate)
+            and abs(estimate - base_mean)
+            > DIAGNOSTIC_THRESHOLDS["EXTREME_ESTIMATE_DIFF"]
+        ):
+            print(
+                f"\n   ⚠️ WARNING: {policy} estimate ({estimate:.3f}) differs greatly from base ({base_mean:.3f})"
+            )
+            print(
+                f"      This may indicate estimation failure or extreme distribution shift"
+            )
+            if policy != "base":
+                # Check weight concentration for this policy
+                weights = estimator.get_weights(policy)
+                if weights is not None:
+                    near_zero = np.sum(
+                        weights < DIAGNOSTIC_THRESHOLDS["NEAR_ZERO_WEIGHT"]
+                    ) / len(weights)
+                    if near_zero > DIAGNOSTIC_THRESHOLDS["EXTREME_CONCENTRATION"]:
+                        print(
+                            f"      Likely cause: {near_zero:.1%} of samples have near-zero weight"
+                        )
 
     # Oracle comparison if available
     if args.oracle_field in dataset.samples[0].metadata:
@@ -385,11 +418,98 @@ def display_results(
     }
 
 
+# Diagnostic thresholds (following CLAUDE.md: explicit > magic values)
+DIAGNOSTIC_THRESHOLDS = {
+    "LOW_ESS": 0.1,
+    "CRITICAL_ESS": 0.05,
+    "EXTREME_CONCENTRATION": 0.9,
+    "NEAR_ZERO_WEIGHT": 1e-10,
+    "EXTREME_ESTIMATE_DIFF": 0.3,  # >30% difference from base is suspicious
+}
+
+# Backward compatibility alias
+WEIGHT_THRESHOLDS = DIAGNOSTIC_THRESHOLDS
+
+
 def display_weight_diagnostics(
     estimator: Any, sampler: PrecomputedSampler, calibrated_dataset: Any, args: Any
 ) -> Dict[str, Any]:
-    """Display weight diagnostics and return diagnostic data."""
+    """Display weight diagnostics and return diagnostic data.
+
+    Following CLAUDE.md: Do one thing well - this function only handles display.
+    Computation is delegated to the estimator or utility functions.
+    """
     print(f"\n5. Weight diagnostics:")
+
+    # Try to use the estimator's diagnostics object directly if available
+    if hasattr(estimator, "get_diagnostics"):
+        diagnostics = estimator.get_diagnostics()
+        # Check if it's an IPSDiagnostics object (not a plain dict from DR estimators)
+        if diagnostics is not None and hasattr(diagnostics, "policies"):
+            # Use the IPSDiagnostics object directly for display
+            print("\n" + create_weight_summary_table(diagnostics))
+
+            # Still need to return the dictionary format for downstream code
+            all_weight_diagnostics = {}
+
+            # Add base policy manually
+            base_rewards = [
+                s.reward for s in calibrated_dataset.samples if s.reward is not None
+            ]
+            base_diag = compute_weight_diagnostics(
+                np.ones(len(base_rewards)),
+                "base",
+            )
+            all_weight_diagnostics["base"] = base_diag
+
+            # Add target policies from diagnostics
+            for policy in diagnostics.policies:
+                all_weight_diagnostics[policy] = {
+                    "ess_fraction": diagnostics.ess_per_policy.get(policy, 0.0),
+                    "max_weight": diagnostics.max_weight_per_policy.get(policy, 1.0),
+                    "status": (
+                        diagnostics.status_per_policy.get(policy)
+                        if diagnostics.status_per_policy
+                        else None
+                    ),
+                    "tail_index": (
+                        diagnostics.tail_indices.get(policy)
+                        if diagnostics.tail_indices
+                        else None
+                    ),
+                }
+
+            # Print warnings if issues found
+            has_issues = any(
+                d.get("ess_fraction", 1.0) < WEIGHT_THRESHOLDS["LOW_ESS"]
+                for d in all_weight_diagnostics.values()
+            )
+            if has_issues:
+                print("\n   ⚠️  Weight diagnostics warnings:")
+                for policy, diag in all_weight_diagnostics.items():
+                    if diag.get("ess_fraction", 1.0) < WEIGHT_THRESHOLDS["LOW_ESS"]:
+                        print(f"   - {policy}: Low ESS ({diag['ess_fraction']:.1%})")
+
+            # Add extreme concentration warning
+            for policy in sampler.target_policies:
+                weights = estimator.get_weights(policy)
+                if weights is not None and len(weights) > 0:
+                    near_zero = np.sum(
+                        weights < WEIGHT_THRESHOLDS["NEAR_ZERO_WEIGHT"]
+                    ) / len(weights)
+                    if near_zero > WEIGHT_THRESHOLDS["EXTREME_CONCENTRATION"]:
+                        print(
+                            f"\n   🔴 CRITICAL: {policy} has extreme weight concentration"
+                        )
+                        print(f"      {near_zero:.1%} of samples have near-zero weight")
+                        print(
+                            f"      Estimate based on only {len(weights) * (1-near_zero):.0f} effective samples"
+                        )
+                        print(
+                            f"      Results may be unreliable - consider using DR with more fresh draws"
+                        )
+
+            return all_weight_diagnostics
 
     # MINIMAL CHANGE: Check if DiagnosticSuite already has weight diagnostics
     suite = getattr(estimator, "_diagnostic_suite", None)
@@ -432,9 +552,19 @@ def display_weight_diagnostics(
         )
         all_weight_diagnostics["base"] = base_diag
 
+        # For DR estimators, try to get weights from the underlying IPS estimator
+        actual_estimator = estimator
+        if hasattr(estimator, "ips_estimator"):
+            # DR estimator - use its IPS estimator for weights
+            actual_estimator = estimator.ips_estimator
+
         # Target policies
         for policy in sampler.target_policies:
-            weights = estimator.get_weights(policy)
+            weights = (
+                actual_estimator.get_weights(policy)
+                if hasattr(actual_estimator, "get_weights")
+                else None
+            )
             if weights is not None:
                 diag = compute_weight_diagnostics(
                     weights,
@@ -447,13 +577,48 @@ def display_weight_diagnostics(
 
     # Print warnings if issues found
     has_issues = any(
-        d.get("ess_fraction", 1.0) < 0.1 for d in all_weight_diagnostics.values()
+        d.get("ess_fraction", 1.0) < WEIGHT_THRESHOLDS["LOW_ESS"]
+        for d in all_weight_diagnostics.values()
     )
     if has_issues:
         print("\n   ⚠️  Weight diagnostics warnings:")
         for policy, diag in all_weight_diagnostics.items():
-            if diag.get("ess_fraction", 1.0) < 0.1:
+            if diag.get("ess_fraction", 1.0) < WEIGHT_THRESHOLDS["LOW_ESS"]:
                 print(f"   - {policy}: Low ESS ({diag['ess_fraction']:.1%})")
+
+    # Add extreme concentration warning only if not already done
+    # (avoid duplication when using diagnostics object directly)
+    if not (
+        hasattr(estimator, "get_diagnostics")
+        and estimator.get_diagnostics() is not None
+        and hasattr(estimator.get_diagnostics(), "policies")
+    ):
+        # For DR estimators, get weights from the underlying IPS estimator
+        actual_estimator = estimator
+        if hasattr(estimator, "ips_estimator"):
+            actual_estimator = estimator.ips_estimator
+
+        for policy in sampler.target_policies:
+            weights = (
+                actual_estimator.get_weights(policy)
+                if hasattr(actual_estimator, "get_weights")
+                else None
+            )
+            if weights is not None and len(weights) > 0:
+                near_zero = np.sum(
+                    weights < WEIGHT_THRESHOLDS["NEAR_ZERO_WEIGHT"]
+                ) / len(weights)
+                if near_zero > WEIGHT_THRESHOLDS["EXTREME_CONCENTRATION"]:
+                    print(
+                        f"\n   🔴 CRITICAL: {policy} has extreme weight concentration"
+                    )
+                    print(f"      {near_zero:.1%} of samples have near-zero weight")
+                    print(
+                        f"      Estimate based on only {len(weights) * (1-near_zero):.0f} effective samples"
+                    )
+                    print(
+                        f"      Results may be unreliable - consider using DR with more fresh draws"
+                    )
 
     return all_weight_diagnostics
 

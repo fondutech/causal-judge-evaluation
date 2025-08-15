@@ -132,7 +132,13 @@ def hill_tail_index(
         logger.warning("Numerical issues in Hill estimator (inf/nan in log ratios)")
         return float(np.inf)
 
-    hill_estimate = k / np.sum(log_ratios)
+    # Check for zero sum (would cause division by zero)
+    log_ratio_sum = np.sum(log_ratios)
+    if abs(log_ratio_sum) < 1e-10:
+        logger.debug("Hill estimator undefined (uniform weights in tail)")
+        return None  # Undefined for uniform weights
+
+    hill_estimate = k / log_ratio_sum
 
     # Sanity check the estimate
     if hill_estimate <= 0 or not np.isfinite(hill_estimate):
