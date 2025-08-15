@@ -222,11 +222,13 @@ def analyze_extreme_weights_report(
             )
 
             # Print summary
-            for policy, stats in json_report["policies"].items():
-                if policy != "base":
-                    print(
-                        f"   ✓ {policy}: {stats['n_clipped_high']} very high, {stats['n_near_zero']} near-zero"
-                    )
+            if "per_policy_analysis" in json_report:
+                for policy, analysis in json_report["per_policy_analysis"].items():
+                    if policy != "base":
+                        stats = analysis.get("statistics", {})
+                        n_high = stats.get("n_clipped_high", 0)
+                        n_zero = stats.get("n_near_zero", 0)
+                        print(f"   ✓ {policy}: {n_high} very high, {n_zero} near-zero")
 
             if report_dir:
                 print(
