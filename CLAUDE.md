@@ -26,21 +26,30 @@ Core principles:
 
 ### Directory-Level Documentation
 
-Every major directory within `cje/` that contains non-trivial core implementations should have its own README.md that follows these principles:
+Every major directory within `cje/` that contains non-trivial core implementations should have its own README.md. These READMEs are **for internal developers** (not end users) and should follow these principles:
 
 1. **Architecture-focused**: Describe the overall design and how components fit together
-2. **Interface-focused**: Document the common interfaces and contracts, not implementation details
+2. **Interface-focused**: Document the common interfaces and contracts, not implementation details  
 3. **Change-resilient**: Focus on patterns and principles that won't change with every PR
 4. **Self-contained**: Minimize references to other documentation that might drift
+5. **Developer-oriented**: Include troubleshooting, common issues, and testing guidance
 
-Current directories requiring READMEs:
+Since these are internal docs, they can include:
+- File structure and module organization
+- Key design decisions and their rationale
+- Common pitfalls and debugging tips
+- Testing approaches
+
+But should still avoid:
+- Line-by-line implementation details
+- Internal variable names and caching strategies
+- Anything that changes frequently
+
+Current directories with READMEs:
 - `cje/calibration/` - Three distinct calibration approaches (reward, weight, DR)
 - `cje/data/` - Data models and validation patterns
 - `cje/diagnostics/` - Three-tier diagnostic architecture
-- `cje/estimators/` - Estimator hierarchy and shared interfaces
-- `cje/utils/` - Utility modules and their responsibilities
-- `cje/visualization/` - Plotting and dashboard generation patterns
-- `cje/teacher_forcing/` - Log probability computation strategies
+- `cje/estimators/` - Estimator hierarchy and selection guide
 - `cje/experiments/` - Experiment orchestration patterns
 
 Each README should:
