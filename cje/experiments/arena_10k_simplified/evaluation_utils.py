@@ -17,7 +17,12 @@ from pydantic import BaseModel, Field
 from langchain.chat_models import init_chat_model
 
 # Import model configuration from centralized config
-from experiment_config import EVALUATION_MODELS
+try:
+    # Try relative import for module usage
+    from .experiment_config import EVALUATION_MODELS
+except ImportError:
+    # Fall back to direct import for script usage
+    from experiment_config import EVALUATION_MODELS  # type: ignore
 
 # Default models
 DEFAULT_JUDGE_MODEL = EVALUATION_MODELS["judge"]
