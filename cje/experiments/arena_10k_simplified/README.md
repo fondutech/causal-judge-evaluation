@@ -276,9 +276,18 @@ poetry run python test_resume_pipeline.py
 
 ## Implementation Notes
 
-### Simplified Architecture
-The pipeline now has a cleaner structure:
-- Single scoring script (`add_scores_with_resume.py`) handles both judge and oracle
+### Modular Architecture
+The analysis pipeline follows a clean modular structure:
+- **Data Generation** (`data_generation/`): Scripts for generating responses, scores, and log probabilities
+- **Analysis Modules** (`analysis/`): 7 focused modules doing one thing well
+  - `loading.py`: Load and validate data
+  - `calibration.py`: Handle rewards and calibration
+  - `estimation.py`: Create and configure estimators
+  - `results.py`: Display results and statistics
+  - `diagnostics.py`: Display weight and DR diagnostics
+  - `visualization.py`: Generate plots and dashboards
+  - `export.py`: Export results to JSON/CSV
+- **Orchestrator** (`analyze_dataset.py`): Thin coordinator (290 lines) that orchestrates modules
 - All scripts support resume from interruption
 - Production pipeline (`generate_arena_data.py`) is the single entry point
 - Tests verify the actual production code path

@@ -1,6 +1,6 @@
 # Causal Judge Evaluation (CJE) with SIMCal
 
-[![Tests](https://img.shields.io/badge/tests-102%20passing-brightgreen)](cje/tests)
+[![Tests](https://img.shields.io/badge/tests-145%20passing-brightgreen)](cje/tests)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -236,13 +236,14 @@ calibrated_rewards = calibration_map.transform(judge_scores)
 
 - **Paper**: Forthcoming
 - **[API Reference](docs/)**: Full documentation
+- **[Diagnostics Guide](cje/diagnostics/)**: Comprehensive diagnostic system
 - **[Examples](examples/)**: Jupyter notebooks with tutorials
 - **[Arena Experiments](cje/experiments/arena_10k_simplified)**: Production pipeline
 
 ## 🧪 Testing
 
 ```bash
-# Run all tests (102 tests)
+# Run all tests (145 tests)
 poetry run pytest cje/tests/
 
 # Run by category

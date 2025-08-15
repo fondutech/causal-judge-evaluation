@@ -82,7 +82,7 @@ Helper functions:
 
 ## Test Coverage
 
-- **102 tests** covering all major functionality
+- **145 tests** covering all major functionality
 - **All estimators tested**: RawIPS, CalibratedIPS, DR-CPO, TMLE, MRDR, MRDR-TMLE
 - **Real Arena data integration**: Tests use actual Arena 10K sample
 - **Edge cases covered**: Missing values, extreme weights, empty datasets
