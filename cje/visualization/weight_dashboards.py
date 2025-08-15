@@ -12,7 +12,7 @@ from typing import Dict, Optional, List, Tuple, Any
 from pathlib import Path
 
 # Import shared utilities
-from ..utils.diagnostics import compute_ess
+from ..diagnostics import compute_ess
 
 
 # ============================================================================
@@ -52,7 +52,7 @@ def plot_weight_dashboard_summary(
         Tuple of (matplotlib Figure, metrics dict)
     """
     # Check if we have a diagnostics object to use
-    from ..data.diagnostics import IPSDiagnostics, DRDiagnostics
+    from ..diagnostics import IPSDiagnostics, DRDiagnostics
 
     if diagnostics is not None and isinstance(
         diagnostics, (IPSDiagnostics, DRDiagnostics)

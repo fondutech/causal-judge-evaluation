@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from typing import Dict, Any
 
-from cje.data.diagnostics import IPSDiagnostics, DRDiagnostics, Status
+from cje.diagnostics import IPSDiagnostics, DRDiagnostics, Status
 from cje.data.models import Sample, Dataset, EstimationResult
 from cje.data.precomputed_sampler import PrecomputedSampler
 from cje.data.fresh_draws import FreshDrawDataset, FreshDrawSample

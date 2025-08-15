@@ -6,9 +6,9 @@ from typing import Dict, Optional
 
 from .base_estimator import BaseCJEEstimator
 from ..data.models import EstimationResult
-from ..data.diagnostics import IPSDiagnostics, Status
+from ..diagnostics import IPSDiagnostics, Status
 from ..data.precomputed_sampler import PrecomputedSampler
-from ..utils.diagnostics import compute_weight_diagnostics
+from ..diagnostics import compute_weight_diagnostics
 
 logger = logging.getLogger(__name__)
 

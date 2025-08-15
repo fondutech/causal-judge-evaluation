@@ -19,7 +19,7 @@ from cje import (
     Dataset,
     Sample,
 )
-from cje.utils.diagnostics import compute_weight_diagnostics
+from cje.diagnostics import compute_weight_diagnostics
 
 
 def create_example_data() -> None:

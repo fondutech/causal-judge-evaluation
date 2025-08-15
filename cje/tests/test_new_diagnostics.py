@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from typing import Dict, Any
 
-from cje.utils.diagnostics import (
+from cje.diagnostics import (
     hill_tail_index,
     hill_tail_index_stable,
     compute_orthogonality_score,

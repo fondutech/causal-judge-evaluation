@@ -24,6 +24,31 @@ Core principles:
 - Focus on principles and patterns rather than specific code
 - Update README.md for user-facing changes, keep CLAUDE.md for timeless guidance
 
+### Directory-Level Documentation
+
+Every major directory within `cje/` that contains non-trivial core implementations should have its own README.md that follows these principles:
+
+1. **Architecture-focused**: Describe the overall design and how components fit together
+2. **Interface-focused**: Document the common interfaces and contracts, not implementation details
+3. **Change-resilient**: Focus on patterns and principles that won't change with every PR
+4. **Self-contained**: Minimize references to other documentation that might drift
+
+Current directories requiring READMEs:
+- `cje/calibration/` - Three distinct calibration approaches (reward, weight, DR)
+- `cje/data/` - Data models and validation patterns
+- `cje/diagnostics/` - Three-tier diagnostic architecture
+- `cje/estimators/` - Estimator hierarchy and shared interfaces
+- `cje/utils/` - Utility modules and their responsibilities
+- `cje/visualization/` - Plotting and dashboard generation patterns
+- `cje/teacher_forcing/` - Log probability computation strategies
+- `cje/experiments/` - Experiment orchestration patterns
+
+Each README should:
+- Explain the directory's single responsibility
+- Describe key design decisions and trade-offs
+- Show usage patterns without implementation details
+- Reference interfaces, not concrete implementations
+
 ## 📁 Repository Structure
 
 ```

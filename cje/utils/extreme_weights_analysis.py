@@ -8,7 +8,7 @@ from datetime import datetime
 import logging
 
 # Import compute_ess from diagnostics module
-from .diagnostics import compute_ess
+from ..diagnostics import compute_ess
 
 logger = logging.getLogger(__name__)
 

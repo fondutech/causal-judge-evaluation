@@ -8,7 +8,7 @@ from typing import Dict, Any, Union, Optional, TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from ...data.diagnostics import IPSDiagnostics, DRDiagnostics
+    from .models import IPSDiagnostics, DRDiagnostics
 
 
 def create_weight_summary_table(
@@ -25,7 +25,7 @@ def create_weight_summary_table(
         Formatted table string
     """
     # Import here to avoid circular dependency
-    from ...data.diagnostics import IPSDiagnostics, DRDiagnostics
+    from .models import IPSDiagnostics, DRDiagnostics
 
     lines = []
     lines.append("\nWeight Summary")
@@ -110,7 +110,7 @@ def format_dr_diagnostic_summary(
         Formatted summary string
     """
     # Import here to avoid circular dependency
-    from ...data.diagnostics import DRDiagnostics
+    from .models import DRDiagnostics
 
     lines = []
     lines.append("=" * 100)
@@ -341,7 +341,7 @@ def format_diagnostic_comparison(
         )
 
     # DR-specific (if both are DR)
-    from ...data.diagnostics import DRDiagnostics
+    from .models import DRDiagnostics
 
     if isinstance(diag1, DRDiagnostics) and isinstance(diag2, DRDiagnostics):
         lines.append("-" * 80)

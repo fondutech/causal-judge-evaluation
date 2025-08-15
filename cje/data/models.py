@@ -310,7 +310,7 @@ class EstimationResult(BaseModel):
 
 
 # Import at the end to resolve forward references
-from .diagnostics import IPSDiagnostics, DRDiagnostics
+from ..diagnostics import IPSDiagnostics, DRDiagnostics
 
 # Update forward references
 EstimationResult.model_rebuild()

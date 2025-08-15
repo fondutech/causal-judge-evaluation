@@ -10,8 +10,8 @@ import numpy as np
 from pathlib import Path
 from typing import Any, Dict, Optional
 from cje import analyze_extreme_weights
-from cje.utils.diagnostics import compute_weight_diagnostics
-from cje.utils.diagnostics.display import (
+from cje.diagnostics import compute_weight_diagnostics
+from cje.diagnostics.display import (
     create_weight_summary_table,
     format_dr_diagnostic_summary,
 )
@@ -121,7 +121,7 @@ def display_dr_diagnostics(results: Any, args: Any) -> None:
     """
     # Check for DRDiagnostics object
     if hasattr(results, "diagnostics") and results.diagnostics is not None:
-        from cje.data.diagnostics import DRDiagnostics
+        from cje.diagnostics import DRDiagnostics
 
         if isinstance(results.diagnostics, DRDiagnostics):
             print(f"\n6. Doubly Robust diagnostics:")

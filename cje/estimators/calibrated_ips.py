@@ -13,8 +13,8 @@ import logging
 from .base_estimator import BaseCJEEstimator
 from ..data.models import EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
-from ..data.diagnostics import IPSDiagnostics, Status
-from ..utils.diagnostics import compute_weight_diagnostics
+from ..diagnostics import IPSDiagnostics, Status
+from ..diagnostics import compute_weight_diagnostics
 from ..calibration.simcal import SIMCalibrator, SimcalConfig
 
 logger = logging.getLogger(__name__)

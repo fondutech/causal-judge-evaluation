@@ -410,7 +410,7 @@ class MRDREstimator(DREstimator):
             )
 
         # Build DR diagnostics using stored components
-        from ..utils.diagnostics.dr import compute_dr_policy_diagnostics
+        from ..diagnostics.dr import compute_dr_policy_diagnostics
 
         dr_diagnostics_per_policy: Dict[str, Dict[str, Any]] = {}
         for idx, policy in enumerate(self.sampler.target_policies):

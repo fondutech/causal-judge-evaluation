@@ -5,7 +5,9 @@ This module contains:
 - Visualization: Plotting utilities for weight diagnostics
 """
 
-from .diagnostics.display import (
+# Display utilities moved to cje.diagnostics
+# Keeping this import for backward compatibility
+from ..diagnostics.display import (
     create_weight_summary_table,
 )
 

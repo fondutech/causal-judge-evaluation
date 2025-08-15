@@ -258,7 +258,7 @@ class TMLEEstimator(DREstimator):
         n_samples_used: Dict[str, int],
     ) -> EstimationResult:
         """Create base result with DR diagnostics computed on ORIGINAL predictions."""
-        from ..utils.diagnostics.dr import compute_dr_policy_diagnostics
+        from ..diagnostics.dr import compute_dr_policy_diagnostics
 
         dr_diagnostics_per_policy = {}
         dr_calibration_data = {}

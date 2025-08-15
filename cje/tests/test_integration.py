@@ -8,7 +8,7 @@ from cje import (
     load_dataset_from_jsonl,
     calibrate_dataset,
 )
-from cje.utils.diagnostics import compute_weight_diagnostics
+from cje.diagnostics import compute_weight_diagnostics
 
 
 @pytest.mark.integration

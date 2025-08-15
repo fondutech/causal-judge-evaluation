@@ -6,7 +6,7 @@ import numpy as np
 from typing import Dict, Any, Optional
 import logging
 
-from ...data.diagnostics import Status
+from .models import Status
 
 logger = logging.getLogger(__name__)
 

@@ -29,7 +29,7 @@ def plot_dr_dashboard(
         (fig, summary_metrics) tuple
     """
     # Check for DRDiagnostics object first (new way)
-    from ..data.diagnostics import DRDiagnostics
+    from ..diagnostics import DRDiagnostics
 
     if isinstance(estimation_result.diagnostics, DRDiagnostics):
         # Use the new diagnostic object

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from typing import Dict, Any
 
-from cje.utils.diagnostics import (
+from cje.diagnostics import (
     kendall_tau_drift,
     sequential_drift_detection,
     reliability_diagram,

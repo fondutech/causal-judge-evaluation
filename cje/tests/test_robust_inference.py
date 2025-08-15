@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from typing import Dict, Any
 
-from cje.utils.diagnostics import (
+from cje.diagnostics import (
     stationary_bootstrap_se,
     moving_block_bootstrap_se,
     cluster_robust_se,

@@ -14,11 +14,11 @@ from .raw_ips import RawIPS
 from .base_estimator import BaseCJEEstimator
 from .outcome_models import IsotonicOutcomeModel, CalibratorBackedOutcomeModel
 from ..data.models import EstimationResult
-from ..data.diagnostics import DRDiagnostics, IPSDiagnostics
+from ..diagnostics import DRDiagnostics, IPSDiagnostics
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..data.fresh_draws import FreshDrawDataset
 from ..utils.fresh_draws import validate_fresh_draws
-from ..utils.diagnostics.dr import (
+from ..diagnostics.dr import (
     compute_dr_policy_diagnostics,
     compute_orthogonality_score,
     compute_dm_ips_decomposition,
@@ -702,7 +702,7 @@ class DREstimator(BaseCJEEstimator):
             )
         else:
             # No IPS diagnostics available, create minimal version
-            from ..data.diagnostics import Status
+            from ..diagnostics import Status
 
             diagnostics = DRDiagnostics(
                 estimator_type="DR",
