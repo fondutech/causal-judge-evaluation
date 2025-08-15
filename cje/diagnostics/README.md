@@ -2,89 +2,104 @@
 
 ## Overview
 
-The CJE diagnostics system provides comprehensive monitoring and validation of causal inference assumptions. Every estimator produces structured diagnostics that expose potential issues with overlap, calibration, and model fit.
+The CJE diagnostics system provides comprehensive monitoring and validation of causal inference assumptions. It follows a **push-based architecture** where estimators compute diagnostics during estimation and attach them to results.
 
-## Core Philosophy
+## Core Architecture
 
-Following CLAUDE.md principles:
-- **Explicit over implicit**: All diagnostic thresholds are configurable
-- **Fail fast and clearly**: Critical issues trigger immediate warnings
-- **Do one thing well**: Each diagnostic class has a single purpose
-- **No hidden state**: Diagnostics are immutable data structures
+### Three-Layer Separation
+
+```
+┌─────────────────┐
+│  Data Models    │  Immutable dataclasses (IPSDiagnostics, DRDiagnostics)
+│                 │  Define the shape and structure of diagnostic data
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│  Computation    │  Pure functions that compute diagnostic metrics
+│                 │  (ESS, Hill index, orthogonality scores, etc.)
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│  Integration    │  Estimators call computation functions and
+│                 │  build diagnostic objects during estimate()
+└─────────────────┘
+```
+
+### Key Design Principles
+
+1. **Diagnostics are data, not behavior** - Dataclasses with computed properties
+2. **Push-based flow** - Created during estimation, not on-demand
+3. **Fail-fast with NaN** - Critical issues return NaN estimates, not exceptions
+4. **Hierarchical status** - Multiple layers of safety checks
+5. **Self-describing** - Objects know how to validate, summarize, and serialize themselves
 
 ## Diagnostic Classes
 
-### 1. IPSDiagnostics
-For importance sampling estimators (RawIPS, CalibratedIPS).
+The system provides two main diagnostic classes that share a common interface:
 
-```python
-@dataclass
-class IPSDiagnostics:
-    # Core metrics
-    estimator_type: str            # "RawIPS" or "CalibratedIPS"
-    n_samples_valid: int           # Samples used after filtering
-    weight_ess: float              # Effective sample size fraction
-    weight_status: Status          # GOOD, WARNING, or CRITICAL
-    
-    # Per-policy metrics
-    ess_per_policy: Dict[str, float]
-    max_weight_per_policy: Dict[str, float]
-    tail_indices: Dict[str, float]  # Hill tail index (α < 2 is bad)
-    
-    # Calibration (if applicable)
-    calibration_rmse: Optional[float]
-    calibration_r2: Optional[float]
-```
+### Common Interface
 
-### 2. DRDiagnostics
-For doubly robust estimators (DR-CPO, MRDR, TMLE).
+All diagnostic classes provide these methods:
+- `validate() -> List[str]` - Self-consistency checks, returns list of issues
+- `summary() -> str` - Human-readable one-line summary
+- `to_dict() -> Dict` - Full serialization including enums as strings
+- `to_json(indent=2) -> str` - JSON export with configurable formatting
+- `to_csv_row() -> Dict` - Flat dictionary for tabular analysis
 
-```python
-@dataclass
-class DRDiagnostics:
-    # Inherits all IPSDiagnostics fields plus:
-    
-    # Outcome model quality
-    dm_rmse_per_policy: Dict[str, float]    # Direct method RMSE
-    dm_r2_per_policy: Dict[str, float]      # Outcome model R²
-    
-    # Decomposition
-    dm_contribution: float                   # % from direct method
-    ips_contribution: float                  # % from importance sampling
-    
-    # Influence functions
-    worst_if_tail_ratio: float              # Tail heaviness of EIF
-    if_normality_pvalue: float              # Shapiro-Wilk test
-    
-    # TMLE-specific
-    tmle_convergence_iter: Optional[int]
-    tmle_max_score_z: Optional[float]       # Orthogonality check
-```
+Computed properties (via `@property`):
+- `filter_rate` - Fraction of samples filtered out
+- `best_policy` - Policy with highest estimate
+- `overall_status` - Aggregate health status
+- Additional class-specific properties
 
-## Status Levels
+### IPSDiagnostics
 
-### GOOD ✅
-- ESS > 30%
-- Hill tail index > 2.5
-- Calibration R² > 0.7
-- All checks pass
+Base diagnostics for importance sampling estimators. Key field groups:
 
-### WARNING ⚠️
-- ESS 10-30%
-- Hill tail index 1.5-2.5
-- Calibration R² 0.3-0.7
-- Some concerns but results usable
+**Identification**: `estimator_type`, `method`, `policies`  
+**Sample counts**: `n_samples_total`, `n_samples_valid`, `n_samples_used`  
+**Results**: `estimates`, `standard_errors` (per policy)  
+**Weight metrics**: `weight_ess`, `ess_per_policy`, `max_weight_per_policy`  
+**Tail behavior**: `tail_indices` (Hill estimator results)  
+**Status**: `weight_status`, `status_per_policy`  
+**Calibration**: `calibration_rmse`, `calibration_r2`, `n_oracle_labels`
 
-### CRITICAL 🔴
-- ESS < 10%
-- Hill tail index < 1.5 (infinite mean)
-- Calibration R² < 0.3
-- Results likely unreliable
+### DRDiagnostics  
 
-### UNKNOWN ❓
-- Insufficient data for diagnostics
-- Computation failed
-- Not applicable for estimator
+Extends IPSDiagnostics with doubly robust specific metrics:
+
+**Cross-fitting**: `dr_cross_fitted`, `dr_n_folds`  
+**Outcome model**: `outcome_r2_range`, `outcome_rmse_mean`  
+**Influence functions**: `worst_if_tail_ratio`, `influence_functions`  
+**Decompositions**: `dr_diagnostics_per_policy`, `dm_ips_decompositions`  
+**Orthogonality**: `orthogonality_scores`
+
+## Status System
+
+The diagnostic system uses a **three-tier hierarchy**:
+
+### 1. Computed Status (Informational)
+Each diagnostic object computes an `overall_status` based on its metrics. This is purely informational and shown in displays but doesn't prevent estimation.
+
+The `Status` enum has three values:
+- `GOOD` - All metrics within acceptable ranges
+- `WARNING` - Some concerning metrics but results usable
+- `CRITICAL` - Severe issues detected
+
+Status computation varies by diagnostic class and combines multiple factors like ESS, tail indices, and calibration quality.
+
+### 2. Validation Warnings  
+The `validate()` method checks for logical inconsistencies:
+- Impossible values (ESS > 1.0, R² > 1.0)
+- Inconsistent counts (n_valid > n_total)
+- Extreme metrics that suggest problems
+
+Returns a list of issue descriptions. Empty list means all checks pass.
+
+### 3. Refusal Gates (Hard Stops)
+Some estimators refuse to provide estimates when diagnostics indicate unreliable results. When triggered, they return `NaN` rather than potentially misleading estimates.
+
+Example: CalibratedIPS may refuse estimation based on combinations of ESS, weight concentration, and coefficient of variation. These thresholds are estimator-specific and more conservative than status levels.
 
 ## Key Diagnostic Metrics
 
@@ -98,23 +113,24 @@ ESS = (Σw)² / Σw²
 - **ESS < 10%**: Severe overlap problems
 
 ### 2. Hill Tail Index
-Estimates the tail behavior of importance weights:
+Estimates the tail behavior of importance weights using the Hill estimator:
 ```
-α = 1 / mean(log(w[i]/w[k+1])) for largest k weights
+α = k / Σ(log(X_i) - log(X_{k+1})) for top k order statistics
 ```
-- **α > 2.5**: Light tails, stable
-- **α ∈ [2, 2.5]**: Moderate tails
-- **α ∈ [1.5, 2]**: Heavy tails, infinite variance
-- **α < 1.5**: Extremely heavy, infinite mean
+Default uses k = 5% of samples. Interpretation:
+- **α ≥ 2**: Finite variance, acceptable for inference
+- **α ∈ [1, 2)**: Infinite variance, WARNING status
+- **α < 1**: Infinite mean, CRITICAL status
+- **None**: Returned for uniform weights (undefined)
 
 ### 3. Calibration R²
 Measures judge-to-oracle calibration quality:
 ```
 R² = 1 - Var(oracle - f(judge)) / Var(oracle)
 ```
-- **R² > 0.7**: Strong calibration
-- **R² ∈ [0.3, 0.7]**: Moderate calibration
-- **R² < 0.3**: Weak calibration
+- **R² ≥ 0.5**: Good calibration (no impact on status)
+- **R² ∈ [0, 0.5)**: Moderate calibration (WARNING status)
+- **R² < 0**: Poor calibration (CRITICAL status)
 
 ### 4. Weight Concentration
 Fraction of samples with near-zero weight:
@@ -184,55 +200,54 @@ with open("diagnostics.json", "w") as f:
 The system implements automatic gates that refuse estimation when critical issues are detected:
 
 ### CalibratedIPS Gates
-```python
-# Refuses estimation if:
-- ESS < 30% AND raw_near_zero > 85%
-- ESS < 10% (always)
-- Hill index < 1.0 (infinite mean)
-```
+The estimator refuses to provide estimates (returns NaN) when:
+- ESS < 30% (less than 30% effective sample size)
+- raw_near_zero > 85% (more than 85% of raw weights near zero)  
+- top_5pct_weight > 30% AND cv_weights > 2.0 (high concentration with high variability)
 
 ### DR Estimator Gates
-```python
-# Warns but continues if:
-- Outcome model R² < 0
-- Influence function tail ratio > 100
-- TMLE orthogonality |z| > 2
-```
+DR estimators inherit IPS gates and add warnings (but continue) when:
+- Outcome model R² < 0 (indicates misspecification)
+- Influence function tail ratio > 100 (heavy-tailed influence functions)
 
 ## Visualization
 
-Diagnostics integrate with the visualization system:
+Diagnostics can be visualized through the analysis module:
 
-### Weight Dashboard
-```python
-from cje.visualization import create_weight_dashboard
+### Weight Diagnostics Display
+When running `analyze_dataset.py`, weight diagnostics are displayed automatically:
 
-# Generates comprehensive weight analysis plot
-create_weight_dashboard(
-    estimator,
-    sampler,
-    dataset,
-    output_path="weight_diagnostics.png"
-)
+```
+Weight Summary
+----------------------------------------------------------------------
+Policy                             ESS   Max Weight Status    
+----------------------------------------------------------------------
+clone                             45.2%      12.3456 GOOD      
+parallel_universe_prompt          38.7%      18.9012 WARNING   
+----------------------------------------------------------------------
+Overall                           41.9%      18.9012 GOOD      
 ```
 
-Shows:
-- Weight distributions per policy
-- ESS across policies
-- Concentration patterns
-- Tail behavior
+Display utilities in `utils/diagnostics/display.py` include:
+- `create_weight_summary_table()` - Formats weight diagnostics as a table
+- `format_dr_diagnostic_summary()` - Formats DR diagnostics with decompositions
+- `format_diagnostic_comparison()` - Compares two diagnostic objects side by side
 
-### Calibration Plots
+These utilities work with both diagnostic objects and legacy dictionary formats.
+
+### Calibration Analysis
+The calibration quality is shown during data loading:
 ```python
-from cje.visualization import plot_calibration_analysis
-
-# Shows judge-oracle calibration quality
-plot_calibration_analysis(
-    dataset,
-    calibration_result,
-    output_path="calibration.png"
+# Automatically displayed when oracle_coverage is used
+results = analyze_dataset(
+    "data.jsonl", 
+    estimator="calibrated-ips",
+    oracle_coverage=0.5
 )
+# Shows calibration R² and RMSE
 ```
+
+Note: Full visualization dashboards are described in `docs/visualization.rst`
 
 ## Interpreting Diagnostics
 
@@ -280,22 +295,61 @@ plot_calibration_analysis(
 ## Implementation Details
 
 ### Diagnostic Computation Flow
-1. **During fit()**: Collect weight statistics, fit outcome models
-2. **During estimate()**: Compute influence functions, decompositions
-3. **Post-estimation**: Aggregate into diagnostic objects
-4. **Validation**: Run self-consistency checks
+
+```
+Dataset → Sampler → Estimator.fit()
+                           ↓
+                    Estimator.estimate()
+                           ↓
+                 compute_weight_diagnostics()
+                 compute_dr_diagnostics() [if DR]
+                           ↓
+                    _build_diagnostics()
+                           ↓
+                 Diagnostics attached to Result
+                           ↓
+                    User receives Result
+```
+
+### How Estimators Build Diagnostics
+
+```python
+# Pattern for IPS estimators
+def _build_diagnostics(self, result):
+    # 1. Compute weight metrics per policy
+    for policy in policies:
+        weights = self.get_weights(policy)
+        w_diag = compute_weight_diagnostics(weights, policy)
+    
+    # 2. Determine overall status
+    if ess < 0.01:
+        status = Status.CRITICAL
+    
+    # 3. Return immutable diagnostic object
+    return IPSDiagnostics(...)
+```
 
 ### Memory Efficiency
 - Diagnostics store summary statistics, not raw data
-- Influence functions optionally stored (`store_influence=True`)
+- Influence functions always computed and stored for ALL estimators (IPS, CalibratedIPS, DR)
+- Stored in `EstimationResult.influence_functions` as Dict[str, np.ndarray]
+- Essential for proper statistical inference and standard errors
+- Can be large for many samples - consider memory when processing large datasets
 - Per-fold diagnostics aggregated to save space
+- Computed properties calculated on-demand via @property decorators
+
+### Dependencies
+- **External**: numpy, scipy.stats (minimal)
+- **Internal**: Unidirectional flow from data → computation → presentation
+- **No circular dependencies** or hidden state
 
 ### Extensibility
 New diagnostic metrics can be added by:
-1. Extending the dataclass
-2. Adding computation in estimator
-3. Updating `summary()` and `to_dict()` methods
-4. Adding visualization support
+1. Extending the dataclass (add field)
+2. Adding computation function to `utils/diagnostics/`
+3. Calling in estimator's `_build_diagnostics()`
+4. Updating `summary()` and `to_dict()` methods
+5. Adding visualization support if needed
 
 ## Advanced Topics
 
@@ -309,15 +363,21 @@ for fold_idx, fold_diag in enumerate(diagnostics.fold_diagnostics):
 
 ### Influence Function Analysis
 ```python
-# Get influence functions (if stored)
-if "dr_influence" in results.metadata:
+# Access influence functions (always stored in EstimationResult)
+if results.influence_functions:
     import numpy as np
     
-    for policy, ifs in results.metadata["dr_influence"].items():
+    for policy, ifs in results.influence_functions.items():
         # Check for outliers
         z_scores = np.abs((ifs - np.mean(ifs)) / np.std(ifs))
         n_outliers = np.sum(z_scores > 3)
         print(f"{policy}: {n_outliers} influential points")
+        
+        # Influence functions are used for:
+        # 1. Computing standard errors (SE = std(IF) / sqrt(n))
+        # 2. Policy comparison with proper covariance
+        # 3. Detecting influential observations
+        # 4. Bootstrap and robust inference
 ```
 
 ### Custom Diagnostic Thresholds
@@ -333,6 +393,25 @@ diag = compute_weight_diagnostics(
     concentration_limit=0.95  # More lenient
 )
 ```
+
+### Drift Detection (Available but Not Integrated)
+
+The Kendall-τ drift test from the paper is **implemented** but **intentionally not integrated** into the main pipeline:
+
+```python
+from cje.utils.diagnostics import kendall_tau_drift
+
+# User's responsibility to orchestrate
+historical_scores = load_your_historical_data()
+current_scores = judge.score(anchor_prompts)
+
+drift_result = kendall_tau_drift(historical_scores, current_scores)
+if drift_result["tau"] < 0.5:
+    print("Severe drift detected!")
+    # User decides action: refresh oracle, recalibrate, etc.
+```
+
+This follows Unix philosophy: CJE provides the computational tool, users build the monitoring workflow. Managing anchor sets and historical state is outside CJE's scope.
 
 ## References
 
