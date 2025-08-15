@@ -20,7 +20,7 @@ Core principles:
 ## 📝 Documentation Principles
 
 - Keep documentation minimal and focused on core concepts
-- Avoid adding implementation details that will become outdated
+- **CRITICAL: Avoid content that will go stale** - if it depends on other files, it will drift
 - Focus on principles and patterns rather than specific code
 - Update README.md for user-facing changes, keep CLAUDE.md for timeless guidance
 
@@ -34,16 +34,31 @@ Every major directory within `cje/` that contains non-trivial core implementatio
 4. **Self-contained**: Minimize references to other documentation that might drift
 5. **Developer-oriented**: Include troubleshooting, common issues, and testing guidance
 
-Since these are internal docs, they can include:
-- File structure and module organization
-- Key design decisions and their rationale
-- Common pitfalls and debugging tips
-- Testing approaches
+#### ⚠️ Anti-Patterns to Avoid
 
-But should still avoid:
-- Line-by-line implementation details
-- Internal variable names and caching strategies
-- Anything that changes frequently
+**DO NOT** include in READMEs:
+- Specific thresholds or magic numbers (they change)
+- Lists of all files with descriptions (use `ls` instead)
+- Cross-references to specific line numbers
+- Implementation details like variable names or internal methods
+- Anything you wouldn't want to update when refactoring
+
+**INSTEAD** focus on:
+- Conceptual overview and design rationale
+- Common patterns used throughout the module
+- Interface contracts that rarely change
+- Troubleshooting guidance based on symptoms, not code
+
+#### Examples
+
+❌ **Bad**: "The ESS threshold is set to 0.30 in line 238 of calibrated_ips.py"
+✅ **Good**: "Estimators use ESS thresholds to ensure reliability"
+
+❌ **Bad**: "The `_weights_cache` dictionary stores computed weights"
+✅ **Good**: "Weights are cached to avoid recomputation"
+
+❌ **Bad**: "See utils/diagnostics.py for the implementation"
+✅ **Good**: "Diagnostics follow a three-tier status system"
 
 Current directories with READMEs:
 - `cje/calibration/` - Three distinct calibration approaches (reward, weight, DR)

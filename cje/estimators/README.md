@@ -111,7 +111,7 @@ influence = result.influence_functions  # For inference
 ## Key Design Principles
 
 ### 1. Fail-Fast with NaN
-When diagnostics indicate catastrophically unreliable estimates (e.g., ESS < 1%), estimators return `NaN` rather than misleading values. This ensures scientific integrity while maintaining pipeline composability.
+When diagnostics indicate catastrophically unreliable estimates, estimators return `NaN` rather than misleading values. This ensures scientific integrity while maintaining pipeline composability.
 
 ### 2. Always Compute Influence Functions
 All estimators compute and store influence functions for:
@@ -174,26 +174,22 @@ Estimators implement safety gates that refuse estimation when reliability thresh
 
 ### Why Percentage-Based ESS Gates?
 
-We use percentage-based ESS thresholds (e.g., ESS < 30%) rather than absolute thresholds for several reasons:
+We use percentage-based ESS thresholds rather than absolute thresholds for several reasons:
 
 1. **Scale Invariance**: Works consistently across datasets of any size without configuration
 2. **Measures Overlap Quality**: Low ESS% indicates severe distribution mismatch, not just sample size  
-3. **Practical Reliability**: When only 30% of data is effectively used, the estimate is dominated by a small subset, making it practically questionable even if statistically valid
+3. **Practical Reliability**: When only a small fraction of data is effectively used, the estimate is dominated by a small subset
 4. **System Simplicity**: One threshold concept that's self-documenting and easy to explain
 
-A 30% ESS threshold means 70% of your data is essentially ignored - this indicates a fundamental problem with policy overlap that more samples won't fix.
+Low ESS percentage means most of your data is essentially ignored - this indicates a fundamental problem with policy overlap that more samples won't fix.
 
-### RawIPS Gates
-- Refuses if ESS < 1% OR >95% weights near-zero
+### Gate Types
 
-### CalibratedIPS Gates  
-- Refuses if ESS < 30%
-- Refuses if >85% weights near-zero
-- Refuses if top 5% weight > 30% AND CV > 2.0
+Each estimator implements appropriate refusal gates based on its robustness properties:
 
-### DR Estimator Gates
-- Inherits IPS gates
-- Warns (but continues) if outcome R² < 0
+- **RawIPS**: Very permissive gates (baseline method)
+- **CalibratedIPS**: Moderate gates based on ESS and weight concentration
+- **DR Estimators**: Inherit IPS gates, warn on poor outcome model fit
 
 ## Implementation Notes
 

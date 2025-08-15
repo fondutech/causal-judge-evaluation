@@ -1,7 +1,7 @@
 ================================================================================
 EXTREME WEIGHTS ANALYSIS REPORT
 ================================================================================
-Generated: 2025-08-14T22:39:34.132760
+Generated: 2025-08-15T12:38:17.749035
 Samples: 978 valid / 994 total
 Policies: clone, parallel_universe_prompt, premium, unhelpful
 ================================================================================
@@ -89,7 +89,7 @@ POLICY: parallel_universe_prompt
 Raw weight range: [4.46e-36, 4.81e+03]
 Calibrated range: [0.788, 15.042]
 ESS improvement: 0.8% → 70.5%
-Extreme weights: 22 very high (≥100), 581 near-zero (<1e-10)
+Extreme weights: 22 very high (≥100), 117 near-zero (<1e-10)
 
 TOP 5 HIGHEST WEIGHTS:
 1. Sample arena_537 (raw: 4.81e+03 → cal: 15.042)
@@ -165,7 +165,7 @@ POLICY: premium
 Raw weight range: [1.16e-75, 4.44e+01]
 Calibrated range: [0.617, 23.022]
 ESS improvement: 0.4% → 56.8%
-Extreme weights: 0 very high (≥100), 934 near-zero (<1e-10)
+Extreme weights: 0 very high (≥100), 771 near-zero (<1e-10)
 
 TOP 5 HIGHEST WEIGHTS:
 1. Sample arena_171 (raw: 4.44e+01 → cal: 23.022)
@@ -237,7 +237,7 @@ POLICY: unhelpful
 Raw weight range: [1.62e-62, 1.70e+01]
 Calibrated range: [0.374, 31.560]
 ESS improvement: 0.2% → 44.3%
-Extreme weights: 0 very high (≥100), 964 near-zero (<1e-10)
+Extreme weights: 0 very high (≥100), 864 near-zero (<1e-10)
 
 TOP 5 HIGHEST WEIGHTS:
 1. Sample arena_150 (raw: 1.70e+01 → cal: 31.560)
