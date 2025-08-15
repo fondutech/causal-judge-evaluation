@@ -45,35 +45,74 @@ print(f"Policy value: {results.estimates[0]:.3f} ± {1.96 * results.standard_err
 CJE transforms biased judge scores into unbiased policy estimates through a principled pipeline:
 
 ```
-     INPUTS                    CALIBRATION                 WEIGHTING
-┌─────────────────┐      ┌──────────────────┐      ┌─────────────────┐
-│   Your Logs     │      │   Oracle Slice   │      │ Teacher Forcing │
-│                 │      │                  │      │                 │
-│ • Prompts (X)   │  +   │ • 5% human labels│  →   │ • Compute log   │
-│ • Responses (A) │      │ • Learn f: S → Y │      │   p_π′(A|X)     │
-│ • Judge scores  │      │ • Isotonic fit   │      │ • W = exp(Δ log)│
-│ • log p_π₀(A|X) │      │                  │      │                 │
-└─────────────────┘      └──────────────────┘      └─────────────────┘
-         ↓                        ↓                         ↓
-         ↓                        ↓                         ↓
-    All samples          ┌────────────────────┐    ┌──────────────────┐
-    get calibrated       │ Calibrated Rewards│    │  SIMCal Weights  │
-    rewards R = f(S)     │                   │    │                  │
-                         │ • R = f(S) for    │    │ • W_c = monotone │
-                         │   all samples     │    │   projection     │
-                         │ • Unbiased if     │    │ • Variance cap ρ │
-                         │   judge monotone  │    │ • Preserves mean │
-                         └────────────────────┘    └──────────────────┘
-                                  ↓                         ↓
-                                  └─────────┬───────────────┘
-                                            ↓
-                                  ┌────────────────────┐
-                                  │   Final Estimate   │
-                                  │                    │
-                                  │  V̂ = mean(W_c × R) │
-                                  │  SE = std(W_c × R)/√n│
-                                  │  95% CI: V̂ ± 1.96SE│
-                                  └────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                            INPUT DATA                                │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │                    Logged Conversations                      │    │
+│  │  • Prompts (X)                                              │    │
+│  │  • Responses (A) from policy π₀                            │    │
+│  │  • Judge scores (S) from automatic evaluator                │    │
+│  │  • Log probabilities: log p_π₀(A|X)                         │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+│                                │                                     │
+│          ┌─────────────────────┴──────────────────────┐             │
+│          ▼                                            ▼             │
+│  ┌───────────────┐                          ┌────────────────────┐  │
+│  │ Oracle Subset │                          │ Full Dataset       │  │
+│  │ (~5% of data) │                          │ (100% of data)     │  │
+│  │ + Human labels│                          │ Judge scores only  │  │
+│  │     (Y)       │                          │                    │  │
+│  └───────────────┘                          └────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────┘
+           │                                            │
+           ▼                                            │
+  ┌─────────────────────┐                              │
+  │ CALIBRATION STEP    │                              │
+  │                     │                              │
+  │ Learn f: S → Y via  │                              │
+  │ isotonic regression │                              │
+  │ on oracle subset    │                              │
+  └─────────────────────┘                              │
+           │                                            │
+           └──────────────┬─────────────────────────────┘
+                          ▼
+                ┌─────────────────────┐        ┌──────────────────────┐
+                │ Apply Calibration   │        │ Compute Importance   │
+                │                     │        │      Weights         │
+                │ R = f(S) for ALL   │        │                      │
+                │ samples using      │  ────►  │ W = exp(log p_π′(A|X)│
+                │ learned function   │        │     - log p_π₀(A|X)) │
+                └─────────────────────┘        │                      │
+                          │                    │ (Requires target     │
+                          │                    │  policy π′ model)    │
+                          │                    └──────────────────────┘
+                          │                              │
+                          ▼                              ▼
+                ┌─────────────────────┐        ┌──────────────────────┐
+                │ Calibrated Rewards │        │   SIMCal Weight      │
+                │                     │        │   Calibration        │
+                │ • Unbiased under   │        │                      │
+                │   monotonicity     │        │ • Project W onto     │
+                │ • All samples have │        │   monotone functions │
+                │   calibrated R     │        │ • Index by judge S   │
+                └─────────────────────┘        │ • Variance cap ρ     │
+                          │                    │ • Get W_c            │
+                          │                    └──────────────────────┘
+                          │                              │
+                          └──────────┬───────────────────┘
+                                     ▼
+                          ┌──────────────────────┐
+                          │   FINAL ESTIMATE    │
+                          │                      │
+                          │  IPS:                │
+                          │  V̂ = mean(W_c × R)  │
+                          │                      │
+                          │  DR (with fresh draws)│
+                          │  V̂ = ĝ + W_c×(R−q̂)  │
+                          │                      │
+                          │  SE = std(ψ)/√n     │
+                          │  95% CI: V̂ ± 1.96×SE│
+                          └──────────────────────┘
 ```
 
 ### Key Innovation: SIMCal
@@ -130,11 +169,12 @@ CJE expects JSONL logs with:
 
 | Estimator | Description | When to Use |
 |-----------|-------------|-------------|
-| **CalibratedIPS** | IPS with SIMCal weight calibration | Default choice; best variance control |
-| **RawIPS** | Standard importance sampling | Baseline comparison |
-| **DRCPOEstimator** | Doubly-Robust Counterfactual Policy Optimization | When outcome models available |
-| **MRDREstimator** | More Robust Doubly-Robust estimator | Lower variance under misspecification |
-| **TMLEEstimator** | Targeted maximum likelihood | Optimal bias-variance tradeoff |
+| **CalibratedIPS** | IPS with SIMCal weight calibration | Logged data only; best IPS variant |
+| **RawIPS** | Standard importance sampling | Baseline comparison; diagnostic purposes |
+| **DRCPOEstimator** | Doubly-Robust Counterfactual Policy Optimization | When you have fresh draws; generally best |
+| **MRDREstimator** | More Robust Doubly-Robust estimator | Fresh draws + concern about misspecification |
+| **TMLEEstimator** | Targeted maximum likelihood | Fresh draws + want optimal efficiency |
+| **MRDRTMLEEstimator** | MRDR + TMLE targeting | Best of both: robustness + efficiency |
 
 ## 🔍 Diagnostics & Quality Gates
 
