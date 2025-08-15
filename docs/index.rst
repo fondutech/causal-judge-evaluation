@@ -48,6 +48,59 @@ Quick Start
    # Get policy value estimate with 95% CI
    print(f"Policy value: {results.estimates[0]:.3f} ± {1.96 * results.standard_errors[0]:.3f}")
 
+Documentation
+-------------
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Getting Started
+   
+   quickstart
+   installation
+   first_analysis
+   
+.. toctree::
+   :maxdepth: 2
+   :caption: User Guide
+   
+   user_guide/index
+   data_preparation
+   running_analysis
+   interpreting_results
+   
+.. toctree::
+   :maxdepth: 2
+   :caption: Module Documentation
+   
+   modules/index
+   
+.. toctree::
+   :maxdepth: 2
+   :caption: Theory & Methods
+   
+   theory/index
+   theory/causal_inference
+   theory/simcal
+   theory/assumptions
+   
+.. toctree::
+   :maxdepth: 2
+   :caption: API Reference
+   
+   api/index
+   
+.. toctree::
+   :maxdepth: 2
+   :caption: Development
+   
+   development/index
+   
+.. toctree::
+   :maxdepth: 2
+   :caption: Examples
+   
+   examples/index
+
 Key Results
 -----------
 
@@ -56,46 +109,8 @@ Key Results
 - **Efficiency**: DR-CPO achieves semiparametric efficiency under standard conditions
 - **Auditability**: Comprehensive diagnostics expose assumptions with quantitative gates
 
-Documentation
--------------
-
-.. toctree::
-   :maxdepth: 2
-   :caption: User Guide
-   
-   getting_started
-   data_format
-   estimators
-   visualization
-   cli
-   
-.. toctree::
-   :maxdepth: 2
-   :caption: Theory & Methods
-   
-   simcal
-   theory
-   diagnostics
-   
-.. toctree::
-   :maxdepth: 2
-   :caption: API Reference
-   
-   api/core
-   api/data
-   api/calibration
-   api/utils
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Advanced Topics
-   
-   doubly_robust
-   custom_outcome_models
-   experiments
-
-Indices
--------
+Indices and Tables
+------------------
 
 * :ref:`genindex`
 * :ref:`modindex`

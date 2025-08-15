@@ -15,6 +15,7 @@ release = "0.2.0"
 # -- General configuration ---------------------------------------------------
 
 extensions = [
+    "myst_parser",
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
@@ -22,8 +23,22 @@ extensions = [
     "sphinx.ext.autosummary",
 ]
 
+# MyST parser configuration
+myst_enable_extensions = [
+    "deflist",
+    "tasklist",
+    "html_image",
+    "colon_fence",
+    "linkify",
+]
+
+source_suffix = {
+    ".rst": "restructuredtext",
+    ".md": "markdown",
+}
+
 templates_path = ["_templates"]
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "SPHINX_REDESIGN_PLAN.md"]
 
 # -- Options for HTML output -------------------------------------------------
 
