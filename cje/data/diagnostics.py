@@ -272,6 +272,10 @@ class DRDiagnostics(IPSDiagnostics):
     # Detailed per-policy diagnostics (for visualization and debugging)
     dr_diagnostics_per_policy: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
+    # DR decomposition results
+    dm_ips_decompositions: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    orthogonality_scores: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+
     # Optional influence functions (can be large)
     influence_functions: Optional[Dict[str, np.ndarray]] = None
 

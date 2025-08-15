@@ -591,13 +591,27 @@ class DREstimator(BaseCJEEstimator):
             "dm_ips_decompositions": self._dm_ips_decompositions,  # New: DM-IPS breakdown
         }
 
+        # Get IPS diagnostics if available
+        ips_diag = None
+        if hasattr(self.ips_estimator, "get_diagnostics"):
+            ips_diag = self.ips_estimator.get_diagnostics()
+
+        # Build DR diagnostics directly
+        dr_diagnostics = self._build_dr_diagnostics(
+            estimates,
+            standard_errors,
+            n_samples_used,
+            dr_diagnostics_per_policy,
+            ips_diag,
+        )
+
         return EstimationResult(
             estimates=np.array(estimates),
             standard_errors=np.array(standard_errors),
             n_samples_used=n_samples_used,
             method="dr_base",
             influence_functions=self._influence_functions,
-            diagnostics=None,  # Will be populated by fit_and_estimate in base class
+            diagnostics=dr_diagnostics,
             metadata=metadata,
         )
 
@@ -682,6 +696,8 @@ class DREstimator(BaseCJEEstimator):
                 outcome_rmse_mean=outcome_rmse_mean,
                 worst_if_tail_ratio=worst_if_tail,
                 dr_diagnostics_per_policy=dr_diagnostics_per_policy,
+                dm_ips_decompositions=self._dm_ips_decompositions,
+                orthogonality_scores=self._orthogonality_scores,
                 influence_functions=self._influence_functions,
             )
         else:
@@ -711,6 +727,8 @@ class DREstimator(BaseCJEEstimator):
                 outcome_rmse_mean=outcome_rmse_mean,
                 worst_if_tail_ratio=worst_if_tail,
                 dr_diagnostics_per_policy=dr_diagnostics_per_policy,
+                dm_ips_decompositions=self._dm_ips_decompositions,
+                orthogonality_scores=self._orthogonality_scores,
                 influence_functions=self._influence_functions,
             )
 

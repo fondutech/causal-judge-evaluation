@@ -151,8 +151,17 @@ def format_dr_diagnostic_summary(
                 ips_corr = policy_diag.get("ips_corr_mean", 0.0)
                 if_tail = policy_diag.get("if_tail_ratio_99_5", 0.0)
             else:
-                dm = 0.0
-                ips_corr = 0.0
+                # Try decomposition if policy diagnostics not available
+                if (
+                    diagnostics.dm_ips_decompositions
+                    and policy in diagnostics.dm_ips_decompositions
+                ):
+                    decomp = diagnostics.dm_ips_decompositions[policy]
+                    dm = decomp.get("dm_component", 0.0)
+                    ips_corr = decomp.get("ips_augmentation", 0.0)
+                else:
+                    dm = 0.0
+                    ips_corr = 0.0
                 if_tail = 0.0
 
             lines.append(
