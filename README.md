@@ -16,6 +16,59 @@ Modern LLM evaluation relies on automatic judges (GPT-4, Claude, etc.) to score 
 
 CJE recasts judge-based evaluation as **calibrated causal inference** using our novel **Surrogate-Indexed Monotone Calibration (SIMCal)**:
 
+### Pipeline Overview
+
+```
+[LOGS (π₀)]                                   [ORACLE SLICE (~1-5%)]
+• X: context/prompt                           • S: judge score
+• A: completion from π₀                       • Y: human label (truth)
+• S: judge score                              • Same judge config
+• log p_π₀(A|X)                               
+     │                                               │
+     └──────────────────────────┬────────────────────┘
+                                │
+                                ▼
+                ┌───────────────────────────────────────┐
+                │ REWARD CALIBRATION (Isotonic f)       │
+                │ • Monotone, mean-preserving (PAV)     │
+                │ • Apply R=f(S) to all logs           │
+                │ • Targets E[Y(π′)] if (J2-M) holds   │
+                └───────────────────────────────────────┘
+                                │
+                                ▼
+                ┌───────────────────────────────────────┐
+                │ RAW WEIGHTS W_π′ (TF Cache)           │
+                │ • W_π′ = exp(log p_π′ - log p_π₀)    │
+                │ • Normalize to mean one (Hájek)       │
+                └───────────────────────────────────────┘
+                                │
+                                ▼
+                ┌───────────────────────────────────────┐
+                │ SIMCAL: WEIGHT CALIBRATION            │
+                │ • Monotone projection indexed by S    │
+                │ • OOF stacking to minimize variance   │
+                │ • Variance cap ρ: blend → reproject  │
+                └───────────────────────────────────────┘
+                        │                   │
+        ┌───────────────┘                   └────────────────┐
+        ▼                                                     ▼
+┌─────────────────────┐                      ┌──────────────────────────┐
+│ CAL-IPS             │                      │ DR-CPO / TMLE            │
+│ V̂ = mean(W_c × R)   │                      │ V̂ = ĝ + W_c×(R−q̂_b)     │
+└─────────────────────┘                      └──────────────────────────┘
+                        │                   │
+                        └─────────┬─────────┘
+                                  ▼
+                    ┌───────────────────────────┐
+                    │ DIAGNOSTICS & GATES       │
+                    │ • ESS, Hill index         │
+                    │ • Judge reliability       │
+                    │ • Orthogonality tests     │
+                    └───────────────────────────┘
+```
+
+### Key Components
+
 1. **Isotonic Reward Calibration**: Maps judge scores S to calibrated rewards R = f(S) using a small oracle slice
 2. **Variance-Safe Weight Calibration**: Projects importance weights onto monotone functions indexed by the judge, with an explicit variance cap
 3. **Out-of-Fold Stacking**: Combines {baseline, increasing, decreasing} candidates to minimize influence-function variance
