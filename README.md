@@ -3,6 +3,7 @@
 [![Tests](https://img.shields.io/badge/tests-102%20passing-brightgreen)](cje/tests)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 **Shape-Constrained, Unbiased Off-Policy Metrics for LLM Systems and Beyond**
 
 CJE transforms routine LLM evaluation logs into unbiased, variance-controlled estimates of counterfactual performance: *"What would our KPI be if we shipped policy π′ instead of π₀?"*
@@ -27,58 +28,12 @@ CJE recasts judge-based evaluation as **calibrated causal inference** using our 
 - **Efficiency**: DR-CPO achieves semiparametric efficiency under standard conditions
 - **Auditability**: Comprehensive diagnostics expose assumptions with quantitative gates
 
-flowchart TD
-  %% Style
-  classDef box fill:#f5f7ff,stroke:#3b5bdb,stroke-width:1.1,color:#111,rx:6,ry:6;
-  classDef dim fill:#fafafa,stroke:#c7c7c7,rx:6,ry:6,color:#333;
-
-  subgraph A[Causal Judge Evaluation (CJE)]
-  direction TB
-
-    subgraph Inputs[Inputs]
-      direction LR
-      L1[Production logs: (X, A, S, ℓ₀)]:::dim
-      L2[Oracle slice: labeled Y on small i.i.d. set]:::dim
-    end
-
-    R1[Isotonic reward calibration\nR = f̂(S) (mean-preserving)]:::box
-
-    subgraph Est[Estimators]
-      direction TB
-      E1[Calibrated IPS (Cal-IPS)\nV̂ = Pₙ[ Ŵ^{cal} · R ]]:::box
-      E2[DR-CPO (Doubly-Robust)\nV̂ = Pₙ[ ĝ_{π’}(X) + Ŵ^{cal}(R − m̂(X,A)) ]:::box
-    end
-
-    S1[SIMCal (weight calibration)\n— see separate diagram —]:::box
-
-    subgraph Diag[Diagnostics & Gates]
-      direction LR
-      D1[ESS / centered variance cap ρ]:::dim
-      D2[Hill tail index ≥ 2]:::dim
-      D3[Judge drift / transport checks]:::dim
-      D4[DR orthogonality checks]:::dim
-    end
-
-    O1[Policy KPI estimate for π’\n+ CIs + audit report]:::box
-
-  end
-
-  %% Edges
-  Inputs --> R1
-  R1 --> Est
-  Inputs --> S1
-  S1 --> Est
-  Est --> Diag
-  Diag --> O1
-
-
-
 ## 🚀 Quick Start
 
 ### Installation
 
 ```bash
-# Clone this repository
+git clone https://github.com/fondutech/causal-judge-evaluation.git
 cd causal-judge-evaluation
 pip install -e .
 ```

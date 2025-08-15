@@ -466,13 +466,13 @@ def display_dr_diagnostics(results: Any, args: Any) -> None:
         suite = results.diagnostic_suite
         if suite.dr_quality is not None:
             print(f"\n6. Doubly Robust diagnostics:")
-            # Create a simple dict format for the existing formatter
-            dr_diag_dict = {
-                "orthogonality_scores": suite.dr_quality.orthogonality_scores,
-                "dm_contributions": suite.dr_quality.dm_contributions,
-                "ips_contributions": suite.dr_quality.ips_contributions,
-            }
-            summary = format_dr_diagnostic_summary(dr_diag_dict)
+            # The suite.dr_quality is a DRQuality object, not the full diagnostics
+            # We need to check if we have the actual DRDiagnostics in results
+            if hasattr(results, "diagnostics") and results.diagnostics is not None:
+                summary = format_dr_diagnostic_summary(results.diagnostics)
+            else:
+                # Fallback - create minimal display
+                summary = "   DR diagnostics not available in expected format"
             for line in summary.split("\n"):
                 print(f"   {line}")
 
@@ -490,6 +490,7 @@ def display_dr_diagnostics(results: Any, args: Any) -> None:
 
         if isinstance(results.diagnostics, DRDiagnostics):
             print(f"\n6. Doubly Robust diagnostics:")
+            # Format the DR diagnostics
             summary = format_dr_diagnostic_summary(results.diagnostics)
             for line in summary.split("\n"):
                 print(f"   {line}")

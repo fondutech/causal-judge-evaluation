@@ -353,8 +353,12 @@ class MRDRTMLEEstimator(MRDREstimator):
             )
 
             # Store per-policy components for diagnostics
-            self._dm_component[policy] = g_fresh0
-            self._ips_correction[policy] = weights * (rewards - g_logged_star)
+            # For TMLE, we want to store the actual contributions to the estimate
+            # DM component is the fresh draws predictions, IPS is the weighted correction
+            self._dm_component[policy] = g_fresh0  # Fresh outcome predictions
+            self._ips_correction[policy] = weights * (
+                rewards - g_logged_star
+            )  # IPS correction term
             self._fresh_rewards[policy] = (
                 rewards  # logged rewards; name kept for compatibility
             )
@@ -390,9 +394,9 @@ class MRDRTMLEEstimator(MRDREstimator):
             if policy not in self._dm_component or np.isnan(estimates[idx]):
                 continue
             # Leverage DR base helper for consistent metrics
-            dr_diagnostics_per_policy[policy] = self._compute_policy_diagnostics(
-                policy, estimates[idx]
-            )
+            policy_diag = self._compute_policy_diagnostics(policy, estimates[idx])
+            # Store the diagnostics for this policy
+            dr_diagnostics_per_policy[policy] = policy_diag
 
         # IPS diagnostics from internal IPS estimator, if available
         ips_diag = (

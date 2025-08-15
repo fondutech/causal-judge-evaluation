@@ -1,0 +1,72 @@
+@startuml
+skinparam shadowing false
+skinparam dpi 180
+skinparam defaultTextAlignment left
+skinparam Rectangle {
+  RoundCorner 8
+  BorderColor #2F3A4A
+  FontStyle bold
+}
+skinparam Arrow {
+  Color #6B7280
+}
+top to bottom direction
+
+rectangle "<b>Causal Judge Evaluation (CJE) — Engineering Overview</b>" as TITLE #FFFFFF
+
+rectangle "<b>Data</b>" as DATA #E9F2FF {
+  rectangle "Logs\n(prompts, completions,\nlogging policy props)" as LOGS
+  rectangle "Judge scores S\n(from LLM or human grader)" as SCORES
+  rectangle "Oracle slice\n(sampled & human-labeled)" as ORACLE
+}
+
+rectangle "<b>Calibrations</b>" as CAL #DDEFE6 {
+  rectangle "Reward calibration\nLearn f(S) on oracle labels\n(maps judge scores to calibrated reward)" as RC
+  rectangle "SIMCal weight calibration\nSmooth & stabilize policy weights\n(monotone in S, variance-capped)" as SIM
+}
+
+rectangle "<b>Estimators</b>" as EST #FFF4E5 {
+  rectangle "Cal-IPS:\nWeighted average of calibrated rewards" as CALIPS
+  rectangle "DR-CPO:\nWeighted average of model residuals + predicted reward" as DRCPO
+}
+
+rectangle "<b>Outputs</b>" as OUT #ECECEC {
+  rectangle "Policy value estimate\nwith confidence interval" as OUT1
+  rectangle "Diagnostics\n(ESS, tail risk, overlap, judge drift)" as OUT2
+}
+
+' Data → Calibrations
+LOGS --> SIM : base policy weights
+SCORES --> SIM : index by judge score
+SCORES --> RC
+ORACLE --> RC : fit mapping f(S)
+
+' Calibrations → Estimators
+RC --> CALIPS
+RC --> DRCPO
+SIM --> CALIPS
+SIM --> DRCPO
+
+' Estimators → Outputs
+CALIPS --> OUT1
+DRCPO  --> OUT1
+CALIPS --> OUT2
+DRCPO  --> OUT2
+SIM    --> OUT2
+RC     --> OUT2
+
+note right of SIM
+Stabilizes importance weights:
+• mean-one normalization
+• monotone in judge score
+• variance cap to avoid heavy tails
+• optional targeting for IPS accuracy
+end note
+
+note right of DRCPO
+Doubly Robust = combines
+model predictions with
+calibrated weights so that
+either is enough for accuracy.
+end note
+@enduml
