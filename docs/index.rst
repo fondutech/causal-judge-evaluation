@@ -66,6 +66,8 @@ Documentation
    getting_started
    data_format
    estimators
+   visualization
+   cli
    
 .. toctree::
    :maxdepth: 2
