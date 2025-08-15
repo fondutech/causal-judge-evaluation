@@ -210,6 +210,14 @@ class IPSDiagnostics:
         # Convert enums to strings
         d["weight_status"] = self.weight_status.value
         d["overall_status"] = self.overall_status.value
+
+        # Convert status_per_policy if present
+        if d.get("status_per_policy"):
+            d["status_per_policy"] = {
+                policy: status.value if hasattr(status, "value") else status
+                for policy, status in d["status_per_policy"].items()
+            }
+
         return d
 
     def to_json(self, indent: int = 2) -> str:
