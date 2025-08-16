@@ -103,7 +103,7 @@ logs.jsonl → calibrate_dataset() → estimator.fit_and_estimate() → results
 
 **Key Components**:
 - `data/` - Dataset, Sample models with validation
-- `calibration/` - Isotonic regression, SIMCal, judge calibration
+- `calibration/` - Isotonic regression, SIMCal, judge calibration, oracle slice augmentation
 - `estimators/` - IPS, CalibratedIPS, DR, MRDR, TMLE
 - `diagnostics/` - IPSDiagnostics, DRDiagnostics, reliability gates
 - `experiments/arena_10k_simplified/` - Full pipeline example
@@ -137,6 +137,7 @@ BaseCJEEstimator
   - Weakly reduces variance by majorization (always increases ESS)
   - Blend → reproject enforces Var(W) ≤ ρ·Var(baseline)
 - **Oracle slice**: Small random subsample with ground truth for reward calibration
+- **Oracle slice augmentation**: Adds (L/p)×m̂(S)×(Y-f̂(S)) for honest CIs accounting for calibration uncertainty
 - **Cross-fitting**: Train on k-1 folds, predict on kth (orthogonality for DR)
 - **Influence functions**: Per-sample contributions, enable √n inference
 - **Refusal gates**: Return NaN when ESS < threshold or tail index < 2

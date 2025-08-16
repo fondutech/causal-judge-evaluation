@@ -1,4 +1,5 @@
 """Tests for oracle slice augmentation functionality."""
+
 # mypy: ignore-errors
 
 import numpy as np

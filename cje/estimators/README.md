@@ -65,7 +65,7 @@ estimators/
 - Judge scores are available
 - You want variance-stabilized weights
 - Fresh draws are not available
-- You want honest CIs accounting for calibration uncertainty
+- You want honest CIs accounting for oracle slice uncertainty (with augmentation)
 
 ### Use **DRCPOEstimator** when:
 - You have poor overlap (ESS < 20%)
@@ -224,6 +224,16 @@ Each estimator has comprehensive tests in `cje/tests/`:
 - `test_integration.py` - End-to-end workflows
 
 ## Advanced Topics
+
+### Oracle Slice Augmentation
+CalibratedIPS and DR estimators support oracle slice augmentation for honest confidence intervals:
+```python
+from cje.calibration import OracleSliceConfig
+
+config = OracleSliceConfig(enable_augmentation=True)
+estimator = CalibratedIPS(sampler, oracle_slice_config=config)
+```
+This corrects for uncertainty in the judge→oracle calibration map when only partial oracle labels are available.
 
 ### Custom Estimators
 Inherit from `BaseCJEEstimator` or `DREstimator` and implement `fit()` and `estimate()`. Always compute and store influence functions in `_influence_functions`.
