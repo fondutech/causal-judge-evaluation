@@ -46,6 +46,7 @@ tests/
 │   ├── test_dr_basic.py          # DR estimation fundamentals
 │   ├── test_dr_diagnostics.py    # All estimator diagnostics
 │   ├── test_stacked_simcal.py    # SIMCal weight calibration
+│   ├── test_oracle_slice.py      # Oracle slice augmentation
 │   └── test_custom_outcome_model.py # Custom outcome models
 │
 ├── Diagnostic Tests
@@ -211,4 +212,4 @@ Test execution tips:
 
 ## Summary
 
-The CJE test suite provides comprehensive validation through 145+ tests covering all estimators, calibration methods, and diagnostic tools. It combines fast unit tests for development, integration tests for workflow validation, and real Arena data tests for production confidence, ensuring the framework produces correct, unbiased causal estimates.
+The CJE test suite provides comprehensive validation through 155+ tests covering all estimators, calibration methods, and diagnostic tools. It combines fast unit tests for development, integration tests for workflow validation, and real Arena data tests for production confidence, ensuring the framework produces correct, unbiased causal estimates.
