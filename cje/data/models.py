@@ -312,5 +312,10 @@ class EstimationResult(BaseModel):
 # Import at the end to resolve forward references
 from ..diagnostics import IPSDiagnostics, DRDiagnostics
 
-# Update forward references
-EstimationResult.model_rebuild()
+# Update forward references - compatible with both Pydantic v1 and v2
+if hasattr(EstimationResult, "model_rebuild"):
+    # Pydantic v2
+    EstimationResult.model_rebuild()
+elif hasattr(EstimationResult, "update_forward_refs"):
+    # Pydantic v1
+    EstimationResult.update_forward_refs()
