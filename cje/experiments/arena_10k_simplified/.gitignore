@@ -19,3 +19,10 @@ __pycache__/
 *$py.class
 .pytest_cache/
 ablation_results/
+# Plots and figures
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.pdf
+**/plots/

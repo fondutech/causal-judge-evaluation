@@ -16,6 +16,7 @@ from ..data.precomputed_sampler import PrecomputedSampler
 from ..diagnostics import IPSDiagnostics, Status
 from ..diagnostics import compute_weight_diagnostics
 from ..calibration.simcal import SIMCalibrator, SimcalConfig
+from ..calibration.oracle_slice import OracleSliceAugmentation, OracleSliceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class CalibratedIPS(BaseCJEEstimator):
     - ESS floor and variance cap constraints
     - Judge score-indexed calibration for better alignment
     - Automatic DR-aware calibration when calibrator available
+    - Oracle slice augmentation for honest confidence intervals
     - Comprehensive diagnostics
 
     Args:
@@ -44,6 +46,7 @@ class CalibratedIPS(BaseCJEEstimator):
         calibrator: Optional JudgeCalibrator for DR influence functions
         include_baseline: Whether to include raw weights in the stack (default True)
         baseline_shrink: Shrinkage toward baseline for stability (default 0.05)
+        oracle_slice_config: Optional config for oracle slice augmentation (default None)
     """
 
     def __init__(
@@ -56,6 +59,7 @@ class CalibratedIPS(BaseCJEEstimator):
         include_baseline: bool = True,
         baseline_shrink: float = 0.05,
         run_diagnostics: bool = True,
+        oracle_slice_config: Optional[OracleSliceConfig] = None,
     ):
         super().__init__(
             sampler=sampler,
@@ -71,6 +75,12 @@ class CalibratedIPS(BaseCJEEstimator):
         self._no_overlap_policies: Set[str] = set()
         self._calibration_info: Dict[str, Dict] = {}  # Store calibration details
         self._diagnostics: Optional[IPSDiagnostics] = None
+
+        # Oracle slice augmentation for honest CIs
+        self.oracle_augmentation = OracleSliceAugmentation(
+            oracle_slice_config or OracleSliceConfig()
+        )
+        self._aug_diagnostics: Dict[str, Dict] = {}
 
     def fit(self) -> None:
         """Fit stacked weight calibration for all target policies."""
@@ -160,6 +170,12 @@ class CalibratedIPS(BaseCJEEstimator):
             # Cache results
             self._weights_cache[policy] = calibrated
             self._calibration_info[policy] = calib_info
+
+            # Fit m̂(S) for oracle slice augmentation
+            # Use the calibrated weights we'll actually use in estimation
+            self.oracle_augmentation.fit_m_hat(
+                calibrated, judge_scores, policy, fold_ids
+            )
 
         self._fitted = True
 
@@ -263,14 +279,40 @@ class CalibratedIPS(BaseCJEEstimator):
                 influence_functions[policy] = np.full(n, np.nan)
                 continue
 
-            # Compute weighted estimate
-            estimate = float(np.sum(weights * rewards) / n)
+            # Base IPS contribution
+            base_contrib = weights * rewards
+
+            # Add oracle slice augmentation for honest CIs
+            aug, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
+                policy, rewards, data, self.sampler.dataset.samples
+            )
+            self._aug_diagnostics[policy] = aug_diagnostics
+
+            # Total contribution with augmentation
+            total_contrib = base_contrib + aug
+            estimate = float(total_contrib.mean())
             estimates.append(estimate)
 
-            # Compute standard error using influence functions
-            influence = weights * rewards - estimate
+            # Compute standard error using augmented influence functions
+            influence = total_contrib - estimate
             se = float(np.std(influence, ddof=1) / np.sqrt(n))
             standard_errors.append(se)
+
+            # Add slice variance share to diagnostics
+            if aug_diagnostics:
+                var_base = (
+                    np.var(base_contrib - base_contrib.mean(), ddof=1) if n > 1 else 0.0
+                )
+                var_total = (
+                    np.var(total_contrib - total_contrib.mean(), ddof=1)
+                    if n > 1
+                    else 0.0
+                )
+                aug_diagnostics["slice_variance_share"] = (
+                    float(aug_diagnostics.get("aug_var", 0.0) / var_total)
+                    if var_total > 0
+                    else 0.0
+                )
 
             # Store influence functions (always needed for proper inference)
             influence_functions[policy] = influence
@@ -291,6 +333,7 @@ class CalibratedIPS(BaseCJEEstimator):
                 "ess_floor": self.ess_floor,
                 "var_cap": self.var_cap,
                 "calibration_info": self._calibration_info,  # TODO: Move to diagnostics
+                "slice_augmentation": self._aug_diagnostics,  # Oracle slice augmentation info
             },
         )
 
@@ -448,3 +491,16 @@ class CalibratedIPS(BaseCJEEstimator):
     def get_diagnostics(self) -> Optional[IPSDiagnostics]:
         """Get the diagnostics object."""
         return self._diagnostics
+
+    def get_mhat(self, target_policy: str) -> Optional[np.ndarray]:
+        """Get cached m̂(S) = E[W|S] for oracle augmentation.
+
+        Used by DR estimators to add the same augmentation term.
+
+        Args:
+            target_policy: Name of the target policy
+
+        Returns:
+            m_hat: Estimated E[W|S] normalized to mean 1, or None if not fitted
+        """
+        return self.oracle_augmentation._m_hat_cache.get(target_policy)

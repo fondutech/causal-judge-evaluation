@@ -4,6 +4,7 @@ This module contains all calibration functionality:
 - Optimized isotonic regression for weight calibration
 - Judge score calibration to match oracle labels
 - Dataset calibration workflows
+- Oracle slice uncertainty augmentation
 """
 
 from .isotonic import (
@@ -22,6 +23,10 @@ from .dataset import (
     calibrate_dataset,
     calibrate_from_raw_data,
 )
+from .oracle_slice import (
+    OracleSliceAugmentation,
+    OracleSliceConfig,
+)
 
 __all__ = [
     # Isotonic regression utilities
@@ -36,4 +41,7 @@ __all__ = [
     # Dataset calibration
     "calibrate_dataset",
     "calibrate_from_raw_data",
+    # Oracle slice augmentation
+    "OracleSliceAugmentation",
+    "OracleSliceConfig",
 ]

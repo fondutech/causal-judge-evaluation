@@ -29,6 +29,7 @@ calibration/
 ├── dataset.py           # High-level dataset calibration workflows
 ├── isotonic.py          # Core isotonic regression and variance control
 ├── judge.py             # Judge score calibration to oracle labels
+├── oracle_slice.py      # Oracle slice uncertainty augmentation
 └── simcal.py            # Stacked SIMCal implementation
 ```
 
@@ -45,6 +46,9 @@ Stabilizes importance weights through score-indexed monotone projection:
 
 ### 3. Cross-Fitted Models
 For doubly robust methods, provides out-of-fold predictions to maintain orthogonality between nuisance functions.
+
+### 4. Oracle Slice Augmentation
+Accounts for uncertainty in the judge→oracle calibration map learned from finite oracle labels, providing honest confidence intervals that widen appropriately when oracle coverage is low.
 
 ## Module Descriptions
 
@@ -78,6 +82,14 @@ Advanced weight calibration through stacking:
 - Quadratic program on simplex for optimal mixture
 - Uniform blending for ESS/variance constraints
 - Configurable via `SimcalConfig` dataclass
+
+### `oracle_slice.py` - Oracle Slice Augmentation
+Provides honest confidence intervals by accounting for calibration uncertainty:
+- `OracleSliceAugmentation`: Adds augmentation term (L/p) * m(S) * (Y - f̂(S))
+- `OracleSliceConfig`: Configuration for augmentation behavior
+- Estimates m̂(S) = E[W|S] via isotonic regression
+- Supports both MCAR (constant probability) and MAR (score-dependent) labeling
+- Integrates seamlessly with IPS and DR estimators
 
 ## Key Design Decisions
 
@@ -215,6 +227,34 @@ result = calibrator.fit_cv(
 
 # Get out-of-fold predictions
 oof_predictions = calibrator.predict_oof(judge_scores, fold_ids)
+```
+
+### Oracle Slice Augmentation
+```python
+from cje.calibration import OracleSliceConfig
+from cje import CalibratedIPS
+
+# Configure augmentation for honest CIs
+oracle_config = OracleSliceConfig(
+    enable_augmentation=True,
+    enable_cross_fit=True,
+    min_pi=0.01,  # Minimum labeling probability
+    use_mar=False  # MCAR assumption for now
+)
+
+# Use with CalibratedIPS
+estimator = CalibratedIPS(
+    sampler,
+    oracle_slice_config=oracle_config
+)
+
+# The augmentation automatically adjusts standard errors
+# to account for calibration uncertainty
+result = estimator.fit_and_estimate()
+
+# Check slice contribution to variance
+aug_diag = result.metadata["slice_augmentation"]["policy_a"]
+print(f"Oracle slice variance share: {aug_diag['slice_variance_share']:.1%}")
 ```
 
 ## Configuration Options

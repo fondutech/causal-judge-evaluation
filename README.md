@@ -101,14 +101,30 @@ CJE transforms biased judge scores into unbiased policy estimates through a prin
                           └──────────┬───────────────────┘
                                      ▼
                           ┌──────────────────────┐
+                          │  Oracle Augmentation │
+                          │    (Optional)        │
+                          │                      │
+                          │ AUG = (L/p) × m̂(S) × │
+                          │      (Y - f̂(S))      │
+                          │                      │
+                          │ • Accounts for       │
+                          │   calibration        │
+                          │   uncertainty        │
+                          │ • Honest CIs         │
+                          └──────────────────────┘
+                                     │
+                                     ▼
+                          ┌──────────────────────┐
                           │   FINAL ESTIMATE     │
                           │                      │
                           │  IPS Estimator:      │
-                          │  V̂ = Σ W_c,i × R_i/n │
+                          │  V̂ = Σ(W_c,i×R_i     │
+                          │      + AUG_i)/n      │
                           │                      │
                           │  DR (if fresh draws):│
-                          │  V̂ = ĝ + Σ W_c,i ×   │
-                          │      (R_i - q̂_i)/n   │
+                          │  V̂ = ĝ + Σ(W_c,i ×   │
+                          │      (R_i - q̂_i)     │
+                          │      + AUG_i)/n      │
                           │                      │
                           │  SE = std(ψ̂)/√n      │
                           │  95% CI: V̂ ± 1.96×SE │
@@ -116,6 +132,7 @@ CJE transforms biased judge scores into unbiased policy estimates through a prin
 
 Legend: X=prompts, A=responses, S=judge scores, Y=oracle labels, R=rewards
         W=importance weights, W_c=calibrated weights, ψ̂=influence function
+        L=oracle label indicator, p=oracle coverage, m̂(S)=E[W|S], AUG=augmentation
 ```
 
 ### Key Innovation: SIMCal
@@ -124,6 +141,7 @@ SIMCal prevents weight explosion by projecting importance weights onto monotone 
 - ✅ Mean preservation (unbiasedness)
 - ✅ Variance reduction via majorization
 - ✅ Explicit variance cap for stability
+- ✅ Oracle slice augmentation for honest CIs that account for calibration uncertainty
 
 ## 💻 Example: Comparing Model Versions
 
@@ -226,8 +244,26 @@ calibrated_dataset, cal_result = calibrate_dataset(
 )
 
 sampler = PrecomputedSampler(calibrated_dataset)
-estimator = CalibratedIPS(sampler, variance_cap=0.5)  # Tighter cap
+estimator = CalibratedIPS(sampler, var_cap=0.5)  # Tighter variance cap
 results = estimator.fit_and_estimate()
+```
+
+### Oracle Slice Augmentation for Honest CIs
+```python
+from cje.calibration import OracleSliceConfig
+
+# Enable augmentation for honest confidence intervals
+oracle_config = OracleSliceConfig(
+    enable_augmentation=True,  # Add augmentation term
+    enable_cross_fit=True      # Cross-fit m̂(S) = E[W|S]
+)
+
+estimator = CalibratedIPS(sampler, oracle_slice_config=oracle_config)
+results = estimator.fit_and_estimate()
+
+# Check oracle slice contribution to variance
+aug_info = results.metadata["slice_augmentation"]["policy_name"]
+print(f"Oracle uncertainty: {aug_info['slice_variance_share']:.1%} of total variance")
 ```
 
 ## 📚 Documentation

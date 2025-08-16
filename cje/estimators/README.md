@@ -65,6 +65,7 @@ estimators/
 - Judge scores are available
 - You want variance-stabilized weights
 - Fresh draws are not available
+- You want honest CIs accounting for calibration uncertainty
 
 ### Use **DRCPOEstimator** when:
 - You have poor overlap (ESS < 20%)
