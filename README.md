@@ -168,7 +168,7 @@ CJE expects JSONL logs with:
 }
 ```
 
-**Note**: For DR estimators, you'll also need fresh draws (new responses from π′ evaluated by the judge). See [examples](examples/) for details.
+**Note**: For DR estimators, you'll also need fresh draws (new responses from π′ evaluated by the judge). See [example usage](cje/example_usage.py) for details.
 
 ## 🔬 Available Estimators
 
@@ -232,8 +232,9 @@ results = estimator.fit_and_estimate()
 
 ## 📚 Documentation
 
-- **[Theory & Methods](docs/THEORY.md)**: Mathematical foundations and detailed pipeline
-- **[Examples](examples/)**: Jupyter notebooks with tutorials
+- **[Sphinx Documentation](docs/)**: Complete API reference and theory guides
+- **[Example Usage](cje/example_usage.py)**: Python examples demonstrating all workflows
+- **[Arena Experiment](cje/experiments/arena_10k_simplified/)**: Complete real-world ablation study with 13.9× ESS improvement
 
 ### Module Documentation
 - **[Calibration](cje/calibration/)**: SIMCal algorithm and isotonic regression
