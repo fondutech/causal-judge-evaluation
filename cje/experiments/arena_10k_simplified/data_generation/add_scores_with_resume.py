@@ -12,8 +12,9 @@ from typing import Any, Dict, List, Optional, Tuple
 import sys
 from tqdm import tqdm
 
-sys.path.append(str(Path(__file__).parent.parent.parent.parent))
-sys.path.append(str(Path(__file__).parent.parent))
+# Add parent directory to path for imports
+parent_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(parent_dir))
 
 from evaluation_utils import (
     FireworksEvaluator,

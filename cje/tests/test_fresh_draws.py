@@ -6,12 +6,12 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from cje.utils.fresh_draws import (
+from cje.data.fresh_draws import (
+    FreshDrawDataset,
     load_fresh_draws_from_jsonl,
     load_fresh_draws_auto,
     create_synthetic_fresh_draws,
 )
-from cje.data.fresh_draws import FreshDrawDataset
 
 
 class TestLoadFreshDrawsAuto:

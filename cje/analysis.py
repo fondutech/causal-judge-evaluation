@@ -258,7 +258,7 @@ def _add_fresh_draws(
     verbose: bool,
 ) -> None:
     """Add fresh draws to a DR estimator."""
-    from .utils.fresh_draws import load_fresh_draws_auto
+    from .data.fresh_draws import load_fresh_draws_auto
 
     for policy in sampler.target_policies:
         if fresh_draws_dir:

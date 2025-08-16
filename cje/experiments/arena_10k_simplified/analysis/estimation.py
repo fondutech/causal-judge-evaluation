@@ -18,7 +18,7 @@ from cje import (
     PrecomputedSampler,
     calibrate_dataset,
 )
-from cje.utils.fresh_draws import load_fresh_draws_auto
+from cje.data.fresh_draws import load_fresh_draws_auto
 import sys
 from pathlib import Path
 
