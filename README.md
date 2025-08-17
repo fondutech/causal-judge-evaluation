@@ -21,7 +21,9 @@ CJE recasts judge-based evaluation as **calibrated causal inference** using our 
 ```bash
 # Install
 pip install causal-judge-evaluation  # Coming soon to PyPI
-# Or: pip install -e git+https://github.com/fondutech/causal-judge-evaluation.git
+# Or clone and install locally:
+# git clone https://github.com/your-org/causal-judge-evaluation.git
+# cd causal-judge-evaluation && pip install -e .
 
 # Set API key for log probability computation
 export FIREWORKS_API_KEY="your-api-key"
@@ -33,8 +35,8 @@ from cje import analyze_dataset
 # One-line causal evaluation
 results = analyze_dataset(
     "logs.jsonl",
-    estimator="calibrated-ips",  # Uses SIMCal by default
-    oracle_coverage=0.1  # 10% oracle labels for calibration
+    estimator="calibrated-ips"  # Uses SIMCal by default
+    # Automatically uses all available oracle labels for calibration
 )
 
 print(f"Policy value: {results.estimates[0]:.3f} ± {1.96 * results.standard_errors[0]:.3f}")
@@ -102,7 +104,7 @@ CJE transforms biased judge scores into unbiased policy estimates through a prin
                                      ▼
                           ┌──────────────────────┐
                           │  Oracle Augmentation │
-                          │    (Optional)        │
+                          │  (Auto when < 100%)  │
                           │                      │
                           │ AUG = (L/p) × m̂(S) × │
                           │      (Y - f̂(S))      │
@@ -149,21 +151,22 @@ SIMCal prevents weight explosion by projecting importance weights onto monotone 
 from cje import analyze_dataset
 
 # Evaluate if switching from Llama-3-8B to Llama-3-70B improves quality
+# Note: Your data should have target_policy_logprobs for the policies you want to evaluate
 results = analyze_dataset(
-    "llama_logs.jsonl",  # Your logged Llama-3-8B conversations
-    estimator="calibrated-ips",
-    oracle_coverage=0.05,  # 5% human labels
-    target_policies=["llama-3-70b", "llama-3.1-70b"]  # Compare larger models
+    "llama_logs.jsonl",  # Your logged Llama-3-8B conversations with judge scores
+    estimator="calibrated-ips"
+    # Uses available oracle labels (if any) for calibration
 )
 
-# Compare policies
-for i, policy in enumerate(["llama-3-70b", "llama-3.1-70b"]):
+# Compare policies (assumes your data has these in target_policy_logprobs)
+target_policies = results.metadata.get("target_policies", [])
+for i, policy in enumerate(target_policies):
     estimate = results.estimates[i]
     stderr = results.standard_errors[i]
     print(f"{policy}: {estimate:.3f} ± {1.96*stderr:.3f}")
     
 # Check diagnostics
-if results.diagnostics.ess < 1000:
+if results.diagnostics and results.diagnostics.weight_ess < 0.1:
     print("⚠️ Warning: Low effective sample size - consider more data")
 ```
 
@@ -186,7 +189,7 @@ CJE expects JSONL logs with:
 }
 ```
 
-**Note**: For DR estimators, you'll also need fresh draws (new responses from π′ evaluated by the judge). See [example usage](cje/example_usage.py) for details.
+**Note**: For DR estimators, you'll also need fresh draws (new responses from π′ evaluated by the judge). These should be provided via the `fresh_draws_dir` parameter or by calling `estimator.add_fresh_draws()`. See [example usage](cje/example_usage.py) for details.
 
 ## 🔬 Available Estimators
 
@@ -204,14 +207,18 @@ CJE expects JSONL logs with:
 CJE provides comprehensive diagnostics to audit assumptions:
 
 ```python
+import warnings
+
 diagnostics = results.diagnostics
 print(diagnostics.summary())
 
 # Automatic quality gates
-if diagnostics.ess < 1000:
+if diagnostics and diagnostics.weight_ess < 0.1:  # Less than 10% effective sample size
     warnings.warn("Low ESS - consider tighter variance cap")
-if diagnostics.tail_index < 2:
-    warnings.warn("Heavy tails detected - results may be unstable")
+if diagnostics and diagnostics.tail_indices:
+    worst_tail = min(diagnostics.tail_indices.values())
+    if worst_tail < 2:
+        warnings.warn("Heavy tails detected - results may be unstable")
 ```
 
 Key diagnostics include:
@@ -239,8 +246,8 @@ dataset = load_dataset_from_jsonl("logs.jsonl")
 calibrated_dataset, cal_result = calibrate_dataset(
     dataset,
     judge_field="judge_score",
-    oracle_field="oracle_label",
-    oracle_coverage=0.1
+    oracle_field="oracle_label"
+    # Uses all available oracle labels for calibration
 )
 
 sampler = PrecomputedSampler(calibrated_dataset)
@@ -254,10 +261,11 @@ results = estimator.fit_and_estimate()
 estimator = CalibratedIPS(sampler)  # Auto-enables if 0% < oracle coverage < 100%
 results = estimator.fit_and_estimate()
 
-# Check if augmentation was applied
+# Check if augmentation was applied (for each policy)
 if "slice_augmentation" in results.metadata:
-    aug_info = results.metadata["slice_augmentation"]["policy_name"]
-    print(f"Oracle uncertainty: {aug_info['slice_variance_share']:.1%} of total variance")
+    for policy, aug_info in results.metadata["slice_augmentation"].items():
+        if "slice_variance_share" in aug_info:
+            print(f"{policy} oracle uncertainty: {aug_info['slice_variance_share']:.1%} of total variance")
 
 # Manual control if needed
 estimator = CalibratedIPS(sampler, oracle_slice_config=False)  # Disable
@@ -304,7 +312,7 @@ If you use CJE in your research, please cite:
          Evaluation with Shape-Constrained Calibration},
   author={CJE Contributors},
   year={2025},
-  url={https://github.com/causal-judge-evaluation}
+  url={https://github.com/fondutech/causal-judge-evaluation}
 }
 ```
 
