@@ -248,22 +248,20 @@ estimator = CalibratedIPS(sampler, var_cap=0.5)  # Tighter variance cap
 results = estimator.fit_and_estimate()
 ```
 
-### Oracle Slice Augmentation for Honest CIs
+### Oracle Slice Augmentation (Automatic)
 ```python
-from cje.calibration import OracleSliceConfig
-
-# Enable augmentation for honest confidence intervals
-oracle_config = OracleSliceConfig(
-    enable_augmentation=True,  # Add augmentation term
-    enable_cross_fit=True      # Cross-fit m̂(S) = E[W|S]
-)
-
-estimator = CalibratedIPS(sampler, oracle_slice_config=oracle_config)
+# Automatic: CJE detects partial oracle coverage and enables augmentation
+estimator = CalibratedIPS(sampler)  # Auto-enables if 0% < oracle coverage < 100%
 results = estimator.fit_and_estimate()
 
-# Check oracle slice contribution to variance
-aug_info = results.metadata["slice_augmentation"]["policy_name"]
-print(f"Oracle uncertainty: {aug_info['slice_variance_share']:.1%} of total variance")
+# Check if augmentation was applied
+if "slice_augmentation" in results.metadata:
+    aug_info = results.metadata["slice_augmentation"]["policy_name"]
+    print(f"Oracle uncertainty: {aug_info['slice_variance_share']:.1%} of total variance")
+
+# Manual control if needed
+estimator = CalibratedIPS(sampler, oracle_slice_config=False)  # Disable
+estimator = CalibratedIPS(sampler, oracle_slice_config=True)   # Force enable
 ```
 
 ## 📚 Documentation

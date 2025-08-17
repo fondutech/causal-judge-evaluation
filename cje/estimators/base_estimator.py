@@ -1,11 +1,15 @@
 """Base class for CJE estimators."""
 
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 import numpy as np
+import logging
 
 from ..data.models import Dataset, EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
+from ..calibration.oracle_slice import OracleSliceAugmentation, OracleSliceConfig
+
+logger = logging.getLogger(__name__)
 
 
 class BaseCJEEstimator(ABC):
@@ -24,6 +28,7 @@ class BaseCJEEstimator(ABC):
         sampler: PrecomputedSampler,
         run_diagnostics: bool = True,
         diagnostic_config: Optional[Dict[str, Any]] = None,
+        oracle_slice_config: Union[str, bool, OracleSliceConfig, None] = "auto",
     ):
         """Initialize estimator.
 
@@ -31,6 +36,11 @@ class BaseCJEEstimator(ABC):
             sampler: Data sampler with precomputed log probabilities
             run_diagnostics: Whether to compute diagnostics (default True)
             diagnostic_config: Optional configuration dict (for future use)
+            oracle_slice_config: Oracle slice augmentation configuration:
+                - "auto" (default): Automatically detect and enable if oracle coverage < 100%
+                - True: Always enable with default configuration
+                - False/None: Disable augmentation
+                - OracleSliceConfig object: Use provided configuration
         """
         self.sampler = sampler
         self.run_diagnostics = run_diagnostics
@@ -39,6 +49,12 @@ class BaseCJEEstimator(ABC):
         self._weights_cache: Dict[str, np.ndarray] = {}
         self._influence_functions: Dict[str, np.ndarray] = {}
         self._results: Optional[EstimationResult] = None
+
+        # Configure oracle slice augmentation (canonical for all estimators)
+        self.oracle_augmentation = self._configure_oracle_augmentation(
+            oracle_slice_config
+        )
+        self._aug_diagnostics: Dict[str, Dict] = {}  # Store augmentation diagnostics
 
     @abstractmethod
     def fit(self) -> None:
@@ -152,3 +168,80 @@ class BaseCJEEstimator(ABC):
         """
         class_name = self.__class__.__name__
         return any(x in class_name for x in ["DR", "MRDR", "TMLE"])
+
+    def _configure_oracle_augmentation(
+        self, config: Union[str, bool, OracleSliceConfig, None]
+    ) -> OracleSliceAugmentation:
+        """Configure oracle slice augmentation based on settings and detected coverage.
+
+        This is the canonical augmentation for all CJE estimators.
+
+        Args:
+            config: Configuration setting:
+                - "auto": Auto-detect and enable if coverage < 100%
+                - True: Always enable with default config
+                - False/None: Disable
+                - OracleSliceConfig: Use provided config
+
+        Returns:
+            Configured OracleSliceAugmentation instance
+        """
+        # Handle explicit OracleSliceConfig
+        if isinstance(config, OracleSliceConfig):
+            logger.info("Oracle slice augmentation configured with custom settings")
+            return OracleSliceAugmentation(config)
+
+        # Handle boolean/string config
+        if config is False or config is None:
+            # Explicitly disabled
+            return OracleSliceAugmentation(OracleSliceConfig(enable_augmentation=False))
+
+        # For "auto" or True, check if we should enable
+        oracle_coverage = self.sampler.oracle_coverage
+
+        if config == "auto":
+            # Auto-detect: enable if we have partial oracle coverage
+            if oracle_coverage is not None and 0 < oracle_coverage < 1.0:
+                logger.info(
+                    f"Oracle slice augmentation auto-enabled (coverage={oracle_coverage:.1%})"
+                )
+                return OracleSliceAugmentation(
+                    OracleSliceConfig(enable_augmentation=True, enable_cross_fit=True)
+                )
+            else:
+                # No oracle info or full coverage - disable
+                if oracle_coverage == 1.0:
+                    logger.debug("Oracle slice augmentation not needed (100% coverage)")
+                elif oracle_coverage == 0.0:
+                    logger.debug(
+                        "Oracle slice augmentation disabled (no oracle labels)"
+                    )
+                return OracleSliceAugmentation(
+                    OracleSliceConfig(enable_augmentation=False)
+                )
+
+        elif config is True:
+            # Explicitly enabled
+            if oracle_coverage is not None:
+                logger.info(
+                    f"Oracle slice augmentation enabled (coverage={oracle_coverage:.1%})"
+                )
+            else:
+                logger.info("Oracle slice augmentation enabled (coverage unknown)")
+            return OracleSliceAugmentation(
+                OracleSliceConfig(enable_augmentation=True, enable_cross_fit=True)
+            )
+
+        # Should not reach here
+        return OracleSliceAugmentation(OracleSliceConfig(enable_augmentation=False))
+
+    def get_mhat(self, target_policy: str) -> Optional[np.ndarray]:
+        """Get cached m̂(S) = E[W|S] for oracle augmentation.
+
+        Args:
+            target_policy: Name of the target policy
+
+        Returns:
+            m_hat: Estimated E[W|S] normalized to mean 1, or None if not fitted
+        """
+        return self.oracle_augmentation._m_hat_cache.get(target_policy)

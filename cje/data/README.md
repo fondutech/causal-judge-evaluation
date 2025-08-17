@@ -85,6 +85,9 @@ sampler = PrecomputedSampler.from_jsonl("calibrated_data.jsonl")
 # Access data
 n_samples = sampler.n_valid_samples
 policies = sampler.target_policies
+
+# Check oracle coverage (for automatic augmentation detection)
+oracle_coverage = sampler.oracle_coverage  # Returns float in [0, 1] or None
 ```
 
 ### Data Validation
@@ -164,9 +167,15 @@ Rewards are optional in the base Dataset but required for PrecomputedSampler bec
 Non-core fields go into metadata automatically, allowing:
 - Preservation of all input data
 - Extension without schema changes
+
+### 5. **Oracle Coverage Detection**
+PrecomputedSampler.oracle_coverage property enables:
+- Automatic oracle slice augmentation when coverage < 100%
+- No configuration needed for honest confidence intervals
+- Graceful handling of partial oracle labels
 - Backward compatibility
 
-### 5. **Validation at Multiple Levels**
+### 6. **Validation at Multiple Levels**
 We validate at Pydantic, structural, and semantic levels to:
 - Catch issues early before expensive computation
 - Provide helpful error messages

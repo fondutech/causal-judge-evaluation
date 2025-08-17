@@ -16,7 +16,6 @@ from ..data.precomputed_sampler import PrecomputedSampler
 from ..diagnostics import IPSDiagnostics, Status
 from ..diagnostics import compute_weight_diagnostics
 from ..calibration.simcal import SIMCalibrator, SimcalConfig
-from ..calibration.oracle_slice import OracleSliceAugmentation, OracleSliceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +45,7 @@ class CalibratedIPS(BaseCJEEstimator):
         calibrator: Optional JudgeCalibrator for DR influence functions
         include_baseline: Whether to include raw weights in the stack (default True)
         baseline_shrink: Shrinkage toward baseline for stability (default 0.05)
-        oracle_slice_config: Optional config for oracle slice augmentation (default None)
+        **kwargs: Additional arguments passed to BaseCJEEstimator (e.g., oracle_slice_config)
     """
 
     def __init__(
@@ -59,12 +58,14 @@ class CalibratedIPS(BaseCJEEstimator):
         include_baseline: bool = True,
         baseline_shrink: float = 0.05,
         run_diagnostics: bool = True,
-        oracle_slice_config: Optional[OracleSliceConfig] = None,
+        **kwargs: Any,
     ):
+        # Pass oracle_slice_config to base if provided, otherwise use default "auto"
         super().__init__(
             sampler=sampler,
             run_diagnostics=run_diagnostics,
             diagnostic_config=None,  # Will use defaults
+            **kwargs,  # Passes oracle_slice_config if provided
         )
         self.clip_weight = clip_weight
         self.ess_floor = ess_floor
@@ -75,12 +76,6 @@ class CalibratedIPS(BaseCJEEstimator):
         self._no_overlap_policies: Set[str] = set()
         self._calibration_info: Dict[str, Dict] = {}  # Store calibration details
         self._diagnostics: Optional[IPSDiagnostics] = None
-
-        # Oracle slice augmentation for honest CIs
-        self.oracle_augmentation = OracleSliceAugmentation(
-            oracle_slice_config or OracleSliceConfig()
-        )
-        self._aug_diagnostics: Dict[str, Dict] = {}
 
     def fit(self) -> None:
         """Fit stacked weight calibration for all target policies."""
@@ -174,7 +169,7 @@ class CalibratedIPS(BaseCJEEstimator):
             # Fit m̂(S) for oracle slice augmentation
             # Use the calibrated weights we'll actually use in estimation
             self.oracle_augmentation.fit_m_hat(
-                calibrated, judge_scores, policy, fold_ids
+                calibrated, judge_scores, policy, cv_folds=fold_ids
             )
 
         self._fitted = True
@@ -491,16 +486,3 @@ class CalibratedIPS(BaseCJEEstimator):
     def get_diagnostics(self) -> Optional[IPSDiagnostics]:
         """Get the diagnostics object."""
         return self._diagnostics
-
-    def get_mhat(self, target_policy: str) -> Optional[np.ndarray]:
-        """Get cached m̂(S) = E[W|S] for oracle augmentation.
-
-        Used by DR estimators to add the same augmentation term.
-
-        Args:
-            target_policy: Name of the target policy
-
-        Returns:
-            m_hat: Estimated E[W|S] normalized to mean 1, or None if not fitted
-        """
-        return self.oracle_augmentation._m_hat_cache.get(target_policy)

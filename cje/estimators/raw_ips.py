@@ -2,7 +2,7 @@
 
 import numpy as np
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
 from .base_estimator import BaseCJEEstimator
 from ..data.models import EstimationResult
@@ -24,19 +24,24 @@ class RawIPS(BaseCJEEstimator):
         self,
         sampler: PrecomputedSampler,
         clip_weight: float = 100.0,
+        **kwargs: Any,
     ):
         """Initialize raw IPS estimator.
 
         Args:
             sampler: PrecomputedSampler with data
             clip_weight: Maximum weight value for variance control
+            **kwargs: Additional arguments passed to BaseCJEEstimator (e.g., oracle_slice_config)
         """
-        super().__init__(sampler)
+        super().__init__(sampler, **kwargs)
         self.clip_weight = clip_weight
         self._diagnostics: Optional[IPSDiagnostics] = None
 
     def fit(self) -> None:
         """Compute raw importance weights for all policies."""
+        # Get judge scores once (needed for oracle augmentation)
+        judge_scores = self.sampler.get_judge_scores()
+
         for policy in self.sampler.target_policies:
             # Get raw weights with clipping
             weights = self.sampler.compute_importance_weights(
@@ -54,6 +59,12 @@ class RawIPS(BaseCJEEstimator):
 
             # Cache weights
             self._weights_cache[policy] = weights
+
+            # Fit m̂(S) for oracle slice augmentation
+            if judge_scores is not None:
+                self.oracle_augmentation.fit_m_hat(
+                    weights, judge_scores, policy, cv_folds=None
+                )
 
         self._fitted = True
 
@@ -115,13 +126,22 @@ class RawIPS(BaseCJEEstimator):
                 influence_functions[policy] = np.full(n, np.nan)
                 continue
 
-            # Standard IPS estimate
-            weighted_rewards = weights * rewards
-            estimate = weighted_rewards.mean()
+            # Base IPS contribution
+            base_contrib = weights * rewards
 
-            # Compute standard error using influence functions
-            n = len(weighted_rewards)
-            influence = weighted_rewards - estimate
+            # Add oracle slice augmentation for honest CIs
+            aug, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
+                policy, rewards, data, self.sampler.dataset.samples
+            )
+            self._aug_diagnostics[policy] = aug_diagnostics
+
+            # Total contribution with augmentation
+            total_contrib = base_contrib + aug
+            estimate = float(total_contrib.mean())
+
+            # Compute standard error using augmented influence functions
+            n = len(total_contrib)
+            influence = total_contrib - estimate
             se = float(np.std(influence, ddof=1) / np.sqrt(n)) if n > 1 else 0.0
 
             estimates.append(estimate)

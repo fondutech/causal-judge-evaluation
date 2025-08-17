@@ -203,12 +203,14 @@ def _create_mrdr_tmle(
         )
         sampler = PrecomputedSampler(calibrated_dataset)
 
+    # Oracle slice augmentation is now automatic when coverage < 100%
     mrdr_tmle_estimator = MRDRTMLEEstimator(
         sampler,
         n_folds=n_folds,
         omega_mode=omega_mode,
         link=link,
         calibrator=cal_result.calibrator if cal_result else None,
+        # oracle_slice_config defaults to "auto" in CalibratedIPS
     )
     print(f"   Using MRDR-TMLE with omega_mode='{omega_mode}', link='{link}'")
 

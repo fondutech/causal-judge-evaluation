@@ -22,7 +22,6 @@ from ..diagnostics.dr import (
     compute_orthogonality_score,
     compute_dm_ips_decomposition,
 )
-from ..calibration.oracle_slice import OracleSliceAugmentation, OracleSliceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +49,7 @@ class DREstimator(BaseCJEEstimator):
         n_folds: Number of cross-fitting folds (default 5)
         use_calibrated_weights: If True, use CalibratedIPS; if False, use RawIPS (default True)
         calibrator: Optional calibrator for CalibratorBackedOutcomeModel
-        oracle_slice_config: Optional config for oracle slice augmentation (default None)
-        **kwargs: Additional arguments passed to the IPS estimator
+        **kwargs: Additional arguments passed to the base class (e.g., oracle_slice_config)
     """
 
     def __init__(
@@ -63,13 +61,14 @@ class DREstimator(BaseCJEEstimator):
         calibrator: Optional[Any] = None,
         random_seed: int = 42,
         run_diagnostics: bool = True,
-        oracle_slice_config: Optional[OracleSliceConfig] = None,
         **kwargs: Any,
     ):
+        # Pass oracle_slice_config to base class (now handles it for all estimators)
         super().__init__(
             sampler=sampler,
             run_diagnostics=run_diagnostics,
             diagnostic_config=None,  # Will use defaults
+            **kwargs,  # Passes oracle_slice_config if provided
         )
 
         self.n_folds = n_folds
@@ -81,23 +80,24 @@ class DREstimator(BaseCJEEstimator):
         self.ips_estimator: Union[CalibratedIPS, RawIPS]
         if use_calibrated_weights:
             # Pass calibrator to CalibratedIPS for DR-aware direction selection
+            ips_kwargs = {}
             if calibrator is not None:
-                kwargs = kwargs.copy()  # Don't modify original
-                kwargs["calibrator"] = calibrator
-            # Pass oracle slice config if provided
-            if oracle_slice_config is not None:
-                kwargs["oracle_slice_config"] = oracle_slice_config
+                ips_kwargs["calibrator"] = calibrator
             # Pass diagnostic settings but don't run gates at IPS level
             # (we'll run them at DR level with complete diagnostics)
             self.ips_estimator = CalibratedIPS(
                 sampler,
                 run_diagnostics=run_diagnostics,
-                **kwargs,
+                **ips_kwargs,
             )
             logger.info("Using CalibratedIPS for importance weights in DR")
         else:
-            self.ips_estimator = RawIPS(sampler, **kwargs)
+            self.ips_estimator = RawIPS(sampler)
             logger.info("Using RawIPS for importance weights in DR")
+
+        # IMPORTANT: Share the IPS estimator's augmentation object
+        # DR uses IPS weights, so it should use IPS's m(S) fitting
+        self.oracle_augmentation = self.ips_estimator.oracle_augmentation
 
         # Choose default outcome model based on available calibrator
         if outcome_model is None:
@@ -499,29 +499,16 @@ class DREstimator(BaseCJEEstimator):
             dm_term = g_fresh.mean()  # Direct method term
             ips_correction_base = weights * (logged_rewards - g_logged)
 
-            # Add oracle slice augmentation if using CalibratedIPS with augmentation
-            aug_vector = np.zeros_like(ips_correction_base)
-            aug_diagnostics = {}
-            if (
-                self.use_calibrated_weights
-                and hasattr(self.ips_estimator, "oracle_augmentation")
-                and hasattr(self.ips_estimator, "get_mhat")
-            ):
-                # Get m̂(S) from the IPS estimator
-                m_hat = self.ips_estimator.get_mhat(policy)
-                if m_hat is not None:
-                    # The augmentation for DR adjusts the IPS correction term
-                    # We need to compute the augmentation using the outcome model residuals
-                    oracle_aug = self.ips_estimator.oracle_augmentation
-
-                    # Extract oracle labels and compute augmentation
-                    # Note: For DR, we augment based on (Y - g_logged) not (Y - rewards)
-                    aug_vector, aug_diagnostics = oracle_aug.compute_augmentation(
-                        policy,
-                        g_logged,  # Use outcome predictions instead of rewards
-                        data,
-                        self.sampler.dataset.samples,
-                    )
+            # Add oracle slice augmentation
+            # DR shares the IPS estimator's augmentation (which has m̂(S) fitted)
+            # The augmentation corrects for uncertainty in the calibrated rewards f̂(S)
+            aug_vector, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
+                policy,
+                logged_rewards,  # Always use calibrated rewards
+                data,
+                self.sampler.dataset.samples,
+            )
+            self._aug_diagnostics[policy] = aug_diagnostics
 
             # Total IPS correction with augmentation
             ips_correction = (ips_correction_base + aug_vector).mean()
@@ -852,7 +839,6 @@ class DRCPOEstimator(DREstimator):
         use_calibrated_weights: bool = True,
         calibrator: Optional[Any] = None,
         random_seed: int = 42,
-        oracle_slice_config: Optional[OracleSliceConfig] = None,
         **kwargs: Any,
     ):
         # Pass everything to parent - it will choose the right outcome model
@@ -863,7 +849,6 @@ class DRCPOEstimator(DREstimator):
             use_calibrated_weights=use_calibrated_weights,
             calibrator=calibrator,
             random_seed=random_seed,
-            oracle_slice_config=oracle_slice_config,
             **kwargs,
         )
 

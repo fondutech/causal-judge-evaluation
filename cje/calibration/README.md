@@ -234,7 +234,11 @@ oof_predictions = calibrator.predict_oof(judge_scores, fold_ids)
 from cje.calibration import OracleSliceConfig
 from cje import CalibratedIPS
 
-# Configure augmentation for honest CIs
+# Automatic: Augmentation enables when 0% < oracle coverage < 100%
+estimator = CalibratedIPS(sampler)  # Auto-detects and enables if needed
+result = estimator.fit_and_estimate()
+
+# Or configure explicitly if needed
 oracle_config = OracleSliceConfig(
     enable_augmentation=True,
     enable_cross_fit=True,
@@ -242,7 +246,7 @@ oracle_config = OracleSliceConfig(
     use_mar=False  # MCAR assumption for now
 )
 
-# Use with CalibratedIPS
+# Use with explicit configuration
 estimator = CalibratedIPS(
     sampler,
     oracle_slice_config=oracle_config
@@ -252,9 +256,10 @@ estimator = CalibratedIPS(
 # to account for calibration uncertainty
 result = estimator.fit_and_estimate()
 
-# Check slice contribution to variance
-aug_diag = result.metadata["slice_augmentation"]["policy_a"]
-print(f"Oracle slice variance share: {aug_diag['slice_variance_share']:.1%}")
+# Check slice contribution to variance (if augmentation was applied)
+if "slice_augmentation" in result.metadata:
+    aug_diag = result.metadata["slice_augmentation"]["policy_a"]
+    print(f"Oracle slice variance share: {aug_diag['slice_variance_share']:.1%}")
 ```
 
 ## Configuration Options

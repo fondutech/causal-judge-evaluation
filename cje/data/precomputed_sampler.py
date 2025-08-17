@@ -426,6 +426,46 @@ class PrecomputedSampler:
         """Number of target policies."""
         return len(self.target_policies)
 
+    @property
+    def oracle_coverage(self) -> Optional[float]:
+        """Get oracle coverage (fraction of samples with oracle labels).
+
+        Returns:
+            Oracle coverage in [0, 1] if available, None if no information.
+
+        Note:
+            This first checks calibration metadata (most reliable),
+            then falls back to scanning samples for oracle_label fields.
+        """
+        # First try: Check calibration metadata (most reliable)
+        cal_info = self.dataset.metadata.get("calibration_info", {})
+        if "n_oracle" in cal_info and "n_total" in cal_info:
+            n_total = cal_info["n_total"]
+            if n_total > 0:
+                return float(cal_info["n_oracle"]) / float(n_total)
+
+        # Second try: Scan samples for oracle labels
+        # This handles cases where dataset wasn't created via calibrate_dataset
+        n_with_oracle = 0
+        n_total = len(self.dataset.samples)
+
+        if n_total == 0:
+            return None
+
+        for sample in self.dataset.samples:
+            if (
+                "oracle_label" in sample.metadata
+                and sample.metadata["oracle_label"] is not None
+            ):
+                n_with_oracle += 1
+
+        # If we found any oracle labels, return the coverage
+        if n_with_oracle > 0:
+            return float(n_with_oracle) / float(n_total)
+
+        # No oracle information found
+        return None
+
     def summary(self) -> Dict[str, Any]:
         """Get summary statistics."""
         dataset_summary = self.dataset.summary()
