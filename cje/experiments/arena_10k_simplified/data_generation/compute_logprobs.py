@@ -18,6 +18,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 sys.path.append(str(Path(__file__).parent.parent))  # Add arena_10k_simplified to path
 
 from cje import compute_chat_logprob
+from cje.data.models import LogProbResult, LogProbStatus
 from experiment_config import POLICIES, get_policy_config, POLICY_NAMES, BATCH_SIZES
 
 
@@ -158,10 +159,8 @@ def compute_logprobs_for_responses(
                 {"role": "assistant", "content": response},
             ]
 
-            # Single API call with simple retry logic
+            # Smart retry with validation
             start_time = time.time()
-
-            # Simple retry with exponential backoff
             max_retries = 3
             retry_delay = 1.0  # Initial delay in seconds
 
@@ -173,16 +172,51 @@ def compute_logprobs_for_responses(
                     template_config=template_config,
                 )
 
-                # Break if successful
+                # Check if we got a valid result
                 if result.is_valid and result.value is not None:
-                    break
+                    # Additional validation for positive log prob
+                    if result.value > 0:
+                        # This shouldn't happen - chat.py already checks this
+                        # But double-check for safety before saving
+                        error_msg = f"Positive log probability: {result.value:.3f}"
+                        print(f"    ERROR: {error_msg}")
+                        result = LogProbResult(
+                            value=None,
+                            status=LogProbStatus.API_ERROR,
+                            error=error_msg,
+                            metadata={"invalid_logprob": result.value},
+                        )
+                    else:
+                        # Success! Valid negative log probability
+                        break
 
-                # On failure, retry unless it's the last attempt
+                # Check if error is retryable
+                if result.error:
+                    # Token boundary errors often succeed with retry (different tokenization)
+                    # API errors might be transient
+                    retryable = any(
+                        phrase in result.error.lower()
+                        for phrase in [
+                            "boundary",
+                            "token",
+                            "timeout",
+                            "rate",
+                            "api",
+                            "connection",
+                        ]
+                    )
+
+                    if not retryable:
+                        print(f"    Non-retryable error: {result.error}")
+                        break  # Don't retry for permanent errors
+
+                # Retry with backoff if not last attempt
                 if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-                    retry_delay *= 2  # Double the delay for next attempt
-                    if attempt == 0:  # Only print on first retry
-                        print(f"    Retrying after error: {result.error}")
+                    wait_time = retry_delay * (2**attempt)  # Exponential backoff
+                    print(
+                        f"    Retry {attempt + 1}/{max_retries - 1} after {wait_time:.1f}s: {result.error}"
+                    )
+                    time.sleep(wait_time)
 
             duration = time.time() - start_time
 
