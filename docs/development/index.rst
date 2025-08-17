@@ -8,7 +8,6 @@ Documentation for developers contributing to CJE.
    
    testing
    contributing
-   architecture
 
 Getting Started
 ---------------

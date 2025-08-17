@@ -32,8 +32,8 @@ The simplest way to use CJE is through the ``analyze_dataset`` function:
    # Analyze your logged data
    results = analyze_dataset(
        "your_data.jsonl",
-       estimator="calibrated-ips",  # Recommended default
-       oracle_coverage=0.1  # Use 10% oracle labels
+       estimator="calibrated-ips"  # Recommended default
+       # Automatically uses all available oracle labels
    )
    
    # View results

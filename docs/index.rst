@@ -41,8 +41,8 @@ Quick Start
    # One-line causal evaluation
    results = analyze_dataset(
        "logs.jsonl",
-       estimator="calibrated-ips",  # Uses SIMCal by default
-       oracle_coverage=0.1  # 10% oracle labels for calibration
+       estimator="calibrated-ips"  # Uses SIMCal by default
+       # Automatically uses all available oracle labels
    )
    
    # Get policy value estimate with 95% CI
@@ -56,50 +56,26 @@ Documentation
    :caption: Getting Started
    
    quickstart
-   installation
-   first_analysis
+   examples/index
    
 .. toctree::
    :maxdepth: 2
-   :caption: User Guide
-   
-   user_guide/index
-   data_preparation
-   running_analysis
-   interpreting_results
-   
-.. toctree::
-   :maxdepth: 2
-   :caption: Module Documentation
+   :caption: Reference
    
    modules/index
+   api/index
    
 .. toctree::
    :maxdepth: 2
-   :caption: Theory & Methods
+   :caption: Theory
    
    theory/index
-   theory/causal_inference
-   theory/simcal
-   theory/assumptions
-   
-.. toctree::
-   :maxdepth: 2
-   :caption: API Reference
-   
-   api/index
    
 .. toctree::
    :maxdepth: 2
    :caption: Development
    
    development/index
-   
-.. toctree::
-   :maxdepth: 2
-   :caption: Examples
-   
-   examples/index
 
 Key Results
 -----------
