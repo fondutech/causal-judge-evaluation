@@ -171,6 +171,8 @@ def _calibrate_with_coverage(
 
     # Store original labels for later restoration
     calibrated_dataset._original_oracle_labels = original_oracle_labels
+    # Also store on original dataset so it can be restored there too
+    dataset._original_oracle_labels = original_oracle_labels
 
     return calibrated_dataset, cal_result
 

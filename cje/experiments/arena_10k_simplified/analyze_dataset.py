@@ -222,6 +222,8 @@ def main() -> int:
         # 5. Restore oracle labels for visualization
         # (They were masked during calibration for partial coverage)
         restore_oracle_labels(calibrated_dataset, args)
+        # Also restore on original dataset for oracle comparison
+        restore_oracle_labels(dataset, args)
 
         # 6. Display results
         summary_data = display_results(
