@@ -235,7 +235,6 @@ cje_chatbot.config
 
 # Research/experimental files that shouldn't be public
 scratch/
-experiments/*/data/
 experiments/*/outputs/
 experiments/*/results/
 experiments/*/.cache/
