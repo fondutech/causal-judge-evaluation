@@ -8,6 +8,8 @@ Following CLAUDE.md: Do one thing well - this module only handles estimation set
 
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
+import sys
+
 from cje import (
     CalibratedIPS,
     DRCPOEstimator,
@@ -18,8 +20,6 @@ from cje import (
     calibrate_dataset,
 )
 from cje.data.fresh_draws import load_fresh_draws_auto
-import sys
-from pathlib import Path
 
 # Add parent directory to path for validation import
 sys.path.insert(0, str(Path(__file__).parent.parent))
