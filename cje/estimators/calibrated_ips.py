@@ -49,6 +49,7 @@ class CalibratedIPS(BaseCJEEstimator):
         calibrator: Optional JudgeCalibrator for DR influence functions [only used if calibrate=True]
         include_baseline: Whether to include raw weights in the stack (default True) [only used if calibrate=True]
         baseline_shrink: Shrinkage toward baseline for stability (default 0.05) [only used if calibrate=True]
+        refuse_unreliable: Whether to refuse (return NaN) for unreliable estimates (default False)
         **kwargs: Additional arguments passed to BaseCJEEstimator (e.g., oracle_slice_config)
     """
 
@@ -60,9 +61,10 @@ class CalibratedIPS(BaseCJEEstimator):
         ess_floor: Optional[float] = 0.2,
         var_cap: Optional[float] = None,
         calibrator: Optional[Any] = None,
-        include_baseline: bool = True,
-        baseline_shrink: float = 0.05,
+        include_baseline: bool = False,
+        baseline_shrink: float = 0.0,
         run_diagnostics: bool = True,
+        refuse_unreliable: bool = False,
         **kwargs: Any,
     ):
         # Pass oracle_slice_config to base if provided, otherwise use default "auto"
@@ -79,6 +81,7 @@ class CalibratedIPS(BaseCJEEstimator):
         self.calibrator = calibrator if calibrate else None
         self.include_baseline = include_baseline if calibrate else True
         self.baseline_shrink = baseline_shrink if calibrate else 0.0
+        self.refuse_unreliable = refuse_unreliable
         self._no_overlap_policies: Set[str] = set()
         self._calibration_info: Dict[str, Dict] = {}  # Store calibration details
         self._diagnostics: Optional[IPSDiagnostics] = None
@@ -287,18 +290,24 @@ class CalibratedIPS(BaseCJEEstimator):
 
             if refuse:
                 # Provide detailed explanation of what low ESS means practically
-                logger.error(
-                    f"Cannot reliably estimate policy '{policy}': only {ess:.1%} effective overlap. "
+                warning_msg = (
+                    f"Policy '{policy}' has poor overlap: only {ess:.1%} effective overlap. "
                     f"This means {(1-ess)*100:.0f}% of your data is essentially ignored. "
-                    f"Reasons for refusal: {', '.join(reasons)}. "
+                    f"Reasons: {', '.join(reasons)}. "
                     f"Solutions: (1) Use policies with better overlap, "
                     f"(2) Try DR methods with fresh draws, "
                     f"(3) Collect data from more diverse base policies."
                 )
-                estimates.append(np.nan)
-                standard_errors.append(np.nan)
-                influence_functions[policy] = np.full(n, np.nan)
-                continue
+
+                if self.refuse_unreliable:
+                    logger.error(f"Cannot reliably estimate {warning_msg}")
+                    estimates.append(np.nan)
+                    standard_errors.append(np.nan)
+                    influence_functions[policy] = np.full(n, np.nan)
+                    continue
+                else:
+                    # Provide estimate with strong warning
+                    logger.warning(f"⚠️ UNRELIABLE ESTIMATE: {warning_msg}")
 
             # Base IPS contribution
             base_contrib = weights * rewards

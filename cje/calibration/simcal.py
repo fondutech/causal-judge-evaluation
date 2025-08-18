@@ -40,10 +40,10 @@ class SimcalConfig:
     ess_floor: Optional[float] = 0.2
     var_cap: Optional[float] = None
     epsilon: float = 1e-9
-    include_baseline: bool = True
+    include_baseline: bool = False
     ridge_lambda: float = 1e-8
     n_folds: int = 5
-    baseline_shrink: float = 0.05
+    baseline_shrink: float = 0.0
 
     def __post_init__(self) -> None:
         if self.ess_floor is not None and not (0 < self.ess_floor <= 1):
