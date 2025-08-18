@@ -26,15 +26,14 @@ import random
 import time
 
 # Use CJE's high-level API where possible
-from cje import (
-    load_dataset_from_jsonl,
-    calibrate_dataset,
-    PrecomputedSampler,
-    CalibratedIPS,
-    DRCPOEstimator,
-    MRDREstimator,
-    TMLEEstimator,
-)
+from cje import load_dataset_from_jsonl
+from cje.calibration import calibrate_dataset
+from cje.data.precomputed_sampler import PrecomputedSampler
+from cje.estimators import CalibratedIPS
+from cje.estimators.dr_base import DRCPOEstimator
+from cje.estimators.mrdr import MRDREstimator
+from cje.estimators.mrdr_tmle import MRDRTMLEEstimator
+from cje.estimators.tmle import TMLEEstimator
 
 # Use CJE's fresh draws utilities instead of custom implementation
 from cje.data.fresh_draws import load_fresh_draws_auto
@@ -49,18 +48,16 @@ logger = logging.getLogger(__name__)
 class AblationConfig:
     """Configuration for ablation experiments."""
 
-    ORACLE_TRUTHS = {
-        "clone": 0.7359,
-        "parallel_universe_prompt": 0.7553,
-        "premium": 0.7399,
-        "unhelpful": 0.1440,
-    }
+    # Oracle truths will be computed dynamically from response files
+    # This avoids hardcoding and ensures accuracy
+    ORACLE_TRUTHS = None
 
     ESTIMATOR_CLASSES: Dict[str, Union[type, Callable]] = {
         "raw-ips": lambda s: CalibratedIPS(s, calibrate=False),
         "calibrated-ips": CalibratedIPS,
         "dr-cpo": DRCPOEstimator,
         "mrdr": MRDREstimator,
+        "mrdr-tmle": MRDRTMLEEstimator,
         "tmle": TMLEEstimator,
     }
 
@@ -119,7 +116,7 @@ def prepare_dataset(
 
 def mask_oracle_labels(
     dataset: Dataset, oracle_coverage: float, seed: Optional[int] = None
-) -> Tuple[Dataset, int]:
+) -> Tuple[Dataset, int, Dict[int, Any]]:
     """Mask oracle labels to simulate partial coverage.
 
     Args:
@@ -128,7 +125,7 @@ def mask_oracle_labels(
         seed: Random seed for masking
 
     Returns:
-        Tuple of (modified dataset, number of oracle samples kept)
+        Tuple of (modified dataset, number of oracle samples kept, original oracle labels)
 
     Raises:
         ValueError: If no oracle labels found or coverage invalid
@@ -153,18 +150,26 @@ def mask_oracle_labels(
     n_keep = max(2, int(len(oracle_indices) * oracle_coverage))
     keep_indices = set(random.sample(oracle_indices, min(n_keep, len(oracle_indices))))
 
+    # Store original values before masking
+    original_oracle_labels = {}
+
     # Mask labels not in keep set
     for i, sample in enumerate(dataset.samples):
         if i not in keep_indices and "oracle_label" in sample.metadata:
+            # Store original value
+            original_oracle_labels[i] = sample.metadata["oracle_label"]
             # Create copy to avoid modifying original
             sample.metadata = sample.metadata.copy()
             sample.metadata["oracle_label"] = None
+
+    # Attach for later restoration
+    dataset._original_oracle_labels = original_oracle_labels
 
     logger.info(
         f"Kept {n_keep}/{len(oracle_indices)} oracle labels ({oracle_coverage:.0%} coverage)"
     )
 
-    return dataset, n_keep
+    return dataset, n_keep, original_oracle_labels
 
 
 # Step 2: Calibration function
@@ -205,7 +210,10 @@ def calibrate_with_oracle(
 
 # Step 3: Estimator creation
 def create_estimator(
-    sampler: PrecomputedSampler, estimator_name: str, cal_result: Optional[Any] = None
+    sampler: PrecomputedSampler,
+    estimator_name: str,
+    cal_result: Optional[Any] = None,
+    oracle_coverage: float = 1.0,
 ) -> Any:
     """Create estimator instance.
 
@@ -213,6 +221,7 @@ def create_estimator(
         sampler: PrecomputedSampler with data
         estimator_name: Name of estimator to create
         cal_result: Calibration result (for DR estimators)
+        oracle_coverage: Oracle coverage fraction (for enabling augmentation)
 
     Returns:
         Estimator instance
@@ -231,15 +240,24 @@ def create_estimator(
         return EstimatorClass(sampler)  # type: ignore
 
     # Create estimator with appropriate configuration
-    if estimator_name in ["dr-cpo", "mrdr", "tmle"]:
-        # DR estimators need calibrator and n_folds
+    if estimator_name in ["dr-cpo", "mrdr", "mrdr-tmle", "tmle"]:
+        # DR estimators need calibrator, n_folds, and oracle augmentation config
         n_folds = 5  # Default for DR
+
+        # Enable oracle augmentation when coverage < 100%
+        oracle_slice_config = oracle_coverage < 1.0
+
         if cal_result and hasattr(cal_result, "calibrator"):
             return EstimatorClass(  # type: ignore
-                sampler, calibrator=cal_result.calibrator, n_folds=n_folds
+                sampler,
+                calibrator=cal_result.calibrator,
+                n_folds=n_folds,
+                oracle_slice_config=oracle_slice_config,
             )
         else:
-            return EstimatorClass(sampler, n_folds=n_folds)  # type: ignore
+            return EstimatorClass(
+                sampler, n_folds=n_folds, oracle_slice_config=oracle_slice_config
+            )  # type: ignore
     else:
         # Other IPS estimators
         return EstimatorClass(sampler)  # type: ignore
@@ -247,7 +265,7 @@ def create_estimator(
 
 # Step 4: Fresh draws handling (using CJE's utilities)
 def add_fresh_draws_for_dr(
-    estimator: Any, sampler: PrecomputedSampler, data_dir: Path = Path("data copy")
+    estimator: Any, sampler: PrecomputedSampler, data_dir: Path = Path("data")
 ) -> None:
     """Add fresh draws to DR estimator using CJE's utilities.
 
@@ -275,7 +293,7 @@ def add_fresh_draws_for_dr(
 
 # Step 5: Main experiment runner (composed from pieces)
 def run_experiment(
-    data_path: str = "data copy/cje_dataset.jsonl",
+    data_path: str = "data/cje_dataset.jsonl",
     estimator: str = "calibrated-ips",
     oracle_coverage: float = 0.1,
     sample_fraction: float = 1.0,
@@ -308,7 +326,9 @@ def run_experiment(
         dataset = prepare_dataset(data_path, sample_fraction, seed)
 
         # Step 2: Mask oracle labels
-        dataset, n_oracle = mask_oracle_labels(dataset, oracle_coverage, seed)
+        dataset, n_oracle, original_oracle_labels = mask_oracle_labels(
+            dataset, oracle_coverage, seed
+        )
 
         # Step 3: Calibrate
         calibrated_dataset, cal_result = calibrate_with_oracle(dataset, n_oracle)
@@ -317,16 +337,36 @@ def run_experiment(
         sampler = PrecomputedSampler(calibrated_dataset)
 
         # Step 5: Create estimator
-        estimator_obj = create_estimator(sampler, estimator, cal_result)
+        estimator_obj = create_estimator(
+            sampler, estimator, cal_result, oracle_coverage
+        )
 
         # Step 6: Add fresh draws for DR
-        if estimator in ["dr-cpo", "mrdr", "tmle"]:
+        if estimator in ["dr-cpo", "mrdr", "mrdr-tmle", "tmle"]:
             add_fresh_draws_for_dr(estimator_obj, sampler)
 
         # Step 7: Run estimation
         results = estimator_obj.fit_and_estimate()
 
-        # Step 8: Package results
+        # Step 8: Restore oracle labels for ground truth computation
+        # This follows the same pattern as analyze_dataset.py
+        if hasattr(dataset, "_original_oracle_labels"):
+            for idx, oracle_label in dataset._original_oracle_labels.items():
+                dataset.samples[idx].metadata["oracle_label"] = oracle_label
+
+        # Step 9: Compute oracle truths using the existing utility
+        # Import at function level to avoid circular dependencies
+        from oracle_comparison import load_oracle_ground_truth
+
+        oracle_truths = load_oracle_ground_truth(
+            data_path,
+            dataset,  # Dataset now has all oracle labels restored
+            list(sampler.target_policies),
+            oracle_field="oracle_label",
+            responses_dir=str(Path(data_path).parent / "responses"),
+        )
+
+        # Step 10: Package results
         runtime = time.time() - start_time
 
         return {
@@ -347,7 +387,7 @@ def run_experiment(
                 )
                 for i, policy in enumerate(sampler.target_policies)
             },
-            "oracle_truths": AblationConfig.ORACLE_TRUTHS,
+            "oracle_truths": oracle_truths,
             "runtime": runtime,
             "success": True,
             "error": None,
@@ -370,7 +410,7 @@ def run_ablation_grid(
     estimators: List[str],
     oracle_coverages: List[float],
     sample_fractions: List[float],
-    data_path: str = "data copy/cje_dataset.jsonl",
+    data_path: str = "data/cje_dataset.jsonl",
     n_seeds: int = 5,
     output_dir: str = "ablation_results",
 ) -> List[Dict]:
@@ -457,7 +497,7 @@ def main() -> None:
     )
 
     parser.add_argument(
-        "--data", default="data copy/cje_dataset.jsonl", help="Path to dataset"
+        "--data", default="data/cje_dataset.jsonl", help="Path to dataset"
     )
 
     parser.add_argument("--n-seeds", type=int, default=5, help="Number of random seeds")

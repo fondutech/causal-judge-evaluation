@@ -2,6 +2,24 @@
 
 Context and guardrails for working with CJE.
 
+## CRITICAL: Search Before You Build
+
+**THE #1 MISTAKE I MAKE: Reimplementing something that already exists**
+
+Before writing ANY new function or utility:
+1. **SEARCH for existing implementations** - grep the entire codebase
+2. **CHECK experiments/ folders** - they often have utilities you can reuse
+3. **LOOK in tests/** - they show how existing functions are used
+4. **READ related modules completely** - the function you need is probably there
+
+The codebase already has utilities for:
+- Oracle ground truth handling
+- Label restoration after masking
+- Dataset calibration
+- Fresh draws loading
+- Weight diagnostics
+- Visualization generation
+
 ## Core Principle
 
 **Think Before Doing** - I have good judgment AFTER gathering context.
@@ -9,37 +27,50 @@ I make poor decisions when I rush to implement.
 
 ## Before ANY Implementation
 
-**STOP and gather context:**
-1. Search for existing patterns in the codebase
-2. Read related files completely
-3. Understand why things are the way they are
-4. Consider implications and edge cases
-5. THEN propose an approach
+**STOP and search the codebase:**
+1. **READ THE README.md** in the directory you're working in - it explains the module's design
+2. **CHECK PARENT AND SIBLING READMEs** - they explain how modules interact
+3. **GREP for keywords** related to what you're about to build
+4. **LOOK for similar patterns** in existing code
+5. **READ the imports** of related files - they reveal existing utilities
+6. **ONLY THEN consider implementing** something new
+
+**CRITICAL: Directory READMEs are your map!**
+- Each module has a README explaining its purpose and design
+- Reading the README takes 2 minutes and prevents hours of mistakes
+- The README tells you what already exists and where to find it
 
 I often have good insights after proper investigation.
 I often make mistakes when I skip this step.
 
 ## Questions to Ask Myself
 
-Before implementing:
-- Have I searched for how this is done elsewhere in the codebase?
-- Do I understand WHY the current design exists?
+Before implementing ANYTHING:
+- **Have I read the README.md in this directory?**
+- **Do I understand this module's purpose from its README?**
+- **Have I searched for existing implementations?**
+- **Have I checked the experiments/ folders?** (they have many utilities)
 - Am I about to reinvent something that already exists?
-- Is this the simplest solution that works?
+- Would importing an existing function be simpler?
 
 During implementation:
+- Am I creating a utility that might already exist?
+- Should I be importing instead of implementing?
 - Am I more than 3 files deep? (Stop and check if on track)
-- Am I breaking something that already works?
 - Would a smaller change suffice?
+- **If I'm changing behavior, does the README need updating?**
 
 After implementing:
+- **Did I update the directory README if my changes affect the module's description?**
+- **Are the README's examples still accurate?**
+- Could I have reused existing code?
 - Can the user maintain this?
-- Did I explain the key decisions?
-- Are the tests still passing?
+- Did I explain why I didn't use existing utilities (if applicable)?
 
 ## What NOT to Do
 
 **Never** add these to CJE:
+- Duplicate utilities (search first!)
 - Workflow orchestration (users compose tools)
 - State management (each run is independent)
 - Retry logic (fail fast and clear)
@@ -47,7 +78,9 @@ After implementing:
 - Clever abstractions (YAGNI)
 
 **Never** do these as Claude:
-- Implement before understanding context
+- **Implement before searching for existing solutions**
+- **Create new utilities without checking experiments/ and utils/**
+- **Assume something doesn't exist without grep**
 - Create new files when editing would work
 - Make docs unless explicitly asked
 - Commit without explicit request
@@ -162,32 +195,52 @@ python analyze_dataset.py --data data.jsonl --estimator calibrated-ips
 - "Import errors" → Wrong directory or missing poetry install
 - "No module named cje" → Need `pip install -e .` or `poetry install`
 
-## Navigation Patterns
+## Finding Existing Code and Understanding Modules
 
-**To find examples of X**:
-```bash
-# Find how something is used
-grep -r "SIMCal" cje/ --include="*.py"
+**ALWAYS START WITH READMEs:**
+1. **Read the README.md in the directory you're working in** - it's your primary guide
+2. **Check parent directory README** - understand the broader context
+3. **Look at sibling module READMEs** - see how modules work together
 
-# Find test examples
-grep -r "test.*calibrat" cje/tests/
+**Where to look for existing implementations:**
+1. The README in the current directory (it lists what's available!)
+2. `experiments/arena_10k_simplified/` - production pipeline with many utilities
+3. `cje/tests/` - Shows how things are meant to be used
+4. Module-specific utilities in each package (data/, calibration/, diagnostics/)
 
-# Find where a class is defined
-grep -r "class.*CalibratedIPS" cje/
-```
+**How to search effectively:**
+- **Start with README.md files** - they're the map to the codebase
+- Use grep to search for keywords related to your task
+- Look at imports in similar files - they reveal what already exists
+- Check the main pipeline files to see established patterns
+- Read test files to understand intended usage
 
-**Key files to check**:
-- `analyze_dataset.py` - Main entry point, shows full flow
-- `cje/tests/test_integration.py` - End-to-end examples
-- `experiments/arena_10k_simplified/` - Production pipeline
+**README files are documentation contracts:**
+- They describe what the module does and how to use it
+- If you change the module's behavior, you MUST update the README
+- If the README says something exists, it should exist
+- If you add significant functionality, document it in the README
 
 ## My Best Practices
 
-1. **Research first** - grep/read before implementing
-2. **Start minimal** - Can always add more
-3. **Test immediately** - Run tests after changes
-4. **Explain changes** - User should understand what I did
-5. **Stay focused** - Return to user's actual goal
+1. **READ READMEs FIRST** - Every directory has a README explaining what's there
+2. **SEARCH SECOND** - grep for existing implementations before writing code
+3. **Import, don't implement** - If it exists, import it. Don't recreate it.
+4. **Check experiments/** - Most utilities you need are already there
+5. **Start minimal** - Can always add more
+6. **Test immediately** - Run tests after changes
+7. **Update READMEs** - Keep documentation accurate when code changes
+8. **Explain reuse** - Tell user when I'm reusing existing code
+9. **Stay focused** - Return to user's actual goal
+
+**My implementation checklist:**
+- [ ] Did I read the README.md in this directory?
+- [ ] Did I understand the module's design from its README?
+- [ ] Did I search for existing implementations?
+- [ ] Did I check experiments/arena_10k_simplified/?
+- [ ] Am I reusing existing utilities where possible?
+- [ ] If I changed behavior, did I update the README?
+- [ ] If creating new code, did I explain why existing utilities won't work?
 
 ## When to Be Skeptical
 
@@ -199,6 +252,34 @@ CJE results are suspect when:
 - DR orthogonality score CI doesn't contain 0
 
 Always check `diagnostics.summary()` before trusting estimates.
+
+## Rules for Updating This Document
+
+**When to update CLAUDE.md:**
+- After learning a key pattern that prevents mistakes
+- When discovering an important principle about the codebase
+- To document high-level architecture decisions
+- To capture lessons learned from repeated errors
+
+**What belongs in CLAUDE.md:**
+- High-level principles and patterns
+- Common mistakes to avoid
+- Where to find things (directories, not specific functions)
+- Design philosophy and architectural decisions
+- Workflow patterns and best practices
+
+**What does NOT belong:**
+- Code-level implementation details
+- Specific function names or signatures
+- Low-level technical specifics
+- Anything that will become stale quickly
+- Details better kept in docstrings or READMEs
+
+**Keep it maintainable:**
+- Focus on timeless principles over specifics
+- Point to where details live, don't duplicate them
+- Keep sections concise and scannable
+- Remove outdated information promptly
 
 ## Remember
 
