@@ -110,7 +110,7 @@ if not is_valid:
 ### Required Fields
 
 Every sample must have:
-- `prompt_id`: Unique identifier (auto-generated from prompt hash if missing)
+- `prompt_id`: Unique identifier (checked in top-level, then metadata, auto-generated from prompt hash if missing)
 - `prompt`: Input text/context
 - `response`: Generated output
 - `base_policy_logprob`: Log probability under logging policy

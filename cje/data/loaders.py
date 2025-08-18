@@ -134,8 +134,10 @@ class DatasetLoader:
             record: Raw data record
             idx: Index in dataset (used as fallback if prompt is also missing)
         """
-        # Get prompt_id - auto-generate if missing
-        prompt_id = record.get("prompt_id")
+        # Get prompt_id - check top-level first, then metadata, then auto-generate
+        prompt_id = record.get("prompt_id") or record.get("metadata", {}).get(
+            "prompt_id"
+        )
         if prompt_id is None:
             # Auto-generate from prompt hash for consistency across datasets
             # This ensures fresh draws will map to the same prompt_id
