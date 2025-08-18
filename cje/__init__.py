@@ -26,7 +26,6 @@ from .estimators import (
     # Estimators
     BaseCJEEstimator,
     CalibratedIPS,
-    RawIPS,
     # Types
     LogProbResult,
     LogProbStatus,
@@ -131,7 +130,7 @@ from .teacher_forcing import (
 )
 
 # High-level analysis API
-from .analysis import analyze_dataset
+from .interface import analyze_dataset
 
 # Export utilities
 from .utils.export import export_results_json, export_results_csv
@@ -142,7 +141,6 @@ __all__ = [
     # Core functionality
     "BaseCJEEstimator",
     "CalibratedIPS",
-    "RawIPS",
     "PrecomputedSampler",
     "compute_teacher_forced_logprob",
     # High-level API

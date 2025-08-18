@@ -8,7 +8,7 @@ from cje.diagnostics import IPSDiagnostics, DRDiagnostics, Status
 from cje.data.models import Sample, Dataset, EstimationResult
 from cje.data.precomputed_sampler import PrecomputedSampler
 from cje.data.fresh_draws import FreshDrawDataset, FreshDrawSample
-from cje.estimators import CalibratedIPS, RawIPS
+from cje.estimators import CalibratedIPS
 from cje.estimators.dr_base import DRCPOEstimator
 from cje.estimators.tmle import TMLEEstimator
 from cje.estimators.mrdr import MRDREstimator
@@ -60,7 +60,7 @@ class TestIPSDiagnostics:
     def test_ips_diagnostics_with_issues(self) -> None:
         """Test IPSDiagnostics with problematic values."""
         diag = IPSDiagnostics(
-            estimator_type="RawIPS",
+            estimator_type="CalibratedIPS",
             method="raw_ips",
             n_samples_total=100,
             n_samples_valid=10,  # Very high filter rate
@@ -296,16 +296,16 @@ class TestEstimatorDiagnosticIntegration:
         return fresh_draws
 
     def test_raw_ips_produces_diagnostics(self, sample_dataset: Dataset) -> None:
-        """Test that RawIPS produces IPSDiagnostics."""
+        """Test that CalibratedIPS with calibrate=False produces IPSDiagnostics."""
         sampler = PrecomputedSampler(sample_dataset)
-        estimator = RawIPS(sampler)
+        estimator = CalibratedIPS(sampler, calibrate=False)  # Raw mode
         estimator.fit()
         result = estimator.estimate()
 
         assert result.diagnostics is not None
         assert isinstance(result.diagnostics, IPSDiagnostics)
         assert not isinstance(result.diagnostics, DRDiagnostics)
-        assert result.diagnostics.estimator_type == "RawIPS"
+        assert result.diagnostics.estimator_type == "CalibratedIPS"
         assert result.diagnostics.method == "raw_ips"
         assert result.diagnostics.calibration_rmse is None  # No calibration
 

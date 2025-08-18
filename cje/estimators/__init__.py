@@ -8,7 +8,6 @@ This module contains:
 
 from .base_estimator import BaseCJEEstimator
 from .calibrated_ips import CalibratedIPS
-from .raw_ips import RawIPS
 from ..data.models import (
     Sample,
     Dataset,
@@ -21,7 +20,6 @@ __all__ = [
     # Estimators
     "BaseCJEEstimator",
     "CalibratedIPS",
-    "RawIPS",
     # Data models
     "Sample",
     "Dataset",

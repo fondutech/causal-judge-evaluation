@@ -21,36 +21,41 @@ logger = logging.getLogger(__name__)
 
 
 class CalibratedIPS(BaseCJEEstimator):
-    """Stacked SIMCal-based IPS estimator with optimal weight calibration.
+    """IPS estimator with optional SIMCal weight calibration.
 
-    Uses stacked Score-Indexed Monotone Calibration (SIMCal) to reduce variance and
-    heavy-tail pathologies in importance weights. Combines {baseline, increasing,
-    decreasing} candidates via convex optimization to minimize OOF influence function
-    variance, then blends toward uniform to meet constraints.
+    Can operate in two modes:
+    1. calibrate=True (default): Uses stacked Score-Indexed Monotone Calibration (SIMCal)
+       to reduce variance and heavy-tail pathologies in importance weights
+    2. calibrate=False: Uses raw importance weights directly (equivalent to traditional IPS)
 
-    Features:
+    Features when calibrated:
     - Stacked calibration combining multiple candidates optimally
     - OOF influence function variance minimization
     - ESS floor and variance cap constraints
     - Judge score-indexed calibration for better alignment
     - Automatic DR-aware calibration when calibrator available
+
+    Features in both modes:
     - Oracle slice augmentation for honest confidence intervals
     - Comprehensive diagnostics
+    - Optional weight clipping
 
     Args:
         sampler: PrecomputedSampler with data
+        calibrate: Whether to apply SIMCal calibration (default True)
         clip_weight: Maximum weight value before calibration (default None = no clipping)
-        ess_floor: Minimum ESS as fraction of n (default 0.2 = 20% ESS)
-        var_cap: Maximum allowed variance of calibrated weights (default None = no cap)
-        calibrator: Optional JudgeCalibrator for DR influence functions
-        include_baseline: Whether to include raw weights in the stack (default True)
-        baseline_shrink: Shrinkage toward baseline for stability (default 0.05)
+        ess_floor: Minimum ESS as fraction of n (default 0.2 = 20% ESS) [only used if calibrate=True]
+        var_cap: Maximum allowed variance of calibrated weights (default None = no cap) [only used if calibrate=True]
+        calibrator: Optional JudgeCalibrator for DR influence functions [only used if calibrate=True]
+        include_baseline: Whether to include raw weights in the stack (default True) [only used if calibrate=True]
+        baseline_shrink: Shrinkage toward baseline for stability (default 0.05) [only used if calibrate=True]
         **kwargs: Additional arguments passed to BaseCJEEstimator (e.g., oracle_slice_config)
     """
 
     def __init__(
         self,
         sampler: PrecomputedSampler,
+        calibrate: bool = True,
         clip_weight: Optional[float] = None,
         ess_floor: Optional[float] = 0.2,
         var_cap: Optional[float] = None,
@@ -67,18 +72,19 @@ class CalibratedIPS(BaseCJEEstimator):
             diagnostic_config=None,  # Will use defaults
             **kwargs,  # Passes oracle_slice_config if provided
         )
+        self.calibrate = calibrate
         self.clip_weight = clip_weight
-        self.ess_floor = ess_floor
-        self.var_cap = var_cap
-        self.calibrator = calibrator
-        self.include_baseline = include_baseline
-        self.baseline_shrink = baseline_shrink
+        self.ess_floor = ess_floor if calibrate else None
+        self.var_cap = var_cap if calibrate else None
+        self.calibrator = calibrator if calibrate else None
+        self.include_baseline = include_baseline if calibrate else True
+        self.baseline_shrink = baseline_shrink if calibrate else 0.0
         self._no_overlap_policies: Set[str] = set()
         self._calibration_info: Dict[str, Dict] = {}  # Store calibration details
         self._diagnostics: Optional[IPSDiagnostics] = None
 
     def fit(self) -> None:
-        """Fit stacked weight calibration for all target policies."""
+        """Fit weights for all target policies (with or without calibration)."""
         # Get judge scores once (same for all policies)
         judge_scores = self.sampler.get_judge_scores()
 
@@ -98,6 +104,26 @@ class CalibratedIPS(BaseCJEEstimator):
                 self._no_overlap_policies.add(policy)
                 continue
 
+            # If not calibrating, just use raw weights
+            if not self.calibrate:
+                logger.debug(
+                    f"Raw IPS weights for policy '{policy}': "
+                    f"mean={raw_weights.mean():.3f}, std={raw_weights.std():.3f}, "
+                    f"min={raw_weights.min():.3f}, max={raw_weights.max():.3f}"
+                )
+
+                # Cache raw weights
+                self._weights_cache[policy] = raw_weights
+
+                # Fit m̂(S) for oracle slice augmentation
+                if judge_scores is not None:
+                    self.oracle_augmentation.fit_m_hat(
+                        raw_weights, judge_scores, policy, cv_folds=None
+                    )
+
+                continue  # Skip calibration for this policy
+
+            # ========== Calibration path (original code) ==========
             logger.debug(
                 f"Calibrating weights for policy '{policy}': "
                 f"n_samples={len(raw_weights)}, raw_mean={raw_weights.mean():.3f}"
@@ -320,11 +346,11 @@ class CalibratedIPS(BaseCJEEstimator):
             estimates=np.array(estimates),
             standard_errors=np.array(standard_errors),
             n_samples_used=n_samples_used,
-            method="calibrated_ips",
+            method="calibrated_ips" if self.calibrate else "raw_ips",
             influence_functions=influence_functions,
             metadata={
                 "target_policies": list(self.sampler.target_policies),
-                "calibration_method": "simcal",
+                "calibration_method": "simcal" if self.calibrate else None,
                 "ess_floor": self.ess_floor,
                 "var_cap": self.var_cap,
                 "calibration_info": self._calibration_info,  # TODO: Move to diagnostics

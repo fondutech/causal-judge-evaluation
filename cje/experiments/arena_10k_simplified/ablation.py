@@ -21,7 +21,7 @@ import json
 import logging
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, Union, Callable
 import random
 import time
 
@@ -30,7 +30,6 @@ from cje import (
     load_dataset_from_jsonl,
     calibrate_dataset,
     PrecomputedSampler,
-    RawIPS,
     CalibratedIPS,
     DRCPOEstimator,
     MRDREstimator,
@@ -57,8 +56,8 @@ class AblationConfig:
         "unhelpful": 0.1440,
     }
 
-    ESTIMATOR_CLASSES = {
-        "raw-ips": RawIPS,
+    ESTIMATOR_CLASSES: Dict[str, Union[type, Callable]] = {
+        "raw-ips": lambda s: CalibratedIPS(s, calibrate=False),
         "calibrated-ips": CalibratedIPS,
         "dr-cpo": DRCPOEstimator,
         "mrdr": MRDREstimator,
@@ -226,19 +225,24 @@ def create_estimator(
 
     EstimatorClass = AblationConfig.ESTIMATOR_CLASSES[estimator_name]
 
+    # Handle special case for raw-ips (lambda function)
+    if estimator_name == "raw-ips":
+        # EstimatorClass is a lambda that takes sampler
+        return EstimatorClass(sampler)  # type: ignore
+
     # Create estimator with appropriate configuration
     if estimator_name in ["dr-cpo", "mrdr", "tmle"]:
         # DR estimators need calibrator and n_folds
         n_folds = 5  # Default for DR
         if cal_result and hasattr(cal_result, "calibrator"):
-            return EstimatorClass(
+            return EstimatorClass(  # type: ignore
                 sampler, calibrator=cal_result.calibrator, n_folds=n_folds
             )
         else:
-            return EstimatorClass(sampler, n_folds=n_folds)
+            return EstimatorClass(sampler, n_folds=n_folds)  # type: ignore
     else:
-        # IPS estimators
-        return EstimatorClass(sampler)
+        # Other IPS estimators
+        return EstimatorClass(sampler)  # type: ignore
 
 
 # Step 4: Fresh draws handling (using CJE's utilities)

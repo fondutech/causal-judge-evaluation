@@ -8,7 +8,7 @@ from typing import Optional
 from unittest.mock import patch, MagicMock, call
 import numpy as np
 
-from cje.analysis import analyze_dataset
+from cje.interface.analysis import analyze_dataset
 
 
 class TestAnalyzeDataset:

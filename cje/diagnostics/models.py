@@ -21,10 +21,10 @@ class Status(Enum):
 
 @dataclass
 class IPSDiagnostics:
-    """Diagnostics for IPS-based estimators (RawIPS and CalibratedIPS)."""
+    """Diagnostics for IPS-based estimators (CalibratedIPS in both raw and calibrated modes)."""
 
     # ========== Core Info (always present) ==========
-    estimator_type: str  # "RawIPS" or "CalibratedIPS"
+    estimator_type: str  # "CalibratedIPS"
     method: str
     n_samples_total: int
     n_samples_valid: int
@@ -51,7 +51,7 @@ class IPSDiagnostics:
         None  # Hill tail index per policy
     )
 
-    # ========== Calibration Diagnostics (None for RawIPS) ==========
+    # ========== Calibration Diagnostics (None for raw mode) ==========
     calibration_rmse: Optional[float] = None
     calibration_r2: Optional[float] = None
     calibration_coverage: Optional[float] = None  # P(|pred - oracle| < 0.1)

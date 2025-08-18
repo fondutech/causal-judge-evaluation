@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 from cje import (
     CalibratedIPS,
-    RawIPS,
     DRCPOEstimator,
     MRDREstimator,
     TMLEEstimator,
@@ -32,7 +31,7 @@ def create_estimator(
     sampler: PrecomputedSampler,
     calibrated_dataset: Any,
     cal_result: Optional[Any] = None,
-) -> Union[CalibratedIPS, RawIPS, DRCPOEstimator, MRDREstimator, TMLEEstimator]:
+) -> Union[CalibratedIPS, DRCPOEstimator, MRDREstimator, TMLEEstimator]:
     """Create the appropriate estimator based on args.
 
     Args:
@@ -51,7 +50,8 @@ def create_estimator(
 
     elif args.estimator == "raw-ips":
         clip_weight = estimator_config.get("clip_weight", 100.0)
-        return RawIPS(sampler, clip_weight=clip_weight)
+        # Use CalibratedIPS with calibrate=False for raw IPS
+        return CalibratedIPS(sampler, calibrate=False, clip_weight=clip_weight)
 
     elif args.estimator == "dr-cpo":
         return _create_dr_cpo(args, sampler, cal_result, estimator_config)

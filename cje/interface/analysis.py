@@ -10,14 +10,13 @@ from pathlib import Path
 from typing import Optional, Dict, Any, Union
 import numpy as np
 
-from . import load_dataset_from_jsonl, calibrate_dataset
-from .data.models import Dataset, EstimationResult
-from .data.precomputed_sampler import PrecomputedSampler
-from .estimators.calibrated_ips import CalibratedIPS
-from .estimators.raw_ips import RawIPS
-from .estimators.dr_base import DRCPOEstimator
-from .estimators.mrdr import MRDREstimator
-from .estimators.tmle import TMLEEstimator
+from .. import load_dataset_from_jsonl, calibrate_dataset
+from ..data.models import Dataset, EstimationResult
+from ..data.precomputed_sampler import PrecomputedSampler
+from ..estimators.calibrated_ips import CalibratedIPS
+from ..estimators.dr_base import DRCPOEstimator
+from ..estimators.mrdr import MRDREstimator
+from ..estimators.tmle import TMLEEstimator
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +175,7 @@ def _create_estimator(
     config: Dict[str, Any],
     calibration_result: Optional[Any],
     verbose: bool,
-) -> Union[CalibratedIPS, RawIPS, DRCPOEstimator, MRDREstimator, TMLEEstimator]:
+) -> Union[CalibratedIPS, DRCPOEstimator, MRDREstimator, TMLEEstimator]:
     """Create the appropriate estimator."""
 
     if estimator_type == "calibrated-ips":
@@ -190,7 +189,7 @@ def _create_estimator(
 
     elif estimator_type == "raw-ips":
         clip_weight = config.get("clip_weight", 100.0)
-        return RawIPS(sampler, clip_weight=clip_weight)
+        return CalibratedIPS(sampler, calibrate=False, clip_weight=clip_weight)
 
     elif estimator_type == "dr-cpo":
         n_folds = config.get("n_folds", 5)
@@ -257,7 +256,7 @@ def _add_fresh_draws(
     verbose: bool,
 ) -> None:
     """Add fresh draws to a DR estimator."""
-    from .data.fresh_draws import load_fresh_draws_auto
+    from ..data.fresh_draws import load_fresh_draws_auto
 
     for policy in sampler.target_policies:
         if fresh_draws_dir:

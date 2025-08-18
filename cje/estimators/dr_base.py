@@ -10,7 +10,6 @@ import logging
 import dataclasses
 
 from .calibrated_ips import CalibratedIPS
-from .raw_ips import RawIPS
 from .base_estimator import BaseCJEEstimator
 from .outcome_models import IsotonicOutcomeModel, CalibratorBackedOutcomeModel
 from ..data.models import EstimationResult
@@ -30,8 +29,8 @@ class DREstimator(BaseCJEEstimator):
     """Base class for Doubly Robust estimators with flexible weight method.
 
     Key insight: DR = Direct Method + IPS correction
-    This class can use either RawIPS or CalibratedIPS for the importance
-    weighting component, allowing for flexibility in weight handling.
+    This class uses CalibratedIPS for the importance weighting component,
+    which can operate in calibrated or raw mode for flexibility.
 
     The DR formula from the paper (equation 13):
     V_DR(π') = (1/n) Σ [g(X_i, A'_i, S'_i) + W_i * (R_i - g(X_i, A_i, S_i))]
@@ -47,7 +46,7 @@ class DREstimator(BaseCJEEstimator):
         sampler: PrecomputedSampler with logged data
         outcome_model: Outcome model for predictions (default: IsotonicOutcomeModel)
         n_folds: Number of cross-fitting folds (default 5)
-        use_calibrated_weights: If True, use CalibratedIPS; if False, use RawIPS (default True)
+        use_calibrated_weights: If True, use SIMCal calibration; if False, use raw weights (default True)
         calibrator: Optional calibrator for CalibratorBackedOutcomeModel
         **kwargs: Additional arguments passed to the base class (e.g., oracle_slice_config)
     """
@@ -76,24 +75,21 @@ class DREstimator(BaseCJEEstimator):
         self.use_calibrated_weights = use_calibrated_weights
         self.random_seed = random_seed
 
-        # Initialize the appropriate IPS estimator
-        self.ips_estimator: Union[CalibratedIPS, RawIPS]
-        if use_calibrated_weights:
-            # Pass calibrator to CalibratedIPS for DR-aware direction selection
-            ips_kwargs = {}
-            if calibrator is not None:
-                ips_kwargs["calibrator"] = calibrator
-            # Pass diagnostic settings but don't run gates at IPS level
-            # (we'll run them at DR level with complete diagnostics)
-            self.ips_estimator = CalibratedIPS(
-                sampler,
-                run_diagnostics=run_diagnostics,
-                **ips_kwargs,
-            )
-            logger.info("Using CalibratedIPS for importance weights in DR")
-        else:
-            self.ips_estimator = RawIPS(sampler)
-            logger.info("Using RawIPS for importance weights in DR")
+        # Initialize the IPS estimator with appropriate mode
+        self.ips_estimator: CalibratedIPS
+        # Pass calibrator to CalibratedIPS for DR-aware direction selection if calibrating
+        ips_kwargs = {
+            "calibrate": use_calibrated_weights,
+            "run_diagnostics": run_diagnostics,
+        }
+        if use_calibrated_weights and calibrator is not None:
+            ips_kwargs["calibrator"] = calibrator
+
+        self.ips_estimator = CalibratedIPS(sampler, **ips_kwargs)
+
+        logger.info(
+            f"Using CalibratedIPS with calibrate={use_calibrated_weights} for importance weights in DR"
+        )
 
         # IMPORTANT: Share the IPS estimator's augmentation object
         # DR uses IPS weights, so it should use IPS's m(S) fitting

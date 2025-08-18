@@ -122,7 +122,7 @@ def create_parser() -> argparse.ArgumentParser:
 
 def run_analysis(args: argparse.Namespace) -> int:
     """Run the analysis command."""
-    from .analysis import analyze_dataset
+    from .analysis import analyze_dataset  # Same module, this is fine
 
     # Set logging level
     if args.quiet:
@@ -172,7 +172,7 @@ def run_analysis(args: argparse.Namespace) -> int:
 
         # Save results if requested
         if args.output:
-            from .utils.export import export_results_json
+            from ..utils.export import export_results_json
 
             export_results_json(results, args.output)
             if not args.quiet:
@@ -197,8 +197,8 @@ def run_analysis(args: argparse.Namespace) -> int:
 
 def validate_data(args: argparse.Namespace) -> int:
     """Run the validate command using existing validation utilities."""
-    from . import load_dataset_from_jsonl
-    from .data.validation import validate_cje_data
+    from .. import load_dataset_from_jsonl
+    from ..data.validation import validate_cje_data
 
     try:
         if not args.verbose:

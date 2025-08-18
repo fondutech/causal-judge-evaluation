@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock, call
 from io import StringIO
 import argparse
 
-from cje.cli import create_parser, run_analysis, validate_data, main
+from cje.interface.cli import create_parser, run_analysis, validate_data, main
 
 
 class TestCLIParser:

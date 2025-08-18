@@ -8,8 +8,7 @@ The estimators module contains all causal inference estimation methods for unbia
 
 ```
 BaseCJEEstimator (abstract)
-├── RawIPS              # Basic importance sampling
-├── CalibratedIPS       # IPS with SIMCal weight calibration
+├── CalibratedIPS       # IPS with optional SIMCal calibration
 └── DREstimator         # Doubly robust base (abstract)
     ├── DRCPOEstimator  # Basic DR with CPO
     ├── MRDREstimator   # Multiple robust DR
@@ -43,8 +42,7 @@ Optimally combines outcome models and importance weights through targeted fluctu
 ```
 estimators/
 ├── base_estimator.py      # Abstract base with common interface
-├── raw_ips.py             # Basic IPS without calibration
-├── calibrated_ips.py      # IPS with SIMCal weight calibration
+├── calibrated_ips.py      # IPS with optional SIMCal calibration
 ├── dr_base.py             # Doubly robust base class
 ├── mrdr.py                # Multiple robust DR
 ├── mrdr_tmle.py           # MRDR with TMLE fluctuation
@@ -55,7 +53,7 @@ estimators/
 
 ## Estimator Selection Guide
 
-### Use **RawIPS** when:
+### Use **CalibratedIPS with calibrate=False** (raw mode) when:
 - You have excellent overlap (ESS > 50%)
 - You want the simplest baseline
 - You don't have judge scores for calibration
@@ -186,7 +184,7 @@ Low ESS percentage means most of your data is essentially ignored - this indicat
 
 Each estimator implements appropriate refusal gates based on its robustness properties:
 
-- **RawIPS**: Very permissive gates (baseline method)
+- **CalibratedIPS (raw mode)**: Very permissive gates (baseline method)
 - **CalibratedIPS**: Moderate gates based on ESS and weight concentration
 - **DR Estimators**: Inherit IPS gates, warn on poor outcome model fit
 
