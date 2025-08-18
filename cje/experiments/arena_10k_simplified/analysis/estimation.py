@@ -44,10 +44,11 @@ def create_estimator(
     estimator_config = args.estimator_config or {}
 
     if args.estimator == "calibrated-ips":
-        return CalibratedIPS(sampler)
+        refuse_unreliable = estimator_config.get("refuse_unreliable", False)
+        return CalibratedIPS(sampler, refuse_unreliable=refuse_unreliable)
 
     elif args.estimator == "raw-ips":
-        clip_weight = estimator_config.get("clip_weight", 100.0)
+        clip_weight = estimator_config.get("clip_weight", 1e10)
         # Use CalibratedIPS with calibrate=False for raw IPS
         return CalibratedIPS(sampler, calibrate=False, clip_weight=clip_weight)
 

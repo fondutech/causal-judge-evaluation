@@ -82,6 +82,41 @@ estimators/
 - You have well-specified models
 - You need the most sophisticated estimation
 
+## Refusal Gates in CalibratedIPS
+
+CalibratedIPS includes safety mechanisms called "refusal gates" that detect when estimates would be unreliable due to poor overlap between policies. By default (`refuse_unreliable=False`), the estimator provides estimates with warnings. When enabled (`refuse_unreliable=True`), it returns NaN for unreliable policies.
+
+### The Three Gates
+
+1. **ESS < 30%**: Effective Sample Size below 30% means over 70% of your data is essentially ignored
+2. **Raw near-zero > 85%**: More than 85% of raw importance weights are near zero (< 1e-10)
+3. **Top 5% concentration > 30% AND CV > 2.0**: Top 5% of samples carry >30% weight with high variability
+
+### Controlling Refusal Behavior
+
+```python
+# Default: Provide estimates with warnings (refuse_unreliable=False)
+estimator = CalibratedIPS(sampler)  # Will warn but still estimate
+
+# Strict mode: Return NaN for unreliable estimates
+estimator = CalibratedIPS(sampler, refuse_unreliable=True)
+
+# Via command line (analyze_dataset.py)
+--estimator-config '{"refuse_unreliable": true}'  # Enable strict mode
+```
+
+### Interpreting Warnings
+
+When refusal gates trigger warnings:
+- **ESS warnings**: The estimate is dominated by a small fraction of samples
+- **Raw near-zero warnings**: Severe distribution mismatch that calibration may mask
+- **Concentration warnings**: A few outliers control the entire estimate
+
+These estimates are statistically valid but practically unreliable. Consider:
+1. Using policies with better overlap
+2. Trying DR methods with fresh draws
+3. Collecting data from more diverse base policies
+
 ## Common Interface
 
 All estimators follow the same pattern:
@@ -107,8 +142,8 @@ influence = result.influence_functions  # For inference
 
 ## Key Design Principles
 
-### 1. Fail-Fast with NaN
-When diagnostics indicate catastrophically unreliable estimates, estimators return `NaN` rather than misleading values. This ensures scientific integrity while maintaining pipeline composability.
+### 1. Transparency Over Silence
+CalibratedIPS provides estimates with clear warnings by default when reliability is questionable, allowing users to make informed decisions. The optional strict mode (`refuse_unreliable=True`) returns `NaN` for catastrophically unreliable estimates to ensure scientific integrity.
 
 ### 2. Always Compute Influence Functions
 All estimators compute and store influence functions for:

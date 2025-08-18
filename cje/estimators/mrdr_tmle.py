@@ -339,13 +339,32 @@ class MRDRTMLEEstimator(MRDREstimator):
                 )
                 g_logged_star = np.clip(g_logged0 + eps * weights, 0.0, 1.0)
 
+            # Fit m̂(S) = E[W|S] for oracle augmentation if not already fitted
+            if policy not in self.oracle_augmentation._m_hat_cache:
+                # Use the existing fold_ids for cross-fitting consistency
+                self.oracle_augmentation.fit_m_hat(
+                    weights, scores, policy, cv_folds=fold_ids
+                )
+
+            # Add oracle slice augmentation for honest CIs
+            aug_vector, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
+                policy,
+                rewards,  # calibrated rewards
+                data,
+                self.sampler.dataset.samples,
+            )
+            self._aug_diagnostics[policy] = aug_diagnostics
+
             # DM term stays as g_fresh0 (do NOT shift fresh draws)
             dm_term = float(g_fresh0.mean())
-            ips_corr = float(np.mean(weights * (rewards - g_logged_star)))
+            # IPS correction now includes augmentation
+            ips_corr_base = weights * (rewards - g_logged_star)
+            ips_corr_total = ips_corr_base + aug_vector
+            ips_corr = float(np.mean(ips_corr_total))
             psi = dm_term + ips_corr
 
-            # Influence functions and SE
-            if_contrib = g_fresh0 + weights * (rewards - g_logged_star) - psi
+            # Influence functions and SE (include augmentation)
+            if_contrib = g_fresh0 + ips_corr_total - psi
             se = (
                 float(np.std(if_contrib, ddof=1) / np.sqrt(len(if_contrib)))
                 if len(if_contrib) > 1
@@ -356,9 +375,9 @@ class MRDRTMLEEstimator(MRDREstimator):
             # For TMLE, we want to store the actual contributions to the estimate
             # DM component is the fresh draws predictions, IPS is the weighted correction
             self._dm_component[policy] = g_fresh0  # Fresh outcome predictions
-            self._ips_correction[policy] = weights * (
-                rewards - g_logged_star
-            )  # IPS correction term
+            self._ips_correction[policy] = (
+                ips_corr_total  # IPS correction with augmentation
+            )
             self._fresh_rewards[policy] = (
                 rewards  # logged rewards; name kept for compatibility
             )

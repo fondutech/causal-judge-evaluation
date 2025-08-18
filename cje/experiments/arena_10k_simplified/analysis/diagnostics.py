@@ -174,6 +174,71 @@ def display_dr_diagnostics(results: Any, args: Any) -> None:
                 print("      Targeting may not have fully converged")
 
 
+def display_augmentation_diagnostics(
+    estimator: Any, results: Any, oracle_coverage: float, args: Any
+) -> None:
+    """Display oracle augmentation diagnostics if available.
+
+    Args:
+        estimator: Fitted estimator (IPS or DR)
+        results: EstimationResult object
+        oracle_coverage: Fraction of oracle labels used
+        args: Command-line arguments
+    """
+    # Check if augmentation diagnostics are available
+    if not hasattr(estimator, "_aug_diagnostics"):
+        return
+
+    # Check if augmentation diagnostics are empty
+    if not estimator._aug_diagnostics:
+        # No augmentation data available
+        if oracle_coverage < 1.0:
+            print(f"\n7. Oracle Augmentation Impact:")
+            print(f"   Oracle coverage used: {oracle_coverage:.1%}")
+            print(f"   Note: Oracle augmentation not available for this configuration")
+        return
+
+    print(f"\n7. Oracle Augmentation Impact:")
+    print(f"   Oracle coverage used: {oracle_coverage:.1%}")
+    print(f"   " + "-" * 60)
+
+    # Collect augmentation info for each policy
+    for policy in estimator.sampler.target_policies:
+        aug_diag = estimator._aug_diagnostics.get(policy, {})
+        if not aug_diag:
+            continue
+
+        # Get the variance share
+        slice_share = aug_diag.get("slice_variance_share", 0)
+
+        # For DR estimators, calculate share of total variance
+        if hasattr(estimator, "_influence_functions"):
+            if_funcs = estimator._influence_functions.get(policy)
+            if if_funcs is not None and len(if_funcs) > 1:
+                total_var = np.var(if_funcs, ddof=1)
+                aug_var = aug_diag.get("aug_var", 0)
+                if total_var > 0:
+                    aug_contribution = aug_var / total_var * 100
+                    print(
+                        f"   {policy}: {aug_contribution:.1f}% of uncertainty from calibration"
+                    )
+        else:
+            # For IPS, use the stored slice_variance_share
+            if slice_share > 0:
+                print(
+                    f"   {policy}: {slice_share:.1f}% of uncertainty from calibration"
+                )
+
+    print()
+    print("   💡 Interpretation:")
+    if oracle_coverage < 0.2:
+        print("   - Low oracle coverage is inflating confidence intervals")
+        print("   - Consider increasing oracle labels for tighter bounds")
+    if oracle_coverage < 0.5:
+        print("   - Augmentation accounts for calibration uncertainty")
+        print("   - CIs are honest but could be tighter with more labels")
+
+
 def analyze_extreme_weights_report(
     estimator: Any, sampler: Any, calibrated_dataset: Any, args: Any
 ) -> None:

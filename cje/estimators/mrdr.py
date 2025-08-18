@@ -377,21 +377,47 @@ class MRDREstimator(DREstimator):
 
             g_fresh = np.array(g_fresh_all)
 
-            # Compute DR estimate
+            # Compute DR estimate with oracle augmentation
             dm_term = float(g_fresh.mean())
-            ips_corr = float(np.mean(weights * (rewards - g_logged)))
+            ips_corr_base = weights * (rewards - g_logged)
+
+            # Fit m̂(S) = E[W|S] for oracle augmentation if not already fitted
+            if policy not in self.oracle_augmentation._m_hat_cache:
+                # Get fold IDs for cross-fitting consistency using the stored mapping
+                if hasattr(self, "_promptid_to_fold") and self._promptid_to_fold:
+                    fold_ids_for_mhat = np.array(
+                        [self._promptid_to_fold.get(pid, 0) for pid in prompt_ids]
+                    )
+                else:
+                    fold_ids_for_mhat = fold_ids  # Use the existing fold_ids
+                self.oracle_augmentation.fit_m_hat(
+                    weights, judge_scores, policy, cv_folds=fold_ids_for_mhat
+                )
+
+            # Add oracle slice augmentation for honest CIs
+            aug_vector, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
+                policy,
+                rewards,  # calibrated rewards
+                data,
+                self.sampler.dataset.samples,
+            )
+            self._aug_diagnostics[policy] = aug_diagnostics
+
+            # Total IPS correction with augmentation
+            ips_corr_total = ips_corr_base + aug_vector
+            ips_corr = float(np.mean(ips_corr_total))
             psi = dm_term + ips_corr
 
             # Store components for diagnostics
             self._dm_component[policy] = g_fresh
-            self._ips_correction[policy] = weights * (rewards - g_logged)
+            self._ips_correction[policy] = ips_corr_total  # Include augmentation
             self._fresh_rewards[policy] = (
                 rewards  # Store logged rewards for diagnostics
             )
             self._outcome_predictions[policy] = g_logged
 
-            # Compute influence functions and standard error
-            if_contrib = g_fresh + weights * (rewards - g_logged) - psi
+            # Compute influence functions and standard error (including augmentation)
+            if_contrib = g_fresh + ips_corr_total - psi
             se = (
                 float(np.std(if_contrib, ddof=1) / np.sqrt(len(if_contrib)))
                 if len(if_contrib) > 1

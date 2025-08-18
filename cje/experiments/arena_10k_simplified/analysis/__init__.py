@@ -11,6 +11,7 @@ from .results import display_results, compute_base_statistics
 from .diagnostics import (
     display_weight_diagnostics,
     display_dr_diagnostics,
+    display_augmentation_diagnostics,
     analyze_extreme_weights_report,
 )
 from .visualization import generate_visualizations
@@ -31,6 +32,7 @@ __all__ = [
     # Diagnostics
     "display_weight_diagnostics",
     "display_dr_diagnostics",
+    "display_augmentation_diagnostics",
     "analyze_extreme_weights_report",
     # Visualization
     "generate_visualizations",

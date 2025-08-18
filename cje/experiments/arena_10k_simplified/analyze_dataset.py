@@ -28,6 +28,7 @@ from analysis import (
     display_results,
     display_weight_diagnostics,
     display_dr_diagnostics,
+    display_augmentation_diagnostics,
     analyze_extreme_weights_report,
     generate_visualizations,
     export_results,
@@ -238,8 +239,11 @@ def main() -> int:
         )
 
         # Display DR diagnostics if applicable
-        if args.estimator in ["dr-cpo", "mrdr", "tmle"]:
+        if args.estimator in ["dr-cpo", "mrdr", "tmle", "mrdr-tmle"]:
             display_dr_diagnostics(results, args)
+
+        # Display augmentation diagnostics (for all estimators)
+        display_augmentation_diagnostics(estimator, results, args.oracle_coverage, args)
 
         # Analyze extreme weights if requested
         if hasattr(estimator, "get_raw_weights"):
