@@ -40,6 +40,16 @@ This document outlines a comprehensive plan to simplify CJE's API and structure 
    - Comprehensive diagnostics
    - Well-tested core algorithms
 
+## Key Insight: No Users = Maximum Freedom
+
+Since CJE has no existing users, we have a unique opportunity to:
+- Make bold simplifications without migration concerns
+- Remove complexity rather than hide it
+- Be opinionated about the "right" way
+- Ship a clean 1.0 API from the start
+
+This freedom should be used aggressively to create the simplest possible API.
+
 ## Proposed Architecture
 
 ### Three-Layer API Design
@@ -70,6 +80,51 @@ This document outlines a comprehensive plan to simplify CJE's API and structure 
 2. **Progressive Disclosure**: Complexity revealed only when needed
 3. **Smart Defaults**: The tool makes good choices for users
 4. **Fail Loudly**: Better to error than silently give bad results
+
+## Before/After Comparison
+
+### User Experience: Before
+```python
+# Confusing: Which estimator? What parameters?
+from cje import (
+    PrecomputedSampler, CalibratedIPS, RawIPS,
+    calibrate_dataset, load_dataset_from_jsonl,
+    compute_teacher_forced_logprob, CalibrationResult,
+    # ... many more imports
+)
+
+dataset = load_dataset_from_jsonl("data.jsonl")
+calibrated = calibrate_dataset(dataset, judge_field="judge_score")
+sampler = PrecomputedSampler(calibrated)
+estimator = CalibratedIPS(sampler, var_cap=0.5)  # What's var_cap?
+results = estimator.fit_and_estimate()
+```
+
+### User Experience: After
+```python
+# Simple: One function, smart defaults
+from cje import analyze_dataset
+
+results = analyze_dataset("data.jsonl")
+print(f"Best policy: {results.best_policy}")
+```
+
+### Power User: Before
+```python
+# Same as regular user - no clear progression
+```
+
+### Power User: After
+```python
+# Clear advanced path when needed
+from cje.advanced import CalibratedIPS, PrecomputedSampler
+
+# Manual control available but not required
+dataset = load_dataset("data.jsonl")
+sampler = PrecomputedSampler(dataset)
+estimator = CalibratedIPS(sampler, preset="conservative")
+results = estimator.fit_and_estimate()
+```
 
 ## Implementation Plan
 
@@ -287,9 +342,9 @@ def _choose_robustness(dataset, initial_diagnostics):
 ## Migration Strategy
 
 ### Phase 1: Preparation (Week 1)
-- [ ] Create comprehensive test suite for current API
-- [ ] Document all current functionality
-- [ ] Create migration guide (even if no users)
+- [ ] Create comprehensive test suite for new API
+- [ ] Identify what to keep vs remove
+- [ ] Design final API surface
 
 ### Phase 2: Implementation (Week 2)
 - [ ] Implement three-layer architecture
@@ -328,21 +383,22 @@ def _choose_robustness(dataset, initial_diagnostics):
 
 ## Risk Mitigation
 
-1. **Keep Old API Available**
-   ```python
-   # cje.legacy - for backwards compatibility during transition
-   from cje.legacy import *  # All old exports
-   ```
+Since we have no existing users, we can make a clean break:
+
+1. **No Legacy Support**
+   - Clean, simple API from day one
+   - No confusion from multiple ways to do things
+   - No technical debt from backwards compatibility
 
 2. **Extensive Testing**
-   - Test both old and new APIs
-   - Ensure identical results
-   - Performance regression tests
+   - Test all new APIs thoroughly
+   - Ensure correct results
+   - Performance benchmarks
 
-3. **Gradual Rollout**
-   - Version 0.2.0: New API (beta)
-   - Version 0.3.0: Deprecate old API
-   - Version 1.0.0: Remove old API
+3. **Clear Versioning**
+   - Version 0.2.0: New simplified API
+   - Clear documentation of changes
+   - No deprecation period needed
 
 ## Decision Points
 
@@ -364,9 +420,9 @@ def _choose_robustness(dataset, initial_diagnostics):
    - **Recommendation**: Option A for clarity
 
 4. **Breaking Changes**
-   - Option A: Clean break, new API only
-   - Option B: Deprecation period with both APIs
-   - **Recommendation**: Option B for safety
+   - Option A: Clean break, new API only ✓
+   - Option B: ~~Deprecation period with both APIs~~
+   - **Decision**: Option A - no users, no legacy
 
 ## Next Steps
 
