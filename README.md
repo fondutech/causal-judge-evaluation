@@ -40,6 +40,11 @@ results = analyze_dataset(
 )
 
 print(f"Policy value: {results.estimates[0]:.3f} ± {1.96 * results.standard_errors[0]:.3f}")
+
+# Check HERA overlap diagnostics (automatically computed)
+if results.diagnostics and hasattr(results.diagnostics, 'hellinger_per_policy'):
+    for policy, hellinger in results.diagnostics.hellinger_per_policy.items():
+        print(f"{policy} overlap: H={hellinger:.1%}")
 ```
 
 ## 📊 How It Works
@@ -195,37 +200,83 @@ CJE expects JSONL logs with:
 
 | Estimator | Description | When to Use |
 |-----------|-------------|-------------|
-| **CalibratedIPS** | IPS with SIMCal weight calibration | Logged data only; best IPS variant |
+| **CalibratedIPS** | IPS with SIMCal weight calibration + HERA diagnostics | Logged data only; best IPS variant |
 | **RawIPS** | Standard importance sampling | Baseline comparison; diagnostic purposes |
 | **DRCPOEstimator** | Doubly-Robust Counterfactual Policy Optimization | When you have fresh draws; generally best |
 | **MRDREstimator** | More Robust Doubly-Robust estimator | Fresh draws + concern about misspecification |
 | **TMLEEstimator** | Targeted maximum likelihood | Fresh draws + want optimal efficiency |
 | **MRDRTMLEEstimator** | MRDR + TMLE targeting | Best of both: robustness + efficiency |
 
-## 🔍 Diagnostics & Quality Gates
+**Note**: All estimators integrate with HERA (Hellinger–ESS Raw Audit) to assess overlap quality before estimation.
 
-CJE provides comprehensive diagnostics to audit assumptions:
+## 🔍 HERA: Ungameable Overlap Diagnostics
+
+CJE includes **HERA (Hellinger–ESS Raw Audit)**, a production-ready overlap diagnostic system that provides two ungameable metrics computed from raw log-probabilities before any calibration:
+
+### The Two HERA Numbers
+
+1. **H (Hellinger affinity)**: Structural overlap ∈ (0,1]
+   - Measures fundamental support overlap between policies
+   - **Cannot be improved by calibration** - if H is low, no amount of calibration can help
+   
+2. **E (Raw ESS fraction)**: Variance inflation ∈ (0,1]
+   - Controls confidence interval width
+   - **Can be improved by calibration** - SIMCal helps when E is moderate but H is good
+
+### HERA Gates
 
 ```python
-import warnings
+from cje.diagnostics.hera import hera_audit
 
+# Run HERA audit on your data
+delta_log = target_logprobs - base_logprobs
+hera = hera_audit(delta_log, n_samples=len(delta_log), target_ci_halfwidth=0.03)
+
+print(hera.summary())  # e.g., "HERA: OK (H=83.5%, E=21.8%)"
+
+# HERA's preregistered gates:
+# - CRITICAL: H < 0.20 OR E < 0.10 → Refuse IPS/Cal-IPS, require DR
+# - WARNING:  H < 0.35 OR E < 0.20 → IPS allowed with caution, prefer DR  
+# - OK:       Otherwise → Standard IPS adequate
+
+if hera.hera_status == "critical":
+    print("⚠️ CRITICAL: Structural mismatch too severe for IPS")
+    # CalibratedIPS will refuse estimation
+    # Must use DR/TMLE methods with fresh draws
+elif hera.hera_status == "warning":
+    print("⚠️ WARNING: Marginal overlap - prefer DR methods")
+```
+
+### HERA Auto-Tuning
+
+HERA can auto-tune ESS thresholds based on your desired CI width:
+```python
+# For ±3% CI with n=5000 samples
+hera = hera_audit(delta_log, n_samples=5000, target_ci_halfwidth=0.03)
+# Auto-threshold will be ~21.8%
+```
+
+### Why HERA Matters
+
+- **Ungameable**: Computed on raw weights before calibration
+- **Fast**: O(n) computation, no bootstrap needed
+- **Clear guidance**: Tells you which methods to trust
+- **Drill-down**: Can localize where overlap problems occur
+
+## 🔍 Comprehensive Diagnostics
+
+Beyond HERA, CJE provides full diagnostic coverage:
+
+```python
 diagnostics = results.diagnostics
 print(diagnostics.summary())
 
-# Automatic quality gates
-if diagnostics and diagnostics.weight_ess < 0.1:  # Less than 10% effective sample size
-    warnings.warn("Low ESS - consider tighter variance cap")
-if diagnostics and diagnostics.tail_indices:
-    worst_tail = min(diagnostics.tail_indices.values())
-    if worst_tail < 2:
-        warnings.warn("Heavy tails detected - results may be unstable")
+# Key metrics include:
+# - ESS (Effective Sample Size): Post-calibration overlap
+# - Tail Index: Heavy tail detection via Hill estimator
+# - Calibration R²: Judge-to-oracle mapping quality
+# - Orthogonality Scores: DR assumption checking
 ```
-
-Key diagnostics include:
-- **ESS (Effective Sample Size)**: Overlap quality metric
-- **Tail Index**: Heavy tail detection via Hill estimator
-- **Calibration Curves**: Judge reliability visualization
-- **Orthogonality Scores**: DR assumption checking
 
 ## 🛠️ Advanced Usage
 

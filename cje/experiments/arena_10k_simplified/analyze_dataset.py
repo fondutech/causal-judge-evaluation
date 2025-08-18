@@ -32,6 +32,8 @@ from analysis import (
     analyze_extreme_weights_report,
     generate_visualizations,
     export_results,
+    run_hera_preflight,
+    display_hera_summary,
 )
 
 
@@ -128,6 +130,17 @@ def parse_arguments() -> argparse.Namespace:
         default=10.0,
         help="Threshold for extreme high weights",
     )
+    parser.add_argument(
+        "--target-ci-width",
+        type=float,
+        default=0.03,
+        help="Target CI half-width for HERA auto-tuning (default ±3%%)",
+    )
+    parser.add_argument(
+        "--skip-hera",
+        action="store_true",
+        help="Skip HERA pre-flight overlap audit",
+    )
 
     # Debug arguments
     parser.add_argument(
@@ -191,7 +204,31 @@ def main() -> int:
         # 1. Load data
         dataset = load_data(args.data, verbose=not args.quiet)
 
-        # 2. Handle rewards and calibration
+        # 2. Run HERA pre-flight audit (before calibration for clean assessment)
+        hera_results = {}
+        if not args.skip_hera:
+            hera_results = run_hera_preflight(
+                dataset,
+                sampler=None,  # Will extract policies from dataset
+                target_ci_width=args.target_ci_width,
+                verbose=not args.quiet,
+            )
+
+            # Optionally run drill-down for problematic policies
+            if args.debug and hera_results:
+                from analysis.diagnostics import run_hera_drill_down
+
+                for policy, hera in hera_results.items():
+                    if hera.hera_status in ["critical", "warning"]:
+                        run_hera_drill_down(
+                            dataset,
+                            None,  # Will extract from dataset
+                            policy,
+                            n_bins=10,
+                            verbose=True,
+                        )
+
+        # 3. Handle rewards and calibration
         analysis_config = {
             "n_folds": args.n_folds,
             "oracle_coverage": args.oracle_coverage,
@@ -200,13 +237,18 @@ def main() -> int:
             dataset, args, analysis_config, verbose=not args.quiet
         )
 
-        # 3. Create sampler and estimator
+        # 4. Create sampler and estimator
         if not args.quiet:
-            print("\n3. Setting up estimator...")
+            print("\n4. Setting up estimator...")
         sampler = PrecomputedSampler(calibrated_dataset)
+
+        # Display HERA warnings if relevant
+        if hera_results and not args.quiet:
+            display_hera_summary(hera_results, args.estimator)
+
         estimator = create_estimator(args, sampler, calibrated_dataset, cal_result)
 
-        # 4. Fit and run estimation
+        # 5. Fit and run estimation
         if not args.quiet:
             print(f"   ✓ Created {args.estimator} estimator")
             print(f"   Fitting estimator...")
@@ -219,13 +261,13 @@ def main() -> int:
         if not args.quiet:
             print(f"   ✓ Estimation complete")
 
-        # 5. Restore oracle labels for visualization
+        # 6. Restore oracle labels for visualization
         # (They were masked during calibration for partial coverage)
         restore_oracle_labels(calibrated_dataset, args)
         # Also restore on original dataset for oracle comparison
         restore_oracle_labels(dataset, args)
 
-        # 6. Display results
+        # 7. Display results
         summary_data = display_results(
             results,
             calibrated_dataset,
@@ -235,7 +277,7 @@ def main() -> int:
             dataset,
         )
 
-        # 7. Display diagnostics
+        # 8. Display diagnostics
         weight_diagnostics = display_weight_diagnostics(
             estimator, sampler, calibrated_dataset, args
         )
@@ -251,7 +293,7 @@ def main() -> int:
         if hasattr(estimator, "get_raw_weights"):
             analyze_extreme_weights_report(estimator, sampler, calibrated_dataset, args)
 
-        # 8. Generate visualizations
+        # 9. Generate visualizations
         generate_visualizations(
             results,
             dataset,
@@ -263,7 +305,7 @@ def main() -> int:
             cal_result,
         )
 
-        # 9. Export results
+        # 10. Export results
         export_results(
             results,
             dataset,
@@ -274,7 +316,7 @@ def main() -> int:
 
         # Success message
         if not args.quiet:
-            steps_completed = 7  # Base steps
+            steps_completed = 8  # Base steps (including HERA)
             if args.estimator in ["dr-cpo", "mrdr", "tmle"]:
                 steps_completed += 1  # DR diagnostics
             if not args.no_plots:

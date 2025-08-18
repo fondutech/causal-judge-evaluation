@@ -53,44 +53,67 @@ estimators/
 
 ## Estimator Selection Guide
 
+**First run HERA (Hellinger–ESS Raw Audit) to assess overlap:**
+
+```python
+from cje.diagnostics.hera import hera_audit
+
+# Compute HERA metrics from log-probabilities
+delta_log = target_logprobs - base_logprobs
+hera = hera_audit(delta_log, n_samples=len(delta_log), target_ci_halfwidth=0.03)
+
+if hera.hera_status == "critical":
+    # H < 0.20 OR E < 0.10: Refuse IPS, require DR methods
+    print(f"HERA CRITICAL: {hera.summary()}")
+elif hera.hera_status == "warning":
+    # H < 0.35 OR E < 0.20: IPS allowed with caution, prefer DR
+    print(f"HERA WARNING: {hera.summary()}")
+else:
+    # Good overlap: Any method is fine
+    print(f"HERA APPROVED: {hera.summary()}")
+```
+
 ### Use **CalibratedIPS with calibrate=False** (raw mode) when:
-- You have excellent overlap (ESS > 50%)
+- HERA status is "ok" (H ≥ 0.35 AND E ≥ 0.20)
 - You want the simplest baseline
 - You don't have judge scores for calibration
 
 ### Use **CalibratedIPS** when:
-- You have moderate overlap (ESS 20-50%)
+- HERA status is "ok" or "warning"
 - Judge scores are available
-- You want variance-stabilized weights
+- You want variance-stabilized weights via SIMCal
 - Fresh draws are not available
 - Oracle slice augmentation is automatically enabled when partial oracle labels detected
 
 ### Use **DRCPOEstimator** when:
-- You have poor overlap (ESS < 20%)
+- HERA status is "warning" or "critical"
 - Fresh draws are available (REQUIRED)
 - You want basic doubly robust estimation
 
 ### Use **MRDREstimator** when:
-- You need robustness to both weight and outcome model misspecification
+- HERA status is "critical" (fundamental overlap issues)
 - Fresh draws are available (REQUIRED for all DR methods)
-- You have sufficient data for cross-fitting
+- You need robustness to both weight and outcome model misspecification
 - You want policy-specific outcome models
 
 ### Use **TMLEEstimator** when:
-- You want optimal asymptotic efficiency
+- HERA status is "warning" or "critical"
 - Fresh draws are available (REQUIRED for all DR methods)
-- You have well-specified models
+- You want optimal asymptotic efficiency
 - You need the most sophisticated estimation
 
-## Refusal Gates in CalibratedIPS
+## HERA Integration in CalibratedIPS
 
-CalibratedIPS includes safety mechanisms called "refusal gates" that detect when estimates would be unreliable due to poor overlap between policies. By default (`refuse_unreliable=False`), the estimator provides estimates with warnings. When enabled (`refuse_unreliable=True`), it returns NaN for unreliable policies.
+CalibratedIPS now integrates with HERA (Hellinger–ESS Raw Audit) for ungameable overlap diagnostics. HERA computes two metrics from raw weights before any calibration:
 
-### The Three Gates
+1. **Hellinger affinity (H)**: Structural overlap ∈ (0,1]
+2. **Raw ESS fraction (E)**: Variance inflation measure ∈ (0,1]
 
-1. **ESS < 30%**: Effective Sample Size below 30% means over 70% of your data is essentially ignored
-2. **Raw near-zero > 85%**: More than 85% of raw importance weights are near zero (< 1e-10)
-3. **Top 5% concentration > 30% AND CV > 2.0**: Top 5% of samples carry >30% weight with high variability
+### HERA Gates
+
+- **CRITICAL**: H < 0.20 OR E < 0.10 → IPS refused, DR methods required
+- **WARNING**: H < 0.35 OR E < 0.20 → IPS allowed with warning, DR preferred
+- **OK**: Otherwise → Standard IPS adequate
 
 ### Controlling Refusal Behavior
 
