@@ -9,8 +9,8 @@ Following CLAUDE.md: Do one thing well - this module only handles diagnostics di
 import numpy as np
 from pathlib import Path
 from typing import Any, Dict, Optional
-from cje import analyze_extreme_weights
-from cje.diagnostics import compute_weight_diagnostics
+from cje.utils.extreme_weights_analysis import analyze_extreme_weights
+from cje.diagnostics.weights import compute_weight_diagnostics
 from cje.diagnostics.display import (
     create_weight_summary_table,
     format_dr_diagnostic_summary,

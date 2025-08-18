@@ -26,6 +26,20 @@ from .validation import (
     validate_for_precomputed_sampler,
 )
 
+from typing import Optional, List
+
+
+# Convenience function
+def load_dataset_from_jsonl(
+    file_path: str, target_policies: Optional[List[str]] = None
+) -> Dataset:
+    """Load Dataset from JSONL file.
+
+    Convenience function using the default factory.
+    """
+    return default_factory.create_from_jsonl(file_path, target_policies)
+
+
 __all__ = [
     # Data loading
     "PrecomputedSampler",
@@ -45,4 +59,6 @@ __all__ = [
     # Validation
     "validate_cje_data",
     "validate_for_precomputed_sampler",
+    # Convenience function
+    "load_dataset_from_jsonl",
 ]

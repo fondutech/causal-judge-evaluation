@@ -9,7 +9,7 @@ Following CLAUDE.md: Do one thing well - this module only handles calibration.
 import random
 import numpy as np
 from typing import Any, Optional, Tuple, Set
-from cje import calibrate_dataset
+from cje.calibration.dataset import calibrate_dataset
 
 
 def handle_rewards(

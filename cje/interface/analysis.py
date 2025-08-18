@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import Optional, Dict, Any, Union
 import numpy as np
 
-from .. import load_dataset_from_jsonl, calibrate_dataset
+from ..data import load_dataset_from_jsonl
 from ..data.models import Dataset, EstimationResult
+from ..calibration import calibrate_dataset
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..estimators.calibrated_ips import CalibratedIPS
 from ..estimators.dr_base import DRCPOEstimator

@@ -10,15 +10,13 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 import sys
 
-from cje import (
-    CalibratedIPS,
-    DRCPOEstimator,
-    MRDREstimator,
-    TMLEEstimator,
-    MRDRTMLEEstimator,
-    PrecomputedSampler,
-    calibrate_dataset,
-)
+from cje.estimators import CalibratedIPS
+from cje.estimators.dr_base import DRCPOEstimator
+from cje.estimators.mrdr import MRDREstimator
+from cje.estimators.tmle import TMLEEstimator
+from cje.estimators.mrdr_tmle import MRDRTMLEEstimator
+from cje.data.precomputed_sampler import PrecomputedSampler
+from cje.calibration.dataset import calibrate_dataset
 from cje.data.fresh_draws import load_fresh_draws_auto
 
 # Add parent directory to path for validation import

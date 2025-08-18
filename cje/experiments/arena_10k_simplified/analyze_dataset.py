@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 # CJE imports
-from cje import PrecomputedSampler
+from cje.data.precomputed_sampler import PrecomputedSampler
 
 # Analysis pipeline modules
 from analysis import (
