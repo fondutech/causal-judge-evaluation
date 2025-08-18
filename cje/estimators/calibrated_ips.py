@@ -487,7 +487,7 @@ class CalibratedIPS(BaseCJEEstimator):
         # Create IPSDiagnostics
         diagnostics = IPSDiagnostics(
             estimator_type="CalibratedIPS",
-            method="calibrated_ips",
+            method="calibrated_ips" if self.calibrate else "raw_ips",
             n_samples_total=n_total,
             n_samples_valid=self.sampler.n_valid_samples,
             n_policies=len(policies),

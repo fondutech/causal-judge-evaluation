@@ -89,7 +89,7 @@ class TestCLIParser:
 class TestAnalyzeCommand:
     """Test the analyze command execution."""
 
-    @patch("cje.analysis.analyze_dataset")
+    @patch("cje.interface.analysis.analyze_dataset")
     def test_run_analysis_basic(self, mock_analyze: MagicMock) -> None:
         """Test basic analysis run."""
         # Setup mock return value
@@ -137,7 +137,7 @@ class TestAnalyzeCommand:
         assert "policy_b: 0.800 ± 0.020" in output
         assert "Best policy: policy_b" in output
 
-    @patch("cje.analysis.analyze_dataset")
+    @patch("cje.interface.analysis.analyze_dataset")
     @patch("cje.utils.export.export_results_json")
     def test_run_analysis_with_output(
         self, mock_export: MagicMock, mock_analyze: MagicMock
@@ -173,7 +173,7 @@ class TestAnalyzeCommand:
         assert result == 0
         mock_export.assert_called_once_with(mock_result, "results.json")
 
-    @patch("cje.analysis.analyze_dataset")
+    @patch("cje.interface.analysis.analyze_dataset")
     def test_run_analysis_quiet_mode(self, mock_analyze: MagicMock) -> None:
         """Test analysis in quiet mode."""
         import numpy as np
@@ -206,7 +206,7 @@ class TestAnalyzeCommand:
         assert "Running CJE analysis" not in output
         assert "Results:" not in output
 
-    @patch("cje.analysis.analyze_dataset")
+    @patch("cje.interface.analysis.analyze_dataset")
     def test_run_analysis_file_not_found(self, mock_analyze: MagicMock) -> None:
         """Test handling of missing dataset file."""
         mock_analyze.side_effect = FileNotFoundError("data.jsonl not found")
@@ -230,7 +230,7 @@ class TestAnalyzeCommand:
         assert result == 1
         assert "Dataset file not found" in stderr.getvalue()
 
-    @patch("cje.analysis.analyze_dataset")
+    @patch("cje.interface.analysis.analyze_dataset")
     def test_run_analysis_value_error(self, mock_analyze: MagicMock) -> None:
         """Test handling of value errors."""
         mock_analyze.side_effect = ValueError("Invalid estimator config")
@@ -387,7 +387,7 @@ class TestMainEntry:
         assert "usage: cje" in output.lower()
         assert "available commands" in output.lower()
 
-    @patch("cje.cli.run_analysis")
+    @patch("cje.interface.cli.run_analysis")
     def test_main_analyze_command(self, mock_run: MagicMock) -> None:
         """Test main routes to analyze command."""
         mock_run.return_value = 0
@@ -398,7 +398,7 @@ class TestMainEntry:
         assert result == 0
         mock_run.assert_called_once()
 
-    @patch("cje.cli.validate_data")
+    @patch("cje.interface.cli.validate_data")
     def test_main_validate_command(self, mock_validate: MagicMock) -> None:
         """Test main routes to validate command."""
         mock_validate.return_value = 0
