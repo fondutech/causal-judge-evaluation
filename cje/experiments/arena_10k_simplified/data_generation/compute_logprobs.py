@@ -17,7 +17,7 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 sys.path.append(str(Path(__file__).parent.parent))  # Add arena_10k_simplified to path
 
-from cje import compute_chat_logprob
+from cje.teacher_forcing import compute_chat_logprob
 from cje.data.models import LogProbResult, LogProbStatus
 from experiment_config import POLICIES, get_policy_config, POLICY_NAMES, BATCH_SIZES
 
@@ -326,6 +326,12 @@ def main() -> None:
         default=BATCH_SIZES["logprob_computation"],
         help=f"Save progress every N log probs (0 to disable, default: {BATCH_SIZES['logprob_computation']})",
     )
+    parser.add_argument(
+        "--pass-number",
+        type=int,
+        default=1,
+        help="Pass number for multi-pass generation (1=original, 2-N=additional passes)",
+    )
 
     args = parser.parse_args()
 
@@ -340,10 +346,15 @@ def main() -> None:
 
     for policy in args.policies:
         print(f"\n{'=' * 60}")
-        print(f"Computing log probs for {policy} policy")
+        print(f"Computing log probs for {policy} policy (pass {args.pass_number})")
         print(f"{'=' * 60}")
 
-        output_file = output_dir / f"{policy}_logprobs.jsonl"
+        # Determine output filename based on pass number
+        if args.pass_number == 1:
+            output_file = output_dir / f"{policy}_logprobs.jsonl"
+        else:
+            output_file = output_dir / f"{policy}_logprobs_pass{args.pass_number}.jsonl"
+
         compute_logprobs_for_responses(
             base_responses_file=str(base_responses_file),
             output_file=str(output_file),

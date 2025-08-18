@@ -13,6 +13,7 @@ cje/diagnostics/
 ├── __init__.py          # Public API exports
 ├── models.py            # Data models (IPSDiagnostics, DRDiagnostics, Status)
 ├── weights.py           # Weight diagnostic computations (ESS, Hill, etc.)
+├── overlap.py           # Overlap metrics (Hellinger affinity, auto-tuning)
 ├── dr.py                # DR-specific diagnostics
 ├── stability.py         # Stability and drift detection
 ├── display.py           # Display and formatting utilities
@@ -117,11 +118,28 @@ Example: CalibratedIPS may refuse estimation based on combinations of ESS, weigh
 
 ## Key Diagnostic Metrics
 
+### Hellinger Affinity (Bhattacharyya Coefficient)
+Measures structural overlap between policies. **Cannot be improved by calibration.**
+- **Affinity > 50%**: Good overlap
+- **Affinity 35-50%**: Marginal overlap  
+- **Affinity 20-35%**: Poor overlap (calibration might help)
+- **Affinity < 20%**: Catastrophic mismatch (refuse estimation)
+
+Key insight: Hellinger tells us whether to give up, ESS tells us how hard to try.
+
 ### Effective Sample Size (ESS)
-Measures how many "effective" samples remain after weighting.
+Measures how many "effective" samples remain after weighting. **Can be improved by calibration.**
 - **ESS > 30%**: Good overlap
 - **ESS 10-30%**: Moderate overlap issues  
 - **ESS < 10%**: Severe overlap problems
+
+### Auto-Tuned ESS Thresholds
+Instead of fixed thresholds, compute based on desired CI width:
+```python
+threshold = 0.9604 / (n * target_ci_halfwidth²)
+```
+For n=10,000 and ±1% target: threshold = 96%
+For n=100,000 and ±1% target: threshold = 9.6%
 
 ### Hill Tail Index
 Estimates tail behavior of importance weights (k = 5% of samples).
@@ -161,11 +179,36 @@ if diagnostics.overall_status == Status.CRITICAL:
 # Check per-policy metrics
 for policy in diagnostics.policies:
     print(f"{policy}: ESS={diagnostics.ess_per_policy[policy]:.1%}")
+    if diagnostics.hellinger_per_policy:
+        print(f"  Hellinger affinity={diagnostics.hellinger_per_policy[policy]:.1%}")
 
 # For DR estimators
 if isinstance(diagnostics, DRDiagnostics):
     min_r2, max_r2 = diagnostics.outcome_r2_range
     print(f"Outcome R² range: [{min_r2:.3f}, {max_r2:.3f}]")
+```
+
+### Using Overlap Metrics
+```python
+from cje.diagnostics.overlap import compute_overlap_metrics, diagnose_overlap_problems
+
+# Analyze overlap for a specific policy
+weights = estimator.get_raw_weights("target_policy")
+metrics = compute_overlap_metrics(
+    weights, 
+    target_ci_halfwidth=0.01,  # Want ±1% CI
+    auto_tune_threshold=True
+)
+
+# Get diagnosis and recommendations
+should_proceed, explanation = diagnose_overlap_problems(metrics)
+print(explanation)
+
+# Check if calibration would help
+if metrics.can_calibrate:
+    print("SIMCal calibration could improve ESS")
+else:
+    print("Overlap too poor for calibration to help")
 ```
 
 ### Export for Analysis

@@ -436,6 +436,7 @@ class CalibratedIPS(BaseCJEEstimator):
         max_weight_per_policy = {}
         tail_indices = {}
         status_per_policy = {}
+        hellinger_per_policy = {}  # New: Hellinger affinity per policy
         overall_ess = 0.0
         total_n = 0
 
@@ -453,6 +454,13 @@ class CalibratedIPS(BaseCJEEstimator):
                 else:
                     tail_indices[policy] = None
 
+                # Compute Hellinger affinity for this policy (use raw weights)
+                raw_weights = self.get_raw_weights(policy)
+                if raw_weights is not None and len(raw_weights) > 0:
+                    from ..diagnostics.overlap import hellinger_affinity
+
+                    hellinger_per_policy[policy] = hellinger_affinity(raw_weights)
+
                 # Track overall
                 n = len(weights)
                 overall_ess += w_diag["ess_fraction"] * n
@@ -461,16 +469,33 @@ class CalibratedIPS(BaseCJEEstimator):
         # Compute overall weight ESS
         weight_ess = overall_ess / total_n if total_n > 0 else 0.0
 
-        # Determine status based on ESS and tail indices
+        # Compute overall Hellinger affinity (average across policies)
+        overall_hellinger = None
+        overlap_quality = None
+        if hellinger_per_policy:
+            overall_hellinger = float(np.mean(list(hellinger_per_policy.values())))
+            # Determine overlap quality based on Hellinger
+            if overall_hellinger < 0.20:
+                overlap_quality = "catastrophic"
+            elif overall_hellinger < 0.35:
+                overlap_quality = "poor"
+            elif overall_hellinger < 0.50:
+                overlap_quality = "marginal"
+            else:
+                overlap_quality = "good"
+
+        # Determine status based on ESS, Hellinger, and tail indices
         worst_tail_idx = min(
             (idx for idx in tail_indices.values() if idx is not None),
             default=float("inf"),
         )
-        if weight_ess < 0.01:
+
+        # Include Hellinger in status determination
+        if overlap_quality == "catastrophic" or weight_ess < 0.01:
             weight_status = Status.CRITICAL
         elif worst_tail_idx < 1.5:  # Very heavy tails
             weight_status = Status.CRITICAL
-        elif weight_ess < 0.1:
+        elif overlap_quality == "poor" or weight_ess < 0.1:
             weight_status = Status.WARNING
         elif worst_tail_idx < 2.0:  # Heavy tails (infinite variance)
             weight_status = Status.WARNING
@@ -493,7 +518,7 @@ class CalibratedIPS(BaseCJEEstimator):
         if tail_indices:
             result.metadata["tail_indices"] = tail_indices
 
-        # Create IPSDiagnostics
+        # Create IPSDiagnostics with new overlap metrics
         diagnostics = IPSDiagnostics(
             estimator_type="CalibratedIPS",
             method="calibrated_ips" if self.calibrate else "raw_ips",
@@ -510,6 +535,10 @@ class CalibratedIPS(BaseCJEEstimator):
             max_weight_per_policy=max_weight_per_policy,
             status_per_policy=status_per_policy,
             tail_indices=tail_indices,  # Use Hill indices instead of tail ratios
+            # New overlap metrics
+            hellinger_affinity=overall_hellinger,
+            hellinger_per_policy=hellinger_per_policy if hellinger_per_policy else None,
+            overlap_quality=overlap_quality,
             # Calibration fields
             calibration_rmse=calibration_rmse,
             calibration_r2=calibration_r2,

@@ -51,6 +51,11 @@ class IPSDiagnostics:
         None  # Hill tail index per policy
     )
 
+    # ========== Overlap Metrics (new comprehensive diagnostics) ==========
+    hellinger_affinity: Optional[float] = None  # Overall Hellinger affinity
+    hellinger_per_policy: Optional[Dict[str, float]] = None  # Per-policy Hellinger
+    overlap_quality: Optional[str] = None  # "good", "marginal", "poor", "catastrophic"
+
     # ========== Calibration Diagnostics (None for raw mode) ==========
     calibration_rmse: Optional[float] = None
     calibration_r2: Optional[float] = None

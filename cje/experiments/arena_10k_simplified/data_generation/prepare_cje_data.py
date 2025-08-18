@@ -13,8 +13,9 @@ not during data preparation.
 """
 
 import json
+import numpy as np
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Any
+from typing import Dict, List, Optional, Set, Any, Tuple
 from collections import defaultdict
 
 import sys
@@ -23,11 +24,94 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 sys.path.append(str(Path(__file__).parent.parent))  # Add arena_10k_simplified to path
 
 
+def load_policy_passes(
+    logprobs_dir: Path, policy: str
+) -> Tuple[Dict[str, List[Optional[float]]], int]:
+    """Load all passes for a policy and return passes by prompt_id.
+
+    Returns:
+        Tuple of (passes_by_prompt, num_passes_found)
+        where passes_by_prompt maps prompt_id -> list of logprob values
+    """
+    passes_by_prompt = defaultdict(list)
+    passes_found = 0
+
+    # Load pass 1 (original file)
+    pass1_file = logprobs_dir / f"{policy}_logprobs.jsonl"
+    if pass1_file.exists():
+        passes_found = 1
+        prompt_logprobs = {}
+        with open(pass1_file, "r") as f:
+            for line in f:
+                data = json.loads(line)
+                prompt_id = data["prompt_id"]
+                prompt_logprobs[prompt_id] = data.get("logprob")
+
+        # Add to passes list
+        for prompt_id in prompt_logprobs:
+            passes_by_prompt[prompt_id].append(prompt_logprobs[prompt_id])
+
+    # Load additional passes (pass 2, 3, ...)
+    pass_num = 2
+    while True:
+        pass_file = logprobs_dir / f"{policy}_logprobs_pass{pass_num}.jsonl"
+        if not pass_file.exists():
+            break
+
+        passes_found = pass_num
+        prompt_logprobs = {}
+        with open(pass_file, "r") as f:
+            for line in f:
+                data = json.loads(line)
+                prompt_id = data["prompt_id"]
+                prompt_logprobs[prompt_id] = data.get("logprob")
+
+        # Add to passes list (aligning by prompt_id)
+        for prompt_id in passes_by_prompt:
+            if prompt_id in prompt_logprobs:
+                passes_by_prompt[prompt_id].append(prompt_logprobs[prompt_id])
+            else:
+                # Missing from this pass
+                passes_by_prompt[prompt_id].append(None)
+
+        pass_num += 1
+
+    return dict(passes_by_prompt), passes_found
+
+
+def aggregate_passes(
+    passes: List[Optional[float]], method: str = "mean"
+) -> Optional[float]:
+    """Aggregate multiple logprob passes using specified method.
+
+    Args:
+        passes: List of logprob values (may contain None)
+        method: "mean" or "median"
+
+    Returns:
+        Aggregated value or None if no valid passes
+    """
+    # Filter out None values and positive values (invalid)
+    valid_passes = [p for p in passes if p is not None and p <= 0]
+
+    if not valid_passes:
+        return None
+
+    if len(valid_passes) == 1:
+        return valid_passes[0]
+
+    if method == "median":
+        return float(np.median(valid_passes))
+    else:  # mean
+        return float(np.mean(valid_passes))
+
+
 def prepare_cje_dataset(
     logprobs_dir: str,
     responses_dir: str,
     output_file: Optional[str],
     base_policy: str = "base",
+    aggregation: str = "mean",  # "mean" or "median"
 ) -> List[Dict]:
     """Combine BASE policy responses with log probs from all policies.
 
@@ -40,6 +124,7 @@ def prepare_cje_dataset(
     """
 
     print("Preparing CJE dataset...")
+    print(f"Aggregation method: {aggregation}")
 
     # First, load base responses to get judge/oracle scores
     responses_by_prompt: Dict[str, Dict[str, Any]] = {}
@@ -55,38 +140,69 @@ def prepare_cje_dataset(
 
     print(f"Loaded {len(responses_by_prompt)} base responses with evaluation scores")
 
-    # Load all log prob files
-    logprobs_by_prompt: Dict[str, Dict[str, Any]] = defaultdict(dict)
-    policies: Set[str] = set()
-
+    # Check if multiple passes exist
     logprobs_path = Path(logprobs_dir)
+    has_multiple_passes = len(list(logprobs_path.glob("*_logprobs_pass*.jsonl"))) > 0
+
+    if has_multiple_passes:
+        print("\n📊 Multiple passes detected - will aggregate using", aggregation)
+
+    # Get list of all policies from files
+    policies: Set[str] = set()
     for file in logprobs_path.glob("*_logprobs.jsonl"):
         policy = file.stem.replace("_logprobs", "")
         policies.add(policy)
 
-        print(f"Loading {policy} log probabilities...")
-        with open(file, "r") as f:
-            for line in f:
-                data = json.loads(line)
-                prompt_id = data["prompt_id"]
+    # Load and aggregate log probabilities for each policy
+    logprobs_by_prompt: Dict[str, Dict[str, Any]] = defaultdict(dict)
 
-                # All files should have the same BASE responses
-                if "prompt" not in logprobs_by_prompt[prompt_id]:
-                    logprobs_by_prompt[prompt_id]["prompt"] = data["prompt"]
-                    logprobs_by_prompt[prompt_id]["response"] = data["response"]
-                    logprobs_by_prompt[prompt_id]["prompt_id"] = prompt_id
+    for policy in sorted(policies):
+        passes_by_prompt, num_passes = load_policy_passes(logprobs_path, policy)
 
-                # Store log prob under this policy's model
-                if policy == base_policy:
-                    logprobs_by_prompt[prompt_id]["base_policy_logprob"] = data[
-                        "logprob"
-                    ]
-                else:
-                    if "target_policy_logprobs" not in logprobs_by_prompt[prompt_id]:
-                        logprobs_by_prompt[prompt_id]["target_policy_logprobs"] = {}
-                    logprobs_by_prompt[prompt_id]["target_policy_logprobs"][policy] = (
-                        data["logprob"]
-                    )
+        if num_passes > 1:
+            print(f"Loading {policy} log probabilities... ({num_passes} passes found)")
+        else:
+            print(f"Loading {policy} log probabilities...")
+
+        # Get sample data for prompt/response (from first pass)
+        sample_data = {}
+        pass1_file = logprobs_path / f"{policy}_logprobs.jsonl"
+        if pass1_file.exists():
+            with open(pass1_file, "r") as f:
+                for line in f:
+                    data = json.loads(line)
+                    sample_data[data["prompt_id"]] = {
+                        "prompt": data["prompt"],
+                        "response": data["response"],
+                    }
+
+        # Process each prompt
+        for prompt_id, passes in passes_by_prompt.items():
+            # Store prompt/response if not already stored
+            if (
+                "prompt" not in logprobs_by_prompt[prompt_id]
+                and prompt_id in sample_data
+            ):
+                logprobs_by_prompt[prompt_id]["prompt"] = sample_data[prompt_id][
+                    "prompt"
+                ]
+                logprobs_by_prompt[prompt_id]["response"] = sample_data[prompt_id][
+                    "response"
+                ]
+                logprobs_by_prompt[prompt_id]["prompt_id"] = prompt_id
+
+            # Aggregate the passes
+            aggregated_value = aggregate_passes(passes, method=aggregation)
+
+            # Store aggregated log prob
+            if policy == base_policy:
+                logprobs_by_prompt[prompt_id]["base_policy_logprob"] = aggregated_value
+            else:
+                if "target_policy_logprobs" not in logprobs_by_prompt[prompt_id]:
+                    logprobs_by_prompt[prompt_id]["target_policy_logprobs"] = {}
+                logprobs_by_prompt[prompt_id]["target_policy_logprobs"][
+                    policy
+                ] = aggregated_value
 
     print(f"Found {len(policies)} policies: {sorted(policies)}")
 
@@ -217,6 +333,12 @@ def main() -> None:
     parser.add_argument(
         "--base-policy", default="base", help="Name of base/behavior policy"
     )
+    parser.add_argument(
+        "--aggregation",
+        choices=["mean", "median"],
+        default="mean",
+        help="Aggregation method for multiple passes (default: mean)",
+    )
 
     args = parser.parse_args()
 
@@ -226,6 +348,7 @@ def main() -> None:
         responses_dir=args.responses_dir,
         output_file=args.output,
         base_policy=args.base_policy,
+        aggregation=args.aggregation,
     )
 
     print(f"\n✓ Dataset ready for analysis with {len(records)} samples")

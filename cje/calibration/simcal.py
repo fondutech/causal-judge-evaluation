@@ -1,11 +1,11 @@
 """Stacked Score-Indexed Monotone Calibration (SIMCal) for importance weights.
 
-This module implements stacked SIMCal, which combines {baseline, increasing,
-decreasing} candidates via convex optimization to minimize out-of-fold (OOF)
+This module implements stacked SIMCal, which combines {increasing, decreasing}
+isotonic candidates via convex optimization to minimize out-of-fold (OOF)
 influence function variance.
 
 The stacking approach:
-1. Builds candidate weight vectors (raw, isotonic increasing/decreasing)
+1. Builds candidate weight vectors (isotonic increasing/decreasing, optionally baseline)
 2. Computes OOF influence functions for each candidate
 3. Solves a quadratic program on the simplex to find optimal mixture
 4. Applies uniform blending to satisfy ESS/variance constraints
@@ -40,7 +40,7 @@ class SimcalConfig:
     ess_floor: Optional[float] = 0.2
     var_cap: Optional[float] = None
     epsilon: float = 1e-9
-    include_baseline: bool = False
+    include_baseline: bool = False  # Default OFF - isotonic usually sufficient
     ridge_lambda: float = 1e-8
     n_folds: int = 5
     baseline_shrink: float = 0.0
@@ -71,7 +71,7 @@ class SimcalConfig:
 class SIMCalibrator:
     """Stacked Score-Indexed Monotone Calibrator.
 
-    Combines {baseline, increasing, decreasing} candidates to minimize
+    Combines {increasing, decreasing} candidates (optionally baseline) to minimize
     OOF influence function variance, then applies uniform blending to
     meet ESS/variance constraints.
     """
@@ -113,7 +113,7 @@ class SIMCalibrator:
         """Calibrate weights using stacked score-indexed monotone projection.
 
         Algorithm:
-        1. Build candidate weight vectors: {baseline?, increasing, decreasing}
+        1. Build candidate weight vectors: {increasing, decreasing, baseline?}
         2. Compute OOF influence functions for each candidate
         3. Solve quadratic program to find optimal mixture on simplex
         4. Apply single γ-blend toward uniform for constraints
