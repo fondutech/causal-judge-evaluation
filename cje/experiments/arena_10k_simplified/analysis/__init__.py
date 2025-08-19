@@ -13,8 +13,6 @@ from .diagnostics import (
     display_dr_diagnostics,
     display_augmentation_diagnostics,
     analyze_extreme_weights_report,
-    run_hera_preflight,
-    display_hera_summary,
 )
 from .visualization import generate_visualizations
 from .export import export_results
@@ -36,8 +34,6 @@ __all__ = [
     "display_dr_diagnostics",
     "display_augmentation_diagnostics",
     "analyze_extreme_weights_report",
-    "run_hera_preflight",
-    "display_hera_summary",
     # Visualization
     "generate_visualizations",
     # Export

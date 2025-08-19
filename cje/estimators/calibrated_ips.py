@@ -457,10 +457,9 @@ class CalibratedIPS(BaseCJEEstimator):
                 # Compute Hellinger affinity for this policy (use raw weights)
                 raw_weights = self.get_raw_weights(policy)
                 if raw_weights is not None and len(raw_weights) > 0:
-                    from ..diagnostics.hera import hera_audit_weights
+                    from ..diagnostics.overlap import hellinger_affinity
 
-                    hera_metrics = hera_audit_weights(raw_weights)
-                    hellinger_per_policy[policy] = hera_metrics.hellinger_affinity
+                    hellinger_per_policy[policy] = hellinger_affinity(raw_weights)
 
                 # Track overall
                 n = len(weights)

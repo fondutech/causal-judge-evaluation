@@ -13,7 +13,7 @@ cje/diagnostics/
 ├── __init__.py          # Public API exports
 ├── models.py            # Data models (IPSDiagnostics, DRDiagnostics, Status)
 ├── weights.py           # Weight diagnostic computations (ESS, Hill, etc.)
-├── hera.py              # HERA (Hellinger–ESS Raw Audit) - ungameable overlap metrics
+├── overlap.py           # Overlap metrics (Hellinger affinity, auto-tuning)
 ├── dr.py                # DR-specific diagnostics
 ├── stability.py         # Stability and drift detection
 ├── display.py           # Display and formatting utilities
@@ -116,52 +116,30 @@ Some estimators refuse to provide estimates when diagnostics indicate unreliable
 
 Example: CalibratedIPS may refuse estimation based on combinations of ESS, weight concentration, and coefficient of variation. These thresholds are estimator-specific and more conservative than status levels.
 
-## HERA (Hellinger–ESS Raw Audit)
+## Key Diagnostic Metrics
 
-**HERA is the primary overlap diagnostic system for CJE.** It provides two ungameable metrics computed from raw log-probabilities before any calibration:
+### Hellinger Affinity (Bhattacharyya Coefficient)
+Measures structural overlap between policies. **Cannot be improved by calibration.**
+- **Affinity > 50%**: Good overlap
+- **Affinity 35-50%**: Marginal overlap  
+- **Affinity 20-35%**: Poor overlap (calibration might help)
+- **Affinity < 20%**: Catastrophic mismatch (refuse estimation)
 
-### The Two HERA Numbers
+Key insight: Hellinger tells us whether to give up, ESS tells us how hard to try.
 
-1. **H (Hellinger affinity)**: Structural overlap ∈ (0,1]
-   - H = (1/n)∑ᵢ exp(½(log p_π'(Aᵢ|Xᵢ) - log p_π₀(Aᵢ|Xᵢ)))
-   - **Cannot be improved by calibration**
-   - Measures fundamental support overlap
-
-2. **E (Raw ESS fraction)**: Variance inflation ∈ (0,1]  
-   - E = (∑ᵢwᵢ)²/(n∑ᵢwᵢ²) = 1/E[W²]
-   - **Can be improved by calibration**
-   - Controls confidence interval width
-
-### HERA Gates
-
-- **CRITICAL**: H < 0.20 OR E < 0.10 → **Refuse IPS/Cal-IPS**
-- **WARNING**: H < 0.35 OR E < 0.20 → IPS allowed with warning, **prefer DR**
-- **OK**: Otherwise → Standard IPS adequate
+### Effective Sample Size (ESS)
+Measures how many "effective" samples remain after weighting. **Can be improved by calibration.**
+- **ESS > 30%**: Good overlap
+- **ESS 10-30%**: Moderate overlap issues  
+- **ESS < 10%**: Severe overlap problems
 
 ### Auto-Tuned ESS Thresholds
-HERA can auto-tune E thresholds based on desired CI width:
+Instead of fixed thresholds, compute based on desired CI width:
 ```python
-τ_ESS(δ) = 0.9604 / (n * δ²)
+threshold = 0.9604 / (n * target_ci_halfwidth²)
 ```
-For n=5,000 and ±3% target: threshold = 21.8%
+For n=10,000 and ±1% target: threshold = 96%
 For n=100,000 and ±1% target: threshold = 9.6%
-
-### Usage
-```python
-from cje.diagnostics.hera import hera_audit
-
-# Compute from log-probabilities
-delta_log = target_logprobs - base_logprobs
-hera = hera_audit(delta_log, n_samples=len(delta_log), target_ci_halfwidth=0.03)
-
-print(hera.summary())  # "HERA: OK (H=83.5%, E=21.8%)"
-
-if not hera.passes_audit:
-    # Refuse IPS estimation
-    raise ValueError(f"HERA audit failed: {hera.recommendation}")
-```
-
-**Key insight**: HERA cleanly separates what can't be fixed (low H) from what can be improved (moderate E with good H).
 
 ### Hill Tail Index
 Estimates tail behavior of importance weights (k = 5% of samples).
