@@ -45,13 +45,8 @@ from .teacher_forcing import (
     convert_chat_to_completions,
 )
 
-# Experimental estimators
-try:
-    from .estimators.mrdr_tmle import MRDRTMLEEstimator
-
-    _experimental_available = True
-except ImportError:
-    _experimental_available = False
+# Experimental estimators (currently none)
+_experimental_available = False
 
 # Fresh draw utilities
 try:
@@ -113,8 +108,7 @@ if _outcome_models_available:
         ]
     )
 
-if _experimental_available:
-    __all__.append("MRDRTMLEEstimator")
+# No experimental estimators currently
 
 if _fresh_draws_available:
     __all__.extend(

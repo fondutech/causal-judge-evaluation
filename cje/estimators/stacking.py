@@ -81,11 +81,13 @@ class StackedDREstimator(BaseCJEEstimator):
         self.min_weight = min_weight
         self.fallback_on_failure = fallback_on_failure
         self.seed = seed
+        self.oracle_slice_config = kwargs.get('oracle_slice_config', True)  # Auto-enable by default
 
         # Storage for results
         self.component_results: Dict[str, EstimationResult] = {}
         self.weights_per_policy: Dict[str, np.ndarray] = {}
         self.stacking_diagnostics: Dict[str, Any] = {}
+        self._fresh_draws: Dict[str, Any] = {}  # Store fresh draws to pass to components
 
         # Set up shared resources
         self._setup_shared_resources()
@@ -116,6 +118,16 @@ class StackedDREstimator(BaseCJEEstimator):
         # Each estimator will detect and use them automatically
 
         logger.info(f"Set up shared resources for {len(self.estimators)} estimators")
+
+    def add_fresh_draws(self, policy: str, fresh_draws: Any) -> None:
+        """Store fresh draws to pass to component estimators.
+        
+        Args:
+            policy: Target policy name
+            fresh_draws: Fresh draw dataset for this policy
+        """
+        self._fresh_draws[policy] = fresh_draws
+        logger.debug(f"Added fresh draws for policy {policy}")
 
     def fit(self) -> "StackedDREstimator":
         """Fit is a no-op for stacking (component estimators handle their own fitting)."""
@@ -172,9 +184,19 @@ class StackedDREstimator(BaseCJEEstimator):
             stacked_ifs[policy] = stacked_if
             self._influence_functions[policy] = stacked_if
 
-            # Compute estimate and SE
-            # The estimate is the mean of the influence function
-            estimate = np.mean(stacked_if)
+            # Compute stacked estimate as weighted average of component estimates
+            component_estimates = []
+            for est_name in valid_estimators:
+                result = self.component_results[est_name]
+                if result:
+                    component_estimates.append(result.estimates[policy_idx])
+            
+            if component_estimates:
+                estimate = np.dot(weights, component_estimates)
+            else:
+                estimate = np.nan
+            
+            # Compute SE from the stacked influence function
             se = np.std(stacked_if, ddof=1) / np.sqrt(len(stacked_if))
 
             stacked_estimates.append(estimate)
@@ -192,13 +214,26 @@ class StackedDREstimator(BaseCJEEstimator):
             ],
             "used_outer_split": self.use_outer_split,
             "V_folds": self.V_folds if self.use_outer_split else None,
+            "stacking_diagnostics": diagnostics,  # Add the detailed diagnostics to metadata
         }
+
+        # Get n_samples_used from one of the component estimators
+        n_samples_used = {}
+        if valid_estimators and self.component_results[valid_estimators[0]]:
+            first_result = self.component_results[valid_estimators[0]]
+            n_samples_used = first_result.n_samples_used
+        else:
+            # Fallback: use sampler info
+            for policy in self.sampler.target_policies:
+                n_samples_used[policy] = len(self.sampler)
 
         result = EstimationResult(
             estimates=np.array(stacked_estimates),
             standard_errors=np.array(stacked_ses),
+            n_samples_used=n_samples_used,
+            method=f"StackedDR({', '.join(valid_estimators)})",
             influence_functions=stacked_ifs,
-            diagnostics=diagnostics,
+            diagnostics=None,  # Use None for now to avoid validation issues
             metadata=metadata,
         )
 
@@ -242,7 +277,7 @@ class StackedDREstimator(BaseCJEEstimator):
     def _run_single_estimator(self, name: str) -> EstimationResult:
         """Run a single component estimator with shared resources."""
         # Import here to avoid circular imports
-        from cje.estimators.dr_cpo import DRCPOEstimator
+        from cje.estimators.dr_base import DRCPOEstimator
         from cje.estimators.tmle import TMLEEstimator
         from cje.estimators.mrdr import MRDREstimator
 
@@ -263,6 +298,12 @@ class StackedDREstimator(BaseCJEEstimator):
         estimator = estimator_class(
             self.sampler, oracle_slice_config=self.oracle_slice_config
         )
+
+        # Add fresh draws if available
+        if self._fresh_draws:
+            for policy, fresh_draws in self._fresh_draws.items():
+                estimator.add_fresh_draws(policy, fresh_draws)
+                logger.debug(f"Added fresh draws for {policy} to {name}")
 
         # Run estimation
         return estimator.fit_and_estimate()

@@ -50,7 +50,6 @@ def create_parser() -> argparse.ArgumentParser:
             "dr-cpo",
             "mrdr",
             "tmle",
-            "mrdr-tmle",
         ],
         default="calibrated-ips",
         help="Estimation method (default: calibrated-ips)",

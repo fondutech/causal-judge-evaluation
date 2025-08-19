@@ -59,7 +59,6 @@ def parse_arguments() -> argparse.Namespace:
             "dr-cpo",
             "mrdr",
             "tmle",
-            "mrdr-tmle",
         ],
         help="Estimator to use",
     )
@@ -241,7 +240,7 @@ def main() -> int:
         )
 
         # Display DR diagnostics if applicable
-        if args.estimator in ["dr-cpo", "mrdr", "tmle", "mrdr-tmle"]:
+        if args.estimator in ["dr-cpo", "mrdr", "tmle"]:
             display_dr_diagnostics(results, args)
 
         # Display augmentation diagnostics (for all estimators)

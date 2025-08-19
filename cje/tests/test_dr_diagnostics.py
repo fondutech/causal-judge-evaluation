@@ -12,7 +12,6 @@ from cje.estimators import CalibratedIPS
 from cje.estimators.dr_base import DRCPOEstimator
 from cje.estimators.tmle import TMLEEstimator
 from cje.estimators.mrdr import MRDREstimator
-from cje.estimators.mrdr_tmle import MRDRTMLEEstimator
 
 
 class TestIPSDiagnostics:
@@ -398,31 +397,6 @@ class TestEstimatorDiagnosticIntegration:
         assert result.diagnostics.method == "mrdr"
         assert result.diagnostics.dr_cross_fitted is True
 
-    def test_mrdr_tmle_produces_diagnostics(
-        self, sample_dataset: Dataset, fresh_draws: Dict[str, FreshDrawDataset]
-    ) -> None:
-        """Test that MRDRTMLEEstimator produces DRDiagnostics."""
-        sampler = PrecomputedSampler(sample_dataset)
-        estimator = MRDRTMLEEstimator(sampler, n_folds=5, omega_mode="w2", link="logit")
-        estimator.fit()
-
-        # Add fresh draws
-        for policy, fresh_dataset in fresh_draws.items():
-            estimator.add_fresh_draws(policy, fresh_dataset)
-
-        result = estimator.estimate()
-
-        assert result.diagnostics is not None
-        assert isinstance(result.diagnostics, DRDiagnostics)
-        assert result.diagnostics.method == "mrdrtmle"
-        assert result.diagnostics.dr_cross_fitted is True
-
-        # Check MRDR-TMLE specific metadata
-        assert result.metadata is not None
-        assert "targeting" in result.metadata
-        assert "omega_mode" in result.metadata
-        assert result.metadata["omega_mode"] == "w2"
-        assert result.metadata["link"] == "logit"
 
     def test_diagnostic_serialization(self, sample_dataset: Dataset) -> None:
         """Test that diagnostics can be serialized to dict/JSON."""

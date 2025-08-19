@@ -10,8 +10,6 @@ from pathlib import Path
 from typing import Optional, Dict, Any, Union
 import numpy as np
 
-from cje.estimators.mrdr_tmle import MRDRTMLEEstimator
-
 from ..data import load_dataset_from_jsonl
 from ..data.models import Dataset, EstimationResult
 from ..calibration import calibrate_dataset
@@ -100,7 +98,7 @@ def analyze_dataset(
     )
 
     # Step 5: Add fresh draws for DR estimators
-    if estimator in ["dr-cpo", "mrdr", "tmle", "mrdr-tmle", "stacked-dr"]:
+    if estimator in ["dr-cpo", "mrdr", "tmle", "stacked-dr"]:
         # Type narrowing for mypy
         if isinstance(
             estimator_obj,
@@ -108,7 +106,6 @@ def analyze_dataset(
                 DRCPOEstimator,
                 MRDREstimator,
                 TMLEEstimator,
-                MRDRTMLEEstimator,
                 StackedDREstimator,
             ),
         ):

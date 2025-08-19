@@ -14,7 +14,6 @@ from cje.estimators import CalibratedIPS
 from cje.estimators.dr_base import DRCPOEstimator
 from cje.estimators.mrdr import MRDREstimator
 from cje.estimators.tmle import TMLEEstimator
-from cje.estimators.mrdr_tmle import MRDRTMLEEstimator
 from cje.data.precomputed_sampler import PrecomputedSampler
 from cje.calibration.dataset import calibrate_dataset
 from cje.data.fresh_draws import load_fresh_draws_auto
@@ -62,11 +61,6 @@ def create_estimator(
 
     elif args.estimator == "tmle":
         return _create_tmle(
-            args, sampler, calibrated_dataset, cal_result, estimator_config
-        )
-
-    elif args.estimator == "mrdr-tmle":
-        return _create_mrdr_tmle(
             args, sampler, calibrated_dataset, cal_result, estimator_config
         )
 
@@ -173,51 +167,6 @@ def _create_tmle(
     return tmle_estimator
 
 
-def _create_mrdr_tmle(
-    args: Any,
-    sampler: PrecomputedSampler,
-    calibrated_dataset: Any,
-    cal_result: Optional[Any],
-    estimator_config: Dict[str, Any],
-) -> MRDRTMLEEstimator:
-    """Create MRDR-TMLE estimator."""
-    n_folds = estimator_config.get("n_folds", 5)
-    omega_mode = estimator_config.get("omega_mode", "w")
-    link = estimator_config.get("link", "logit")
-
-    # MRDR-TMLE benefits from cross-fitted calibration
-    if args.oracle_coverage < 1.0 and (not cal_result or not cal_result.calibrator):
-        print(
-            "   ⚠️  MRDR-TMLE works best with cross-fitted calibration. Re-calibrating..."
-        )
-        validate_no_unnecessary_calibration(
-            calibrated_dataset, args.oracle_coverage, cal_result
-        )
-        calibrated_dataset, cal_result = calibrate_dataset(
-            calibrated_dataset,
-            judge_field="judge_score",
-            oracle_field="oracle_label",
-            enable_cross_fit=True,
-            n_folds=n_folds,
-        )
-        sampler = PrecomputedSampler(calibrated_dataset)
-
-    # Oracle slice augmentation is now automatic when coverage < 100%
-    mrdr_tmle_estimator = MRDRTMLEEstimator(
-        sampler,
-        n_folds=n_folds,
-        omega_mode=omega_mode,
-        link=link,
-        calibrator=cal_result.calibrator if cal_result else None,
-        # oracle_slice_config defaults to "auto" in CalibratedIPS
-    )
-    print(f"   Using MRDR-TMLE with omega_mode='{omega_mode}', link='{link}'")
-
-    # Load fresh draws
-    print("   Loading fresh draws for MRDR-TMLE estimation...")
-    add_fresh_draws(mrdr_tmle_estimator, args, sampler, estimator_config)
-
-    return mrdr_tmle_estimator
 
 
 def add_fresh_draws(
