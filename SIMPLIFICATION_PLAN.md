@@ -189,7 +189,7 @@ else:
 **Current**:
 ```python
 CalibratedIPS(sampler, var_cap=0.5, ess_floor=0.01, 
-              include_baseline=True, baseline_shrink=0.9, ...)
+              include_baseline=False, ...)
 ```
 
 **Proposed**:

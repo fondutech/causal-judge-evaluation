@@ -196,8 +196,7 @@ from cje.calibration import SIMCalibrator, SimcalConfig
 config = SimcalConfig(
     ess_floor=0.2,      # Minimum 20% ESS
     var_cap=1.0,        # No variance increase
-    include_baseline=True,
-    baseline_shrink=0.05
+    include_baseline=False,
 )
 
 # Run calibration
