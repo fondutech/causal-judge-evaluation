@@ -48,7 +48,7 @@ Stabilizes importance weights through score-indexed monotone projection:
 For doubly robust methods, provides out-of-fold predictions to maintain orthogonality between nuisance functions.
 
 ### 4. Oracle Slice Augmentation
-Accounts for uncertainty in the judge→oracle calibration map learned from finite oracle labels, providing honest confidence intervals that widen appropriately when oracle coverage is low.
+When we calibrate judge scores using only a subset of oracle labels (e.g., 10% coverage), the calibration function f̂ itself has uncertainty. Standard IPS/DR methods treat f̂ as fixed, leading to overconfident CIs. Oracle slice augmentation corrects this by adding a term that accounts for calibration uncertainty, ensuring CIs properly widen when oracle coverage is low.
 
 ## Module Descriptions
 
@@ -84,12 +84,14 @@ Advanced weight calibration through stacking:
 - Configurable via `SimcalConfig` dataclass
 
 ### `oracle_slice.py` - Oracle Slice Augmentation
-Provides honest confidence intervals by accounting for calibration uncertainty:
-- `OracleSliceAugmentation`: Adds augmentation term (L/p) * m(S) * (Y - f̂(S))
-- `OracleSliceConfig`: Configuration for augmentation behavior
-- Estimates m̂(S) = E[W|S] via isotonic regression
-- Supports both MCAR (constant probability) and MAR (score-dependent) labeling
-- Integrates seamlessly with IPS and DR estimators
+Corrects for bias and variance when using calibrated rewards instead of true oracle labels:
+- **Problem**: We use f̂(S) everywhere but only have true Y on oracle subset
+- **Solution**: Add augmentation term `(L/p) * m̂(S) * (Y - f̂(S))` where:
+  - L indicates oracle label presence, p = oracle coverage
+  - m̂(S) = E[W|S] estimated via isotonic regression
+  - Unbiased for the gap between proxy and truth
+- **Effect**: Wider, honest CIs that reflect calibration uncertainty
+- Auto-enables when 0% < oracle coverage < 100%
 
 ## Key Design Decisions
 

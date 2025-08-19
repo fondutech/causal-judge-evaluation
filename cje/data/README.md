@@ -86,8 +86,8 @@ sampler = PrecomputedSampler.from_jsonl("calibrated_data.jsonl")
 n_samples = sampler.n_valid_samples
 policies = sampler.target_policies
 
-# Check oracle coverage (for automatic augmentation detection)
-oracle_coverage = sampler.oracle_coverage  # Returns float in [0, 1] or None
+# Check oracle coverage (triggers automatic augmentation when < 1.0)
+oracle_coverage = sampler.oracle_coverage  # Float in [0, 1]: fraction with oracle labels
 ```
 
 ### Data Validation
