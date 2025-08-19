@@ -10,22 +10,22 @@ import numpy as np
 @dataclass(frozen=True)
 class ExperimentSpec:
     """Minimal experiment specification for ablations."""
-    
+
     # Core required fields
-    ablation: str                           # Which ablation (e.g., "oracle_coverage")
-    dataset_path: str                       # Path to dataset
-    estimator: str                          # Which estimator to use
-    
+    ablation: str  # Which ablation (e.g., "oracle_coverage")
+    dataset_path: str  # Path to dataset
+    estimator: str  # Which estimator to use
+
     # Key experimental dimensions
-    oracle_coverage: Optional[float] = None # Fraction with oracle labels
-    sample_size: Optional[int] = None       # Number of samples
-    
+    oracle_coverage: Optional[float] = None  # Fraction with oracle labels
+    sample_size: Optional[int] = None  # Number of samples
+
     # Reproducibility
-    seed: int = 42                          # Random seed
-    
+    seed: int = 42  # Random seed
+
     # Optional extra params
     extra: Dict[str, Any] = field(default_factory=dict)
-    
+
     def uid(self) -> str:
         """Generate unique ID for caching."""
         key_dict = {
@@ -42,10 +42,10 @@ class ExperimentSpec:
 
 def aggregate_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Aggregate results across seeds with simplified logic."""
-    
+
     if not results:
         return {}
-    
+
     # Group estimates by policy
     by_policy = {}
     for r in results:
@@ -55,24 +55,27 @@ def aggregate_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
                     by_policy[policy] = {"estimates": [], "ses": []}
                 by_policy[policy]["estimates"].append(est)
                 if "standard_errors" in r:
-                    by_policy[policy]["ses"].append(r["standard_errors"].get(policy, np.nan))
-    
+                    by_policy[policy]["ses"].append(
+                        r["standard_errors"].get(policy, np.nan)
+                    )
+
     # Compute aggregates
     aggregated = {
         "n_seeds": len(results),
-        "success_rate": sum(1 for r in results if r.get("success", False)) / len(results),
-        "by_policy": {}
+        "success_rate": sum(1 for r in results if r.get("success", False))
+        / len(results),
+        "by_policy": {},
     }
-    
+
     for policy, data in by_policy.items():
         estimates = np.array(data["estimates"])
         ses = np.array(data["ses"])
-        
+
         aggregated["by_policy"][policy] = {
             "mean_estimate": float(np.mean(estimates)),
             "std_estimate": float(np.std(estimates)),
             "mean_se": float(np.nanmean(ses)),
-            "n_valid": len(estimates)
+            "n_valid": len(estimates),
         }
-    
+
     return aggregated

@@ -104,7 +104,13 @@ def analyze_dataset(
         # Type narrowing for mypy
         if isinstance(
             estimator_obj,
-            (DRCPOEstimator, MRDREstimator, TMLEEstimator, MRDRTMLEEstimator, StackedDREstimator),
+            (
+                DRCPOEstimator,
+                MRDREstimator,
+                TMLEEstimator,
+                MRDRTMLEEstimator,
+                StackedDREstimator,
+            ),
         ):
             _add_fresh_draws(
                 estimator_obj,
@@ -255,10 +261,10 @@ def _create_estimator(
         estimators = config.get("estimators", ["dr-cpo", "tmle", "mrdr"])
         use_outer_split = config.get("use_outer_split", True)
         parallel = config.get("parallel", True)
-        
+
         if verbose:
             logger.info(f"Using stacked DR with estimators: {estimators}")
-        
+
         return StackedDREstimator(
             sampler,
             estimators=estimators,

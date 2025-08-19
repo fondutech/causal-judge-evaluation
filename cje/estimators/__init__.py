@@ -23,6 +23,7 @@ try:
     from .tmle import TMLEEstimator
     from .mrdr import MRDREstimator
     from .mrdr_tmle import MRDRTMLEEstimator
+
     _dr_available = True
 except ImportError:
     _dr_available = False
@@ -42,9 +43,6 @@ __all__ = [
 ]
 
 if _dr_available:
-    __all__.extend([
-        "DRCPOEstimator",
-        "TMLEEstimator", 
-        "MRDREstimator",
-        "MRDRTMLEEstimator"
-    ])
+    __all__.extend(
+        ["DRCPOEstimator", "TMLEEstimator", "MRDREstimator", "MRDRTMLEEstimator"]
+    )
