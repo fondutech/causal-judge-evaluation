@@ -93,7 +93,7 @@ python -m cje analyze <dataset> [options]
 ```
 
 **Options:**
-- `--estimator {calibrated-ips,raw-ips,dr-cpo,mrdr,tmle}`: Estimation method
+- `--estimator {calibrated-ips,raw-ips,stacked-dr,dr-cpo,mrdr,tmle}`: Estimation method
 - `--estimator-config JSON`: Configuration as JSON string
 - `--judge-field FIELD`: Judge score field name (default: judge_score)
 - `--oracle-field FIELD`: Oracle label field name (default: oracle_label)
@@ -125,6 +125,7 @@ python -m cje validate data.jsonl --verbose
 |-----------|-------------|--------------|
 | `calibrated-ips` | **Default - start here** | Judge scores |
 | `raw-ips` | Diagnostic comparison | None |
+| `stacked-dr` | **Best DR option** - combines all DR methods | Fresh draws |
 | `dr-cpo` | Low overlap (ESS < 10%) | Fresh draws |
 | `mrdr` | Research/advanced | Fresh draws |
 | `tmle` | Research/advanced | Fresh draws |

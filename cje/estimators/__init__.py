@@ -8,6 +8,7 @@ This module contains:
 
 from .base_estimator import BaseCJEEstimator
 from .calibrated_ips import CalibratedIPS
+from .stacking import StackedDREstimator
 from ..data.models import (
     Sample,
     Dataset,
@@ -16,10 +17,21 @@ from ..data.models import (
     LogProbStatus,
 )
 
+# Import DR estimators for convenience
+try:
+    from .dr_cpo import DRCPOEstimator
+    from .tmle import TMLEEstimator
+    from .mrdr import MRDREstimator
+    from .mrdr_tmle import MRDRTMLEEstimator
+    _dr_available = True
+except ImportError:
+    _dr_available = False
+
 __all__ = [
     # Estimators
     "BaseCJEEstimator",
     "CalibratedIPS",
+    "StackedDREstimator",
     # Data models
     "Sample",
     "Dataset",
@@ -28,3 +40,11 @@ __all__ = [
     "LogProbResult",
     "LogProbStatus",
 ]
+
+if _dr_available:
+    __all__.extend([
+        "DRCPOEstimator",
+        "TMLEEstimator", 
+        "MRDREstimator",
+        "MRDRTMLEEstimator"
+    ])

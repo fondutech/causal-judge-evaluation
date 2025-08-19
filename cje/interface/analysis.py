@@ -20,6 +20,7 @@ from ..estimators.calibrated_ips import CalibratedIPS
 from ..estimators.dr_base import DRCPOEstimator
 from ..estimators.mrdr import MRDREstimator
 from ..estimators.tmle import TMLEEstimator
+from ..estimators.stacking import StackedDREstimator
 
 logger = logging.getLogger(__name__)
 
@@ -99,11 +100,11 @@ def analyze_dataset(
     )
 
     # Step 5: Add fresh draws for DR estimators
-    if estimator in ["dr-cpo", "mrdr", "tmle", "mrdr-tmle"]:
+    if estimator in ["dr-cpo", "mrdr", "tmle", "mrdr-tmle", "stacked-dr"]:
         # Type narrowing for mypy
         if isinstance(
             estimator_obj,
-            (DRCPOEstimator, MRDREstimator, TMLEEstimator, MRDRTMLEEstimator),
+            (DRCPOEstimator, MRDREstimator, TMLEEstimator, MRDRTMLEEstimator, StackedDREstimator),
         ):
             _add_fresh_draws(
                 estimator_obj,
@@ -249,12 +250,28 @@ def _create_estimator(
                 link=link,
             )
 
+    elif estimator_type == "stacked-dr":
+        # Stacked DR estimator - combines DR-CPO, TMLE, and MRDR
+        estimators = config.get("estimators", ["dr-cpo", "tmle", "mrdr"])
+        use_outer_split = config.get("use_outer_split", True)
+        parallel = config.get("parallel", True)
+        
+        if verbose:
+            logger.info(f"Using stacked DR with estimators: {estimators}")
+        
+        return StackedDREstimator(
+            sampler,
+            estimators=estimators,
+            use_outer_split=use_outer_split,
+            parallel=parallel,
+        )
+
     else:
         raise ValueError(f"Unknown estimator type: {estimator_type}")
 
 
 def _add_fresh_draws(
-    estimator: Union[DRCPOEstimator, MRDREstimator, TMLEEstimator],
+    estimator: Union[DRCPOEstimator, MRDREstimator, TMLEEstimator, StackedDREstimator],
     sampler: PrecomputedSampler,
     dataset: Dataset,
     fresh_draws_dir: Optional[str],

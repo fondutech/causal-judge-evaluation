@@ -197,7 +197,8 @@ CJE expects JSONL logs with:
 |-----------|-------------|-------------|
 | **CalibratedIPS** | IPS with SIMCal weight calibration | Logged data only; best IPS variant |
 | **RawIPS** | Standard importance sampling | Baseline comparison; diagnostic purposes |
-| **DRCPOEstimator** | Doubly-Robust Counterfactual Policy Optimization | When you have fresh draws; generally best |
+| **StackedDREstimator** | Optimal combination of DR methods | Fresh draws; **recommended DR default** |
+| **DRCPOEstimator** | Doubly-Robust Counterfactual Policy Optimization | Fresh draws; basic DR method |
 | **MRDREstimator** | More Robust Doubly-Robust estimator | Fresh draws + concern about misspecification |
 | **TMLEEstimator** | Targeted maximum likelihood | Fresh draws + want optimal efficiency |
 | **MRDRTMLEEstimator** | MRDR + TMLE targeting | Best of both: robustness + efficiency |
@@ -232,7 +233,7 @@ Key diagnostics include:
 ### Multiple Estimators
 ```python
 # Run multiple estimators for robustness
-for estimator in ["calibrated-ips", "dr-cpo", "tmle"]:
+for estimator in ["calibrated-ips", "stacked-dr"]:
     results = analyze_dataset("logs.jsonl", estimator=estimator)
     print(f"{estimator}: {results.estimates[0]:.3f}")
 ```

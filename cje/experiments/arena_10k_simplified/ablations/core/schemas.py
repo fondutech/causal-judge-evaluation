@@ -1,0 +1,236 @@
+"""Standardized schemas for ablation experiments."""
+
+import hashlib
+import json
+import time
+from dataclasses import dataclass, asdict, field
+from typing import Optional, Dict, Any, List
+import subprocess
+
+
+@dataclass(frozen=True)
+class ExperimentSpec:
+    """Standardized input specification for ablation experiments.
+    
+    This ensures every ablation speaks the same language and enables
+    caching, reproducibility, and easy aggregation.
+    """
+    
+    # Required fields
+    ablation: str                           # e.g., "oracle_coverage"
+    dataset_path: str                       # Path to CJE dataset
+    estimator: str                          # e.g., "calibrated-ips", "dr-cpo"
+    
+    # Data configuration
+    oracle_coverage: Optional[float] = None     # Fraction of oracle labels (0-1)
+    sample_size: Optional[int] = None           # Number of samples to use
+    sample_fraction: Optional[float] = None     # Alternative: fraction of dataset
+    
+    # Method parameters
+    rho: Optional[float] = None                 # Variance cap for SIMCal
+    lambda_tr: Optional[float] = None           # Trust region tempering
+    ordering: Optional[str] = None              # "S", "R", "S_bucket_shuffle"
+    draws_per_prompt: Optional[int] = None      # Fresh draws for DR (K)
+    
+    # Temporal analysis
+    temporal_block: Optional[int] = None        # Block size for bootstrap
+    
+    # Experiment configuration
+    n_seeds: int = 5                           # Number of random seeds
+    seed_base: int = 42                        # Base seed for reproducibility
+    
+    # Additional parameters
+    extra: Dict[str, Any] = field(default_factory=dict)
+    
+    def uid(self) -> str:
+        """Generate unique ID for caching.
+        
+        Returns 12-character hash of the specification.
+        """
+        # Sort keys for consistent hashing
+        payload = json.dumps(asdict(self), sort_keys=True)
+        return hashlib.sha256(payload.encode()).hexdigest()[:12]
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return asdict(self)
+
+
+def get_git_commit() -> Optional[str]:
+    """Get current git commit hash."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return result.stdout.strip()[:8]
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
+def compute_dataset_sha256(path: str) -> Optional[str]:
+    """Compute SHA256 of dataset file."""
+    try:
+        import hashlib
+        sha256_hash = hashlib.sha256()
+        with open(path, "rb") as f:
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+        return sha256_hash.hexdigest()[:12]
+    except (FileNotFoundError, IOError):
+        return None
+
+
+def create_result(spec: ExperimentSpec, seed: int) -> Dict[str, Any]:
+    """Create standardized result dictionary.
+    
+    Args:
+        spec: Experiment specification
+        seed: Random seed for this run
+        
+    Returns:
+        Dictionary with all fields initialized
+    """
+    return {
+        # Identity and provenance
+        "uid": spec.uid(),
+        "seed": seed,
+        "spec": spec.to_dict(),
+        "git_commit": get_git_commit(),
+        "dataset_sha256": compute_dataset_sha256(spec.dataset_path),
+        
+        # Execution metadata
+        "start_ts": time.time(),
+        "runtime_s": None,
+        "success": False,
+        "error": None,
+        
+        # Core estimation results (per policy)
+        "estimates": {},                    # Policy -> estimate
+        "standard_errors": {},              # Policy -> SE
+        "confidence_intervals": {},         # Policy -> (lower, upper)
+        "oracle_truths": {},               # Policy -> oracle ground truth
+        
+        # Weight diagnostics (per policy)
+        "ess_absolute": {},                # Effective sample size (absolute)
+        "ess_relative": {},                # ESS / n (percentage)
+        "max_weight": {},                  # Maximum single weight
+        "tail_alpha": {},                  # Hill estimator of tail index
+        "weight_cv": {},                   # Coefficient of variation
+        
+        # Calibration metrics
+        "calibration_rmse": None,         # RMSE of judge→oracle calibration
+        "simcal_distortion": {},          # Per-policy SIMCal distortion δ
+        "rho_used": {},                    # Actual ρ used per policy
+        "blend_alpha": {},                 # SIMCal blend parameter α
+        
+        # Oracle augmentation metrics
+        "augmentation_share": {},          # Fraction of variance from augmentation
+        "oracle_slice_size": None,        # Number of oracle labels used
+        
+        # DR-specific metrics
+        "mc_variance_share": {},           # Monte Carlo share of variance
+        "draws_per_prompt": None,          # K value used
+        
+        # Gates and mitigations
+        "gate_status": {},                 # Policy -> {"ess": T/F, "tail": T/F}
+        "mitigations_applied": {},         # Policy -> mitigation details
+        "policies_skipped": [],            # Policies that couldn't be estimated
+        
+        # Overall metrics
+        "rmse_vs_oracle": None,           # RMSE across all policies
+        "mean_ci_width": None,            # Average CI width
+        "n_samples": None,                # Actual number of samples used
+        "n_oracle": None,                 # Actual number of oracle labels
+    }
+
+
+def aggregate_results(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Aggregate results across seeds.
+    
+    Args:
+        results: List of result dictionaries from same spec
+        
+    Returns:
+        Aggregated statistics
+    """
+    import numpy as np
+    
+    if not results:
+        return {}
+    
+    # Extract successful results
+    successful = [r for r in results if r.get("success", False)]
+    if not successful:
+        return {
+            "n_seeds_total": len(results),
+            "n_seeds_successful": 0,
+            "all_failed": True,
+            "errors": [r.get("error", "Unknown") for r in results]
+        }
+    
+    # Aggregate estimates across seeds
+    aggregated = {
+        "spec": results[0]["spec"],
+        "n_seeds_total": len(results),
+        "n_seeds_successful": len(successful),
+        "estimates_mean": {},
+        "estimates_se": {},
+        "estimates_ci": {},
+        "oracle_truths": successful[0].get("oracle_truths", {}),
+    }
+    
+    # Get all policies
+    policies = set()
+    for r in successful:
+        if "estimates" in r:
+            policies.update(r["estimates"].keys())
+    
+    # Aggregate each policy
+    for policy in policies:
+        estimates = []
+        ses = []
+        
+        for r in successful:
+            if policy in r.get("estimates", {}):
+                est = r["estimates"][policy]
+                if est == est:  # Not NaN
+                    estimates.append(est)
+                    
+                    if "standard_errors" in r and policy in r["standard_errors"]:
+                        se = r["standard_errors"][policy]
+                        if se == se:  # Not NaN
+                            ses.append(se)
+        
+        if estimates:
+            mean_est = np.mean(estimates)
+            
+            # Combined SE (within + between seed variance)
+            if ses and len(ses) == len(estimates):
+                within_var = np.mean([s**2 for s in ses])
+                between_var = np.var(estimates, ddof=1) if len(estimates) > 1 else 0
+                combined_se = np.sqrt(within_var + between_var)
+            else:
+                combined_se = np.std(estimates, ddof=1) / np.sqrt(len(estimates)) if len(estimates) > 1 else 0
+            
+            aggregated["estimates_mean"][policy] = mean_est
+            aggregated["estimates_se"][policy] = combined_se
+            aggregated["estimates_ci"][policy] = (
+                mean_est - 1.96 * combined_se,
+                mean_est + 1.96 * combined_se
+            )
+    
+    # Add diagnostic aggregates
+    aggregated["mean_ess"] = np.mean([
+        np.mean(list(r.get("ess_absolute", {}).values()))
+        for r in successful
+        if r.get("ess_absolute")
+    ])
+    
+    aggregated["policies_skipped"] = list(set().union(
+        *[set(r.get("policies_skipped", [])) for r in successful]
+    ))
+    
+    return aggregated

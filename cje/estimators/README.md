@@ -9,6 +9,7 @@ The estimators module contains all causal inference estimation methods for unbia
 ```
 BaseCJEEstimator (abstract)
 ├── CalibratedIPS       # IPS with optional SIMCal calibration
+├── StackedDREstimator  # Optimal stacking of DR estimators
 └── DREstimator         # Doubly robust base (abstract)
     ├── DRCPOEstimator  # Basic DR with CPO
     ├── MRDREstimator   # Multiple robust DR
@@ -37,12 +38,16 @@ Achieves robustness to:
 ### 5. Targeted Learning (TMLE)
 Optimally combines outcome models and importance weights through targeted fluctuation to achieve optimal asymptotic efficiency.
 
+### 6. Estimator Stacking
+Forms an optimal convex combination of multiple DR estimators (DR-CPO, TMLE, MRDR) by minimizing the variance of the combined influence function. Uses outer split for honest inference.
+
 ## File Structure
 
 ```
 estimators/
 ├── base_estimator.py      # Abstract base with common interface
 ├── calibrated_ips.py      # IPS with optional SIMCal calibration
+├── stacking.py            # Optimal stacking of DR estimators
 ├── dr_base.py             # Doubly robust base class
 ├── mrdr.py                # Multiple robust DR
 ├── mrdr_tmle.py           # MRDR with TMLE fluctuation
@@ -81,6 +86,13 @@ estimators/
 - Fresh draws are available (REQUIRED for all DR methods)
 - You have well-specified models
 - You need the most sophisticated estimation
+
+### Use **StackedDREstimator** when:
+- You want the best of all DR methods combined
+- Fresh draws are available (REQUIRED)
+- You want automatic selection of optimal weights
+- You need robust performance without choosing a specific DR method
+- **This is the recommended default for DR estimation**
 
 ## Refusal Gates in CalibratedIPS
 

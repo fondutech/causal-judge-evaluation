@@ -195,6 +195,10 @@ class PrecomputedSampler:
 
         return policy_data if policy_data else None
 
+    def __len__(self) -> int:
+        """Return the number of valid samples in formatted data."""
+        return self.n_valid_samples
+    
     def _get_valid_indices(self, target_policy: str) -> np.ndarray:
         """Get indices of valid samples for a target policy.
 

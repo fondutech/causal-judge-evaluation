@@ -246,3 +246,15 @@ cje/experiments/arena_10k_simplified/test_e2e_data/ablation_data/
 cje/experiments/arena_10k_simplified/test_e2e_data/ablation_results/
 cje/experiments/arena_10k_simplified/test_e2e_data/*.jsonl
 cje/experiments/arena_10k_simplified/test_e2e_data/logprobs/
+
+# Data files - ignore all JSONL/CSV except in the arena dataset
+*.jsonl
+*.csv
+# But keep the arena dataset files
+!cje/experiments/arena_10k_simplified/data/*.jsonl
+!cje/experiments/arena_10k_simplified/data/*.csv
+
+# Ablation caches and results
+.ablation_cache/
+ablation_results/
+*.log

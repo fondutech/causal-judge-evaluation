@@ -43,7 +43,7 @@ def create_parser() -> argparse.ArgumentParser:
 
     analyze_parser.add_argument(
         "--estimator",
-        choices=["calibrated-ips", "raw-ips", "dr-cpo", "mrdr", "tmle", "mrdr-tmle"],
+        choices=["calibrated-ips", "raw-ips", "stacked-dr", "dr-cpo", "mrdr", "tmle", "mrdr-tmle"],
         default="calibrated-ips",
         help="Estimation method (default: calibrated-ips)",
     )
