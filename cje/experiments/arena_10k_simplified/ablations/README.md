@@ -53,9 +53,14 @@ ablations/
 ├── sample_size.py             # Ablation 2: Sample size  
 ├── estimator_comparison.py    # Ablation 3: Method comparison
 ├── interaction.py             # Ablation 4: Interaction effects
-├── run_all_ablations.py      # Master runner script
+├── run_all_ablations.py       # Master runner script
 ├── analyze_results.py         # Analysis and visualization
-└── .ablation_cache/           # Cached results (auto-created)
+├── results/                   # Generated results (auto-created)
+│   ├── oracle_coverage/       # Oracle ablation outputs
+│   ├── sample_size/          # Sample size outputs
+│   ├── estimator_comparison/ # Comparison outputs
+│   └── interaction/          # Interaction outputs
+└── .ablation_cache/          # Cached results (auto-created)
 ```
 
 ## Key Results Summary

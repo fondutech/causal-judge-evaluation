@@ -19,11 +19,10 @@ CJE recasts judge-based evaluation as **calibrated causal inference** using our 
 ## 🚀 Quick Start
 
 ```bash
-# Install
-pip install causal-judge-evaluation  # Coming soon to PyPI
-# Or clone and install locally:
-# git clone https://github.com/your-org/causal-judge-evaluation.git
-# cd causal-judge-evaluation && pip install -e .
+# Install from source
+git clone https://github.com/fondutech/causal-judge-evaluation.git
+cd causal-judge-evaluation
+pip install -e .  # Install in development mode
 
 # Set API key for log probability computation
 export FIREWORKS_API_KEY="your-api-key"
@@ -189,7 +188,7 @@ CJE expects JSONL logs with:
 }
 ```
 
-**Note**: For DR estimators, you'll also need fresh draws (new responses from π′ evaluated by the judge). These should be provided via the `fresh_draws_dir` parameter or by calling `estimator.add_fresh_draws()`. See [example usage](cje/example_usage.py) for details.
+**Note**: For DR estimators, you'll also need fresh draws (new responses from π′ evaluated by the judge). These should be provided via the `fresh_draws_dir` parameter or by calling `estimator.add_fresh_draws()`. See the experiments in `cje/experiments/arena_10k_simplified/ablations/` for examples.
 
 ## 🔬 Available Estimators
 
