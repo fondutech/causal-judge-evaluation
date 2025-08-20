@@ -5,16 +5,20 @@ Ablation study of CJE estimators on simulated competition data, demonstrating 13
 ## Quick Start
 
 ```bash
-# Run ablation study
-python ablation.py --estimators calibrated-ips raw-ips dr-cpo --oracle-coverages 0.1 0.5 1.0
+# Run comprehensive ablation studies
+cd ablations/
+python run_all_ablations.py
+
+# Or run individual analysis
+python analyze_dataset.py --data data/cje_dataset.jsonl --estimator calibrated-ips
 
 # Generate plots
-python plot.py --results ablation_results/ablation_results.jsonl
+python plot.py --results ablations/results/
 ```
 
 ## Files
 
-- `ablation.py` - Run ablation experiments with all CJE estimators
+- `ablations/` - Comprehensive ablation experiments (see ablations/README.md)
 - `analyze_dataset.py` - Direct CJE analysis with detailed diagnostics  
 - `plot.py` - Generate visualization plots
 - `experiment_config.py` - Policy definitions and experiment parameters
