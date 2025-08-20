@@ -51,7 +51,7 @@ class StackedDREstimator(BaseCJEEstimator):
         min_weight: float = 0.0,
         fallback_on_failure: bool = True,
         seed: int = 42,
-        **kwargs,
+        **kwargs: Any,
     ):
         """Initialize the stacked estimator.
 
@@ -69,7 +69,14 @@ class StackedDREstimator(BaseCJEEstimator):
             seed: Random seed for reproducibility
             **kwargs: Additional arguments passed to base class
         """
-        super().__init__(sampler, **kwargs)
+        # Extract calibrator before passing to base class (base doesn't accept it)
+        self.calibrator = kwargs.pop("calibrator", None)
+        # Extract oracle_slice_config to pass to base class
+        oracle_slice_config = kwargs.pop("oracle_slice_config", True)
+
+        # BaseCJEEstimator only accepts specific params, not arbitrary kwargs
+        # So we don't pass **kwargs
+        super().__init__(sampler, oracle_slice_config=oracle_slice_config)
 
         # Configuration
         self.estimators = estimators or ["dr-cpo", "tmle", "mrdr"]
@@ -81,9 +88,7 @@ class StackedDREstimator(BaseCJEEstimator):
         self.min_weight = min_weight
         self.fallback_on_failure = fallback_on_failure
         self.seed = seed
-        self.oracle_slice_config = kwargs.get(
-            "oracle_slice_config", True
-        )  # Auto-enable by default
+        self.oracle_slice_config = oracle_slice_config  # Store the extracted value
 
         # Storage for results
         self.component_results: Dict[str, EstimationResult] = {}
@@ -296,12 +301,21 @@ class StackedDREstimator(BaseCJEEstimator):
 
         estimator_class = estimator_classes[name]
 
-        # Create estimator with shared fold assignments
+        # Create estimator with shared fold assignments and calibrator
         # Note: We can't directly pass fold_ids to most estimators,
         # but they will use the same seed which helps
-        estimator = estimator_class(
-            self.sampler, oracle_slice_config=self.oracle_slice_config
-        )
+        # Pass calibrator as a named parameter for DR estimators
+        if name in ["dr-cpo", "tmle", "mrdr"]:
+            estimator = estimator_class(
+                self.sampler,
+                calibrator=self.calibrator,
+                oracle_slice_config=self.oracle_slice_config,
+            )
+        else:
+            # For non-DR estimators (shouldn't happen with default config)
+            estimator = estimator_class(
+                self.sampler, oracle_slice_config=self.oracle_slice_config
+            )
 
         # Add fresh draws if available
         if self._fresh_draws:
@@ -310,7 +324,8 @@ class StackedDREstimator(BaseCJEEstimator):
                 logger.debug(f"Added fresh draws for {policy} to {name}")
 
         # Run estimation
-        return estimator.fit_and_estimate()
+        result = estimator.fit_and_estimate()
+        return result
 
     def _get_valid_estimators(self) -> List[str]:
         """Get list of estimators that ran successfully."""
@@ -485,6 +500,8 @@ class StackedDREstimator(BaseCJEEstimator):
         return EstimationResult(
             estimates=result.estimates,
             standard_errors=result.standard_errors,
+            n_samples_used=result.n_samples_used,
+            method=f"StackedDR(fallback->{estimator_name})",
             influence_functions=result.influence_functions,
             diagnostics=result.diagnostics,
             metadata=metadata,

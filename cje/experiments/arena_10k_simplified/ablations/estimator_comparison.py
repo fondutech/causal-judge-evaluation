@@ -20,7 +20,7 @@ import json
 import logging
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Union
 import matplotlib.pyplot as plt
 import seaborn as sns
 from dataclasses import dataclass
@@ -63,7 +63,7 @@ class EstimatorConfig:
 class EstimatorComparison(BaseAblation):
     """Systematic comparison of estimation methods."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             name="estimator_comparison",
             cache_dir=Path("../.ablation_cache/estimator_comparison"),
@@ -101,7 +101,7 @@ class EstimatorComparison(BaseAblation):
 
     def create_custom_estimator(
         self, config: EstimatorConfig, sampler: PrecomputedSampler, cal_result: Any
-    ):
+    ) -> Union[CalibratedIPS, DRCPOEstimator, StackedDREstimator]:
         """Create estimator with specific configuration."""
 
         if config.estimator_class == "ips":
@@ -124,13 +124,19 @@ class EstimatorComparison(BaseAblation):
 
         elif config.estimator_class == "stacked":
             # Stacked DR with or without calibration
+            # Note: StackedDR doesn't have use_calibrated_weights param
+            # The calibration is controlled by passing calibrator to component estimators
             estimator = StackedDREstimator(
                 sampler,
                 estimators=["dr-cpo", "tmle", "mrdr"],
-                use_calibrated_weights=config.use_calibration,
-                calibrator=cal_result.calibrator if cal_result else None,
                 V_folds=5,
                 parallel=True,
+                # Pass calibrator via kwargs for component estimators
+                calibrator=(
+                    cal_result.calibrator
+                    if cal_result and config.use_calibration
+                    else None
+                ),
             )
             return estimator
 
@@ -207,14 +213,17 @@ class EstimatorComparison(BaseAblation):
             # Override weight computation for IPS vs SNIPS
             if config.weight_mode == "raw" and config.estimator_class == "ips":
                 # Monkey-patch to use raw weights instead of Hajek
+                # Note: CalibratedIPS.get_raw_weights already passes mode="raw"
+                # So we need to intercept and handle that case
                 original_method = sampler.compute_importance_weights
 
-                def raw_weights(policy, **kwargs):
-                    # Remove mode from kwargs if present to avoid duplicate
-                    kwargs.pop('mode', None)
+                def raw_weights(policy: str, **kwargs: Any) -> Any:
+                    # Remove mode from kwargs to avoid duplicate since we'll set it
+                    kwargs.pop("mode", None)
+                    # Always use raw mode for IPS
                     return original_method(policy, mode="raw", **kwargs)
 
-                sampler.compute_importance_weights = raw_weights
+                sampler.compute_importance_weights = raw_weights  # type: ignore[assignment]
 
             # Create and run estimator
             estimator = self.create_custom_estimator(config, sampler, cal_result)
@@ -321,7 +330,7 @@ class EstimatorComparison(BaseAblation):
                 data_path = Path("../data/cje_dataset.jsonl")
                 if not data_path.exists():
                     data_path = Path("../../data/cje_dataset.jsonl")
-                
+
                 # Create spec with n_seeds instead of individual seed
                 spec = ExperimentSpec(
                     ablation="estimator_comparison",
@@ -336,7 +345,7 @@ class EstimatorComparison(BaseAblation):
                 # Run with multiple seeds using the base class method
                 for seed_offset in range(n_seeds):
                     seed = 42 + seed_offset
-                    
+
                     result = self.run_single_comparison(spec, config, seed)
                     result["scenario"] = scenario["label"]
                     all_results.append(result)
@@ -367,7 +376,7 @@ class EstimatorComparison(BaseAblation):
         """Analyze comparison results."""
 
         # Group by scenario and estimator
-        by_scenario = {}
+        by_scenario: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
         for r in results:
             if r.get("success", False):
                 scenario = r["scenario"]
@@ -418,7 +427,9 @@ class EstimatorComparison(BaseAblation):
 
         return rankings
 
-    def create_figure(self, results: List[Dict[str, Any]], output_path: Path = None):
+    def create_figure(
+        self, results: List[Dict[str, Any]], output_path: Optional[Path] = None
+    ) -> Any:
         """Create comparison figure."""
 
         rankings = self.analyze_results(results)
@@ -483,7 +494,7 @@ class EstimatorComparison(BaseAblation):
         return fig
 
 
-def main():
+def main() -> List[Dict[str, Any]]:
     """Run estimator comparison."""
 
     comparison = EstimatorComparison()
