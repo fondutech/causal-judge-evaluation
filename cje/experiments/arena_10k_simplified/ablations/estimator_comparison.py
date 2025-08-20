@@ -210,6 +210,8 @@ class EstimatorComparison(BaseAblation):
                 original_method = sampler.compute_importance_weights
 
                 def raw_weights(policy, **kwargs):
+                    # Remove mode from kwargs if present to avoid duplicate
+                    kwargs.pop('mode', None)
                     return original_method(policy, mode="raw", **kwargs)
 
                 sampler.compute_importance_weights = raw_weights
@@ -315,18 +317,26 @@ class EstimatorComparison(BaseAblation):
             for config in self.estimator_configs:
                 logger.info(f"\n{config.display_name}:")
 
+                # Determine correct data path
+                data_path = Path("../data/cje_dataset.jsonl")
+                if not data_path.exists():
+                    data_path = Path("../../data/cje_dataset.jsonl")
+                
+                # Create spec with n_seeds instead of individual seed
+                spec = ExperimentSpec(
+                    ablation="estimator_comparison",
+                    dataset_path=str(data_path),
+                    estimator=config.name,
+                    oracle_coverage=scenario["oracle"],
+                    sample_size=scenario["n"],
+                    n_seeds=n_seeds,
+                    seed_base=42,
+                )
+
+                # Run with multiple seeds using the base class method
                 for seed_offset in range(n_seeds):
                     seed = 42 + seed_offset
-
-                    spec = ExperimentSpec(
-                        ablation="estimator_comparison",
-                        dataset_path="../../data/cje_dataset.jsonl",
-                        estimator=config.name,
-                        oracle_coverage=scenario["oracle"],
-                        sample_size=scenario["n"],
-                        seed=seed,
-                    )
-
+                    
                     result = self.run_single_comparison(spec, config, seed)
                     result["scenario"] = scenario["label"]
                     all_results.append(result)

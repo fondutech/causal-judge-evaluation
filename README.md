@@ -201,7 +201,6 @@ CJE expects JSONL logs with:
 | **DRCPOEstimator** | Doubly-Robust Counterfactual Policy Optimization | Fresh draws; basic DR method |
 | **MRDREstimator** | More Robust Doubly-Robust estimator | Fresh draws + concern about misspecification |
 | **TMLEEstimator** | Targeted maximum likelihood | Fresh draws + want optimal efficiency |
-| **MRDRTMLEEstimator** | MRDR + TMLE targeting | Best of both: robustness + efficiency |
 
 ## 🔍 Diagnostics & Quality Gates
 

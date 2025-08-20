@@ -13,7 +13,6 @@ BaseCJEEstimator (abstract)
 └── DREstimator         # Doubly robust base (abstract)
     ├── DRCPOEstimator  # Basic DR with CPO
     ├── MRDREstimator   # Multiple robust DR
-    ├── MRDRTMLEEstimator # MRDR with TMLE
     └── TMLEEstimator   # Targeted maximum likelihood
 ```
 
