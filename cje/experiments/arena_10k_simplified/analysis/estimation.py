@@ -167,8 +167,6 @@ def _create_tmle(
     return tmle_estimator
 
 
-
-
 def add_fresh_draws(
     estimator: Any,
     args: Any,

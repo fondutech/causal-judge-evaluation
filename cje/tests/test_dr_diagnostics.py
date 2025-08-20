@@ -397,7 +397,6 @@ class TestEstimatorDiagnosticIntegration:
         assert result.diagnostics.method == "mrdr"
         assert result.diagnostics.dr_cross_fitted is True
 
-
     def test_diagnostic_serialization(self, sample_dataset: Dataset) -> None:
         """Test that diagnostics can be serialized to dict/JSON."""
         sampler = PrecomputedSampler(sample_dataset)

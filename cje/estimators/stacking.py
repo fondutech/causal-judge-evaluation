@@ -81,18 +81,22 @@ class StackedDREstimator(BaseCJEEstimator):
         self.min_weight = min_weight
         self.fallback_on_failure = fallback_on_failure
         self.seed = seed
-        self.oracle_slice_config = kwargs.get('oracle_slice_config', True)  # Auto-enable by default
+        self.oracle_slice_config = kwargs.get(
+            "oracle_slice_config", True
+        )  # Auto-enable by default
 
         # Storage for results
         self.component_results: Dict[str, EstimationResult] = {}
         self.weights_per_policy: Dict[str, np.ndarray] = {}
         self.stacking_diagnostics: Dict[str, Any] = {}
-        self._fresh_draws: Dict[str, Any] = {}  # Store fresh draws to pass to components
+        self._fresh_draws: Dict[str, Any] = (
+            {}
+        )  # Store fresh draws to pass to components
 
         # Set up shared resources
         self._setup_shared_resources()
 
-    def _setup_shared_resources(self):
+    def _setup_shared_resources(self) -> None:
         """Set up resources shared across all component estimators."""
         np.random.seed(self.seed)
 
@@ -121,7 +125,7 @@ class StackedDREstimator(BaseCJEEstimator):
 
     def add_fresh_draws(self, policy: str, fresh_draws: Any) -> None:
         """Store fresh draws to pass to component estimators.
-        
+
         Args:
             policy: Target policy name
             fresh_draws: Fresh draw dataset for this policy
@@ -129,10 +133,9 @@ class StackedDREstimator(BaseCJEEstimator):
         self._fresh_draws[policy] = fresh_draws
         logger.debug(f"Added fresh draws for policy {policy}")
 
-    def fit(self) -> "StackedDREstimator":
+    def fit(self) -> None:
         """Fit is a no-op for stacking (component estimators handle their own fitting)."""
         self._fitted = True
-        return self
 
     def estimate(self) -> EstimationResult:
         """Run all component estimators and stack them optimally."""
@@ -190,12 +193,12 @@ class StackedDREstimator(BaseCJEEstimator):
                 result = self.component_results[est_name]
                 if result:
                     component_estimates.append(result.estimates[policy_idx])
-            
+
             if component_estimates:
                 estimate = np.dot(weights, component_estimates)
             else:
                 estimate = np.nan
-            
+
             # Compute SE from the stacked influence function
             se = np.std(stacked_if, ddof=1) / np.sqrt(len(stacked_if))
 
@@ -242,9 +245,10 @@ class StackedDREstimator(BaseCJEEstimator):
 
     def fit_and_estimate(self) -> EstimationResult:
         """Convenience method to fit and estimate in one call."""
-        return self.fit().estimate()
+        self.fit()
+        return self.estimate()
 
-    def _run_all_estimators(self):
+    def _run_all_estimators(self) -> None:
         """Run all component estimators, either in parallel or sequentially."""
         logger.info(f"Running {len(self.estimators)} component estimators")
 
@@ -486,7 +490,9 @@ class StackedDREstimator(BaseCJEEstimator):
             metadata=metadata,
         )
 
-    def _build_stacking_diagnostics(self, valid_estimators: List[str]) -> Dict:
+    def _build_stacking_diagnostics(
+        self, valid_estimators: List[str]
+    ) -> Dict[str, Any]:
         """Build comprehensive diagnostics for the stacking procedure."""
         diagnostics = {
             "estimator_type": "StackedDR",

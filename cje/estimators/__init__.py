@@ -42,6 +42,4 @@ __all__ = [
 ]
 
 if _dr_available:
-    __all__.extend(
-        ["DRCPOEstimator", "TMLEEstimator", "MRDREstimator"]
-    )
+    __all__.extend(["DRCPOEstimator", "TMLEEstimator", "MRDREstimator"])

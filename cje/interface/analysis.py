@@ -185,7 +185,7 @@ def _create_estimator(
     config: Dict[str, Any],
     calibration_result: Optional[Any],
     verbose: bool,
-) -> Union[CalibratedIPS, DRCPOEstimator, MRDREstimator, TMLEEstimator]:
+) -> Union[CalibratedIPS, DRCPOEstimator, MRDREstimator, TMLEEstimator, StackedDREstimator]:
     """Create the appropriate estimator."""
 
     if estimator_type == "calibrated-ips":
