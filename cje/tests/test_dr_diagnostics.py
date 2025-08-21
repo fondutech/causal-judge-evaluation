@@ -264,7 +264,7 @@ class TestEstimatorDiagnosticIntegration:
                     "policy_b": -11.0 + np.random.normal(0, 2),
                 },
                 reward=np.random.uniform(0, 1),
-                metadata={"judge_score": np.random.uniform(0, 1), "cv_fold": i % 5},
+                metadata={"judge_score": np.random.uniform(0, 1)},
             )
             samples.append(sample)
 

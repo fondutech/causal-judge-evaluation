@@ -228,11 +228,21 @@ def plot_weight_dashboard_detailed(
             for policy in policies:
                 data = sampler.get_data_for_policy(policy)
                 if data:
-                    # Get judge scores and fold IDs
+                    # Get judge scores and compute fold IDs from prompt_ids
                     judge_scores = np.array(
                         [d.get("judge_score", np.nan) for d in data]
                     )
-                    fold_list = [d.get("cv_fold") for d in data]
+                    # Compute folds on-demand from prompt_ids
+                    from ..data.folds import get_fold
+
+                    fold_list = [
+                        (
+                            get_fold(d.get("prompt_id"), 5, 42)
+                            if d.get("prompt_id")
+                            else None
+                        )
+                        for d in data
+                    ]
 
                     # Check if we have valid fold IDs
                     if all(v is not None for v in fold_list) and len(fold_list) == len(
