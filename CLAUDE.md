@@ -150,6 +150,27 @@ logs.jsonl → calibrate_dataset() → estimator.fit_and_estimate() → results
             (maps judge→oracle)    (applies SIMCal + computes estimates)
 ```
 
+## Codebase Structure
+
+```
+cje/                          # Core library package
+├── calibration/              # Judge → Oracle calibration
+├── data/                     # Data models and sampling
+│   ├── models.py            # Dataset, Sample, EstimationResult
+│   ├── precomputed_sampler.py # Filtering, caching, sampling
+│   ├── fresh_draws.py       # Fresh draw loading
+│   └── folds.py             # Unified fold management (single source of truth)
+├── diagnostics/              # Weight and estimation diagnostics  
+├── estimators/               # IPS, DR, MRDR, TMLE implementations
+├── experiments/              
+│   └── arena_10k_simplified/ # Production pipeline example
+├── interface/                # High-level API (analyze_dataset)
+├── teacher_forcing/          # Fresh draw generation
+├── tests/                    # Comprehensive test suite
+├── utils/                    # Export and analysis utilities
+└── visualization/            # Plotting and visual diagnostics
+```
+
 **Why SIMCal Works** (theoretical guarantees):
 - Mean preservation: Calibration never changes E[W] = 1
 - Variance reduction: Monotone projection always reduces variance (majorization)
