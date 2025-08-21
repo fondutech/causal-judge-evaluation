@@ -18,9 +18,8 @@ from cje.data.precomputed_sampler import PrecomputedSampler
 from cje.calibration.dataset import calibrate_dataset
 from cje.data.fresh_draws import load_fresh_draws_auto
 
-# Add parent directory to path for validation import
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from validation import validate_no_unnecessary_calibration
+# Import validation from parent directory
+from ..validation import validate_no_unnecessary_calibration
 
 
 def create_estimator(
