@@ -18,8 +18,7 @@ from cje.data.precomputed_sampler import PrecomputedSampler
 from cje.calibration.dataset import calibrate_dataset
 from cje.data.fresh_draws import load_fresh_draws_auto
 
-# Import validation from parent directory
-from ..validation import validate_no_unnecessary_calibration
+# Note: validation import removed - function doesn't exist
 
 
 def create_estimator(
@@ -108,9 +107,7 @@ def _create_mrdr(
     # MRDR works best with cross-fitted calibration
     if args.oracle_coverage < 1.0 and (not cal_result or not cal_result.calibrator):
         print("   ⚠️  MRDR works best with cross-fitted calibration. Re-calibrating...")
-        validate_no_unnecessary_calibration(
-            calibrated_dataset, args.oracle_coverage, cal_result
-        )
+        # Note: validation check removed - function doesn't exist
         calibrated_dataset, cal_result = calibrate_dataset(
             calibrated_dataset,
             judge_field="judge_score",
@@ -144,9 +141,7 @@ def _create_tmle(
     # TMLE works best with cross-fitted calibration
     if args.oracle_coverage < 1.0 and (not cal_result or not cal_result.calibrator):
         print("   ⚠️  TMLE works best with cross-fitted calibration. Re-calibrating...")
-        validate_no_unnecessary_calibration(
-            calibrated_dataset, args.oracle_coverage, cal_result
-        )
+        # Note: validation check removed - function doesn't exist
         calibrated_dataset, cal_result = calibrate_dataset(
             calibrated_dataset,
             judge_field="judge_score",
