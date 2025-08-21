@@ -6,6 +6,7 @@ import logging
 
 from .models import Dataset
 from .factory import DatasetFactory
+from .folds import get_folds_for_prompts
 
 logger = logging.getLogger(__name__)
 
@@ -187,9 +188,7 @@ class PrecomputedSampler:
                         "response": record["response"],
                         "prompt_id": sample.prompt_id,
                         "judge_score": sample.metadata.get("judge_score"),
-                        "cv_fold": sample.metadata.get(
-                            "cv_fold"
-                        ),  # Include fold info for DR
+                        # Note: cv_fold no longer stored - computed on-demand from prompt_id
                     }
                 )
 
@@ -405,6 +404,30 @@ class PrecomputedSampler:
     def get_responses(self) -> List[str]:
         """Get list of responses."""
         return [s.response for s in self.dataset.samples]
+
+    def get_folds_for_policy(
+        self, policy: str, n_folds: int = 5, seed: int = 42
+    ) -> Optional[np.ndarray]:
+        """Get consistent fold assignments for policy's valid samples.
+
+        Returns folds for the FILTERED samples that align with
+        get_data_for_policy(). This ensures folds match the actual
+        data used for estimation.
+
+        Args:
+            policy: Target policy name
+            n_folds: Number of cross-validation folds
+            seed: Random seed for reproducibility
+
+        Returns:
+            Fold assignments for valid samples, or None if no data
+        """
+        data = self.get_data_for_policy(policy)
+        if data is None:
+            return None
+
+        prompt_ids = [d["prompt_id"] for d in data]
+        return get_folds_for_prompts(prompt_ids, n_folds, seed)
 
     @property
     def n_samples(self) -> int:

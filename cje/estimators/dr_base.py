@@ -136,25 +136,12 @@ class DREstimator(BaseCJEEstimator):
         self._orthogonality_scores: Dict[str, Dict[str, Any]] = {}
         self._dm_ips_decompositions: Dict[str, Dict[str, Any]] = {}
 
-        # Generate fold assignments for cross-fitting
-        n_samples = len(sampler.dataset.samples)
-        self.fold_assignments = self._create_fold_assignments(n_samples, n_folds)
+        # Generate fold assignments for cross-fitting using unified system
+        from ..data.folds import get_folds_for_dataset
 
-    def _create_fold_assignments(self, n_samples: int, n_folds: int) -> np.ndarray:
-        """Create fold assignments for cross-fitting.
-
-        Args:
-            n_samples: Number of samples
-            n_folds: Number of folds
-
-        Returns:
-            Array of fold assignments
-        """
-        fold_assignments = np.arange(n_samples) % n_folds
-        # Shuffle to ensure random assignment with configured seed
-        rng = np.random.RandomState(self.random_seed)
-        rng.shuffle(fold_assignments)
-        return fold_assignments
+        self.fold_assignments = get_folds_for_dataset(
+            sampler.dataset, n_folds, random_seed
+        )
 
     def add_fresh_draws(self, policy: str, fresh_draws: FreshDrawDataset) -> None:
         """Add pre-generated fresh draws for a target policy.

@@ -45,12 +45,18 @@ class JudgeCalibrator:
         random_seed: Random seed for reproducibility
     """
 
-    def __init__(self, random_seed: int = 42):
+    def __init__(self, random_seed: int = 42, balance_oracle_folds: bool = True):
         self.random_seed = random_seed
+        self.balance_oracle_folds = (
+            balance_oracle_folds  # Whether to balance oracle samples across folds
+        )
         self._final_calibrator: Optional[IsotonicRegression] = None
         self._fold_models: Dict[int, IsotonicRegression] = {}
         self._fold_ids: Optional[np.ndarray] = None
         self._n_folds: int = 5
+        self._prompt_ids: Optional[List[str]] = (
+            None  # Store prompt_ids for fold assignment
+        )
 
     def fit_transform(
         self,
@@ -184,6 +190,7 @@ class JudgeCalibrator:
         oracle_labels: Optional[np.ndarray] = None,
         oracle_mask: Optional[np.ndarray] = None,
         n_folds: int = 5,
+        prompt_ids: Optional[List[str]] = None,
     ) -> CalibrationResult:
         """Fit both global and cross-fitted calibration models.
 
@@ -250,28 +257,50 @@ class JudgeCalibrator:
             self._final_calibrator.predict(judge_scores), 0.0, 1.0
         )
 
-        # Step 2: Assign fold IDs to all samples
-        self._fold_ids = np.zeros(n_total, dtype=int)
+        # Step 2: Assign fold IDs to all samples using unified system
+        if prompt_ids is not None:
+            # Use the unified fold system when prompt_ids are available
+            from ..data.folds import (
+                get_folds_for_prompts,
+                get_folds_with_oracle_balance,
+            )
 
-        # Labeled samples: assign by KFold
-        oracle_indices = np.where(oracle_mask)[0]
-        kf = KFold(n_splits=n_folds, shuffle=True, random_state=self.random_seed)
-        for fold_id, (_, test_idx) in enumerate(kf.split(oracle_indices)):
-            fold_samples = oracle_indices[test_idx]
-            self._fold_ids[fold_samples] = fold_id
+            self._prompt_ids = prompt_ids
+            if self.balance_oracle_folds:
+                # Ensure oracle samples are evenly distributed across folds
+                self._fold_ids = get_folds_with_oracle_balance(
+                    prompt_ids, oracle_mask, n_folds, self.random_seed
+                )
+            else:
+                # Simple hash-based for all samples
+                self._fold_ids = get_folds_for_prompts(
+                    prompt_ids, n_folds, self.random_seed
+                )
+        else:
+            # Fallback to old system for backward compatibility
+            self._fold_ids = np.zeros(n_total, dtype=int)
 
-        # Unlabeled samples: assign deterministically by stable hash
-        unlabeled_mask = ~oracle_mask
-        unlabeled_indices = np.where(unlabeled_mask)[0]
-        if len(unlabeled_indices) > 0:
+            # Labeled samples: assign by KFold
+            oracle_indices = np.where(oracle_mask)[0]
+            kf = KFold(n_splits=n_folds, shuffle=True, random_state=self.random_seed)
+            for fold_id, (_, test_idx) in enumerate(kf.split(oracle_indices)):
+                fold_samples = oracle_indices[test_idx]
+                self._fold_ids[fold_samples] = fold_id
 
-            def _fold_for_idx(i: int, seed: int, n_folds: int) -> int:
-                """Stable hash-based fold assignment."""
-                h = hashlib.blake2b(f"{i}-{seed}".encode(), digest_size=2)
-                return int.from_bytes(h.digest(), "big") % n_folds
+            # Unlabeled samples: assign deterministically by stable hash
+            unlabeled_mask = ~oracle_mask
+            unlabeled_indices = np.where(unlabeled_mask)[0]
+            if len(unlabeled_indices) > 0:
 
-            for idx in unlabeled_indices:
-                self._fold_ids[idx] = _fold_for_idx(int(idx), self.random_seed, n_folds)
+                def _fold_for_idx(i: int, seed: int, n_folds: int) -> int:
+                    """Stable hash-based fold assignment."""
+                    h = hashlib.blake2b(f"{i}-{seed}".encode(), digest_size=2)
+                    return int.from_bytes(h.digest(), "big") % n_folds
+
+                for idx in unlabeled_indices:
+                    self._fold_ids[idx] = _fold_for_idx(
+                        int(idx), self.random_seed, n_folds
+                    )
 
         # Step 3: Fit per-fold models
         self._fold_models = {}

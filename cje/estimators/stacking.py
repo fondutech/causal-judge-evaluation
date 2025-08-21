@@ -105,23 +105,28 @@ class StackedDREstimator(BaseCJEEstimator):
         """Set up resources shared across all component estimators."""
         np.random.seed(self.seed)
 
-        # Generate fold assignments once (all estimators use same folds)
-        # Handle both actual samplers and mock objects
-        try:
-            n = len(self.sampler)
-        except TypeError:
-            # If sampler doesn't support len(), try getting sample count
-            n = (
-                self.sampler.n_valid_samples
-                if hasattr(self.sampler, "n_valid_samples")
-                else 100
-            )
-        from sklearn.model_selection import KFold
+        # Generate fold assignments once using unified system (all estimators use same folds)
+        from ..data.folds import get_folds_for_dataset
 
-        kf = KFold(n_splits=5, shuffle=True, random_state=self.seed)
-        self.shared_fold_ids = np.zeros(n, dtype=int)
-        for fold_idx, (_, test_idx) in enumerate(kf.split(np.arange(n))):
-            self.shared_fold_ids[test_idx] = fold_idx
+        # Use the unified fold system if we have a real dataset
+        if hasattr(self.sampler, "dataset"):
+            self.shared_fold_ids = get_folds_for_dataset(
+                self.sampler.dataset,
+                n_folds=5,  # Could make this configurable
+                seed=self.seed,
+            )
+        else:
+            # Fallback for mock objects in tests
+            try:
+                n = len(self.sampler)
+            except TypeError:
+                n = (
+                    self.sampler.n_valid_samples
+                    if hasattr(self.sampler, "n_valid_samples")
+                    else 100
+                )
+            # Simple assignment for mocks
+            self.shared_fold_ids = np.arange(n) % 5
 
         # Note: Fresh draws are already in the sampler if available
         # Each estimator will detect and use them automatically

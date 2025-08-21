@@ -45,10 +45,11 @@ def calibrate_dataset(
         ...     oracle_field="oracle_label"
         ... )
     """
-    # Extract judge scores and oracle labels
+    # Extract judge scores, oracle labels, and prompt_ids
     judge_scores = []
     oracle_labels = []
     oracle_mask = []
+    prompt_ids = []
 
     # Forbid judge_field="reward" to avoid confusion
     if judge_field == "reward":
@@ -66,6 +67,7 @@ def calibrate_dataset(
 
         judge_score = sample.metadata[judge_field]
         judge_scores.append(float(judge_score))
+        prompt_ids.append(sample.prompt_id)
 
         # Look for oracle label
         if (
@@ -89,8 +91,13 @@ def calibrate_dataset(
     calibrator = JudgeCalibrator()
     if enable_cross_fit:
         # Use cross-fitted calibration for DR support
+        # Pass prompt_ids to enable unified fold system
         result = calibrator.fit_cv(
-            judge_scores_array, oracle_labels_array, oracle_mask_array, n_folds
+            judge_scores_array,
+            oracle_labels_array,
+            oracle_mask_array,
+            n_folds,
+            prompt_ids=prompt_ids,
         )
     else:
         # Use standard calibration (backward compatible)
@@ -109,9 +116,8 @@ def calibrate_dataset(
             new_metadata[oracle_field] = oracle_labels[oracle_idx]
             oracle_idx += 1
 
-        # Store fold ID if cross-fitting was used
-        if enable_cross_fit and result.fold_ids is not None:
-            new_metadata["cv_fold"] = int(result.fold_ids[i])
+        # Note: We no longer store cv_fold in metadata
+        # Folds are computed on-demand from prompt_id using the unified system
 
         calibrated_sample = Sample(
             prompt_id=sample.prompt_id,

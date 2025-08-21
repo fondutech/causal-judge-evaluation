@@ -25,6 +25,12 @@ from .validation import (
     validate_cje_data,
     validate_for_precomputed_sampler,
 )
+from .folds import (
+    get_fold,
+    get_folds_for_prompts,
+    get_folds_for_dataset,
+    get_folds_with_oracle_balance,
+)
 
 from typing import Optional, List
 
@@ -59,6 +65,11 @@ __all__ = [
     # Validation
     "validate_cje_data",
     "validate_for_precomputed_sampler",
+    # Fold management
+    "get_fold",
+    "get_folds_for_prompts",
+    "get_folds_for_dataset",
+    "get_folds_with_oracle_balance",
     # Convenience function
     "load_dataset_from_jsonl",
 ]
