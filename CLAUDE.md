@@ -86,6 +86,28 @@ After implementing:
 - Commit without explicit request
 - Fix what isn't broken
 
+## Lessons from Fold Management Implementation
+
+### Key Insights
+1. **Investigation depth matters** - Found 5 systems not 3 through thorough search
+2. **Simple solutions scale** - `hash(prompt_id) % n_folds` solved everything
+3. **Plans are thinking tools** - Planning forced consideration of edge cases
+4. **Test the full pipeline** - Unit tests aren't enough, integration matters
+5. **Index-based systems are fragile** - Always use stable identifiers
+
+### Critical Integration Points to Check
+When making changes that affect data flow:
+- **Check if components extract data from filtered datasets** (indexing issues)
+- **Verify backward compatibility needs** (even for "breaking" changes)
+- **Test with realistic data** (filtered, missing values, fresh draws)
+- **Run existing tests during implementation** (not just at the end)
+
+### Red Flags That Need Investigation
+- Multiple components doing similar things differently
+- Index-based operations on filtered data
+- State stored that could be computed on-demand
+- Position-dependent logic in data pipelines
+
 ## Documentation Standards
 
 ### Module README Structure
