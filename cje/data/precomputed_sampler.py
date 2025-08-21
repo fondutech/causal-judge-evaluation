@@ -6,7 +6,7 @@ import logging
 
 from .models import Dataset
 from .factory import DatasetFactory
-from .folds import get_folds_for_prompts
+from .folds import get_folds_for_prompts, get_fold
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +188,8 @@ class PrecomputedSampler:
                         "response": record["response"],
                         "prompt_id": sample.prompt_id,
                         "judge_score": sample.metadata.get("judge_score"),
-                        # Note: cv_fold no longer stored - computed on-demand from prompt_id
+                        # Compute cv_fold on-demand from prompt_id for backward compatibility
+                        "cv_fold": get_fold(sample.prompt_id, 5, 42)  # Default 5 folds, seed 42
                     }
                 )
 

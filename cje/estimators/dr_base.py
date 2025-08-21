@@ -136,12 +136,8 @@ class DREstimator(BaseCJEEstimator):
         self._orthogonality_scores: Dict[str, Dict[str, Any]] = {}
         self._dm_ips_decompositions: Dict[str, Dict[str, Any]] = {}
 
-        # Generate fold assignments for cross-fitting using unified system
-        from ..data.folds import get_folds_for_dataset
-
-        self.fold_assignments = get_folds_for_dataset(
-            sampler.dataset, n_folds, random_seed
-        )
+        # Note: Fold assignments are now computed on-demand from prompt_ids
+        # This ensures correct folds even for filtered data
 
     def add_fresh_draws(self, policy: str, fresh_draws: FreshDrawDataset) -> None:
         """Add pre-generated fresh draws for a target policy.
@@ -267,11 +263,11 @@ class DREstimator(BaseCJEEstimator):
             else:
                 raise ValueError("All samples must have judge scores for DR")
 
-            # Get fold assignment - prefer cv_fold from metadata (set by calibration)
-            if "cv_fold" in sample.metadata:
-                valid_fold_assignments.append(sample.metadata["cv_fold"])
-            elif self.fold_assignments is not None:
-                valid_fold_assignments.append(self.fold_assignments[idx])
+            # Get fold assignment using unified system
+            # Note: We compute fold from prompt_id to handle filtered data correctly
+            from ..data.folds import get_fold
+            fold = get_fold(sample.prompt_id, self.n_folds, self.random_seed)
+            valid_fold_assignments.append(fold)
 
         rewards_array = np.array(rewards)
         judge_scores_array = np.array(judge_scores)
