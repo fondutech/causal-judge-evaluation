@@ -250,9 +250,10 @@ self._influence_functions[policy] = if_contributions
 
 ### Cross-Fitting
 DR estimators support cross-fitting for orthogonality:
-- Data split into k folds
+- Data split into k folds using unified `cje.data.folds` system
 - Each fold gets predictions from model trained on other folds
 - Prevents overfitting in outcome models
+- All estimators use same deterministic fold assignments (hash(prompt_id) % k)
 
 ### Variance Computation
 Standard errors computed from influence functions:

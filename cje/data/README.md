@@ -36,6 +36,7 @@ data/
 ├── factory.py            # Factory pattern for Dataset creation
 ├── precomputed_sampler.py # Sampler wrapper for estimators
 ├── fresh_draws.py        # Fresh draw models for DR
+├── folds.py              # Unified fold management for cross-validation
 ├── validation.py         # Data validation functions
 └── reward_utils.py       # Reward manipulation utilities
 ```
@@ -121,7 +122,6 @@ Every sample must have:
 - `metadata`: Dict containing additional fields like:
   - `judge_score`: Raw judge evaluation
   - `oracle_label`: Ground truth label
-  - `cv_fold`: Cross-validation fold assignment
 
 ### Example JSONL Entry
 ```json
@@ -137,8 +137,7 @@ Every sample must have:
   "reward": 0.85,
   "metadata": {
     "judge_score": 0.82,
-    "oracle_label": 0.90,
-    "cv_fold": 2
+    "oracle_label": 0.90
   }
 }
 ```
@@ -223,6 +222,34 @@ sampler = PrecomputedSampler(calibrated_dataset)
 - `PrecomputedSampler.n_valid_samples` shows actual samples after filtering
 - Invalid samples are automatically filtered during formatting
 - Judge scores are accessed via `get_judge_scores()` for weight calibration
+
+## Fold Management
+
+The `folds` module provides unified cross-validation fold assignment across all CJE components:
+
+### Core Functions
+```python
+from cje.data.folds import get_fold, get_folds_for_dataset
+
+# Get fold for single prompt
+fold = get_fold("prompt_123", n_folds=5, seed=42)  # Returns 0-4
+
+# Get folds for entire dataset
+folds = get_folds_for_dataset(dataset, n_folds=5, seed=42)
+
+# Balanced oracle distribution (for calibration)
+from cje.data.folds import get_folds_with_oracle_balance
+oracle_mask = np.array([s.metadata.get("oracle_label") is not None for s in dataset.samples])
+balanced_folds = get_folds_with_oracle_balance(prompt_ids, oracle_mask, n_folds=5)
+```
+
+### Key Properties
+- **Deterministic**: `hash(prompt_id) % n_folds` ensures reproducibility
+- **Filtering-proof**: Based on stable prompt_id, not array indices
+- **Fresh-draw compatible**: Same prompt_id → same fold always
+- **Cross-component consistent**: All estimators use same fold system
+
+**Note**: Folds are computed on-demand, not stored in metadata. The old `cv_fold` field is no longer used.
 
 ## Advanced Topics
 

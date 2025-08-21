@@ -118,7 +118,8 @@ Multiple mechanisms for variance reduction:
 Built-in support for cross-fitted calibration:
 - Prevents overfitting in DR methods
 - Maintains orthogonality between nuisance functions
-- Tracks fold assignments through the pipeline
+- Uses unified fold system from `cje.data.folds` for consistency
+- Fold assignments computed deterministically from prompt_id
 
 ### 5. **Numerical Robustness**
 Careful handling of edge cases:
