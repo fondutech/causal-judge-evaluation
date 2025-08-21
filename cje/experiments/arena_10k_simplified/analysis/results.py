@@ -189,10 +189,11 @@ def _display_oracle_comparison(
         for i, policy in enumerate(target_policies):
             all_estimates_dict[policy] = results.estimates[i]
 
-        # Note: Oracle comparison functions not available
-        # comparison = compare_estimates_to_oracle(all_estimates_dict, oracle_means)
-        # formatted_table = format_oracle_comparison_table(comparison, precision=3)
-        formatted_table = "Oracle comparison not available - missing functions"
+        # Compare estimates to oracle
+        comparison = compare_estimates_to_oracle(
+            all_estimates_dict, oracle_means, results
+        )
+        formatted_table = format_oracle_comparison_table(comparison, precision=3)
         for line in formatted_table.split("\n"):
             print(f"   {line}")
 
@@ -210,13 +211,158 @@ def load_oracle_ground_truth(
     Returns:
         Dictionary mapping policy names to oracle mean values
     """
-    # Note: local_load_oracle_ground_truth function not available
-    # result: Dict[str, float] = local_load_oracle_ground_truth(
-    #     args.data,
-    #     dataset,
-    #     target_policies,
-    #     args.oracle_field,
-    #     responses_dir=str(Path(args.data).parent / "responses"),
-    # )
-    # return result
-    return {}  # Return empty dict - oracle comparison not available
+    from pathlib import Path
+    import json
+
+    oracle_means = {}
+    data_dir = Path(args.data).parent
+    responses_dir = data_dir / "responses"
+
+    # Load base policy oracle labels from dataset
+    base_oracle_values = []
+    for sample in dataset.samples:
+        if hasattr(sample, "metadata") and sample.metadata:
+            oracle_val = sample.metadata.get(args.oracle_field)
+            if oracle_val is not None:
+                base_oracle_values.append(oracle_val)
+
+    if base_oracle_values:
+        oracle_means["base"] = float(np.mean(base_oracle_values))
+
+    # Load oracle labels for each target policy from response files
+    for policy in target_policies:
+        response_file = responses_dir / f"{policy}_responses.jsonl"
+        if response_file.exists():
+            oracle_values = []
+            with open(response_file, "r") as f:
+                for line in f:
+                    try:
+                        data = json.loads(line)
+                        if "metadata" in data and args.oracle_field in data["metadata"]:
+                            oracle_val = data["metadata"][args.oracle_field]
+                            if oracle_val is not None:
+                                oracle_values.append(oracle_val)
+                    except json.JSONDecodeError:
+                        continue
+
+            if oracle_values:
+                oracle_means[policy] = float(np.mean(oracle_values))
+
+    return oracle_means
+
+
+def compare_estimates_to_oracle(
+    estimates: Dict[str, float], oracle_means: Dict[str, float], results: Any
+) -> Dict[str, Dict[str, Any]]:
+    """Compare CJE estimates to oracle ground truth.
+
+    Args:
+        estimates: Dictionary of policy -> estimate
+        oracle_means: Dictionary of policy -> oracle mean
+        results: EstimationResult object (for standard errors)
+
+    Returns:
+        Dictionary of policy -> comparison stats
+    """
+    comparison = {}
+
+    # Get standard errors if available
+    se_dict = {}
+    if hasattr(results, "standard_errors") and results.standard_errors is not None:
+        for i, policy in enumerate(estimates.keys()):
+            if policy != "base":
+                idx = list(estimates.keys()).index(policy) - 1  # Adjust for base
+                if idx < len(results.standard_errors):
+                    se_dict[policy] = results.standard_errors[idx]
+
+    for policy in estimates:
+        if policy in oracle_means:
+            estimate = estimates[policy]
+            oracle = oracle_means[policy]
+            diff = estimate - oracle
+
+            comparison[policy] = {
+                "estimate": estimate,
+                "oracle": oracle,
+                "difference": diff,
+                "abs_difference": abs(diff),
+                "relative_error": (
+                    abs(diff) / abs(oracle) if oracle != 0 else float("inf")
+                ),
+            }
+
+            # Add coverage check if we have standard errors
+            if policy in se_dict:
+                se = se_dict[policy]
+                comparison[policy]["se"] = se
+                # Check if oracle is within 95% CI
+                ci_lower = estimate - 1.96 * se
+                ci_upper = estimate + 1.96 * se
+                comparison[policy]["oracle_in_ci"] = ci_lower <= oracle <= ci_upper
+                comparison[policy]["ci_lower"] = float(ci_lower)
+                comparison[policy]["ci_upper"] = float(ci_upper)
+
+    return comparison
+
+
+def format_oracle_comparison_table(
+    comparison: Dict[str, Dict[str, Any]], precision: int = 3
+) -> str:
+    """Format oracle comparison as a readable table.
+
+    Args:
+        comparison: Dictionary from compare_estimates_to_oracle
+        precision: Number of decimal places
+
+    Returns:
+        Formatted table string
+    """
+    lines = []
+
+    # Header
+    lines.append("-" * 80)
+    lines.append(
+        f"{'Policy':<25} {'Estimate':<12} {'Oracle':<12} {'Diff':<10} {'In CI?':<8}"
+    )
+    lines.append("-" * 80)
+
+    # Sort policies (base first if present)
+    policies = sorted(comparison.keys())
+    if "base" in policies:
+        policies.remove("base")
+        policies = ["base"] + policies
+
+    # Data rows
+    for policy in policies:
+        stats = comparison[policy]
+        estimate = f"{stats['estimate']:.{precision}f}"
+        oracle = f"{stats['oracle']:.{precision}f}"
+        diff = f"{stats['difference']:+.{precision}f}"
+
+        # Check if oracle is in CI
+        in_ci = ""
+        if "oracle_in_ci" in stats:
+            in_ci = "✓" if stats["oracle_in_ci"] else "✗"
+
+        lines.append(f"{policy:<25} {estimate:<12} {oracle:<12} {diff:<10} {in_ci:<8}")
+
+    lines.append("-" * 80)
+
+    # Summary statistics
+    all_diffs = [abs(stats["difference"]) for stats in comparison.values()]
+    mean_abs_error = np.mean(all_diffs)
+    max_abs_error = np.max(all_diffs)
+
+    lines.append(f"Mean Absolute Error: {mean_abs_error:.{precision}f}")
+    lines.append(f"Max Absolute Error: {max_abs_error:.{precision}f}")
+
+    # Coverage if available
+    coverage_stats = [stats.get("oracle_in_ci", None) for stats in comparison.values()]
+    coverage_stats = [x for x in coverage_stats if x is not None]
+    if coverage_stats:
+        coverage = sum(coverage_stats) / len(coverage_stats) * 100
+        lines.append(
+            f"95% CI Coverage: {coverage:.1f}% ({sum(coverage_stats)}/{len(coverage_stats)})"
+        )
+
+    return "\n".join(lines)

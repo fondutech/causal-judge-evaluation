@@ -59,6 +59,7 @@ def parse_arguments() -> argparse.Namespace:
             "dr-cpo",
             "mrdr",
             "tmle",
+            "stacked-dr",
         ],
         help="Estimator to use",
     )

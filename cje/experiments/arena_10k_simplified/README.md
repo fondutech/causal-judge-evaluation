@@ -96,7 +96,7 @@ python ablation.py --estimators calibrated-ips --oracle-coverages 0.5 --n-seeds 
 
 # Full ablation grid  
 python ablation.py \
-    --estimators raw-ips calibrated-ips dr-cpo mrdr tmle \
+    --estimators raw-ips calibrated-ips dr-cpo mrdr tmle stacked-dr \
     --oracle-coverages 0.05 0.1 0.2 0.5 1.0 \
     --sample-fractions 0.1 0.2 0.5 1.0 \
     --n-seeds 10
@@ -106,6 +106,12 @@ python plot.py --results ablation_results/
 
 # Analyze with detailed diagnostics
 python analyze_dataset.py --data "data/cje_dataset.jsonl" --estimator calibrated-ips
+
+# Use stacked-dr for optimal DR estimation (combines DR-CPO, TMLE, MRDR)
+python analyze_dataset.py --data "data/cje_dataset.jsonl" --estimator stacked-dr
+
+# Compare estimates to oracle ground truth (shown automatically)
+python analyze_dataset.py --data "data/cje_dataset.jsonl" --estimator stacked-dr --oracle-coverage 0.5
 ```
 
 ## Method
@@ -116,12 +122,26 @@ SIMCal calibration process:
 3. Cap variance increase at ρ=2  
 4. Result: Smooth weights, preserved unbiasedness
 
-## Oracle Ground Truths
+## Oracle Ground Truth Comparison
 
-Simulated ground truth labels from GPT-5 oracle model (see experiment_config.py for details):
-- These values depend on the specific dataset and oracle calibration
-- Run `python analyze_dataset.py` to see current oracle estimates
-- The `unhelpful` policy typically scores very low (< 0.2) by design
+The analysis pipeline now includes automatic comparison of CJE estimates to oracle ground truth:
+- Shows policy estimates vs actual oracle means from response files
+- Displays differences and whether oracle falls within 95% CI
+- Reports Mean Absolute Error and CI coverage percentage
+- Available for all estimators (calibrated-ips, raw-ips, dr-cpo, mrdr, tmle, stacked-dr)
+
+Example output:
+```
+📊 Oracle Ground Truth Comparison:
+Policy                    Estimate     Oracle       Diff       In CI?  
+clone                     0.762        0.762        -0.000     ✓       
+parallel_universe_prompt  0.767        0.771        -0.004     ✓       
+premium                   0.764        0.762        +0.002     ✓       
+unhelpful                 0.443        0.143        +0.300     ✗       
+95% CI Coverage: 75.0% (3/4)
+```
+
+Note: The `unhelpful` policy typically scores very low (< 0.2) by design and is challenging to estimate accurately due to extreme distribution shift
 
 ## Requirements
 

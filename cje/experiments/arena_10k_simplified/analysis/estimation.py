@@ -14,6 +14,7 @@ from cje.estimators import CalibratedIPS
 from cje.estimators.dr_base import DRCPOEstimator
 from cje.estimators.mrdr import MRDREstimator
 from cje.estimators.tmle import TMLEEstimator
+from cje.estimators.stacking import StackedDREstimator
 from cje.data.precomputed_sampler import PrecomputedSampler
 from cje.calibration.dataset import calibrate_dataset
 from cje.data.fresh_draws import load_fresh_draws_auto
@@ -26,7 +27,9 @@ def create_estimator(
     sampler: PrecomputedSampler,
     calibrated_dataset: Any,
     cal_result: Optional[Any] = None,
-) -> Union[CalibratedIPS, DRCPOEstimator, MRDREstimator, TMLEEstimator]:
+) -> Union[
+    CalibratedIPS, DRCPOEstimator, MRDREstimator, TMLEEstimator, StackedDREstimator
+]:
     """Create the appropriate estimator based on args.
 
     Args:
@@ -59,6 +62,11 @@ def create_estimator(
 
     elif args.estimator == "tmle":
         return _create_tmle(
+            args, sampler, calibrated_dataset, cal_result, estimator_config
+        )
+
+    elif args.estimator == "stacked-dr":
+        return _create_stacked_dr(
             args, sampler, calibrated_dataset, cal_result, estimator_config
         )
 
@@ -206,3 +214,43 @@ def add_fresh_draws(
                 f"  3. Ensure response files exist in {data_dir}/responses/\n"
                 f"Original error: {e}"
             ) from e
+
+
+def _create_stacked_dr(
+    args: Any,
+    sampler: PrecomputedSampler,
+    calibrated_dataset: Any,
+    cal_result: Optional[Any],
+    estimator_config: Dict[str, Any],
+) -> StackedDREstimator:
+    """Create stacked DR estimator combining DR-CPO, TMLE, and MRDR."""
+    n_folds = estimator_config.get("n_folds", 5)
+    estimators = estimator_config.get("estimators", ["dr-cpo", "tmle", "mrdr"])
+    use_outer_split = estimator_config.get("use_outer_split", True)
+
+    # Create stacked estimator
+    if cal_result and cal_result.calibrator:
+        stacked_estimator = StackedDREstimator(
+            sampler,
+            calibrator=cal_result.calibrator,
+            estimators=estimators,
+            n_folds=n_folds,
+            use_outer_split=use_outer_split,
+        )
+        print(f"   Creating stacked estimator with: {', '.join(estimators)}")
+        print("   Using CalibratorBackedOutcomeModel (reusing calibration models)")
+    else:
+        stacked_estimator = StackedDREstimator(
+            sampler,
+            estimators=estimators,
+            n_folds=n_folds,
+            use_outer_split=use_outer_split,
+        )
+        print(f"   Creating stacked estimator with: {', '.join(estimators)}")
+        print("   Using IsotonicOutcomeModel (refitting models)")
+
+    # Load fresh draws
+    print("   Loading fresh draws for stacked DR estimation...")
+    add_fresh_draws(stacked_estimator, args, sampler, estimator_config)
+
+    return stacked_estimator

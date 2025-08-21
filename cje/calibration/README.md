@@ -101,9 +101,11 @@ Corrects for bias and variance when using calibrated rewards instead of true ora
 Reduces influence function variance through residualization:
 - `IsotonicInfluenceControl`: Main class for applying IIC
 - Fits E[φ|S] using isotonic regression (with optional cross-fitting)
+- **Automatic direction selection**: Uses Spearman correlation to choose increasing/decreasing
 - Returns residuals φ̃ = φ - Ê[φ|S] with reduced variance
 - Enabled by default in all estimators (use_iic=True)
 - Provides diagnostics: R², variance reduction, ESS gain
+- Typical variance reductions: 20-95% depending on policy correlation with judge scores
 - Key insight: Influence functions often correlate with judge scores, so removing the predictable component reduces variance "for free"
 
 ## Key Design Decisions

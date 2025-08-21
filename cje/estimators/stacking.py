@@ -92,6 +92,9 @@ class StackedDREstimator(BaseCJEEstimator):
 
         # Storage for results
         self.component_results: Dict[str, EstimationResult] = {}
+        self.component_estimators: Dict[str, Any] = (
+            {}
+        )  # Store estimators for weights/diagnostics
         self.weights_per_policy: Dict[str, np.ndarray] = {}
         self.stacking_diagnostics: Dict[str, Any] = {}
         self._fresh_draws: Dict[str, Any] = (
@@ -332,8 +335,11 @@ class StackedDREstimator(BaseCJEEstimator):
                 estimator.add_fresh_draws(policy, fresh_draws)
                 logger.debug(f"Added fresh draws for {policy} to {name}")
 
+        # Store the estimator for later access
+        self.component_estimators[name] = estimator
+
         # Run estimation
-        result = estimator.fit_and_estimate()
+        result: EstimationResult = estimator.fit_and_estimate()
         return result
 
     def _get_valid_estimators(self) -> List[str]:
@@ -520,7 +526,7 @@ class StackedDREstimator(BaseCJEEstimator):
         self, valid_estimators: List[str]
     ) -> Dict[str, Any]:
         """Build comprehensive diagnostics for the stacking procedure."""
-        diagnostics = {
+        diagnostics: Dict[str, Any] = {
             "estimator_type": "StackedDR",
             "valid_estimators": valid_estimators,
             "failed_estimators": [
@@ -578,3 +584,45 @@ class StackedDREstimator(BaseCJEEstimator):
                         reduction[f"{policy}_vs_{name}"] = float(pct_reduction)
 
         return reduction
+
+    def get_weights(self, policy: str) -> Optional[np.ndarray]:
+        """Get importance weights for a given policy.
+
+        For stacked estimator, returns the weights from the first successful component
+        (all DR estimators use the same IPS weights).
+
+        Args:
+            policy: Target policy name
+
+        Returns:
+            Importance weights or None if not available
+        """
+        # Try to get weights from first successful component estimator
+        # (all DR estimators use the same IPS weights)
+        for name in ["dr-cpo", "tmle", "mrdr"]:
+            if name in self.component_estimators:
+                estimator = self.component_estimators[name]
+                if estimator and hasattr(estimator, "get_weights"):
+                    return estimator.get_weights(policy)
+
+        return None
+
+    def get_diagnostics(self) -> Optional[Any]:
+        """Get diagnostics from the stacked estimator.
+
+        Returns diagnostics from the first successful component.
+
+        Returns:
+            Diagnostics object or None
+        """
+        # Try to get diagnostics from the first successful DR component
+        for name in ["dr-cpo", "tmle", "mrdr"]:
+            if name in self.component_estimators:
+                estimator = self.component_estimators[name]
+                if estimator and hasattr(estimator, "get_diagnostics"):
+                    diag = estimator.get_diagnostics()
+                    if diag is not None:
+                        return diag
+
+        # If no component has diagnostics, return None
+        return None
