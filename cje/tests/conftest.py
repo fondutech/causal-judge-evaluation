@@ -89,10 +89,10 @@ def dataset_with_oracle() -> Dataset:
 
 @pytest.fixture
 def dataset_for_dr() -> Dataset:
-    """Create dataset suitable for DR estimation.
+    """Create dataset suitable for DR estimation with cross-fit folds.
 
     Returns:
-        Dataset with 25 samples. Folds are computed from prompt_id.
+        Dataset with 25 samples, including cv_fold assignments.
     """
     samples = []
     for i in range(25):
@@ -107,7 +107,7 @@ def dataset_for_dr() -> Dataset:
             },
             metadata={
                 "judge_score": 0.6 + 0.2 * np.random.normal(),
-                # Note: cv_fold no longer stored - computed from prompt_id
+                "cv_fold": i % 5,  # 5-fold cross-validation
             },
         )
         samples.append(sample)
