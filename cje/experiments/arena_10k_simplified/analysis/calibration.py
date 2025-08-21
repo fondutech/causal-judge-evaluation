@@ -113,10 +113,14 @@ def _fit_crossfit_models(
 
 
 def _add_fold_ids(dataset: Any, cal_result: Any) -> None:
-    """Add fold IDs to dataset metadata."""
-    if cal_result and cal_result.fold_ids is not None:
-        for i, sample in enumerate(dataset.samples):
-            sample.metadata["cv_fold"] = int(cal_result.fold_ids[i])
+    """Legacy function - no longer adds fold IDs to metadata.
+
+    Folds are now computed on-demand from prompt_id using the unified fold system.
+    This function is kept for backward compatibility but does nothing.
+    """
+    # Folds are computed dynamically via cje.data.folds.get_fold()
+    # No need to store in metadata anymore
+    pass
 
 
 def _use_oracle_as_rewards(dataset: Any, args: Any, verbose: bool) -> Any:

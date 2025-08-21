@@ -266,6 +266,7 @@ class DREstimator(BaseCJEEstimator):
             # Get fold assignment using unified system
             # Note: We compute fold from prompt_id to handle filtered data correctly
             from ..data.folds import get_fold
+
             fold = get_fold(sample.prompt_id, self.n_folds, self.random_seed)
             valid_fold_assignments.append(fold)
 
