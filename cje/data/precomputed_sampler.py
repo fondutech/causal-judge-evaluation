@@ -189,9 +189,7 @@ class PrecomputedSampler:
                         "prompt_id": sample.prompt_id,
                         "judge_score": sample.metadata.get("judge_score"),
                         # Compute cv_fold on-demand from prompt_id for backward compatibility
-                        "cv_fold": get_fold(
-                            sample.prompt_id, 5, 42
-                        ),  # Default 5 folds, seed 42
+                        "cv_fold": get_fold(sample.prompt_id, 5, 42)  # Default 5 folds, seed 42
                     }
                 )
 
