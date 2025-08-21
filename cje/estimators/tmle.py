@@ -98,6 +98,9 @@ class TMLEEstimator(DREstimator):
         """
         self._validate_fitted()
 
+        # Auto-load fresh draws if not already loaded
+        self._auto_load_fresh_draws()
+
         estimates: List[float] = []
         standard_errors: List[float] = []
         n_samples_used: Dict[str, int] = {}

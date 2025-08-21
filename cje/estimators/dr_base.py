@@ -8,6 +8,7 @@ import numpy as np
 from typing import Dict, List, Optional, Any, Union
 import logging
 import dataclasses
+from pathlib import Path
 
 from .calibrated_ips import CalibratedIPS
 from .base_estimator import BaseCJEEstimator
@@ -165,6 +166,61 @@ class DREstimator(BaseCJEEstimator):
             f"{fresh_draws.draws_per_prompt} draws/prompt"
         )
 
+    def _auto_load_fresh_draws(self) -> None:
+        """Attempt to auto-load fresh draws from standard locations.
+
+        Looks for fresh draws in:
+        1. Same directory as dataset
+        2. responses/ subdirectory
+        3. fresh_draws/ subdirectory
+        """
+        logger.info("Attempting to auto-load fresh draws...")
+
+        # Try to infer data directory from sampler's dataset path if available
+        data_dir = None
+
+        # Check if sampler has dataset_path attribute or metadata
+        if hasattr(self.sampler, "dataset_path"):
+            data_dir = Path(self.sampler.dataset_path).parent
+            logger.debug(f"Found dataset_path on sampler: {self.sampler.dataset_path}")
+        elif (
+            hasattr(self.sampler, "metadata")
+            and "dataset_path" in self.sampler.metadata
+        ):
+            data_dir = Path(self.sampler.metadata["dataset_path"]).parent
+            logger.debug(
+                f"Found dataset_path in sampler metadata: {self.sampler.metadata['dataset_path']}"
+            )
+        else:
+            # Try current directory and parent
+            logger.debug(f"No dataset_path found, checking cwd: {Path.cwd()}")
+            for potential_dir in [Path.cwd(), Path.cwd().parent]:
+                if (potential_dir / "data").exists():
+                    data_dir = potential_dir / "data"
+                    logger.debug(f"Found data directory at: {data_dir}")
+                    break
+
+        if data_dir is None:
+            logger.warning(
+                "Could not determine data directory for auto-loading fresh draws"
+            )
+            return
+
+        # Try to load fresh draws for each policy
+        from ..data.fresh_draws import load_fresh_draws_auto
+
+        for policy in self.sampler.target_policies:
+            if policy in self._fresh_draws:
+                # Already loaded
+                continue
+
+            try:
+                fresh_draws = load_fresh_draws_auto(data_dir, policy, verbose=False)
+                self._fresh_draws[policy] = fresh_draws
+                logger.info(f"Auto-loaded fresh draws for policy '{policy}'")
+            except Exception as e:
+                logger.debug(f"Could not auto-load fresh draws for '{policy}': {e}")
+
     def _compute_policy_diagnostics(
         self, policy: str, estimate: float
     ) -> Dict[str, Any]:
@@ -306,9 +362,12 @@ class DREstimator(BaseCJEEstimator):
         DR formula: V_DR(π') = E[g(X, A', S')] + E[W * (R - g(X, A, S))]
         Where the first term is the Direct Method and second is IPS correction.
 
-        Requires fresh draws to be added via add_fresh_draws() before calling.
+        Will attempt to auto-load fresh draws if not already added.
         """
         self._validate_fitted()
+
+        # Auto-load fresh draws if not already loaded
+        self._auto_load_fresh_draws()
 
         estimates = []
         standard_errors = []
@@ -319,7 +378,7 @@ class DREstimator(BaseCJEEstimator):
             if policy not in self._fresh_draws:
                 raise ValueError(
                     f"No fresh draws for policy '{policy}'. "
-                    f"Call add_fresh_draws() before estimate()."
+                    f"Tried auto-loading but failed. Call add_fresh_draws() manually."
                 )
 
             # Get components

@@ -58,7 +58,7 @@ class BaseAblation:
         self.name = name
         self.cache_dir = cache_dir or Path(".ablation_cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.results = []
+        self.results: List[Dict[str, Any]] = []
 
     def load_cached_result(
         self, spec: ExperimentSpec, seed: int
@@ -78,12 +78,14 @@ class BaseAblation:
                 with open(cache_path, "r") as f:
                     result = json.load(f)
                 logger.info(f"Loaded cached result for {spec.uid()}_{seed}")
-                return result
+                return result  # type: ignore[no-any-return]
             except Exception as e:
                 logger.warning(f"Failed to load cache: {e}")
         return None
 
-    def save_result(self, spec: ExperimentSpec, seed: int, result: Dict[str, Any]):
+    def save_result(
+        self, spec: ExperimentSpec, seed: int, result: Dict[str, Any]
+    ) -> None:
         """Save result to cache.
 
         Args:
@@ -96,7 +98,7 @@ class BaseAblation:
             # Convert numpy types to Python types for JSON serialization
             import numpy as np
 
-            def convert_numpy(obj):
+            def convert_numpy(obj: Any) -> Any:
                 """Recursively convert numpy types to Python types."""
                 import numpy as np
 
@@ -106,7 +108,7 @@ class BaseAblation:
                     return float(obj)
                 elif isinstance(obj, np.ndarray):
                     return obj.tolist()
-                elif isinstance(obj, (np.bool_, np.bool8)):
+                elif isinstance(obj, np.bool_):
                     return bool(obj)
                 elif isinstance(obj, dict):
                     return {k: convert_numpy(v) for k, v in obj.items()}
@@ -230,7 +232,61 @@ class BaseAblation:
 
         return estimator_map[spec.estimator](sampler)
 
-    def compute_diagnostics(self, estimator: Any, result: Dict[str, Any], n_total: int):
+    def _load_oracle_ground_truth(
+        self, dataset_path: str, dataset: Any, target_policies: List[str]
+    ) -> Dict[str, float]:
+        """Load oracle ground truth values for comparison.
+
+        Args:
+            dataset_path: Path to dataset file
+            dataset: Dataset object
+            target_policies: List of target policies
+
+        Returns:
+            Dictionary mapping policy names to oracle mean values
+        """
+        oracle_means = {}
+        data_dir = Path(dataset_path).parent
+        responses_dir = data_dir / "responses"
+
+        # Load base policy oracle labels from dataset
+        base_oracle_values = []
+        for sample in dataset.samples:
+            if hasattr(sample, "metadata") and sample.metadata:
+                oracle_val = sample.metadata.get("oracle_label")
+                if oracle_val is not None:
+                    base_oracle_values.append(oracle_val)
+
+        if base_oracle_values:
+            oracle_means["base"] = float(np.mean(base_oracle_values))
+
+        # Load oracle labels for each target policy from response files
+        for policy in target_policies:
+            response_file = responses_dir / f"{policy}_responses.jsonl"
+            if response_file.exists():
+                oracle_values = []
+                with open(response_file, "r") as f:
+                    for line in f:
+                        try:
+                            data = json.loads(line)
+                            if (
+                                "metadata" in data
+                                and "oracle_label" in data["metadata"]
+                            ):
+                                oracle_val = data["metadata"]["oracle_label"]
+                                if oracle_val is not None:
+                                    oracle_values.append(oracle_val)
+                        except json.JSONDecodeError:
+                            continue
+
+                if oracle_values:
+                    oracle_means[policy] = float(np.mean(oracle_values))
+
+        return oracle_means
+
+    def compute_diagnostics(
+        self, estimator: Any, result: Dict[str, Any], n_total: int
+    ) -> None:
         """Compute and add diagnostics to result.
 
         Args:
@@ -351,15 +407,10 @@ class BaseAblation:
                     dataset.samples[idx].metadata["oracle_label"] = oracle_label
 
             # Compute oracle truths
-            sys.path.append(str(Path(__file__).parent.parent.parent))
-            from oracle_comparison import load_oracle_ground_truth
-
-            oracle_truths = load_oracle_ground_truth(
+            oracle_truths = self._load_oracle_ground_truth(
                 spec.dataset_path,
                 dataset,
                 list(sampler.target_policies),
-                oracle_field="oracle_label",
-                responses_dir=str(Path(spec.dataset_path).parent / "responses"),
             )
             result["oracle_truths"] = oracle_truths
 

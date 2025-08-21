@@ -198,7 +198,17 @@ The `outcome_models.py` module provides regression models for DR estimation:
 
 ## Fresh Draws Integration
 
-DR estimators can incorporate fresh draws (new responses from target policies):
+DR estimators can incorporate fresh draws (new responses from target policies). As of the latest version, DR estimators will **automatically attempt to load fresh draws** from standard locations when not explicitly provided.
+
+### Automatic Loading
+When you call `fit_and_estimate()` without adding fresh draws, DR estimators will search for them in:
+1. `data/{policy}_responses.jsonl`
+2. `data/responses/{policy}_responses.jsonl` 
+3. `data/{policy}_fresh.jsonl`
+4. `data/fresh_draws/{policy}.jsonl`
+
+### Manual Loading
+You can still explicitly add fresh draws:
 
 ```python
 from cje.data.fresh_draws import FreshDrawDataset

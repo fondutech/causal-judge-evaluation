@@ -177,8 +177,9 @@ def add_fresh_draws(
 ) -> None:
     """Add fresh draws to a DR estimator for all target policies.
 
-    This loads fresh draws from files. It will fail if fresh draws
-    are not available - no synthetic fallback.
+    NOTE: As of the latest version, DR estimators auto-load fresh draws
+    when estimate() is called. This function is kept for backward compatibility
+    but is no longer necessary.
 
     Args:
         estimator: DR estimator instance
@@ -189,31 +190,9 @@ def add_fresh_draws(
     Raises:
         FileNotFoundError: If fresh draws are not available
     """
-    data_dir = Path(args.data).parent
-
-    for policy in sampler.target_policies:
-        # Load fresh draws - will raise FileNotFoundError if missing
-        try:
-            fresh_draws = load_fresh_draws_auto(
-                data_dir=data_dir,
-                policy=policy,
-                verbose=False,
-            )
-            # Add to estimator
-            estimator.add_fresh_draws(policy, fresh_draws)
-            # Print status - we know these are real draws now
-            print(f"     ✓ Loaded {len(fresh_draws.samples)} fresh draws for {policy}")
-        except FileNotFoundError as e:
-            # Enhance the error message with specific guidance
-            raise FileNotFoundError(
-                f"No fresh draws found for policy '{policy}' in {data_dir}.\n"
-                f"DR/MRDR/TMLE require real fresh draws from teacher forcing.\n"
-                f"Options:\n"
-                f"  1. Generate fresh draws using generate_fresh_draws.py\n"
-                f"  2. Use --estimator calibrated-ips or raw-ips (no fresh draws needed)\n"
-                f"  3. Ensure response files exist in {data_dir}/responses/\n"
-                f"Original error: {e}"
-            ) from e
+    # Auto-loading is now handled internally by DR estimators
+    # This function is kept for backward compatibility but does nothing
+    return
 
 
 def _create_stacked_dr(

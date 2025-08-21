@@ -13,14 +13,13 @@ python run_all_ablations.py
 python analyze_dataset.py --data data/cje_dataset.jsonl --estimator calibrated-ips
 
 # Generate plots
-python plot.py --results ablations/results/
+python ablations/analyze_results.py
 ```
 
 ## Files
 
 - `ablations/` - Comprehensive ablation experiments (see ablations/README.md)
 - `analyze_dataset.py` - Direct CJE analysis with detailed diagnostics  
-- `plot.py` - Generate visualization plots
 - `experiment_config.py` - Policy definitions and experiment parameters
 - `generate_arena_data.py` - Main data generation orchestrator
 - `analysis/` - Modular analysis components used by analyze_dataset.py
@@ -101,8 +100,8 @@ python ablation.py \
     --sample-fractions 0.1 0.2 0.5 1.0 \
     --n-seeds 10
 
-# Generate all plots
-python plot.py --results ablation_results/
+# Generate plots from ablation results
+python ablations/analyze_results.py
 
 # Analyze with detailed diagnostics
 python analyze_dataset.py --data "data/cje_dataset.jsonl" --estimator calibrated-ips
@@ -159,11 +158,15 @@ export ANTHROPIC_API_KEY=your_key
 
 ## Output
 
-Results saved to `ablation_results/`:
-- `ablation_results.jsonl` - One result per line
-- `ablation_results_final.json` - Complete results
+Results saved to `ablations/results/` organized by experiment type:
+- `oracle_coverage/` - Oracle coverage ablation results and figures
+- `sample_size/` - Sample size scaling results and figures  
+- `estimator_comparison/` - Estimator comparison results and figures
+- `interaction/` - Interaction analysis results and figures
 
-Plots saved to current directory or specified `--output`.
+Each directory contains:
+- `results.jsonl` - Detailed results with diagnostics
+- `figure_*.png` - Visualization of results
 
 ## Known Issues
 

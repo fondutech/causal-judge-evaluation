@@ -298,6 +298,9 @@ class MRDREstimator(DREstimator):
 
         self._validate_fitted()
 
+        # Auto-load fresh draws if not already loaded
+        self._auto_load_fresh_draws()
+
         estimates: List[float] = []
         standard_errors: List[float] = []
         n_samples_used: Dict[str, int] = {}
@@ -418,6 +421,11 @@ class MRDREstimator(DREstimator):
 
             # Compute influence functions and standard error (including augmentation)
             if_contrib = g_fresh + ips_corr_total - psi
+
+            # Apply IIC if enabled
+            if self.use_iic:
+                if_contrib = self._apply_iic(if_contrib, policy)
+
             se = (
                 float(np.std(if_contrib, ddof=1) / np.sqrt(len(if_contrib)))
                 if len(if_contrib) > 1
@@ -470,6 +478,10 @@ class MRDREstimator(DREstimator):
             "cross_fitted": True,
             "n_folds": self.n_folds,
         }
+
+        # Add IIC diagnostics if available
+        if self.use_iic and self._iic_diagnostics:
+            metadata["iic_diagnostics"] = self._iic_diagnostics
 
         return EstimationResult(
             estimates=np.array(estimates, dtype=float),
