@@ -193,6 +193,9 @@ class StackedDREstimator(BaseCJEEstimator):
 
             self.weights_per_policy[policy] = weights
 
+            # Apply IIC for variance reduction (if enabled)
+            stacked_if = self._apply_iic(stacked_if, policy)
+
             # Store influence function
             stacked_ifs[policy] = stacked_if
             self._influence_functions[policy] = stacked_if
@@ -228,6 +231,7 @@ class StackedDREstimator(BaseCJEEstimator):
             "used_outer_split": self.use_outer_split,
             "V_folds": self.V_folds if self.use_outer_split else None,
             "stacking_diagnostics": diagnostics,  # Add the detailed diagnostics to metadata
+            "iic_diagnostics": self._iic_diagnostics if self.use_iic else None,
         }
 
         # Get n_samples_used from one of the component estimators

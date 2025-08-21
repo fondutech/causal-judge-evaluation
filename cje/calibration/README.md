@@ -30,7 +30,8 @@ calibration/
 ├── isotonic.py          # Core isotonic regression and variance control
 ├── judge.py             # Judge score calibration to oracle labels
 ├── oracle_slice.py      # Oracle slice uncertainty augmentation
-└── simcal.py            # Stacked SIMCal implementation
+├── simcal.py            # Stacked SIMCal implementation
+└── iic.py               # Isotonic Influence Control for variance reduction
 ```
 
 ## Core Concepts
@@ -49,6 +50,9 @@ For doubly robust methods, provides out-of-fold predictions to maintain orthogon
 
 ### 4. Oracle Slice Augmentation
 When we calibrate judge scores using only a subset of oracle labels (e.g., 10% coverage), the calibration function f̂ itself has uncertainty. Standard IPS/DR methods treat f̂ as fixed, leading to overconfident CIs. Oracle slice augmentation corrects this by adding a term that accounts for calibration uncertainty, ensuring CIs properly widen when oracle coverage is low.
+
+### 5. Isotonic Influence Control (IIC)
+A variance reduction technique that residualizes influence functions against judge scores. By fitting E[φ|S] using isotonic regression and computing residuals φ̃ = φ - Ê[φ|S], IIC reduces variance without changing the estimand. This is "free" variance reduction that's enabled by default in all estimators.
 
 ## Module Descriptions
 
@@ -92,6 +96,15 @@ Corrects for bias and variance when using calibrated rewards instead of true ora
   - Unbiased for the gap between proxy and truth
 - **Effect**: Wider, honest CIs that reflect calibration uncertainty
 - Auto-enables when 0% < oracle coverage < 100%
+
+### `iic.py` - Isotonic Influence Control
+Reduces influence function variance through residualization:
+- `IsotonicInfluenceControl`: Main class for applying IIC
+- Fits E[φ|S] using isotonic regression (with optional cross-fitting)
+- Returns residuals φ̃ = φ - Ê[φ|S] with reduced variance
+- Enabled by default in all estimators (use_iic=True)
+- Provides diagnostics: R², variance reduction, ESS gain
+- Key insight: Influence functions often correlate with judge scores, so removing the predictable component reduces variance "for free"
 
 ## Key Design Decisions
 

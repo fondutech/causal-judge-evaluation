@@ -505,6 +505,10 @@ class DREstimator(BaseCJEEstimator):
             # Compute standard error using influence function
             # Include augmentation in the influence function
             if_contributions = g_fresh + ips_correction_base + aug_vector - dr_estimate
+
+            # Apply IIC for variance reduction (if enabled)
+            if_contributions = self._apply_iic(if_contributions, policy)
+
             se = np.std(if_contributions, ddof=1) / np.sqrt(len(if_contributions))
 
             # Store influence functions (always needed for proper inference)
@@ -612,6 +616,10 @@ class DREstimator(BaseCJEEstimator):
             dr_diagnostics_per_policy,
             ips_diag,
         )
+
+        # Add IIC diagnostics to metadata
+        if self.use_iic and self._iic_diagnostics:
+            metadata["iic_diagnostics"] = self._iic_diagnostics
 
         return EstimationResult(
             estimates=np.array(estimates),

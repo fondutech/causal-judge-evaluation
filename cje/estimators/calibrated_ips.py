@@ -323,8 +323,13 @@ class CalibratedIPS(BaseCJEEstimator):
             estimate = float(total_contrib.mean())
             estimates.append(estimate)
 
-            # Compute standard error using augmented influence functions
+            # Compute influence functions
             influence = total_contrib - estimate
+
+            # Apply IIC for variance reduction (if enabled)
+            influence = self._apply_iic(influence, policy)
+
+            # Compute standard error from the (possibly residualized) influence functions
             se = float(np.std(influence, ddof=1) / np.sqrt(n))
             standard_errors.append(se)
 
@@ -359,6 +364,7 @@ class CalibratedIPS(BaseCJEEstimator):
             influence_functions=influence_functions,
             metadata={
                 "target_policies": list(self.sampler.target_policies),
+                "iic_diagnostics": self._iic_diagnostics if self.use_iic else None,
                 "calibration_method": "simcal" if self.calibrate else None,
                 "ess_floor": self.ess_floor,
                 "var_cap": self.var_cap,

@@ -8,6 +8,7 @@ import logging
 from ..data.models import Dataset, EstimationResult
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..calibration.oracle_slice import OracleSliceAugmentation, OracleSliceConfig
+from ..calibration.iic import IsotonicInfluenceControl, IICConfig
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,8 @@ class BaseCJEEstimator(ABC):
         run_diagnostics: bool = True,
         diagnostic_config: Optional[Dict[str, Any]] = None,
         oracle_slice_config: Union[str, bool, OracleSliceConfig, None] = "auto",
+        use_iic: bool = True,  # Default to True - free variance reduction!
+        iic_config: Optional[IICConfig] = None,
     ):
         """Initialize estimator.
 
@@ -41,6 +44,8 @@ class BaseCJEEstimator(ABC):
                 - True: Always enable with default configuration
                 - False/None: Disable augmentation
                 - OracleSliceConfig object: Use provided configuration
+            use_iic: Whether to use Isotonic Influence Control for variance reduction (default True)
+            iic_config: Optional IIC configuration (uses defaults if None)
         """
         self.sampler = sampler
         self.run_diagnostics = run_diagnostics
@@ -55,6 +60,11 @@ class BaseCJEEstimator(ABC):
             oracle_slice_config
         )
         self._aug_diagnostics: Dict[str, Dict] = {}  # Store augmentation diagnostics
+
+        # Configure IIC for variance reduction
+        self.use_iic = use_iic
+        self.iic = IsotonicInfluenceControl(iic_config) if use_iic else None
+        self._iic_diagnostics: Dict[str, Dict] = {}  # Store IIC diagnostics
 
     @abstractmethod
     def fit(self) -> None:
@@ -245,3 +255,50 @@ class BaseCJEEstimator(ABC):
             m_hat: Estimated E[W|S] normalized to mean 1, or None if not fitted
         """
         return self.oracle_augmentation._m_hat_cache.get(target_policy)
+
+    def _apply_iic(
+        self, influence: np.ndarray, policy: str, fold_ids: Optional[np.ndarray] = None
+    ) -> np.ndarray:
+        """Apply Isotonic Influence Control to reduce variance.
+
+        This residualizes the influence function against judge scores,
+        reducing variance without changing the estimand.
+
+        Args:
+            influence: Raw influence function values
+            policy: Policy name
+            fold_ids: Optional fold assignments for cross-fitting
+
+        Returns:
+            Residualized influence function with reduced variance
+        """
+        if not self.use_iic or self.iic is None:
+            return influence
+
+        # Get judge scores for this policy
+        data = self.sampler.get_data_for_policy(policy)
+        if not data:
+            logger.warning(f"No data for policy {policy}, skipping IIC")
+            return influence
+
+        judge_scores = np.array([d.get("judge_score", np.nan) for d in data])
+
+        # Handle missing judge scores
+        if np.all(np.isnan(judge_scores)):
+            logger.warning(f"All judge scores missing for {policy}, skipping IIC")
+            return influence
+
+        # Apply IIC
+        residualized, diagnostics = self.iic.residualize(
+            influence, judge_scores, policy, fold_ids
+        )
+
+        # Store diagnostics
+        self._iic_diagnostics[policy] = diagnostics
+
+        if diagnostics.get("applied", False):
+            logger.debug(
+                f"IIC applied to {policy}: SE reduction={diagnostics.get('se_reduction', 0):.1%}"
+            )
+
+        return residualized

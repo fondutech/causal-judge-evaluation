@@ -27,6 +27,10 @@ from .oracle_slice import (
     OracleSliceAugmentation,
     OracleSliceConfig,
 )
+from .iic import (
+    IsotonicInfluenceControl,
+    IICConfig,
+)
 
 __all__ = [
     # Isotonic regression utilities
@@ -44,4 +48,7 @@ __all__ = [
     # Oracle slice augmentation
     "OracleSliceAugmentation",
     "OracleSliceConfig",
+    # Isotonic Influence Control (IIC)
+    "IsotonicInfluenceControl",
+    "IICConfig",
 ]
