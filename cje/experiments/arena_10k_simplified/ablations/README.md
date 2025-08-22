@@ -55,10 +55,46 @@ ablations/
 ├── run_all_ablations.py       # Master runner script
 ├── analyze_results.py         # Analysis and visualization
 └── results/                   # Generated results (auto-created)
-    ├── oracle_coverage/       # Oracle ablation outputs
-    ├── sample_size/          # Sample size outputs
-    ├── estimator_comparison/ # Comparison outputs
-    └── interaction/          # Interaction outputs
+    ├── oracle_coverage/       
+    │   ├── results.jsonl      # Detailed experiment data
+    │   └── figure_1_oracle_coverage.png  # Visualization
+    ├── sample_size/          
+    │   ├── results.jsonl
+    │   └── figure_2_sample_scaling.png
+    ├── estimator_comparison/ 
+    │   ├── results.jsonl
+    │   └── comparison_figure.png
+    └── interaction/          
+        ├── results.jsonl
+        └── figure_3_interaction.png
+```
+
+## Finding and Understanding Results
+
+After running experiments, results are saved in the `results/` directory:
+
+### Result Files
+- **`results.jsonl`**: One JSON object per experiment containing:
+  - `spec`: Experiment configuration (estimator, oracle_coverage, etc.)
+  - `estimates`: Policy value estimates for each target policy
+  - `standard_errors`: Uncertainty estimates
+  - `diagnostics`: ESS, calibration RMSE, etc.
+  - `rmse_vs_oracle`: Error compared to ground truth
+  - `success`: Whether experiment completed successfully
+
+### Viewing Results
+```bash
+# Check what results exist
+ls -la results/*/
+
+# Pretty-print a result file
+python -m json.tool results/oracle_coverage/results.jsonl | head -50
+
+# Count experiments per ablation
+wc -l results/*/results.jsonl
+
+# Generate summary visualizations
+python analyze_results.py
 ```
 
 ## Key Results Summary
