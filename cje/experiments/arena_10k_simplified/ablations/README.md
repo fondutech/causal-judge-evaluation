@@ -45,22 +45,20 @@ python analyze_results.py
 ```
 ablations/
 ├── core/                       # Shared infrastructure
-│   ├── base.py                # BaseAblation class with caching
+│   ├── base.py                # BaseAblation class for shared functionality
 │   ├── schemas.py             # ExperimentSpec, result schemas
-│   ├── diagnostics.py         # ESS, tail index, CV metrics
-│   └── gates.py               # Reliability gates and warnings
+│   └── diagnostics.py         # ESS, tail index, CV metrics
 ├── oracle_coverage.py          # Ablation 1: Oracle coverage
 ├── sample_size.py             # Ablation 2: Sample size  
 ├── estimator_comparison.py    # Ablation 3: Method comparison
 ├── interaction.py             # Ablation 4: Interaction effects
 ├── run_all_ablations.py       # Master runner script
 ├── analyze_results.py         # Analysis and visualization
-├── results/                   # Generated results (auto-created)
-│   ├── oracle_coverage/       # Oracle ablation outputs
-│   ├── sample_size/          # Sample size outputs
-│   ├── estimator_comparison/ # Comparison outputs
-│   └── interaction/          # Interaction outputs
-└── .ablation_cache/          # Cached results (auto-created)
+└── results/                   # Generated results (auto-created)
+    ├── oracle_coverage/       # Oracle ablation outputs
+    ├── sample_size/          # Sample size outputs
+    ├── estimator_comparison/ # Comparison outputs
+    └── interaction/          # Interaction outputs
 ```
 
 ## Key Results Summary
@@ -75,11 +73,6 @@ ablations/
 
 ## Implementation Details
 
-### Caching System
-- Results cached to `.ablation_cache/` with SHA-based keys
-- Cache persists across runs - safe to interrupt and resume
-- Clear cache with: `rm -rf .ablation_cache/`
-
 ### Data Requirements
 - Uses `../data/cje_dataset.jsonl` (Arena 10k simplified)
 - ~1000 samples with judge scores and oracle labels
@@ -89,7 +82,7 @@ ablations/
 - Full suite: 30-60 minutes on standard laptop
 - Individual ablations: 5-15 minutes each
 - Memory: < 4GB RAM
-- Storage: ~100MB for cached results
+- Storage: ~50MB for results
 
 ## Troubleshooting
 
@@ -105,9 +98,8 @@ ls ../data/cje_dataset.jsonl
 ls ../data/fresh_draws/  # For DR methods
 ```
 
-**Cache issues**: Clear and restart:
+**Re-running experiments**: Simply run the script again:
 ```bash
-rm -rf .ablation_cache/
 python run_all_ablations.py
 ```
 

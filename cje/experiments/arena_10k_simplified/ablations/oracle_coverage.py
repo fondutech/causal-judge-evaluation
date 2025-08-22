@@ -34,10 +34,7 @@ class OracleCoverageAblation(BaseAblation):
     """Ablation to study oracle coverage requirements."""
 
     def __init__(self):
-        super().__init__(
-            name="oracle_coverage", cache_dir=Path("../.ablation_cache/oracle_coverage")
-        )
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        super().__init__(name="oracle_coverage")
 
     def run_ablation(self) -> List[Dict[str, Any]]:
         """Run oracle coverage sweep."""
@@ -124,7 +121,7 @@ class OracleCoverageAblation(BaseAblation):
                 logger.warning(f"All {agg['n_seeds_total']} seeds failed!")
 
         # Save all results
-        output_dir = Path("../ablations/results/oracle_coverage")
+        output_dir = Path("results/oracle_coverage")
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Convert numpy types before saving
@@ -320,9 +317,7 @@ def main():
             logger.info("(Where diminishing returns begin)")
 
     # Create figure
-    figure_path = Path(
-        "../ablations/results/oracle_coverage/figure_1_oracle_coverage.png"
-    )
+    figure_path = Path("results/oracle_coverage/figure_1_oracle_coverage.png")
     ablation.create_figure(results, figure_path)
 
     logger.info("\n" + "=" * 70)

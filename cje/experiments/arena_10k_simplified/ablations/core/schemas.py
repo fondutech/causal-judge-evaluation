@@ -1,6 +1,5 @@
 """Standardized schemas for ablation experiments."""
 
-import hashlib
 import json
 import time
 from dataclasses import dataclass, asdict, field
@@ -42,15 +41,6 @@ class ExperimentSpec:
     # Additional parameters
     extra: Dict[str, Any] = field(default_factory=dict)
 
-    def uid(self) -> str:
-        """Generate unique ID for caching.
-
-        Returns 12-character hash of the specification.
-        """
-        # Sort keys for consistent hashing
-        payload = json.dumps(asdict(self), sort_keys=True)
-        return hashlib.sha256(payload.encode()).hexdigest()[:12]
-
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return asdict(self)
@@ -67,20 +57,6 @@ def get_git_commit() -> Optional[str]:
         return None
 
 
-def compute_dataset_sha256(path: str) -> Optional[str]:
-    """Compute SHA256 of dataset file."""
-    try:
-        import hashlib
-
-        sha256_hash = hashlib.sha256()
-        with open(path, "rb") as f:
-            for byte_block in iter(lambda: f.read(4096), b""):
-                sha256_hash.update(byte_block)
-        return sha256_hash.hexdigest()[:12]
-    except (FileNotFoundError, IOError):
-        return None
-
-
 def create_result(spec: ExperimentSpec, seed: int) -> Dict[str, Any]:
     """Create standardized result dictionary.
 
@@ -93,11 +69,9 @@ def create_result(spec: ExperimentSpec, seed: int) -> Dict[str, Any]:
     """
     return {
         # Identity and provenance
-        "uid": spec.uid(),
         "seed": seed,
         "spec": spec.to_dict(),
         "git_commit": get_git_commit(),
-        "dataset_sha256": compute_dataset_sha256(spec.dataset_path),
         # Execution metadata
         "start_ts": time.time(),
         "runtime_s": None,
@@ -125,9 +99,6 @@ def create_result(spec: ExperimentSpec, seed: int) -> Dict[str, Any]:
         # DR-specific metrics
         "mc_variance_share": {},  # Monte Carlo share of variance
         "draws_per_prompt": None,  # K value used
-        # Gates and mitigations
-        "gate_status": {},  # Policy -> {"ess": T/F, "tail": T/F}
-        "mitigations_applied": {},  # Policy -> mitigation details
         "policies_skipped": [],  # Policies that couldn't be estimated
         # Overall metrics
         "rmse_vs_oracle": None,  # RMSE across all policies

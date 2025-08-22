@@ -16,7 +16,6 @@ from .diagnostics import (
     compute_rmse,
     simcal_distortion,
 )
-from .gates import check_gates, apply_mitigation_ladder, GateConfig
 
 # Add parent directories to path for imports
 import sys
@@ -44,88 +43,16 @@ class BaseAblation:
     - Oracle masking and calibration
     - Estimator creation and execution
     - Diagnostic computation
-    - Gate checking and mitigation
-    - Result caching
     """
 
-    def __init__(self, name: str, cache_dir: Optional[Path] = None):
+    def __init__(self, name: str):
         """Initialize ablation.
 
         Args:
             name: Name of this ablation (e.g., "oracle_coverage")
-            cache_dir: Directory for caching results
         """
         self.name = name
-        self.cache_dir = cache_dir or Path(".ablation_cache")
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.results: List[Dict[str, Any]] = []
-
-    def load_cached_result(
-        self, spec: ExperimentSpec, seed: int
-    ) -> Optional[Dict[str, Any]]:
-        """Load cached result if it exists.
-
-        Args:
-            spec: Experiment specification
-            seed: Random seed
-
-        Returns:
-            Cached result or None
-        """
-        cache_path = self.cache_dir / f"{spec.uid()}_{seed}.json"
-        if cache_path.exists():
-            try:
-                with open(cache_path, "r") as f:
-                    result = json.load(f)
-                logger.info(f"Loaded cached result for {spec.uid()}_{seed}")
-                return result  # type: ignore[no-any-return]
-            except Exception as e:
-                logger.warning(f"Failed to load cache: {e}")
-        return None
-
-    def save_result(
-        self, spec: ExperimentSpec, seed: int, result: Dict[str, Any]
-    ) -> None:
-        """Save result to cache.
-
-        Args:
-            spec: Experiment specification
-            seed: Random seed
-            result: Result dictionary
-        """
-        cache_path = self.cache_dir / f"{spec.uid()}_{seed}.json"
-        try:
-            # Convert numpy types to Python types for JSON serialization
-            import numpy as np
-
-            def convert_numpy(obj: Any) -> Any:
-                """Recursively convert numpy types to Python types."""
-                import numpy as np
-
-                if isinstance(obj, np.integer):
-                    return int(obj)
-                elif isinstance(obj, np.floating):
-                    return float(obj)
-                elif isinstance(obj, np.ndarray):
-                    return obj.tolist()
-                elif isinstance(obj, np.bool_):
-                    return bool(obj)
-                elif isinstance(obj, dict):
-                    return {k: convert_numpy(v) for k, v in obj.items()}
-                elif isinstance(obj, list):
-                    return [convert_numpy(v) for v in obj]
-                elif isinstance(obj, tuple):
-                    return tuple(convert_numpy(v) for v in obj)
-                elif hasattr(obj, "item"):  # Catch any other numpy scalars
-                    return obj.item()
-                return obj
-
-            result_converted = convert_numpy(result)
-
-            with open(cache_path, "w") as f:
-                json.dump(result_converted, f, indent=2)
-        except Exception as e:
-            logger.warning(f"Failed to save cache: {e}")
 
     def prepare_dataset(
         self, spec: ExperimentSpec, seed: int
@@ -321,10 +248,6 @@ class BaseAblation:
                     weights_norm = weights / np.sum(weights)
                     result["max_weight"][policy] = np.max(weights_norm)
 
-                    # Check gates
-                    gates = check_gates(weights, GateConfig(), n_total)
-                    result["gate_status"][policy] = gates
-
             except Exception as e:
                 logger.warning(f"Failed to compute diagnostics for {policy}: {e}")
 
@@ -338,11 +261,6 @@ class BaseAblation:
         Returns:
             Result dictionary
         """
-        # Check cache
-        cached = self.load_cached_result(spec, seed)
-        if cached is not None:
-            return cached
-
         # Create result
         result = create_result(spec, seed)
 
@@ -432,9 +350,6 @@ class BaseAblation:
             result["success"] = False
 
         result["runtime_s"] = time.time() - result["start_ts"]
-
-        # Save to cache
-        self.save_result(spec, seed, result)
 
         return result
 

@@ -3,7 +3,6 @@ data/*.jsonl
 data/**/*.jsonl
 test_e2e_data/
 test_e2e_clean/
-test_e2e_data copy/
 test_batch/
 
 # Analysis outputs

@@ -34,10 +34,7 @@ class SampleSizeAblation(BaseAblation):
     """Ablation to study sample size requirements."""
 
     def __init__(self):
-        super().__init__(
-            name="sample_size", cache_dir=Path("../.ablation_cache/sample_size")
-        )
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        super().__init__(name="sample_size")
 
     def run_ablation(self) -> List[Dict[str, Any]]:
         """Run sample size scaling experiments."""
@@ -128,7 +125,7 @@ class SampleSizeAblation(BaseAblation):
                     logger.warning(f"All {agg['n_seeds_total']} seeds failed!")
 
         # Save all results
-        output_dir = Path("../ablations/results/sample_size")
+        output_dir = Path("results/sample_size")
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Convert numpy types before saving
@@ -430,7 +427,7 @@ def main():
                 logger.info(f"  {est}: RMSE = {rmse:.4f}")
 
     # Create figure
-    figure_path = Path("../ablations/results/sample_size/figure_2_sample_scaling.png")
+    figure_path = Path("results/sample_size/figure_2_sample_scaling.png")
     ablation.create_figure(results, figure_path)
 
     logger.info("\n" + "=" * 70)

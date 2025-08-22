@@ -12,8 +12,9 @@ python run_all_ablations.py
 # Or run individual analysis
 python analyze_dataset.py --data data/cje_dataset.jsonl --estimator calibrated-ips
 
-# Generate plots
-python ablations/analyze_results.py
+# Generate plots from ablation results
+cd ablations/
+python analyze_results.py
 ```
 
 ## Files
@@ -29,8 +30,7 @@ python ablations/analyze_results.py
   - `prepare_cje_data.py` - Combine responses and logprobs into final dataset
   - `generate_responses.py` - Generate fresh responses for DR estimators
   - `add_scores_with_resume.py` - Add judge/oracle scores with resume capability
-- `data copy/` - Complete dataset with 994 Arena samples (50 prompts, verified and in git)
-- `data/` - Work-in-progress larger dataset (5000 prompts, expensive API calls!)
+- `data/` - Main dataset with ~5000 Arena samples
 
 ## Key Results
 
@@ -72,7 +72,7 @@ python generate_additional_passes.py --data-dir ../data --n-passes 5
 
 ## Dataset Details
 
-**Main Dataset**: `data/cje_dataset.jsonl` (4950 samples from 4950 prompts)
+**Main Dataset**: `data/cje_dataset.jsonl` (4989 samples)
 - **Policies**: 
   - `base` - Llama-70B with standard helpful assistant prompt (logging policy)
   - `clone` - Same model and prompt as base (for control/comparison)
@@ -90,18 +90,18 @@ python generate_additional_passes.py --data-dir ../data --n-passes 5
 ## Example Commands
 
 ```bash
-# Single experiment
-python ablation.py --estimators calibrated-ips --oracle-coverages 0.5 --n-seeds 1
+# Run all ablations
+cd ablations/
+python run_all_ablations.py
 
-# Full ablation grid  
-python ablation.py \
-    --estimators raw-ips calibrated-ips dr-cpo mrdr tmle stacked-dr \
-    --oracle-coverages 0.05 0.1 0.2 0.5 1.0 \
-    --sample-fractions 0.1 0.2 0.5 1.0 \
-    --n-seeds 10
+# Or run individual ablations
+python oracle_coverage.py  # Test oracle coverage requirements
+python sample_size.py      # Test sample size scaling
+python estimator_comparison.py  # Compare all estimators
+python interaction.py      # Oracle × sample interaction
 
 # Generate plots from ablation results
-python ablations/analyze_results.py
+python analyze_results.py
 
 # Analyze with detailed diagnostics
 python analyze_dataset.py --data "data/cje_dataset.jsonl" --estimator calibrated-ips
@@ -204,7 +204,7 @@ Pass files are named: `{policy}_logprobs_pass{N}.jsonl` where N=2,3,4,5...
 - DR estimators require fresh draws in `data/responses/`
 - The `unhelpful` policy intentionally has poor overlap to test refusal mechanisms
 - Warnings about extra prompts in fresh draws are normal and handled correctly
-- The refactored `ablation.py` uses CJE's `load_fresh_draws_auto()` for proper fresh draw handling
+- DR estimators use CJE's `load_fresh_draws_auto()` for proper fresh draw handling
 - Multiple passes help identify API non-determinism (observed ~6% variance between passes)
 
 ## Citation

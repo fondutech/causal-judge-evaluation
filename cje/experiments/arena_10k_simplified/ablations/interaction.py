@@ -33,10 +33,7 @@ class InteractionAblation(BaseAblation):
     """Ablation to study oracle×sample interaction."""
 
     def __init__(self):
-        super().__init__(
-            name="interaction", cache_dir=Path("../.ablation_cache/interaction")
-        )
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        super().__init__(name="interaction")
 
     def run_ablation(self) -> List[Dict[str, Any]]:
         """Run 2D grid of oracle coverage × sample size."""
@@ -112,7 +109,7 @@ class InteractionAblation(BaseAblation):
                     logger.warning(f"All {agg['n_seeds_total']} seeds failed!")
 
         # Save all results
-        output_dir = Path("../ablations/results/interaction")
+        output_dir = Path("results/interaction")
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Convert numpy types before saving
@@ -357,7 +354,7 @@ def main():
                 )
 
     # Create figure
-    figure_path = Path("../ablations/results/interaction/figure_3_interaction.png")
+    figure_path = Path("results/interaction/figure_3_interaction.png")
     ablation.create_figure(results, figure_path)
 
     logger.info("\n" + "=" * 70)

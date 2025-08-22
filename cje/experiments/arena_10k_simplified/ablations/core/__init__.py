@@ -8,11 +8,6 @@ from .diagnostics import (
     weight_cv,
     compute_rmse,
 )
-from .gates import (
-    GateConfig,
-    check_gates,
-    apply_mitigation_ladder,
-)
 
 __all__ = [
     "ExperimentSpec",
@@ -22,7 +17,4 @@ __all__ = [
     "simcal_distortion",
     "weight_cv",
     "compute_rmse",
-    "GateConfig",
-    "check_gates",
-    "apply_mitigation_ladder",
 ]

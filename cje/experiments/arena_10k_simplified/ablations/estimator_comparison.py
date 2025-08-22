@@ -64,11 +64,7 @@ class EstimatorComparison(BaseAblation):
     """Systematic comparison of estimation methods."""
 
     def __init__(self) -> None:
-        super().__init__(
-            name="estimator_comparison",
-            cache_dir=Path("../.ablation_cache/estimator_comparison"),
-        )
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        super().__init__(name="estimator_comparison")
 
         # Define estimators to compare
         self.estimator_configs = [
@@ -147,17 +143,6 @@ class EstimatorComparison(BaseAblation):
         self, spec: ExperimentSpec, config: EstimatorConfig, seed: int
     ) -> Dict[str, Any]:
         """Run a single estimator configuration."""
-
-        # Check cache
-        cache_key = f"{spec.uid()}_{config.name}_{seed}"
-        cache_path = self.cache_dir / f"{cache_key}.json"
-
-        if cache_path.exists():
-            try:
-                with open(cache_path, "r") as f:
-                    return json.load(f)
-            except:
-                pass
 
         # Initialize result
         result = {
@@ -284,13 +269,6 @@ class EstimatorComparison(BaseAblation):
             result["error"] = str(e)
             logger.warning(f"Failed {config.name}: {e}")
 
-        # Save to cache
-        try:
-            with open(cache_path, "w") as f:
-                json.dump(result, f, indent=2)
-        except:
-            pass
-
         return result
 
     def run_ablation(self) -> List[Dict[str, Any]]:
@@ -361,12 +339,33 @@ class EstimatorComparison(BaseAblation):
                         logger.info(f"  Seed {seed}: FAILED")
 
         # Save all results
-        output_dir = Path("../ablations/results/estimator_comparison")
+        output_dir = Path("results/estimator_comparison")
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Convert numpy types for JSON serialization
+        def convert_numpy(obj):
+            """Convert numpy types to Python types for JSON."""
+            import numpy as np
+
+            if isinstance(obj, np.integer):
+                return int(obj)
+            elif isinstance(obj, np.floating):
+                return float(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif isinstance(obj, (np.bool_, np.bool8)):
+                return bool(obj)
+            elif isinstance(obj, dict):
+                return {k: convert_numpy(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_numpy(v) for v in obj]
+            elif hasattr(obj, "item"):
+                return obj.item()
+            return obj
 
         with open(output_dir / "results.jsonl", "w") as f:
             for result in all_results:
-                f.write(json.dumps(result) + "\n")
+                f.write(json.dumps(convert_numpy(result)) + "\n")
 
         logger.info(f"\nSaved {len(all_results)} results to {output_dir}")
 
@@ -516,9 +515,7 @@ def main() -> List[Dict[str, Any]]:
             )
 
     # Create figure
-    figure_path = Path(
-        "../ablations/results/estimator_comparison/comparison_figure.png"
-    )
+    figure_path = Path("results/estimator_comparison/comparison_figure.png")
     comparison.create_figure(results, figure_path)
 
     logger.info("\n" + "=" * 70)
