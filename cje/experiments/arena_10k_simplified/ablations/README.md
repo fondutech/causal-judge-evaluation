@@ -16,6 +16,19 @@ python interaction.py           # Oracle × sample size interaction
 
 # Analyze and visualize results
 python analyze_results.py
+
+# Generate policy heterogeneity visualizations with both color modes
+# (Add this to your Python script or interactive session)
+from estimator_comparison import EstimatorComparison
+import json
+
+comparison = EstimatorComparison()
+with open('results/estimator_comparison/scenario_5000_10.jsonl') as f:
+    results = [json.loads(line) for line in f]
+
+# Generate both visualization modes
+comparison.create_policy_heterogeneity_figure(results, color_by="se")    # Standard error
+comparison.create_policy_heterogeneity_figure(results, color_by="error") # Absolute error
 ```
 
 ## What Each Ablation Tests
@@ -34,6 +47,7 @@ python analyze_results.py
 **Question**: How much does each technique improve estimates?
 - Compares: IPS, SNIPS, Cal-IPS, DR-CPO, Cal-DR-CPO, Stacked-DR
 - Finding: Calibration provides 10-20× SE reduction over SNIPS
+- Generates policy heterogeneity heatmaps showing SE and absolute error by method × policy
 
 ### 4. Interaction Effects (`interaction.py`)
 **Question**: When is DR most valuable vs Cal-IPS alone?
@@ -81,6 +95,24 @@ After running experiments, results are saved in the `results/` directory:
   - `diagnostics`: ESS, calibration RMSE, etc.
   - `rmse_vs_oracle`: Error compared to ground truth
   - `success`: Whether experiment completed successfully
+
+### Visualization Options
+
+The estimator comparison generates policy heterogeneity heatmaps with two coloring modes:
+
+```python
+# In estimator_comparison.py or when calling create_policy_heterogeneity_figure():
+
+# Color by standard error (default) - shows estimation uncertainty
+comparison.create_policy_heterogeneity_figure(results, color_by="se")
+
+# Color by absolute error - shows accuracy vs oracle ground truth  
+comparison.create_policy_heterogeneity_figure(results, color_by="error")
+```
+
+Generated files:
+- `policy_heterogeneity_n{size}_oracle{pct}pct_by_se.png` - Colored by standard error
+- `policy_heterogeneity_n{size}_oracle{pct}pct_by_abs_error.png` - Colored by absolute error
 
 ### Viewing Results
 ```bash

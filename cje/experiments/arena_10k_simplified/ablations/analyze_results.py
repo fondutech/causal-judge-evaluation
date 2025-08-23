@@ -258,11 +258,13 @@ def generate_summary_table(results_dir: Path = Path("ablations/results")):
     oracle_results = load_results(results_dir / "oracle_coverage")
     sample_results = load_results(results_dir / "sample_size")
     interaction_results = load_results(results_dir / "interaction")
+    estimator_results = load_results(results_dir / "estimator_comparison")
 
     print(f"Loaded results:")
     print(f"  Oracle coverage: {len(oracle_results)} experiments")
     print(f"  Sample size: {len(sample_results)} experiments")
     print(f"  Interaction: {len(interaction_results)} experiments")
+    print(f"  Estimator comparison: {len(estimator_results)} experiments")
     print()
 
     # Analyze each ablation
@@ -290,6 +292,9 @@ def generate_summary_table(results_dir: Path = Path("ablations/results")):
         print("-" * 40)
         print(interaction_df)
         print()
+
+    # Note: Policy heterogeneity analysis is now done within estimator_comparison.py
+    # It saves results to results/estimator_comparison/policy_heterogeneity.png
 
     # Compute key findings
     findings = compute_key_findings(oracle_df, sample_df, interaction_df)

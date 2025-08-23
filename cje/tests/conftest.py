@@ -2,18 +2,179 @@
 
 This file is automatically loaded by pytest and provides common fixtures
 and utilities used across multiple test files.
+
+Key fixtures:
+- arena_sample: Real 100-sample arena dataset
+- arena_sample_small: First 20 samples for fast tests
+- arena_fresh_draws: Real fresh draws from arena
 """
 
 import pytest
 import numpy as np
 from typing import List, Dict, Any
+from pathlib import Path
 
 from cje.data.models import Sample, Dataset, EstimationResult
-from cje.data.fresh_draws import FreshDrawSample, FreshDrawDataset
+from cje.data.fresh_draws import (
+    FreshDrawSample,
+    FreshDrawDataset,
+    load_fresh_draws_from_jsonl,
+)
+from cje import load_dataset_from_jsonl
 
 
 # ============================================================================
-# Standard Test Datasets
+# Arena Sample Fixtures (Real Data)
+# ============================================================================
+
+
+@pytest.fixture(scope="session")
+def arena_dataset() -> Dataset:
+    """Load real arena sample dataset once per session (100 samples).
+
+    This is real data from Arena with judge scores and oracle labels.
+    Use this for integration tests and realistic scenarios.
+    Session-scoped for performance.
+    """
+    data_path = Path(__file__).parent / "data" / "arena_sample" / "dataset.jsonl"
+    if not data_path.exists():
+        pytest.skip(f"Arena sample not found at {data_path}")
+    return load_dataset_from_jsonl(str(data_path))
+
+
+@pytest.fixture
+def arena_sample() -> Dataset:
+    """Load real arena sample dataset (100 samples).
+
+    Function-scoped version for tests that modify the dataset.
+    """
+    data_path = Path(__file__).parent / "data" / "arena_sample" / "dataset.jsonl"
+    if not data_path.exists():
+        pytest.skip(f"Arena sample not found at {data_path}")
+    return load_dataset_from_jsonl(str(data_path))
+
+
+@pytest.fixture
+def arena_sample_small(arena_dataset) -> Dataset:
+    """First 20 samples of arena dataset for fast tests.
+
+    Smaller subset for unit tests that need real data but fast execution.
+    """
+    from copy import deepcopy
+
+    small_dataset = deepcopy(arena_dataset)
+    small_dataset.samples = small_dataset.samples[:20]
+    return small_dataset
+
+
+@pytest.fixture
+def arena_calibrated(arena_sample) -> Dataset:
+    """Pre-calibrated arena data with 50% oracle coverage.
+
+    Ready for use with estimators that need calibrated rewards.
+    """
+    from cje.calibration import calibrate_dataset
+    from copy import deepcopy
+    import random
+
+    # Create a copy to avoid modifying the original
+    dataset = deepcopy(arena_sample)
+
+    # Mask 50% of oracle labels to simulate partial coverage
+    samples_with_oracle = [
+        i
+        for i, s in enumerate(dataset.samples)
+        if "oracle_label" in s.metadata and s.metadata["oracle_label"] is not None
+    ]
+
+    if len(samples_with_oracle) > 2:
+        random.seed(42)
+        # Keep only 50% of oracle labels
+        n_keep = max(2, len(samples_with_oracle) // 2)
+        keep_indices = set(random.sample(samples_with_oracle, n_keep))
+
+        for i in range(len(dataset.samples)):
+            if i not in keep_indices and "oracle_label" in dataset.samples[i].metadata:
+                # Remove oracle label for this sample
+                dataset.samples[i].metadata["oracle_label"] = None
+
+    calibrated_dataset, _ = calibrate_dataset(
+        dataset, judge_field="judge_score", oracle_field="oracle_label"
+    )
+    return calibrated_dataset
+
+
+@pytest.fixture
+def arena_sampler(arena_calibrated) -> "PrecomputedSampler":
+    """Ready-to-use sampler with calibrated arena data.
+
+    For tests that need a fully configured sampler.
+    """
+    from cje.data.precomputed_sampler import PrecomputedSampler
+
+    return PrecomputedSampler(arena_calibrated)
+
+
+@pytest.fixture
+def arena_fresh_draws() -> Dict[str, FreshDrawDataset]:
+    """Load real fresh draws from arena sample.
+
+    Returns dict mapping policy names to FreshDrawDataset objects.
+    Policies: clone, premium, parallel_universe_prompt, unhelpful
+
+    Note: The response files aren't in fresh draw format, so we convert them.
+    """
+    import json
+
+    responses_dir = Path(__file__).parent / "data" / "arena_sample" / "responses"
+    dataset_path = Path(__file__).parent / "data" / "arena_sample" / "dataset.jsonl"
+
+    if not responses_dir.exists():
+        pytest.skip(f"Fresh draws not found at {responses_dir}")
+
+    # First, get the set of prompt_ids that exist in the dataset
+    valid_prompt_ids = set()
+    with open(dataset_path) as f:
+        for line in f:
+            data = json.loads(line)
+            valid_prompt_ids.add(data["prompt_id"])
+
+    fresh_draws = {}
+    for policy_file in responses_dir.glob("*_responses.jsonl"):
+        policy_name = policy_file.stem.replace("_responses", "")
+
+        # Convert response format to fresh draw format
+        samples = []
+        with open(policy_file) as f:
+            for line in f:
+                data = json.loads(line)
+
+                # Only include samples with prompt_ids that exist in the dataset
+                if data["prompt_id"] not in valid_prompt_ids:
+                    continue
+
+                # Convert to FreshDrawSample format with all available fields
+                sample = FreshDrawSample(
+                    prompt_id=data["prompt_id"],
+                    target_policy=policy_name,  # Use policy_name, not data["policy"]
+                    judge_score=data["metadata"]["judge_score"],
+                    draw_idx=0,  # Single draw per prompt
+                    response=data.get(
+                        "response", ""
+                    ),  # Include response for completeness
+                )
+                samples.append(sample)
+
+        if samples:
+            fresh_draws[policy_name] = FreshDrawDataset(
+                target_policy=policy_name, draws_per_prompt=1, samples=samples
+            )
+
+    return fresh_draws
+
+
+# ============================================================================
+# Synthetic Test Datasets (Legacy - prefer arena fixtures)
 # ============================================================================
 
 
@@ -315,9 +476,24 @@ def pytest_configure(config: Any) -> None:
         "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
     )
     config.addinivalue_line(
+        "markers", "fast: marks tests as fast (< 0.1s, use synthetic data)"
+    )
+    config.addinivalue_line(
         "markers", "unit: marks tests as unit tests (fast, isolated)"
     )
     config.addinivalue_line("markers", "integration: marks tests as integration tests")
     config.addinivalue_line(
+        "markers", "e2e: marks tests as end-to-end tests using arena data"
+    )
+    config.addinivalue_line(
         "markers", "requires_api: marks tests that require API credentials"
+    )
+    config.addinivalue_line(
+        "markers", "requires_fresh_draws: marks tests that need fresh draw files"
+    )
+    config.addinivalue_line(
+        "markers", "uses_arena_sample: marks tests using real arena data"
+    )
+    config.addinivalue_line(
+        "markers", "deprecated: marks tests superseded by E2E tests"
     )

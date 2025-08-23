@@ -19,7 +19,7 @@ from ..data.models import (
 
 # Import DR estimators for convenience
 try:
-    from .dr_cpo import DRCPOEstimator
+    from .dr_base import DRCPOEstimator
     from .tmle import TMLEEstimator
     from .mrdr import MRDREstimator
 

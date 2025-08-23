@@ -198,7 +198,8 @@ class IPSDiagnostics:
 
         if self.is_calibrated:
             lines.append(f"Calibration RMSE: {self.calibration_rmse:.3f}")
-            lines.append(f"Calibration R²: {self.calibration_r2:.3f}")
+            if self.calibration_r2 is not None:
+                lines.append(f"Calibration R²: {self.calibration_r2:.3f}")
 
         # Add any validation issues
         issues = self.validate()

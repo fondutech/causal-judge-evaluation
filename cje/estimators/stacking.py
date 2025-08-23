@@ -318,9 +318,12 @@ class StackedDREstimator(BaseCJEEstimator):
         # but they will use the same seed which helps
         # Pass calibrator as a named parameter for DR estimators
         if name in ["dr-cpo", "tmle", "mrdr"]:
+            # If we have a calibrator, components should use calibrated weights
+            # If no calibrator, components should use raw weights
             estimator = estimator_class(
                 self.sampler,
                 calibrator=self.calibrator,
+                use_calibrated_weights=(self.calibrator is not None),
                 oracle_slice_config=self.oracle_slice_config,
             )
         else:
@@ -602,8 +605,14 @@ class StackedDREstimator(BaseCJEEstimator):
         for name in ["dr-cpo", "tmle", "mrdr"]:
             if name in self.component_estimators:
                 estimator = self.component_estimators[name]
-                if estimator and hasattr(estimator, "get_weights"):
-                    return estimator.get_weights(policy)
+                if estimator:
+                    # DR estimators store weights in their internal ips_estimator
+                    if hasattr(estimator, "ips_estimator") and hasattr(
+                        estimator.ips_estimator, "get_weights"
+                    ):
+                        return estimator.ips_estimator.get_weights(policy)
+                    elif hasattr(estimator, "get_weights"):
+                        return estimator.get_weights(policy)
 
         return None
 

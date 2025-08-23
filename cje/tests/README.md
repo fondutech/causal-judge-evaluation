@@ -4,6 +4,8 @@
 
 Comprehensive test suite for the Causal Judge Evaluation framework, ensuring correctness of causal inference methods, calibration algorithms, and diagnostic tools. The suite combines unit tests, integration tests, and end-to-end validation using real Arena 10K data.
 
+**Note**: See [TEST_IMPROVEMENT_PLAN.md](../../tests/TEST_IMPROVEMENT_PLAN.md) for ongoing test suite improvements.
+
 ## When to Use
 
 ### Use **Unit Tests** when:
