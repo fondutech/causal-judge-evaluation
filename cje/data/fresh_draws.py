@@ -91,10 +91,12 @@ class FreshDrawDataset(BaseModel):
         if not matching_samples:
             raise ValueError(f"No samples found for prompt_id '{prompt_id}'")
 
-        if len(matching_samples) != self.draws_per_prompt:
-            raise ValueError(
-                f"Expected {self.draws_per_prompt} draws for prompt '{prompt_id}', "
-                f"found {len(matching_samples)}"
+        # Allow variable draws per prompt (don't enforce exact count)
+        # Just log if different from expected
+        if self.draws_per_prompt and len(matching_samples) != self.draws_per_prompt:
+            logger.debug(
+                f"Prompt '{prompt_id}' has {len(matching_samples)} draws "
+                f"(dataset average: {self.draws_per_prompt})"
             )
 
         return np.array([s.judge_score for s in matching_samples])
@@ -225,22 +227,34 @@ def validate_fresh_draws(
             f"These will be ignored."
         )
 
-    # Check draws per prompt consistency
+    # Check draws per prompt (allow variable M_i)
+    draw_counts = []
     for prompt_id in logged_ids:
         try:
             prompt_id_str = str(prompt_id) if prompt_id is not None else ""
             scores = fresh_draws.get_scores_for_prompt_id(prompt_id_str)
-            if len(scores) != fresh_draws.draws_per_prompt:
-                raise ValueError(
-                    f"Prompt '{prompt_id}' has {len(scores)} draws, "
-                    f"expected {fresh_draws.draws_per_prompt}"
+            draw_counts.append(len(scores))
+
+            # Warn if significantly different from expected
+            if (
+                fresh_draws.draws_per_prompt
+                and len(scores) != fresh_draws.draws_per_prompt
+            ):
+                logger.debug(
+                    f"Prompt '{prompt_id}' has {len(scores)} draws "
+                    f"(dataset average: {fresh_draws.draws_per_prompt})"
                 )
         except ValueError as e:
             raise ValueError(f"Validation failed: {e}")
 
+    # Compute statistics
+    min_draws = min(draw_counts) if draw_counts else 0
+    max_draws = max(draw_counts) if draw_counts else 0
+    avg_draws = sum(draw_counts) / len(draw_counts) if draw_counts else 0
+
     logger.info(
         f"Fresh draws validated: {len(fresh_ids)} prompts, "
-        f"{fresh_draws.draws_per_prompt} draws/prompt"
+        f"draws/prompt: min={min_draws}, avg={avg_draws:.1f}, max={max_draws}"
     )
 
 

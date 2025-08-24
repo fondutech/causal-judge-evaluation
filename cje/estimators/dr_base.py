@@ -519,6 +519,26 @@ class DREstimator(BaseCJEEstimator):
             g_fresh = np.array(g_fresh_all)
             fresh_draw_var_per_prompt = np.array(fresh_draw_var_per_prompt_list)
 
+            # Store for MC variance computation later
+            # Also track actual draws per prompt (M_i) which may vary
+            draws_per_prompt_list = []
+            for prompt_id in logged_prompt_ids:
+                if prompt_id is not None:
+                    fresh_scores = fresh_dataset.get_scores_for_prompt_id(prompt_id)
+                    draws_per_prompt_list.append(len(fresh_scores))
+                else:
+                    draws_per_prompt_list.append(1)  # Fallback
+
+            if not hasattr(self, "_fresh_draw_stats"):
+                self._fresh_draw_stats = {}
+            self._fresh_draw_stats[policy] = {
+                "variances": fresh_draw_var_per_prompt,
+                "draws_per_prompt": np.array(
+                    draws_per_prompt_list
+                ),  # Now per-prompt M_i
+                "n_prompts": len(fresh_draw_var_per_prompt),
+            }
+
             # Sanity check: weights should have mean approximately 1.0
             weights_mean = weights.mean()
             # With mean-one calibration, weights should be very close to 1.0
@@ -568,7 +588,47 @@ class DREstimator(BaseCJEEstimator):
             # Apply IIC for variance reduction (if enabled)
             if_contributions = self._apply_iic(if_contributions, policy)
 
-            se = np.std(if_contributions, ddof=1) / np.sqrt(len(if_contributions))
+            # Base SE from influence functions (across-prompt variance)
+            base_se = np.std(if_contributions, ddof=1) / np.sqrt(len(if_contributions))
+
+            # Add Monte Carlo variance component from finite fresh draws
+            mc_var = 0.0
+            if hasattr(self, "_fresh_draw_stats") and policy in self._fresh_draw_stats:
+                stats = self._fresh_draw_stats[policy]
+                fresh_var = stats["variances"]
+                M = stats["draws_per_prompt"]  # Now per-prompt M_i array
+
+                # MC variance: (1/n^2) * sum_i (1-w_i)^2 * (s2_i / M_i)
+                # Handle variable M_i per prompt
+                mc_var = np.sum(
+                    ((1.0 - weights) ** 2) * (fresh_var / np.maximum(M, 1))
+                ) / (len(data) ** 2)
+
+                # Store MC diagnostics
+                if not hasattr(self, "_mc_diagnostics"):
+                    self._mc_diagnostics = {}
+                self._mc_diagnostics[policy] = {
+                    "base_se": base_se,
+                    "mc_var": mc_var,
+                    "mc_share": (
+                        mc_var / (base_se**2 + mc_var)
+                        if (base_se**2 + mc_var) > 0
+                        else 0
+                    ),
+                    "avg_draws_per_prompt": float(M.mean()),
+                    "min_draws_per_prompt": int(M.min()),
+                    "max_draws_per_prompt": int(M.max()),
+                }
+
+            # Total SE including MC component
+            total_var = base_se**2 + mc_var
+            se = np.sqrt(total_var)
+
+            if mc_var > 0:
+                logger.debug(
+                    f"SE for '{policy}': base={base_se:.4f}, with MC={se:.4f} "
+                    f"(MC adds {100*mc_var/total_var:.1f}% to variance)"
+                )
 
             # Store influence functions (always needed for proper inference)
             self._influence_functions[policy] = if_contributions
@@ -629,6 +689,11 @@ class DREstimator(BaseCJEEstimator):
             "n_folds": self.n_folds,
             "oracle_slice_augmentation": oracle_aug_diagnostics,  # Add augmentation info
         }
+
+        # Add MC variance diagnostics if available
+        if hasattr(self, "_mc_diagnostics"):
+            dr_metadata["mc_variance_diagnostics"] = self._mc_diagnostics
+            dr_metadata["mc_variance_included"] = True
 
         # Create overview
         dr_overview = {}

@@ -266,10 +266,31 @@ DR estimators support cross-fitting for orthogonality:
 - All estimators use same deterministic fold assignments (hash(prompt_id) % k)
 
 ### Variance Computation
+
+#### Standard Variance (IPS/Calibrated-IPS)
 Standard errors computed from influence functions:
 ```python
 se = np.std(influence_functions, ddof=1) / np.sqrt(n)
 ```
+
+#### Monte Carlo Variance (DR Estimators)
+DR estimators now correctly include MC uncertainty from finite fresh draws:
+```python
+# Base variance (across-prompt)
+base_var = np.var(influence_functions, ddof=1) / n
+
+# MC variance add-on (within-prompt)
+mc_var = (1/n²) × Σᵢ (1-wᵢ)² × (σ²ᵢ / Mᵢ)
+
+# Total SE
+se = np.sqrt(base_var + mc_var)
+```
+
+The MC component:
+- Accounts for finite fresh draws per prompt (Mᵢ)
+- Decreases as more fresh draws are collected
+- Stored in `_mc_diagnostics` for transparency
+- Automatically computed when fresh draws are present
 
 ## Testing
 
