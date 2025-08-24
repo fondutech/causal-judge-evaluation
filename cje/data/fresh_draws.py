@@ -374,12 +374,27 @@ def load_fresh_draws_auto(
                         data = json.loads(line)
 
                         # Handle different formats
+                        # Check for judge_score properly - don't use 'or' for numeric fields
+                        if "judge_score" in data and data["judge_score"] is not None:
+                            judge_score = data["judge_score"]
+                        elif (
+                            "metadata" in data
+                            and "judge_score" in data["metadata"]
+                            and data["metadata"]["judge_score"] is not None
+                        ):
+                            judge_score = data["metadata"]["judge_score"]
+                        else:
+                            # Never fabricate missing data - fail clearly
+                            raise ValueError(
+                                f"Missing judge_score for prompt_id={data.get('prompt_id')} "
+                                f"in {file_path}. Fresh draws require judge scores."
+                            )
+
                         fresh_sample = FreshDrawSample(
                             prompt_id=str(data.get("prompt_id")),
                             target_policy=policy,
                             response=data.get("response", ""),
-                            judge_score=data.get("judge_score")
-                            or data.get("metadata", {}).get("judge_score", 0.5),
+                            judge_score=judge_score,
                             draw_idx=data.get("draw_idx", 0),
                             fold_id=data.get("fold_id"),
                         )

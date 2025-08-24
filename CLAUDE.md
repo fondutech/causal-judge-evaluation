@@ -108,6 +108,33 @@ When making changes that affect data flow:
 - State stored that could be computed on-demand
 - Position-dependent logic in data pipelines
 
+## Critical Data Handling Principles
+
+### Never Fabricate Missing Data
+**Fail or filter, never fill.** When data is missing:
+- **FAIL**: Raise clear error with what's missing and why it's needed
+- **FILTER**: Skip the record with appropriate logging
+- **NEVER**: Insert default/dummy values (no 0.5 for missing scores!)
+
+Common violations to avoid:
+- Using `or` with numeric fields: `score or 0.5` treats 0.0 as falsy
+- Asserting "reasonable" defaults for missing values
+- Silently replacing None/NaN with made-up values
+
+Correct patterns:
+```python
+# BAD: Fabricates data
+judge_score = data.get("judge_score") or 0.5  # 0.0 becomes 0.5!
+
+# GOOD: Explicit handling
+if "judge_score" in data and data["judge_score"] is not None:
+    judge_score = data["judge_score"]
+else:
+    raise ValueError(f"Missing judge_score for {record_id}")
+```
+
+The only exception: Explicitly documented default behaviors (e.g., draw_idx=0 for backwards compatibility).
+
 ## Documentation Standards
 
 ### Module README Structure
