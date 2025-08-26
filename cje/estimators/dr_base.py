@@ -725,6 +725,7 @@ class DREstimator(BaseCJEEstimator):
             "dr_overview": dr_overview,
             "orthogonality_scores": self._orthogonality_scores,  # New: orthogonality diagnostics
             "dm_ips_decompositions": self._dm_ips_decompositions,  # New: DM-IPS breakdown
+            "dr_influence": self._influence_functions,  # Store influence functions for CF-bits analysis
         }
 
         # Get IPS diagnostics if available
@@ -926,6 +927,142 @@ class DREstimator(BaseCJEEstimator):
                 diagnostics["ips_n_samples"] = ips_diag.n_samples_valid
 
         return diagnostics
+
+    def get_oracle_jackknife(self, policy: str) -> Optional[np.ndarray]:
+        """Compute leave-one-oracle-fold-out estimates for oracle uncertainty.
+
+        This method computes K estimates, each leaving out one fold of oracle samples,
+        to quantify uncertainty from the finite oracle slice used for calibration.
+        This is used by CF-bits to compute var_oracle for proper IFR_OUA calculation.
+
+        Args:
+            policy: Target policy name
+
+        Returns:
+            Array of K jackknife estimates, or None if not applicable
+
+        Note:
+            The jackknife variance is computed as: var_oracle = (K-1)/K * Var(estimates)
+            This represents the additional uncertainty from learning f: judge → oracle
+            from a finite sample of oracle labels.
+        """
+        # Check if we have the necessary components
+        if not self._fitted:
+            logger.warning("Estimator not fitted, cannot compute oracle jackknife")
+            return None
+
+        if self.calibrator is None:
+            logger.debug("No calibrator available for oracle jackknife")
+            return None
+
+        if not hasattr(self.calibrator, "_fold_models"):
+            logger.debug("Calibrator has no fold models for oracle jackknife")
+            return None
+
+        if policy not in self._fresh_draws:
+            logger.warning(
+                f"No fresh draws for policy {policy}, cannot compute oracle jackknife"
+            )
+            return None
+
+        # Cache jackknife results to avoid recomputation
+        if not hasattr(self, "_oracle_jackknife_cache"):
+            self._oracle_jackknife_cache = {}
+
+        if policy in self._oracle_jackknife_cache:
+            return self._oracle_jackknife_cache[policy]
+
+        try:
+            # Get the number of folds from calibrator
+            n_folds = len(self.calibrator._fold_models)
+            jackknife_estimates = []
+
+            # Get base components that don't change
+            fresh_draw_data = self._fresh_draws[policy]
+            data = self.sampler.get_data_for_policy(policy)
+            if data is None:
+                logger.warning(f"No data for policy {policy}")
+                return None
+            weights = self.ips_estimator.get_weights(policy)
+
+            # For each fold, compute leave-that-fold-out estimate
+            for fold_id in range(n_folds):
+                # Use the model that was trained WITHOUT this fold's oracle samples
+                # The calibrator._fold_models[fold_id] was trained on all folds EXCEPT fold_id
+                fold_model = self.calibrator._fold_models.get(fold_id)
+                if fold_model is None:
+                    logger.debug(f"No fold model for fold {fold_id}")
+                    continue
+
+                # Get judge scores for logged data
+                # Note: get_data_for_policy flattens judge_score to top level
+                judge_scores_logged = np.array(
+                    [d["judge_score"] for d in data if d.get("judge_score") is not None]
+                )
+
+                if len(judge_scores_logged) == 0:
+                    logger.warning(f"No judge scores found in data for fold {fold_id}")
+                    continue
+
+                # Recalibrate logged rewards with leave-one-out model
+                logged_rewards_loo = np.clip(
+                    fold_model.predict(judge_scores_logged), 0.0, 1.0
+                )
+
+                # Get fresh draw judge scores and recalibrate
+                # Need to collect all fresh draw scores across all prompts
+                fresh_scores_list = []
+                for prompt_id in set(d["prompt_id"] for d in data):
+                    prompt_fresh_scores = fresh_draw_data.get_scores_for_prompt_id(
+                        prompt_id
+                    )
+                    fresh_scores_list.extend(prompt_fresh_scores)
+
+                if len(fresh_scores_list) == 0:
+                    logger.warning(f"No fresh draw scores found for fold {fold_id}")
+                    continue
+
+                judge_scores_fresh = np.array(fresh_scores_list)
+                fresh_rewards_loo = np.clip(
+                    fold_model.predict(judge_scores_fresh), 0.0, 1.0
+                )
+
+                # Get outcome model predictions (these use cross-fitted models already)
+                g_logged = self._outcome_predictions[policy]
+
+                # Compute leave-one-out DR estimate
+                dm_term = fresh_rewards_loo.mean()
+                ips_correction = (weights * (logged_rewards_loo - g_logged)).mean()
+
+                # Note: We're not recomputing augmentation for each fold
+                # This is a simplification - proper implementation would recompute
+                # augmentation with the leave-one-out calibrator
+                # For now, we ignore augmentation in jackknife to focus on main effect
+
+                dr_estimate_loo = dm_term + ips_correction
+                jackknife_estimates.append(dr_estimate_loo)
+
+            if len(jackknife_estimates) < 2:
+                logger.warning(
+                    f"Not enough jackknife estimates for {policy}: {len(jackknife_estimates)}"
+                )
+                return None
+
+            jackknife_array = np.array(jackknife_estimates)
+            self._oracle_jackknife_cache[policy] = jackknife_array
+
+            logger.debug(
+                f"Oracle jackknife for {policy}: {len(jackknife_estimates)} estimates, "
+                f"mean={jackknife_array.mean():.4f}, std={jackknife_array.std():.4f}"
+            )
+
+            return jackknife_array
+
+        except Exception as e:
+            logger.error(
+                f"Failed to compute oracle jackknife for {policy}: {e}", exc_info=True
+            )
+            return None
 
 
 class DRCPOEstimator(DREstimator):

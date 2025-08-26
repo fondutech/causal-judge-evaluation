@@ -1,6 +1,41 @@
-"""Precomputed sampler for CJE estimation."""
+"""Precomputed sampler for CJE estimation.
 
-from typing import Dict, List, Optional, Any, Union
+This module provides the PrecomputedSampler class which manages data access
+for CJE estimators. It maintains multiple data representations for different
+purposes:
+
+1. Original samples (dataset.samples): Complete Sample objects with metadata
+2. Formatted data (formatted_data): Filtered samples for weight computation
+3. Policy data (get_data_for_policy): Transformed dicts with flattened metadata
+
+Example Data Flow:
+-----------------
+    # Original Sample object
+    sample.metadata["judge_score"] = 0.8
+    sample.reward = 0.75
+
+    # After get_data_for_policy("gpt-4")
+    data["judge_score"] = 0.8  # Flattened from metadata
+    data["reward"] = 0.75      # Direct from sample
+    data["cv_fold"] = 2        # Computed from prompt_id
+
+Key Differences:
+---------------
+    # WRONG - looking in metadata after get_data_for_policy
+    data = sampler.get_data_for_policy("gpt-4")
+    score = data[0]["metadata"]["judge_score"]  # ❌ KeyError!
+
+    # RIGHT - judge_score is flattened to top level
+    data = sampler.get_data_for_policy("gpt-4")
+    score = data[0]["judge_score"]  # ✓ Correct
+
+    # ALSO RIGHT - accessing original samples directly
+    score = sampler.dataset.samples[0].metadata["judge_score"]  # ✓ Correct
+
+See PolicyDataDict for the complete structure returned by get_data_for_policy().
+"""
+
+from typing import Dict, List, Optional, Any, Union, TypedDict
 import numpy as np
 import logging
 
@@ -11,11 +46,58 @@ from .folds import get_folds_for_prompts, get_fold
 logger = logging.getLogger(__name__)
 
 
+class PolicyDataDict(TypedDict, total=False):
+    """Structure returned by get_data_for_policy().
+
+    This is a flattened representation that combines data from:
+    - Sample fields (reward, prompt, response, etc.)
+    - Sample.metadata (judge_score, oracle_label)
+    - Computed fields (cv_fold)
+
+    Note: judge_score is moved from metadata to top-level for convenience.
+    """
+
+    # Required fields
+    reward: float
+    base_policy_logprob: float
+    policy_logprob: float
+    prompt: str
+    response: str
+    prompt_id: str
+
+    # Optional fields (from metadata or computed)
+    judge_score: Optional[float]
+    oracle_label: Optional[float]
+    cv_fold: int
+
+
 class PrecomputedSampler:
     """Wrapper around Dataset that provides CJE-specific operations.
 
     This class takes a Dataset and adds methods needed for importance sampling
     estimation like weight computation, filtering, and diagnostic checks.
+
+    Data Representations:
+    --------------------
+    The sampler maintains three data representations:
+
+    1. self.dataset.samples: Original Sample objects with full metadata
+       - Access: sampler.dataset.samples
+       - Use for: Accessing complete metadata, oracle labels
+
+    2. self.formatted_data: Filtered/validated samples for weight computation
+       - Access: Internal only (use get_data_for_policy instead)
+       - Use for: Weight computation (pre-filtered for efficiency)
+
+    3. get_data_for_policy(): Transformed dicts with flattened structure
+       - Access: sampler.get_data_for_policy(policy)
+       - Use for: Main data access in estimators
+       - Structure: See PolicyDataDict
+
+    Important: get_data_for_policy() transforms the data by:
+    - Filtering to samples with valid logprobs for the policy
+    - Flattening metadata.judge_score to top-level
+    - Adding computed cv_fold field
     """
 
     def __init__(
@@ -157,15 +239,42 @@ class PrecomputedSampler:
 
         return formatted
 
-    def get_data_for_policy(self, target_policy: str) -> Optional[List[Dict[str, Any]]]:
+    def get_data_for_policy(self, target_policy: str) -> Optional[List[PolicyDataDict]]:
         """Get formatted data for a specific target policy.
 
-        Returns data in format expected by estimators:
-        - reward: float
-        - base_policy_logprob: base policy log prob
-        - policy_logprob: target policy log prob
+        ⚠️ IMPORTANT: This method transforms the data structure:
 
-        Note: Returns data from formatted_data to ensure consistency with weights.
+        Transformations applied:
+        1. Filters to only samples with valid logprobs for this policy
+        2. Flattens metadata fields to top-level (e.g., metadata.judge_score → judge_score)
+        3. Adds computed fields (cv_fold from prompt_id)
+        4. Returns different structure than dataset.samples
+
+        Args:
+            target_policy: Name of target policy
+
+        Returns:
+            List of PolicyDataDict with structure:
+            {
+                "reward": float,                    # From sample.reward
+                "base_policy_logprob": float,       # From sample.base_policy_logprob
+                "policy_logprob": float,            # From sample.target_policy_logprobs[policy]
+                "prompt": str,                      # From sample.prompt
+                "response": str,                    # From sample.response
+                "prompt_id": str,                   # From sample.prompt_id
+                "judge_score": Optional[float],     # From sample.metadata["judge_score"]
+                "cv_fold": int,                     # Computed from prompt_id
+            }
+
+            Returns None if policy not in target_policies.
+
+        Example:
+            >>> data = sampler.get_data_for_policy("gpt-4")
+            >>> judge_scores = [d["judge_score"] for d in data]  # Top-level access
+            >>> # NOT d["metadata"]["judge_score"] - already flattened!
+
+        Note: This ensures consistency with weight computation by using the same
+        filtered samples (formatted_data) that were used to compute weights.
         """
         if target_policy not in self.target_policies:
             return None
@@ -387,8 +496,17 @@ class PrecomputedSampler:
     def get_judge_scores(self) -> Optional[np.ndarray]:
         """Get array of judge scores from metadata.
 
+        ⚠️ Note: This returns judge scores for the FILTERED samples (those with
+        valid logprobs), not all samples in the dataset. The order matches
+        the samples that would be used for weight computation.
+
+        To get judge scores for a specific policy's data:
+            >>> data = sampler.get_data_for_policy(policy)
+            >>> scores = [d["judge_score"] for d in data]  # Already flattened
+
         Returns:
-            Array of judge scores if available in all valid samples, None otherwise.
+            Array of judge scores if available in all valid samples, None if any missing.
+            Length matches len(formatted_data), not len(dataset.samples).
         """
         # Only get judge scores for valid (formatted) samples
         judge_scores = []
