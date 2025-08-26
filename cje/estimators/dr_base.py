@@ -967,7 +967,7 @@ class DREstimator(BaseCJEEstimator):
 
         # Cache jackknife results to avoid recomputation
         if not hasattr(self, "_oracle_jackknife_cache"):
-            self._oracle_jackknife_cache = {}
+            self._oracle_jackknife_cache: Dict[str, np.ndarray] = {}
 
         if policy in self._oracle_jackknife_cache:
             return self._oracle_jackknife_cache[policy]

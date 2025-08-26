@@ -222,7 +222,7 @@ def apply_gates(
     # Collect issues
     reasons = []
     suggestions = {}
-    state = "GOOD"
+    state: Literal["GOOD", "WARNING", "CRITICAL", "REFUSE"] = "GOOD"
 
     # Check overlap (A-ESSF) - use LCB if available
     aessf_check = aessf_lcb if aessf_lcb is not None else aessf
@@ -237,7 +237,7 @@ def apply_gates(
                 state = "CRITICAL"
             reasons.append(f"Poor overlap (A-ESSF{lcb_note}={aessf_check:.1%})")
             suggestions["use_dr"] = "Use DR methods with fresh draws"
-            suggestions["fresh_draws"] = 100  # Suggested number
+            suggestions["fresh_draws"] = "100"  # Suggested number as string
 
     # Check efficiency (IFR) - use LCB if available
     ifr_check = ifr_lcb if ifr_lcb is not None else ifr
