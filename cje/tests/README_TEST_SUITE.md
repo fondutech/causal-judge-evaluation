@@ -2,7 +2,7 @@
 
 ## Overview
 
-The CJE test suite has been radically simplified to focus on end-to-end testing with real data. We've reduced from 28 test files (238 tests) to 5 core test files (59 tests) while maintaining comprehensive coverage of critical functionality.
+The CJE test suite has been radically simplified to focus on end-to-end testing with real data. We've reduced from 28 test files (238 tests) to 7 core test files while maintaining comprehensive coverage of critical functionality.
 
 ## Test Structure
 
@@ -13,6 +13,8 @@ cje/tests/
 ├── test_e2e_features.py        # E2E tests for features like IIC, SIMCal (8 tests)
 ├── test_e2e_analysis.py        # Tests for user-facing API and CLI (10 tests)
 ├── test_infrastructure.py      # Critical infrastructure and edge cases (14 tests)
+├── test_cfbits.py              # CF-bits diagnostics
+├── test_mc_variance.py         # Monte Carlo variance handling
 └── test_unified_folds.py       # Fold management tests (21 tests)
 ```
 

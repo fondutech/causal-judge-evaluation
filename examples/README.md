@@ -17,6 +17,8 @@ print(f"Estimate: {results.estimates[0]:.3f}")
 - `basic_workflows.py` - Three common CJE workflows (oracle labels, judge calibration, log prob computation)
 - `oracle_slice_demo.py` - Demonstrates how confidence intervals widen with less oracle data
 - `minimal_example.py` - Absolute minimal usage example
+- `stacked_dr_example.py` - Uses the Stacked DR estimator combining DR-CPO, TMLE, and MRDR
+- `overlap_metrics_demo.py` - Demonstrates overlap metrics like Hellinger affinity
 
 ## Running Examples
 

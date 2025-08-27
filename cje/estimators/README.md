@@ -49,7 +49,6 @@ estimators/
 ├── stacking.py            # Optimal stacking of DR estimators
 ├── dr_base.py             # Doubly robust base class
 ├── mrdr.py                # Multiple robust DR
-├── mrdr_tmle.py           # MRDR with TMLE fluctuation
 ├── tmle.py                # Standard TMLE
 ├── outcome_models.py      # Outcome model implementations
 └── MRDR_OMEGA_WEIGHTS.md  # Documentation on MRDR weighting schemes
@@ -311,9 +310,9 @@ The MC component:
 ## Testing
 
 Each estimator has comprehensive tests in `cje/tests/`:
-- `test_estimators.py` - Basic functionality
-- `test_dr_diagnostics.py` - DR-specific tests
-- `test_integration.py` - End-to-end workflows
+- `test_e2e_estimators.py` - End-to-end estimator workflows
+- `test_cfbits.py` - CF-bits diagnostics for estimator reliability
+- `test_mc_variance.py` - Monte Carlo variance handling
 
 ## Advanced Topics
 

@@ -295,7 +295,7 @@ CF-bits decomposes uncertainty into identification width (structural limits) and
 ## 📚 Documentation
 
 - **[Sphinx Documentation](docs/)**: Complete API reference and theory guides
-- **[Example Usage](cje/example_usage.py)**: Python examples demonstrating all workflows
+- **[Examples](examples/basic_workflows.py)**: Python scripts demonstrating common workflows
 - **[Arena Experiment](cje/experiments/arena_10k_simplified/)**: Complete real-world ablation study with 13.9× ESS improvement
 
 ### Module Documentation

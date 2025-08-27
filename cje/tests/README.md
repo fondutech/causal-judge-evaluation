@@ -4,8 +4,6 @@
 
 Comprehensive test suite for the Causal Judge Evaluation framework, ensuring correctness of causal inference methods, calibration algorithms, and diagnostic tools. The suite combines unit tests, integration tests, and end-to-end validation using real Arena 10K data.
 
-**Note**: See [TEST_IMPROVEMENT_PLAN.md](../../tests/TEST_IMPROVEMENT_PLAN.md) for ongoing test suite improvements.
-
 ## When to Use
 
 ### Use **Unit Tests** when:
@@ -30,44 +28,17 @@ Comprehensive test suite for the Causal Judge Evaluation framework, ensuring cor
 
 ```
 tests/
-├── conftest.py                    # Shared fixtures and utilities
-├── run_all_tests.py              # Test runner script
-│
-├── Core Tests                    
-│   ├── test_simple.py            # Minimal judge calibration
-│   ├── test_pipeline.py          # End-to-end workflows
-│   ├── test_integration.py       # Full system integration
-│   └── test_data_models.py       # Data model validation
-│
-├── API Tests
-│   ├── test_analysis.py          # analyze_dataset() with Arena data
-│   ├── test_cli.py               # CLI commands and parsing
-│   └── test_export.py            # JSON/CSV export formats
-│
-├── Estimator Tests
-│   ├── test_dr_basic.py          # DR estimation fundamentals
-│   ├── test_dr_diagnostics.py    # All estimator diagnostics
-│   ├── test_stacked_simcal.py    # SIMCal weight calibration
-│   ├── test_oracle_slice.py      # Oracle slice augmentation
-│   └── test_custom_outcome_model.py # Custom outcome models
-│
-├── Diagnostic Tests
-│   ├── test_new_diagnostics.py   # IPSDiagnostics, DRDiagnostics
-│   ├── test_stability_diagnostics.py # Tail index, ESS, stability
-│   └── test_robust_inference.py  # Inference robustness checks
-│
-├── Utility Tests
-│   ├── test_fresh_draws.py       # Fresh draw loading
-│   ├── test_teacher_forcing.py   # Chat templates, log prob
-│   ├── test_validation.py        # Dataset validation
-│   └── test_edge_cases.py        # Missing values, extremes
-│
-├── Documentation Tests
-│   └── test_documentation_examples.py # README code validation
-│
-└── data/                          # Test datasets
-    ├── arena_sample/              # Real Arena 10K subset
-    └── *.jsonl                    # Synthetic test data
+├── conftest.py             # Shared fixtures and utilities
+├── run_all_tests.py        # Test runner script
+├── test_cfbits.py          # CF-bits diagnostics
+├── test_e2e_analysis.py    # analyze_dataset API and CLI
+├── test_e2e_estimators.py  # Estimator workflows
+├── test_e2e_features.py    # Feature-specific tests
+├── test_infrastructure.py  # Infrastructure and edge cases
+├── test_mc_variance.py     # Monte Carlo variance handling
+├── test_unified_folds.py   # Fold management tests
+└── data/                   # Test datasets
+    └── arena_sample/       # Real Arena 10K subset
 ```
 
 ## Core Concepts
