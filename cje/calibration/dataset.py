@@ -63,7 +63,7 @@ def calibrate_dataset(
             "raw and calibrated values. Use a different field name in metadata."
         )
 
-    for sample in dataset.samples:
+    for i, sample in enumerate(dataset.samples):
         # Look for judge score in metadata
         if judge_field not in sample.metadata:
             raise ValueError(
@@ -74,25 +74,20 @@ def calibrate_dataset(
         judge_scores.append(float(judge_score))
         prompt_ids.append(sample.prompt_id)
 
-        # Look for oracle label
+        # Look for oracle label (only add if present and not None)
         if (
             oracle_field in sample.metadata
             and sample.metadata[oracle_field] is not None
         ):
             oracle_labels.append(float(sample.metadata[oracle_field]))
-            oracle_mask.append(True)
-        else:
-            oracle_labels.append(np.nan)  # Placeholder for missing oracle
-            oracle_mask.append(False)
+            oracle_mask.append(i)  # Store index instead of boolean
 
     # Convert to arrays
     judge_scores_array = np.array(judge_scores)
-    oracle_labels_array = np.array(
-        oracle_labels
-    )  # Now always same length as judge_scores
-    oracle_mask_array = np.array(oracle_mask)
+    oracle_labels_array = np.array(oracle_labels) if oracle_labels else np.array([])
+    oracle_mask_array = np.array(oracle_mask, dtype=int) if oracle_mask else np.array([], dtype=int)
 
-    if not np.any(oracle_mask_array):
+    if len(oracle_labels_array) == 0:
         raise ValueError(f"No oracle labels found in field '{oracle_field}'")
 
     # Determine calibration mode
@@ -125,14 +120,13 @@ def calibrate_dataset(
 
     # Create new samples with calibrated rewards
     calibrated_samples = []
-    oracle_idx = 0
+    oracle_labels_dict = dict(zip(oracle_mask_array, oracle_labels_array))
     for i, sample in enumerate(dataset.samples):
         # Create new sample with calibrated reward
         new_metadata = sample.metadata.copy()
         new_metadata[judge_field] = judge_scores[i]  # Preserve original
-        if oracle_mask[i]:
-            new_metadata[oracle_field] = oracle_labels[oracle_idx]
-            oracle_idx += 1
+        if i in oracle_labels_dict:
+            new_metadata[oracle_field] = oracle_labels_dict[i]
 
         # Note: We no longer store cv_fold in metadata
         # Folds are computed on-demand from prompt_id using the unified system
@@ -253,7 +247,7 @@ def calibrate_from_raw_data(
     )  # Now always same length as judge_scores
     oracle_mask_array = np.array(oracle_mask)
 
-    if not np.any(oracle_mask_array):
+    if len(oracle_labels_array) == 0:
         raise ValueError(f"No oracle labels found in field '{oracle_field}'")
 
     # Calibrate judge scores

@@ -121,12 +121,22 @@ class JudgeCalibrator:
 
         # Handle different input formats
         if oracle_mask is not None:
-            # Explicit mask provided
-            oracle_mask = np.asarray(oracle_mask, dtype=bool)
+            # Explicit mask provided (can be boolean array or indices)
+            oracle_mask_array = np.asarray(oracle_mask)
             if oracle_labels is None:
                 raise ValueError("oracle_labels required when oracle_mask provided")
             oracle_labels = np.asarray(oracle_labels)
-
+            
+            # Check if mask is indices (integers) or boolean
+            if oracle_mask_array.dtype in [np.int32, np.int64, int]:
+                # Convert indices to boolean mask
+                bool_mask = np.zeros(n_total, dtype=bool)
+                bool_mask[oracle_mask_array] = True
+                oracle_mask = bool_mask
+            else:
+                # Already boolean
+                oracle_mask = oracle_mask_array.astype(bool)
+            
             # Extract oracle subset
             oracle_scores = judge_scores[oracle_mask]
             oracle_y = oracle_labels
@@ -274,12 +284,24 @@ class JudgeCalibrator:
 
         # Handle different input formats (same as fit_transform)
         if oracle_mask is not None:
-            oracle_mask = np.asarray(oracle_mask, dtype=bool)
+            # Explicit mask provided (can be boolean array or indices)
+            oracle_mask_array = np.asarray(oracle_mask)
             if oracle_labels is None:
                 raise ValueError("oracle_labels required when oracle_mask provided")
             oracle_labels = np.asarray(oracle_labels)
+            
+            # Check if mask is indices (integers) or boolean
+            if oracle_mask_array.dtype in [np.int32, np.int64, int]:
+                # Convert indices to boolean mask
+                bool_mask = np.zeros(n_total, dtype=bool)
+                bool_mask[oracle_mask_array] = True
+                oracle_mask = bool_mask
+            else:
+                # Already boolean
+                oracle_mask = oracle_mask_array.astype(bool)
+            
             oracle_scores = judge_scores[oracle_mask]
-            oracle_y = oracle_labels[oracle_mask]  # Extract oracle subset
+            oracle_y = oracle_labels  # oracle_labels is already compact
         elif oracle_labels is not None and len(oracle_labels) < n_total:
             n_oracle = len(oracle_labels)
             oracle_scores = judge_scores[:n_oracle]
