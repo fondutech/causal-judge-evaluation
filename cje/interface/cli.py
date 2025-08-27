@@ -41,18 +41,17 @@ def create_parser() -> argparse.ArgumentParser:
         help="Path to JSONL dataset file",
     )
 
+    from .factory import get_estimator_names
+
+    choices = list(get_estimator_names()) + ["auto"]
     analyze_parser.add_argument(
         "--estimator",
-        choices=[
-            "calibrated-ips",
-            "raw-ips",
-            "stacked-dr",
-            "dr-cpo",
-            "mrdr",
-            "tmle",
-        ],
-        default="calibrated-ips",
-        help="Estimation method (default: calibrated-ips)",
+        choices=choices,
+        default="auto",
+        help=(
+            "Estimation method. Default: auto (stacked-dr if --fresh-draws-dir is set, "
+            "otherwise calibrated-ips)."
+        ),
     )
 
     analyze_parser.add_argument(
@@ -135,8 +134,13 @@ def run_analysis(args: argparse.Namespace) -> int:
 
     try:
         # Prepare kwargs
+        # Determine estimator default based on presence of fresh draws
+        estimator_choice = args.estimator
+        if estimator_choice in (None, "auto"):
+            estimator_choice = "stacked-dr" if args.fresh_draws_dir else "calibrated-ips"
+
         kwargs = {
-            "estimator": args.estimator,
+            "estimator": estimator_choice,
             "judge_field": args.judge_field,
             "oracle_field": args.oracle_field,
         }

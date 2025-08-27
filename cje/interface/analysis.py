@@ -10,15 +10,9 @@ from pathlib import Path
 from typing import Optional, Dict, Any, Union
 import numpy as np
 
-from ..data import load_dataset_from_jsonl
 from ..data.models import Dataset, EstimationResult
-from ..calibration import calibrate_dataset
-from ..data.precomputed_sampler import PrecomputedSampler
-from ..estimators.calibrated_ips import CalibratedIPS
-from ..estimators.dr_base import DRCPOEstimator
-from ..estimators.mrdr import MRDREstimator
-from ..estimators.tmle import TMLEEstimator
-from ..estimators.stacking import StackedDREstimator
+from .config import AnalysisConfig
+from .service import AnalysisService
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +38,7 @@ def analyze_dataset(
 
     Args:
         dataset_path: Path to JSONL dataset file
-        estimator: Estimator type ("calibrated-ips", "raw-ips", "dr-cpo", "mrdr", "tmle")
+        estimator: Estimator type ("calibrated-ips", "raw-ips", "stacked-dr", "dr-cpo", "mrdr", "tmle")
         judge_field: Metadata field containing judge scores
         oracle_field: Metadata field containing oracle labels
         estimator_config: Optional configuration dict for the estimator
@@ -71,245 +65,18 @@ def analyze_dataset(
         ...     fresh_draws_dir="responses/"
         ... )
     """
-    if verbose:
-        logger.info(f"Loading dataset from {dataset_path}")
-
-    # Step 1: Load dataset
-    dataset = load_dataset_from_jsonl(dataset_path)
-
-    if verbose:
-        logger.info(f"Loaded {dataset.n_samples} samples")
-        logger.info(f"Target policies: {', '.join(dataset.target_policies)}")
-
-    # Step 2: Handle rewards
-    calibrated_dataset, calibration_result = _prepare_rewards(
-        dataset, judge_field, oracle_field, verbose
-    )
-
-    # Step 3: Create sampler
-    sampler = PrecomputedSampler(calibrated_dataset)
-
-    if verbose:
-        logger.info(f"Valid samples after filtering: {sampler.n_valid_samples}")
-
-    # Step 4: Create and configure estimator
-    estimator_obj = _create_estimator(
-        sampler, estimator, estimator_config or {}, calibration_result, verbose
-    )
-
-    # Step 5: Add fresh draws for DR estimators
-    if estimator in ["dr-cpo", "mrdr", "tmle", "stacked-dr"]:
-        # Type narrowing for mypy
-        if isinstance(
-            estimator_obj,
-            (
-                DRCPOEstimator,
-                MRDREstimator,
-                TMLEEstimator,
-                StackedDREstimator,
-            ),
-        ):
-            _add_fresh_draws(
-                estimator_obj,
-                sampler,
-                calibrated_dataset,
-                fresh_draws_dir,
-                estimator_config or {},
-                verbose,
-            )
-
-    # Step 6: Run estimation
-    if verbose:
-        logger.info(f"Running {estimator} estimation...")
-
-    results = estimator_obj.fit_and_estimate()
-
-    # Add metadata for downstream use
-    results.metadata["dataset_path"] = dataset_path
-    results.metadata["estimator"] = estimator
-    # Note: oracle_coverage removed - production always uses all available oracle labels
-    results.metadata["target_policies"] = list(sampler.target_policies)
-
-    # Add estimator config if provided
-    if estimator_config:
-        results.metadata["estimator_config"] = estimator_config
-
-    # Add field names for reference
-    results.metadata["judge_field"] = judge_field
-    results.metadata["oracle_field"] = oracle_field
-
-    if verbose:
-        logger.info("Analysis complete!")
-
-    return results
-
-
-def _prepare_rewards(
-    dataset: Dataset,
-    judge_field: str,
-    oracle_field: str,
-    verbose: bool,
-) -> tuple[Dataset, Optional[Any]]:
-    """Prepare rewards through calibration or use existing."""
-
-    # Check if rewards already exist (and whether complete)
-    n_total = len(dataset.samples)
-    rewards_exist = sum(1 for s in dataset.samples if s.reward is not None)
-
-    if rewards_exist == n_total and n_total > 0:
-        if verbose:
-            logger.info("Using pre-computed rewards for all samples")
-        return dataset, None
-    elif 0 < rewards_exist < n_total:
-        # Partial rewards are risky for downstream samplers; recalibrate for consistency
-        logger.warning(
-            "Detected partial rewards ("
-            f"{rewards_exist}/{n_total}). Recalibrating judge scores to produce "
-            "consistent rewards for all samples."
-        )
-
-    # Always calibrate using all available oracle labels
-    if verbose:
-        logger.info("Calibrating judge scores with oracle labels")
-
-    calibrated_dataset, cal_result = calibrate_dataset(
-        dataset,
+    # Delegate to the AnalysisService with typed config
+    cfg = AnalysisConfig(
+        dataset_path=dataset_path,
+        estimator=estimator,
         judge_field=judge_field,
         oracle_field=oracle_field,
-        enable_cross_fit=True,  # Always enable for potential DR use
-        n_folds=5,
+        estimator_config=estimator_config or {},
+        fresh_draws_dir=fresh_draws_dir,
+        verbose=verbose,
     )
-
-    if verbose and cal_result:
-        logger.info(f"Calibration RMSE: {cal_result.calibration_rmse:.3f}")
-        logger.info(f"Coverage (±0.1): {cal_result.coverage_at_01:.1%}")
-
-    return calibrated_dataset, cal_result
+    service = AnalysisService()
+    return service.run(cfg)
 
 
-def _create_estimator(
-    sampler: PrecomputedSampler,
-    estimator_type: str,
-    config: Dict[str, Any],
-    calibration_result: Optional[Any],
-    verbose: bool,
-) -> Union[
-    CalibratedIPS, DRCPOEstimator, MRDREstimator, TMLEEstimator, StackedDREstimator
-]:
-    """Create the appropriate estimator."""
-
-    if estimator_type == "calibrated-ips":
-        # Pass calibrator for DR-aware direction selection if available
-        if calibration_result and calibration_result.calibrator:
-            config = config.copy()  # Don't modify original
-            config["calibrator"] = calibration_result.calibrator
-            if verbose:
-                logger.info("Using calibrator for DR-aware SIMCal direction selection")
-        return CalibratedIPS(sampler, **config)
-
-    elif estimator_type == "raw-ips":
-        clip_weight = config.get("clip_weight", 100.0)
-        return CalibratedIPS(sampler, calibrate=False, clip_weight=clip_weight)
-
-    elif estimator_type == "dr-cpo":
-        n_folds = config.get("n_folds", 5)
-        # Use calibrator if available for efficiency
-        if calibration_result and calibration_result.calibrator:
-            if verbose:
-                logger.info("Using calibration models for DR outcome model")
-            return DRCPOEstimator(
-                sampler, n_folds=n_folds, calibrator=calibration_result.calibrator
-            )
-        else:
-            return DRCPOEstimator(sampler, n_folds=n_folds)
-
-    elif estimator_type == "mrdr":
-        n_folds = config.get("n_folds", 5)
-        omega_mode = config.get("omega_mode", "snips")
-        # Pass calibrator if available for DR-aware weight selection
-        if calibration_result and calibration_result.calibrator:
-            if verbose:
-                logger.info("Using calibration models for MRDR")
-            return MRDREstimator(
-                sampler,
-                n_folds=n_folds,
-                omega_mode=omega_mode,
-                calibrator=calibration_result.calibrator,
-            )
-        else:
-            return MRDREstimator(
-                sampler,
-                n_folds=n_folds,
-                omega_mode=omega_mode,
-            )
-
-    elif estimator_type == "tmle":
-        n_folds = config.get("n_folds", 5)
-        link = config.get("link", "logit")
-        # Pass calibrator if available for DR-aware weight selection
-        if calibration_result and calibration_result.calibrator:
-            if verbose:
-                logger.info("Using calibration models for TMLE")
-            return TMLEEstimator(
-                sampler,
-                n_folds=n_folds,
-                link=link,
-                calibrator=calibration_result.calibrator,
-            )
-        else:
-            return TMLEEstimator(
-                sampler,
-                n_folds=n_folds,
-                link=link,
-            )
-
-    elif estimator_type == "stacked-dr":
-        # Stacked DR estimator - combines DR-CPO, TMLE, and MRDR
-        estimators = config.get("estimators", ["dr-cpo", "tmle", "mrdr"])
-        use_outer_split = config.get("use_outer_split", True)
-        parallel = config.get("parallel", True)
-
-        if verbose:
-            logger.info(f"Using stacked DR with estimators: {estimators}")
-
-        return StackedDREstimator(
-            sampler,
-            estimators=estimators,
-            use_outer_split=use_outer_split,
-            parallel=parallel,
-        )
-
-    else:
-        raise ValueError(f"Unknown estimator type: {estimator_type}")
-
-
-def _add_fresh_draws(
-    estimator: Union[DRCPOEstimator, MRDREstimator, TMLEEstimator, StackedDREstimator],
-    sampler: PrecomputedSampler,
-    dataset: Dataset,
-    fresh_draws_dir: Optional[str],
-    config: Dict[str, Any],
-    verbose: bool,
-) -> None:
-    """Add fresh draws to a DR estimator."""
-    from ..data.fresh_draws import load_fresh_draws_auto
-
-    for policy in sampler.target_policies:
-        if fresh_draws_dir:
-            # Load from directory - no fallback
-            fresh_draws = load_fresh_draws_auto(
-                Path(fresh_draws_dir),
-                policy,
-                verbose=verbose,
-            )
-        else:
-            # No fresh draws available - fail clearly
-            raise ValueError(
-                f"DR estimators require fresh draws for policy '{policy}'. "
-                f"Please provide --fresh-draws-dir with real teacher forcing responses."
-            )
-
-        estimator.add_fresh_draws(policy, fresh_draws)
-
-        if verbose:
-            logger.info(f"Added {len(fresh_draws.samples)} fresh draws for {policy}")
+    # Note: detailed workflow remains implemented in AnalysisService

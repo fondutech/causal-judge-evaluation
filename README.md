@@ -315,6 +315,22 @@ poetry run pytest cje/tests/
 poetry run pytest --cov=cje --cov-report=html
 ```
 
+## ⚙️ Configs (Hydra, optional)
+
+For more complex runs, CJE includes lightweight Hydra support. This keeps configs composable and reproducible without changing your working directory.
+
+```bash
+# Basic (default auto)
+python -m cje.interface.hydra_entry dataset=data.jsonl
+
+# DR example with options and results export
+python -m cje.interface.hydra_entry \
+  dataset=data.jsonl estimator=dr-cpo fresh_draws_dir=responses/ \
+  estimator_config.n_folds=10 output=results.json
+```
+
+Configs live under `cje/conf/` (including estimator presets). The default estimator is `auto` (stacked-dr if `fresh_draws_dir` is provided, otherwise calibrated-ips). The normal CLI (`python -m cje analyze`) remains supported and is backed by the same estimator registry.
+
 ## 🔑 Key Concepts
 
 - **π₀**: Your logging/base policy (what generated the data)

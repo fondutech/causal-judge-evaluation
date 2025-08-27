@@ -8,7 +8,6 @@ Example:
     results = analyze_dataset(
         "data.jsonl",
         estimator="calibrated-ips",
-        oracle_coverage=0.5
     )
     print(results.summary())
 """

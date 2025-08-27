@@ -146,29 +146,6 @@ class TestIICFeature:
 class TestSIMCalFeature:
     """Test SIMCal (Surrogate-Indexed Monotone Calibration) variance control."""
 
-    def test_simcal_variance_cap_pipeline(self, arena_sample) -> None:
-        """Test SIMCal caps variance as promised."""
-        import random
-
-        random.seed(42)
-        np.random.seed(42)
-
-        # Use limited oracle coverage to make variance cap relevant
-        for i, sample in enumerate(arena_sample.samples):
-            if i % 3 != 0 and "oracle_label" in sample.metadata:  # Keep 33%
-                sample.metadata["oracle_label"] = None
-
-        calibrated, _ = calibrate_dataset(
-            arena_sample, judge_field="judge_score", oracle_field="oracle_label"
-        )
-
-        sampler = PrecomputedSampler(calibrated)
-
-        # Test different variance caps
-        # Note: variance_cap is now configured differently
-        # For now, skip this specific test
-        pytest.skip("variance_cap parameter has been refactored")
-
     def test_simcal_mean_preservation(self, arena_sample) -> None:
         """Test SIMCal preserves mean of weights."""
         import random

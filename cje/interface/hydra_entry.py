@@ -27,12 +27,18 @@ def main(cfg: DictConfig) -> int:
         assert isinstance(estimator_config, dict)
 
     dataset: str = cfg.dataset
-    estimator: str = cfg.estimator
+    estimator_name: str = cfg.get("estimator_name", "auto")
     judge_field: str = cfg.get("judge_field", "judge_score")
     oracle_field: str = cfg.get("oracle_field", "oracle_label")
     fresh_draws_dir: Optional[str] = cfg.get("fresh_draws_dir")
     verbose: bool = bool(cfg.get("verbose", False))
     output: Optional[str] = cfg.get("output")
+
+    # Auto-default: stacked-dr if fresh draws specified, otherwise calibrated-ips
+    if estimator_name in (None, "", "auto"):
+        estimator = "stacked-dr" if fresh_draws_dir else "calibrated-ips"
+    else:
+        estimator = estimator_name
 
     logger.info(f"Running CJE via Hydra | estimator={estimator}")
 
@@ -71,4 +77,3 @@ def main(cfg: DictConfig) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

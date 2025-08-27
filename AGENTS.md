@@ -38,3 +38,21 @@
 - Secrets: never commit API keys. Use `.env` (see `.env.example`) or `./set_secrets.sh`.
 - Common env vars: `FIREWORKS_API_KEY`, plus optional vendor keys (OpenAI/Anthropic/Google) if used in experiments.
 - Data paths: place sample data under `cje/tests/data/` or `examples/`, not in the repo root.
+
+## Agent-Specific Instructions (from CLAUDE.md)
+- Search before building: read module READMEs, scan with `rg`, check `experiments/` and tests to reuse existing utilities.
+- Never fabricate data: fail or filter when fields are missing; avoid `value or 0.5` for numeric fields; raise clear, actionable errors.
+- Fail fast and clearly: if overlap is catastrophic (very low ESS/heavy tails), it’s acceptable to refuse (NaN) with reasons and guidance.
+- Keep it simple: minimal, surgical changes; reuse over re-implement; avoid stateful orchestration, magic defaults, and unnecessary abstractions.
+- Keep docs accurate: when changing behavior, update the relevant README and examples.
+- Smart defaults: estimator `auto` chooses `stacked-dr` when `fresh_draws_dir` is provided, otherwise `calibrated-ips`.
+
+## Software Design Philosophy
+- Single responsibility: each package/module does one job (data, calibration, estimators, diagnostics, interface).
+- Explicit over implicit: clear configs and parameters; “auto” has simple, documented rules; no hidden state.
+- Reuse-first: prefer importing existing utilities (search READMEs/tests/experiments) instead of re‑implementing.
+- Fail fast and deterministic: validate inputs (Pydantic), never fabricate data, stable folds from `prompt_id`, refusal gates for bad overlap.
+- Composable pipeline: `calibrate_dataset` → `PrecomputedSampler` → estimator; functions are idempotent and side‑effect free where possible.
+- Diagnostics as first-class: expose influence functions, ESS/tails/Hellinger, CF-bits; put key info in `EstimationResult.metadata`.
+- Reproducible runs: optional Hydra; no `chdir`; record estimator + config in results; pin tools via Poetry + pre‑commit.
+- Extensible by registry: add estimators via `interface/factory.py`; keep typed boundaries (`AnalysisConfig`, data models) stable.

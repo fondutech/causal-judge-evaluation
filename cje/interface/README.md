@@ -55,7 +55,7 @@ def analyze_dataset(
 
 **Parameters:**
 - `dataset_path`: Path to JSONL file with your data
-- `estimator`: Which estimator to use (see [Estimator Choice](#estimator-choice))
+- `estimator`: Which estimator to use (see [Estimator Choice](#estimator-choice)). CLI default is `auto` (stacked-dr if fresh draws are provided, otherwise calibrated-ips).
 - `judge_field`: Field in metadata containing judge scores
 - `oracle_field`: Field in metadata containing oracle labels
 - `estimator_config`: Optional configuration for the estimator
@@ -93,7 +93,7 @@ python -m cje analyze <dataset> [options]
 ```
 
 **Options:**
-- `--estimator {calibrated-ips,raw-ips,stacked-dr,dr-cpo,mrdr,tmle}`: Estimation method
+- `--estimator {auto,calibrated-ips,raw-ips,stacked-dr,dr-cpo,mrdr,tmle}`: Estimation method. Default `auto` picks stacked-dr if `--fresh-draws-dir` is set, otherwise calibrated-ips.
 - `--estimator-config JSON`: Configuration as JSON string
 - `--judge-field FIELD`: Judge score field name (default: judge_score)
 - `--oracle-field FIELD`: Oracle label field name (default: oracle_label)
@@ -136,7 +136,7 @@ python -m cje.interface.hydra_entry \
 python -m cje.interface.hydra_entry dataset=data.jsonl output=results.json
 ```
 
-Configs live under `cje/conf/`. Defaults select `estimator: calibrated-ips`.
+Configs live under `cje/conf/`. Default estimator is `auto` (stacked-dr if `fresh_draws_dir` is provided, else calibrated-ips).
 
 ## Estimator Choice
 
@@ -148,6 +148,16 @@ Configs live under `cje/conf/`. Defaults select `estimator: calibrated-ips`.
 | `dr-cpo` | Low overlap (ESS < 10%) | Fresh draws |
 | `mrdr` | Research/advanced | Fresh draws |
 | `tmle` | Research/advanced | Fresh draws |
+
+## Estimator Registry (Internals)
+
+The CLI and API choices are backed by a central registry in `cje/interface/factory.py`.
+Adding a new estimator only requires:
+- Implementing the estimator class
+- Adding a builder function and a key in the `REGISTRY` dict
+- Optionally adding a Hydra preset in `cje/conf/estimator/`
+
+Advanced users can import `create_estimator` or `get_estimator_names()` from `cje/interface/factory.py` for custom pipelines.
 
 ## Data Format
 
