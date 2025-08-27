@@ -259,8 +259,8 @@ def plot_calibration_comparison(
     ax.set_ylabel("Oracle Label / Calibrated Reward")
     ax.set_title("Judge→Oracle Calibration")
     ax.grid(True, alpha=0.3)
-    ax.set_xlim([0, 1])
-    ax.set_ylim([0, 1])
+    ax.set_xlim((0, 1))
+    ax.set_ylim((0, 1))
     ax.legend(loc="upper left", fontsize=9)
     
     # Compute comprehensive statistics

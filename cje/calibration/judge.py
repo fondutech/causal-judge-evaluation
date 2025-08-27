@@ -5,12 +5,15 @@ using monotonic regression on a labeled subset.
 """
 
 import numpy as np
-from typing import Optional, Tuple, Dict, List, Literal
+from typing import Optional, Tuple, Dict, List, Literal, TYPE_CHECKING
 from sklearn.isotonic import IsotonicRegression
 from sklearn.model_selection import KFold
 from dataclasses import dataclass
 import logging
 import hashlib
+
+if TYPE_CHECKING:
+    from .flexible_calibrator import FlexibleCalibrator
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +75,7 @@ class JudgeCalibrator:
         )
         self.selected_mode: Optional[str] = None  # For storing auto mode selection
         self._final_calibrator: Optional[IsotonicRegression] = None
-        self._flexible_calibrator = None  # Will hold FlexibleCalibrator if needed
+        self._flexible_calibrator: Optional["FlexibleCalibrator"] = None  # Will hold FlexibleCalibrator if needed
         self._fold_models: Dict[int, IsotonicRegression] = {}
         self._fold_ids: Optional[np.ndarray] = None
         self._n_folds: int = 5
@@ -168,7 +171,9 @@ class JudgeCalibrator:
             self._flexible_calibrator = FlexibleCalibrator(
                 mode=self.calibration_mode, random_seed=self.random_seed
             )
-            self._flexible_calibrator.fit(oracle_scores, oracle_y)
+            # Create simple fold split for flexible calibrator
+            oracle_folds = np.arange(len(oracle_y)) % 5
+            self._flexible_calibrator.fit(oracle_scores, oracle_y, oracle_folds)
 
             # Log selected mode if auto was used
             if self.calibration_mode == "auto":

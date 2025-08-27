@@ -61,7 +61,7 @@ class FlexibleCalibrator:
         self.mode = mode
         self.n_splines = n_splines
         self.random_seed = random_seed
-        self.selected_mode = None  # For auto mode
+        self.selected_mode: Optional[Literal["monotone", "two_stage"]] = None  # For auto mode
 
         # Storage for fitted models
         self._monotone_models: Dict[int, Any] = {}
@@ -148,7 +148,7 @@ class FlexibleCalibrator:
 
         return self
 
-    def _fit_monotone(self, S: np.ndarray, Y: np.ndarray, folds: np.ndarray):
+    def _fit_monotone(self, S: np.ndarray, Y: np.ndarray, folds: np.ndarray) -> None:
         """Fit standard monotone isotonic regression."""
         for k in np.unique(folds):
             train_mask = folds != k
@@ -156,7 +156,7 @@ class FlexibleCalibrator:
             iso.fit(S[train_mask], Y[train_mask])
             self._monotone_models[k] = iso
 
-    def _fit_two_stage(self, S: np.ndarray, Y: np.ndarray, folds: np.ndarray):
+    def _fit_two_stage(self, S: np.ndarray, Y: np.ndarray, folds: np.ndarray) -> None:
         """Fit two-stage calibrator: g(S) -> isotonic."""
         unique_folds = np.unique(folds)
 
@@ -209,7 +209,7 @@ class FlexibleCalibrator:
             iso.fit(T_ranked_train, Y[train_mask])
             self._iso_models[k] = iso
 
-    def _fit_full_models(self, S: np.ndarray, Y: np.ndarray):
+    def _fit_full_models(self, S: np.ndarray, Y: np.ndarray) -> None:
         """Fit full models on all data for inference."""
         if self.selected_mode == "monotone" or self.mode == "monotone":
             # Fit full monotone model
@@ -277,13 +277,13 @@ class FlexibleCalibrator:
         if folds is None:
             # Use full model for inference
             if self._full_monotone_model is not None:
-                return self._full_monotone_model.predict(S)
+                return np.asarray(self._full_monotone_model.predict(S))
             else:
                 # Fallback to ensemble average if full model not fitted
                 preds = []
                 for model in self._monotone_models.values():
                     preds.append(model.predict(S))
-                return np.mean(preds, axis=0)
+                return np.asarray(np.mean(preds, axis=0))
         else:
             # OOF prediction
             Y_hat = np.zeros_like(S)
@@ -309,13 +309,13 @@ class FlexibleCalibrator:
         """Predict using two-stage models."""
         if folds is None:
             # Use full model for inference
-            if self._full_g_model is not None and self._full_iso_model is not None:
+            if self._full_g_model is not None and self._full_iso_model is not None and self._full_ecdf is not None:
                 g_pred = self._full_g_model.predict(S.reshape(-1, 1))
                 T_ranked = self._full_ecdf(g_pred)
-                return self._full_iso_model.predict(T_ranked)
+                return np.asarray(self._full_iso_model.predict(T_ranked))
             elif self._full_monotone_model is not None:
                 # Fallback to monotone if two-stage wasn't fitted
-                return self._full_monotone_model.predict(S)
+                return np.asarray(self._full_monotone_model.predict(S))
             else:
                 # Last resort: ensemble average
                 preds = []
@@ -330,7 +330,7 @@ class FlexibleCalibrator:
                             T_ranked = self._ecdf_models[k](S)
                         preds.append(iso_model.predict(T_ranked))
                 if preds:
-                    return np.mean(preds, axis=0)
+                    return np.asarray(np.mean(preds, axis=0))
                 else:
                     # Ultimate fallback: return mean of training labels
                     return np.full_like(S, 0.5)
@@ -355,6 +355,7 @@ class FlexibleCalibrator:
                     if (
                         self._full_g_model is not None
                         and self._full_iso_model is not None
+                        and self._full_ecdf is not None
                     ):
                         g_pred = self._full_g_model.predict(S[mask].reshape(-1, 1))
                         T_ranked = self._full_ecdf(g_pred)
@@ -366,7 +367,7 @@ class FlexibleCalibrator:
                         Y_hat[mask] = np.mean(S[mask])
             return Y_hat
 
-    def _select_best_mode(self, S: np.ndarray, Y: np.ndarray, folds: np.ndarray) -> str:
+    def _select_best_mode(self, S: np.ndarray, Y: np.ndarray, folds: np.ndarray) -> Literal["monotone", "two_stage"]:
         """Select best mode based on OOF RMSE."""
         # Get OOF predictions for each mode
         pred_mono = self._predict_monotone(S, folds)
@@ -459,7 +460,7 @@ class FlexibleCalibrator:
                 if self._full_g_model is not None:
                     g_pred = self._full_g_model.predict(S.reshape(-1, 1))
                     if self._full_ecdf is not None:
-                        return self._full_ecdf(g_pred)
+                        return np.asarray(self._full_ecdf(g_pred))
                     else:
                         # Fallback to rank transform if ECDF not available
                         return self._rank_transform(g_pred)
@@ -501,7 +502,7 @@ class FlexibleCalibrator:
         from scipy.stats import rankdata
 
         ranks = rankdata(x, method="average")
-        return (ranks - 0.5) / len(x)
+        return np.asarray((ranks - 0.5) / len(x))
 
     def get_diagnostics(self) -> Dict[str, Any]:
         """Get diagnostics about the fitted calibrator."""
@@ -513,7 +514,7 @@ class FlexibleCalibrator:
         }
 
     @property
-    def iso_reg(self):
+    def iso_reg(self) -> Optional[Any]:
         """Get the isotonic regression model for compatibility."""
         mode = self.selected_mode or self.mode
         if mode == "monotone":
