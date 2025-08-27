@@ -271,6 +271,27 @@ estimator = CalibratedIPS(sampler, oracle_slice_config=False)  # Disable
 estimator = CalibratedIPS(sampler, oracle_slice_config=True)   # Force enable
 ```
 
+### CF-bits: Information Accounting for Reliability
+```python
+from cje.cfbits import cfbits_report_logging_only
+
+# Get comprehensive reliability analysis
+report = cfbits_report_logging_only(estimator, "target_policy")
+
+# Check if estimate is trustworthy
+if report["gates"]["state"] == "REFUSE":
+    print("Cannot trust this estimate - catastrophic overlap")
+elif report["gates"]["state"] == "CRITICAL":
+    print(f"Use with extreme caution: {report['gates']['reasons']}")
+
+# View uncertainty decomposition
+print(f"A-ESSF: {report['overlap']['aessf']:.1%}")  # Structural ceiling
+print(f"Sampling width: {report['sampling_width']['wvar']:.3f}")
+print(f"Total uncertainty: {report['cfbits']['w_tot']:.3f}")
+```
+
+CF-bits decomposes uncertainty into identification width (structural limits) and sampling width (statistical noise), providing actionable reliability gates.
+
 ## 📚 Documentation
 
 - **[Sphinx Documentation](docs/)**: Complete API reference and theory guides
@@ -282,6 +303,7 @@ estimator = CalibratedIPS(sampler, oracle_slice_config=True)   # Force enable
 - **[Data](cje/data/)**: Data models and validation
 - **[Teacher Forcing](cje/teacher_forcing/)**: Log probability computation
 - **[Estimators](cje/estimators/)**: All estimation methods
+- **[CF-bits](cje/cfbits/)**: Information accounting for uncertainty decomposition
 
 ## 🧪 Testing
 

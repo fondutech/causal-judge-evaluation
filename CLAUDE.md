@@ -133,7 +133,7 @@ else:
     raise ValueError(f"Missing judge_score for {record_id}")
 ```
 
-The only exception: Explicitly documented default behaviors (e.g., draw_idx=0 for backwards compatibility).
+The only exception: Structural metadata that doesn't affect data values (e.g., draw_idx=0 when there's only one draw, file indices, ordering fields).
 
 ## Documentation Standards
 

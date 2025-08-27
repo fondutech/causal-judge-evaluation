@@ -17,18 +17,11 @@ python interaction.py           # Oracle × sample size interaction
 # Analyze and visualize results
 python analyze_results.py
 
-# Generate policy heterogeneity visualizations with both color modes
-# (Add this to your Python script or interactive session)
-from estimator_comparison import EstimatorComparison
-import json
+# Regenerate plots from existing data (without re-running experiments)
+python regenerate_estimator_plots.py
 
-comparison = EstimatorComparison()
-with open('results/estimator_comparison/scenario_5000_10.jsonl') as f:
-    results = [json.loads(line) for line in f]
-
-# Generate both visualization modes
-comparison.create_policy_heterogeneity_figure(results, color_by="se")    # Standard error
-comparison.create_policy_heterogeneity_figure(results, color_by="error") # Absolute error
+# Or regenerate with analyze_results for other ablations
+python analyze_results.py --figures
 ```
 
 ## What Each Ablation Tests
@@ -40,13 +33,18 @@ comparison.create_policy_heterogeneity_figure(results, color_by="error") # Absol
 
 ### 2. Sample Size (`sample_size.py`)  
 **Question**: How does performance scale with dataset size?
-- Tests: n = 100, 250, 500, 1000, 2000 samples
-- Finding: Cal-IPS achieves √n convergence; DR methods help at small n
+- Tests: n = 100, 250, 500, 1000, 2500, 5000 samples
+- Compares: RawIPS, CalibratedIPS, DRCPO, CalibratedDRCPO
+- Shows progression: IPS → Cal-IPS (calibration benefit) and DRCPO → Cal-DRCPO (DR + calibration)
+- Finding: Cal-IPS achieves √n convergence; DR methods help at small n; calibration crucial at all scales
 
 ### 3. Estimator Comparison (`estimator_comparison.py`)
 **Question**: How much does each technique improve estimates?
-- Compares: IPS, SNIPS, Cal-IPS, DR-CPO, Cal-DR-CPO, Stacked-DR
-- Finding: Calibration provides 10-20× SE reduction over SNIPS
+- Compares: 20 estimator variants across IPS and DR families
+  - IPS family: RawIPS, SNIPS, CalibratedIPS
+  - DR family: DRCPO, MRDR, TMLE, StackedDR (each with ±IIC, ±Calibration)
+- Tests: 4×4 grid (4 sample sizes × 4 oracle coverage levels = 16 scenarios)
+- Finding: Calibration provides 10-20× SE reduction; IIC adds 3-95% additional variance reduction
 - Generates policy heterogeneity heatmaps showing SE and absolute error by method × policy
 
 ### 4. Interaction Effects (`interaction.py`)
@@ -68,6 +66,7 @@ ablations/
 ├── interaction.py             # Ablation 4: Interaction effects
 ├── run_all_ablations.py       # Master runner script
 ├── analyze_results.py         # Analysis and visualization
+├── regenerate_estimator_plots.py  # Regenerate plots from existing data
 └── results/                   # Generated results (auto-created)
     ├── oracle_coverage/       
     │   ├── results.jsonl      # Detailed experiment data
@@ -77,7 +76,8 @@ ablations/
     │   └── figure_2_sample_scaling.png
     ├── estimator_comparison/ 
     │   ├── results.jsonl
-    │   └── comparison_figure.png
+    │   ├── estimator_comparison.png         # Main 16-panel comparison
+    │   └── policy_heterogeneity_*.png       # Per-scenario heatmaps (32 total)
     └── interaction/          
         ├── results.jsonl
         └── figure_3_interaction.png
@@ -98,21 +98,27 @@ After running experiments, results are saved in the `results/` directory:
 
 ### Visualization Options
 
-The estimator comparison generates policy heterogeneity heatmaps with two coloring modes:
+The estimator comparison generates comprehensive visualizations:
 
-```python
-# In estimator_comparison.py or when calling create_policy_heterogeneity_figure():
+1. **Main comparison figure** (`estimator_comparison.png`):
+   - 16-panel grid (4×4) showing all scenarios
+   - Each panel compares estimator performance for that scenario
+   - Adaptive color scaling for readability
 
-# Color by standard error (default) - shows estimation uncertainty
-comparison.create_policy_heterogeneity_figure(results, color_by="se")
+2. **Policy heterogeneity heatmaps** (32 total, 2 per scenario):
+   - `policy_heterogeneity_n{size}_oracle{pct}pct_by_se.png` - Colored by standard error
+   - `policy_heterogeneity_n{size}_oracle{pct}pct_by_abs_error.png` - Colored by absolute error
+   - Shows which estimators work best for which policies
+   - Includes oracle ground truth comparison when available
 
-# Color by absolute error - shows accuracy vs oracle ground truth  
-comparison.create_policy_heterogeneity_figure(results, color_by="error")
+**Regenerating plots from existing data:**
+```bash
+# Quick regeneration without re-running experiments
+python regenerate_estimator_plots.py
+
+# This loads results.jsonl and creates all visualizations
+# Takes ~30 seconds vs ~15 minutes for full experiments
 ```
-
-Generated files:
-- `policy_heterogeneity_n{size}_oracle{pct}pct_by_se.png` - Colored by standard error
-- `policy_heterogeneity_n{size}_oracle{pct}pct_by_abs_error.png` - Colored by absolute error
 
 ### Viewing Results
 ```bash
@@ -136,8 +142,12 @@ python analyze_results.py
 | Raw IPS | ~75× baseline | N/A | Unusable due to extreme variance |
 | SNIPS | ~0.40 | 1× | Self-normalized but uncalibrated |
 | Cal-IPS | ~0.02 | 13.9× | SIMCal calibration |
-| Cal-DR-CPO | ~0.01-0.02 | 13.9× | Best overall performance |
+| DR-CPO | ~0.01-0.02 | 13.9× | Doubly robust baseline |
+| DR-CPO+IIC | ~0.01 | 15-20× | IIC reduces variance 3-95% |
+| Cal-DR-CPO | ~0.01-0.02 | 13.9× | With reward calibration |
+| Cal-DR-CPO+IIC | ~0.01 | 15-20× | Best single DR method |
 | Stacked-DR | ~0.02 | 13.9× | Optimal combination of DR methods |
+| Cal-Stacked-DR+IIC | ~0.01 | 15-20× | Best overall performance |
 
 ## Implementation Details
 
@@ -170,6 +180,18 @@ ls ../data/fresh_draws/  # For DR methods
 ```bash
 python run_all_ablations.py
 ```
+
+**Regenerating plots only**: If you have results but need plots:
+```bash
+python regenerate_estimator_plots.py  # For estimator comparison
+python analyze_results.py --figures   # For other ablations
+```
+
+**Plot display issues**: Recent fixes ensure:
+- All 16 scenarios are shown (was limited to 4)
+- Adaptive color scaling based on data percentiles
+- Automatic text color adjustment for readability
+- Directory creation before saving files
 
 ## Paper Figures
 

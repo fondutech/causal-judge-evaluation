@@ -27,6 +27,7 @@ The calibration module implements the core mathematical machinery that enables u
 calibration/
 ├── __init__.py          # Public API exports
 ├── dataset.py           # High-level dataset calibration workflows
+├── flexible_calibrator.py # Flexible calibration for non-monotone relationships
 ├── isotonic.py          # Core isotonic regression and variance control
 ├── judge.py             # Judge score calibration to oracle labels
 ├── oracle_slice.py      # Oracle slice uncertainty augmentation
@@ -37,7 +38,11 @@ calibration/
 ## Core Concepts
 
 ### 1. Judge Score Calibration
-Maps cheap LLM judge scores to expensive oracle labels using isotonic regression on a labeled subset. Preserves monotonicity and population mean.
+Maps cheap LLM judge scores to expensive oracle labels. Default is 'auto' mode which automatically selects between:
+- **Monotone calibration**: Standard isotonic regression (when relationship is monotone)
+- **Flexible calibration**: Two-stage g(S)→isotonic for non-monotone relationships
+
+Auto mode detects non-monotonicity by comparing regional performance and selects the appropriate method. The selected mode is stored in metadata for transparency.
 
 ### 2. Weight Calibration (SIMCal)
 Stabilizes importance weights through score-indexed monotone projection:
@@ -64,12 +69,35 @@ High-level functions that orchestrate the calibration process for entire dataset
 - Preserves metadata and adds calibration diagnostics
 
 ### `judge.py` - Judge Calibration
-Implements isotonic regression from judge scores to oracle labels:
-- `JudgeCalibrator`: Main calibration class
+Implements calibration from judge scores to oracle labels with auto mode selection:
+- `JudgeCalibrator`: Main calibration class with flexible mode support
 - `fit_transform()`: Standard calibration on oracle subset
 - `fit_cv()`: Cross-fitted calibration for DR methods
+- `index()`: Returns transformation for outcome models (S for monotone, g(S) for two-stage)
 - `CalibrationResult`: Container for calibrated scores and diagnostics
+- Auto mode (default): Automatically selects monotone or flexible calibration
 - Supports partial labeling (oracle coverage)
+
+### `flexible_calibrator.py` - Non-Monotone Calibration
+Handles non-monotone judge→oracle relationships via two-stage approach:
+- `FlexibleCalibrator`: Implements g(S)→isotonic calibration
+- First stage: Learn smooth transformation g(S) using splines
+- Second stage: Apply isotonic regression on g(S)
+- `index()`: Exposes the transformation T=g(S) for outcome models
+- Per-fold ECDF for consistent rank transformation
+- Auto selection based on regional performance comparison
+
+**Mode Selection Logic:**
+- Compares monotone vs two-stage using 1-SE rule
+- Checks performance across score regions (low/mid/high)
+- Selects two-stage if better in ≥2/3 regions or significantly better overall
+- Optimized to skip two-stage training when monotone is clearly sufficient
+
+**Technical Details:**
+- ECDF-based ranking prevents distribution leakage between folds
+- Minimum 5 spline knots to avoid underfitting
+- Fallback to monotone for small samples (<20)
+- Clipping to [0,1] ensures valid reward range
 
 ### `isotonic.py` - Isotonic Weight Calibration
 Core mathematical operations for weight calibration:
@@ -178,16 +206,19 @@ min_π π'Σπ s.t. π ≥ 0, Σπ = 1
 ```python
 from cje.calibration import calibrate_dataset
 
-# Calibrate judge scores to oracle labels
+# Calibrate judge scores to oracle labels (auto mode by default)
 calibrated_dataset, cal_result = calibrate_dataset(
     dataset,
     judge_field="judge_score",
-    oracle_field="oracle_label"
+    oracle_field="oracle_label",
+    calibration_mode="auto",  # Or "monotone", "two_stage"
+    random_seed=42  # For reproducibility
 )
 
-# Access calibration quality metrics
-print(f"Calibration R²: {cal_result.calibration_r2:.3f}")
+# Access calibration quality metrics and metadata
 print(f"RMSE: {cal_result.calibration_rmse:.3f}")
+print(f"Coverage: {cal_result.coverage_at_01:.1%}")
+print(f"Selected mode: {calibrated_dataset.metadata.get('calibration_info', {}).get('selected_mode')}")
 ```
 
 ### Weight Calibration (Direct)
@@ -290,8 +321,10 @@ if "slice_augmentation" in result.metadata:
 - `n_folds`: Number of OOF folds if not provided
 
 ### Calibration Modes
-- **Standard**: Single model on all oracle data
-- **Cross-fitted**: K-fold models for DR orthogonality
+- **Auto** (default): Automatically selects between monotone and two-stage based on performance
+- **Monotone**: Standard isotonic regression (forces monotone relationship)
+- **Two-stage**: Flexible g(S)→isotonic for non-monotone relationships
+- **Cross-fitted**: K-fold models for DR orthogonality (enable_cross_fit=True)
 - **Projection mode**: Always uses "exact" (bisection) for consistency
 
 ## Implementation Details

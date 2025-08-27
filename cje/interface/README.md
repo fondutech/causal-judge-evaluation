@@ -215,6 +215,36 @@ results = analyze_dataset(
 - `tail_indices`: Heavy tail detection (> 2 is good)
 - `calibration_r2`: Judge-oracle calibration quality (> 0.5 is good)
 
+### CF-bits Analysis (Advanced)
+
+For deeper reliability analysis, use CF-bits information accounting:
+
+```python
+from cje.cfbits import cfbits_report_fresh_draws, cfbits_report_logging_only
+
+# After fitting your estimator
+if has_fresh_draws:
+    report = cfbits_report_fresh_draws(estimator, policy)
+else:
+    report = cfbits_report_logging_only(estimator, policy)
+
+# Check reliability gates
+if report["gates"]["state"] == "REFUSE":
+    print("Cannot trust this estimate")
+elif report["gates"]["state"] == "CRITICAL":
+    print("Use with extreme caution")
+
+# View decomposition
+print(f"A-ESSF: {report['overlap']['aessf']:.1%}")  # Structural overlap
+print(f"IFR: {report['efficiency']['ifr_oua']:.1%}")  # Statistical efficiency
+```
+
+CF-bits decomposes uncertainty into:
+- **Identification width**: Structural limits from overlap/calibration
+- **Sampling width**: Statistical noise from finite samples
+- **A-ESSF**: Ceiling on S-indexed calibration methods
+- **IFR**: How close to efficiency bound
+
 ## Common Issues
 
 ### "ESS too low"

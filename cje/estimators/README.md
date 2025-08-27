@@ -134,14 +134,25 @@ All estimators follow the same pattern:
 
 ```python
 from cje import CalibratedIPS, PrecomputedSampler
+from cje.calibration import calibrate_dataset
 
-# 1. Create sampler with data
-sampler = PrecomputedSampler(dataset)
+# 1. Calibrate dataset (if using flexible calibration)
+calibrated_dataset, cal_result = calibrate_dataset(
+    dataset, 
+    enable_cross_fit=True,  # For DR methods
+    calibration_mode='auto'  # Auto-selects monotone or two-stage
+)
 
-# 2. Initialize estimator
+# 2. Create sampler with data
+sampler = PrecomputedSampler(calibrated_dataset)
+
+# 3. Initialize estimator
+# DR estimators accept optional calibrator for proper index transformation
+estimator = DRCPOEstimator(sampler, calibrator=cal_result.calibrator)
+# or for IPS:
 estimator = CalibratedIPS(sampler)
 
-# 3. Fit and estimate
+# 4. Fit and estimate
 result = estimator.fit_and_estimate()
 
 # 4. Access results
@@ -162,6 +173,7 @@ All estimators compute and store influence functions for:
 - Policy comparison with covariance
 - Bootstrap and robust inference
 - Detecting influential observations
+- CF-bits efficiency metrics (IFR, aESS)
 
 ### 3. Diagnostic Integration
 Every estimator creates comprehensive diagnostics during estimation:
@@ -177,7 +189,9 @@ DR estimators can leverage CalibratedIPS internally for weight computation while
 The `outcome_models.py` module provides regression models for DR estimation:
 
 ### IsotonicOutcomeModel
-- Monotonic regression with judge scores
+- Monotonic regression with judge scores (or calibrator's index)
+- Accepts optional calibrator for two-stage calibration support
+- When calibrator provided, uses calibrator.index() transformation
 - No parametric assumptions
 - Cross-fitting support
 
@@ -189,7 +203,8 @@ The `outcome_models.py` module provides regression models for DR estimation:
 ### CalibratorBackedOutcomeModel
 - Uses the same calibrator as rewards
 - Ensures consistency between rewards and predictions
-- Default for most DR estimators
+- Handles index transformation internally via predict_oof()
+- Default when calibrator has standard isotonic models
 
 ### WeightedIsotonicOutcomeModel (MRDR)
 - Isotonic regression with importance weighting
@@ -264,6 +279,7 @@ DR estimators support cross-fitting for orthogonality:
 - Each fold gets predictions from model trained on other folds
 - Prevents overfitting in outcome models
 - All estimators use same deterministic fold assignments (hash(prompt_id) % k)
+- Fold configuration (n_folds, fold_seed) stored in dataset metadata for reproducibility
 
 ### Variance Computation
 

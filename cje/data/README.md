@@ -249,7 +249,7 @@ balanced_folds = get_folds_with_oracle_balance(prompt_ids, oracle_mask, n_folds=
 - **Fresh-draw compatible**: Same prompt_id → same fold always
 - **Cross-component consistent**: All estimators use same fold system
 
-**Note**: Folds are computed on-demand, not stored in metadata. The old `cv_fold` field is no longer used.
+**Note**: Folds are computed on-demand using `hash(prompt_id) % n_folds`. The fold configuration (n_folds, fold_seed) is stored in dataset metadata for reproducibility.
 
 ## Advanced Topics
 
