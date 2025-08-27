@@ -29,8 +29,8 @@ def plot_calibration_comparison(
     Returns:
         matplotlib Figure
     """
-    # Create figure with 2 subplots
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+    # Create figure with single subplot
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
 
     # Compute calibration metrics
     def compute_calibration_error(
@@ -63,227 +63,245 @@ def plot_calibration_comparison(
 
         return ece, rmse
 
-    bins = np.linspace(0, 1, n_bins + 1)
-
-    # Panel 1: Calibration Transformation (judge -> calibrated)
+    # Create a 2D histogram for density visualization
+    H, xedges, yedges = np.histogram2d(judge_scores, oracle_labels, bins=20)
+    H = H.T  # Transpose for correct orientation
+    
+    # Apply logarithmic transformation to make low counts more visible
+    # Add 1 to avoid log(0), then apply log scaling
+    H_log = np.log1p(H)  # log(1 + H) to handle zeros gracefully
+    
+    # Apply minimal smoothing to the log-transformed data
+    from scipy.ndimage import gaussian_filter
+    H_log_smooth = gaussian_filter(H_log, sigma=0.5)
+    
+    # Create mesh grid for contours
+    X, Y = np.meshgrid(xedges[:-1] + (xedges[1] - xedges[0])/2, 
+                        yedges[:-1] + (yedges[1] - yedges[0])/2)
+    
+    # Create custom colormap for filled contours
+    import matplotlib.colors as mcolors
+    # White to much darker blue/navy for high contrast
+    colors = ['#FFFFFF', '#F0F8FF', '#E0F2FF', '#D6EDFF', '#CCE7FF', '#99CEFF', '#66B2FF', '#3395FF', '#0078FF', '#0055CC', '#003D99', '#002866', '#001A33']
+    cmap = mcolors.LinearSegmentedColormap.from_list('light_blues', colors, N=256)
+    
+    # Create filled contours using log-scale data
+    # Levels are now in log space
+    max_log_count = H_log_smooth.max()
+    min_log_count = H_log_smooth[H_log_smooth > 0].min() if np.any(H_log_smooth > 0) else 0
+    
+    # Create levels in log space for better visibility of low-density regions
+    filled_levels = np.linspace(min_log_count, max_log_count, 25)
+    
+    # Create filled contours
+    contourf = ax.contourf(X, Y, H_log_smooth, levels=filled_levels, cmap=cmap, alpha=0.65, extend='both')
+    
+    # Add colorbar for density scale with custom labels showing actual counts
+    cbar = plt.colorbar(contourf, ax=ax, pad=0.02)
+    cbar.set_label('Sample Count', fontsize=9)
+    
+    # Create custom tick positions and labels
+    # Choose nice round numbers for actual counts
+    max_count = np.expm1(max_log_count)  # Convert back from log space
+    
+    # Select appropriate tick values based on data range
+    if max_count > 500:
+        tick_counts = [0, 5, 10, 25, 50, 100, 250, 500, 1000]
+    elif max_count > 100:
+        tick_counts = [0, 5, 10, 25, 50, 100, 200]
+    elif max_count > 50:
+        tick_counts = [0, 5, 10, 25, 50, 100]
+    else:
+        tick_counts = [0, 2, 5, 10, 25, 50]
+    
+    # Filter to only include ticks within data range
+    tick_counts = [t for t in tick_counts if t <= max_count]
+    
+    # Convert counts to log space for positioning
+    tick_positions = [np.log1p(count) for count in tick_counts]
+    
+    # Set the ticks and labels
+    cbar.set_ticks(tick_positions)
+    cbar.set_ticklabels([str(int(count)) for count in tick_counts])
+    
+    # Now create the regular 2D histogram for contour lines (not smoothed)
+    H, xedges, yedges = np.histogram2d(judge_scores, oracle_labels, bins=20)
+    H = H.T  # Transpose for correct orientation
+    
+    # Create mesh grid for contours
+    X, Y = np.meshgrid(xedges[:-1] + (xedges[1] - xedges[0])/2, 
+                        yedges[:-1] + (yedges[1] - yedges[0])/2)
+    
+    # Adjust contour levels based on dataset size
+    n_samples = len(judge_scores)
+    if H.max() > 5:
+        # Scale contour levels based on data size
+        if n_samples < 500:
+            levels = [5, 10, 25, 50]
+        elif n_samples < 1000:
+            levels = [10, 25, 50, 100]
+        elif n_samples < 5000:
+            levels = [10, 25, 50, 100, 200, 500]
+        else:
+            levels = [10, 50, 100, 250, 500, 1000]
+        
+        # Only use levels that exist in the data
+        levels = [l for l in levels if l < H.max()]
+        
+        if levels:
+            # Draw contour lines
+            contours = ax.contour(X, Y, H, levels=levels, colors='darkgray', 
+                                 linewidths=0.7, alpha=0.7)
+            # Label the contours with sample counts
+            ax.clabel(contours, inline=True, fontsize=8, fmt='%d')
+    
+    # Compute binned statistics for empirical relationship
+    bin_width = 0.05
+    bin_edges = np.arange(0, 1.0 + bin_width, bin_width)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    
+    binned_means = []
+    binned_counts = []
+    
+    for i in range(len(bin_edges) - 1):
+        if i == len(bin_edges) - 2:
+            # Last bin: include right edge
+            mask = (judge_scores >= bin_edges[i]) & (judge_scores <= bin_edges[i + 1])
+        else:
+            # All other bins: exclude right edge
+            mask = (judge_scores >= bin_edges[i]) & (judge_scores < bin_edges[i + 1])
+        if np.any(mask):
+            binned_means.append(np.mean(oracle_labels[mask]))
+            binned_counts.append(np.sum(mask))
+        else:
+            binned_means.append(np.nan)
+            binned_counts.append(0)
+    
+    # Filter out empty bins
+    valid_bins = ~np.isnan(binned_means)
+    bin_centers_valid = bin_centers[valid_bins]
+    binned_means_valid = np.array(binned_means)[valid_bins]
+    binned_counts_valid = np.array(binned_counts)[valid_bins]
+    
+    # Plot smoothed empirical relationship using local polynomial regression (LOWESS)
+    from scipy.signal import savgol_filter
+    from scipy.interpolate import interp1d
+    
+    if len(bin_centers_valid) > 3:
+        # Create smooth interpolation through binned means
+        # Use cubic spline for smooth curve
+        interp_func = interp1d(
+            bin_centers_valid, 
+            binned_means_valid, 
+            kind='cubic' if len(bin_centers_valid) > 3 else 'linear',
+            bounds_error=False,
+            fill_value='extrapolate'
+        )
+        
+        # Create fine grid for smooth curve
+        # Extend to the actual data range, not just valid bin centers
+        x_min = max(0, judge_scores.min())
+        x_max = min(1, judge_scores.max())
+        x_smooth = np.linspace(x_min, x_max, 200)
+        y_smooth = interp_func(x_smooth)
+        
+        # Clip to valid range
+        y_smooth = np.clip(y_smooth, 0, 1)
+        
+        # Plot smoothed empirical curve
+        ax.plot(
+            x_smooth,
+            y_smooth,
+            "-",
+            color="darkblue",
+            alpha=0.9,
+            linewidth=3,
+            label="Empirical mean E[Oracle|Judge]",
+            zorder=10,  # Make sure it's on top
+        )
+        
+        # Also plot the binned points for reference
+        ax.scatter(
+            bin_centers_valid,
+            binned_means_valid,
+            s=40,
+            alpha=0.7,
+            color="darkblue",
+            edgecolor='white',
+            linewidth=0.5,
+            zorder=11,
+        )
+    
+    # Plot the calibration function if available
     if calibrated_scores is not None:
         # Sort for smooth curve
         sorted_idx = np.argsort(judge_scores)
         judge_sorted = judge_scores[sorted_idx]
         calibrated_sorted = calibrated_scores[sorted_idx]
 
-        # Plot transformation
-        ax1.plot(
+        # Plot calibration function
+        ax.plot(
             judge_sorted,
             calibrated_sorted,
             "-",
-            color="green",
-            alpha=0.7,
-            linewidth=2,
-            label="Calibration function",
+            color="red",
+            alpha=0.9,
+            linewidth=3,
+            label="Isotonic calibration f(Judge)",
+            zorder=10,  # Make sure it's on top
         )
 
-        # Add scatter plot with sampling for visibility
-        n_show = min(500, len(judge_scores))
-        step = max(1, len(judge_scores) // n_show)
-        ax1.scatter(
-            judge_scores[::step],
-            calibrated_scores[::step],
-            alpha=0.3,
-            s=10,
-            color="green",
-        )
+    # Add diagonal reference
+    ax.plot([0, 1], [0, 1], "--", color="gray", alpha=0.5, label="Perfect calibration (y=x)")
 
-        # Add diagonal reference
-        ax1.plot([0, 1], [0, 1], "--", color="gray", alpha=0.5, label="No change (y=x)")
-
-        # Labels and formatting
-        ax1.set_xlabel("Judge Score (raw)")
-        ax1.set_ylabel("Calibrated Reward")
-        ax1.set_title("A. Calibration Transformation")
-        ax1.grid(True, alpha=0.3)
-        ax1.set_xlim([0, 1])
-        ax1.set_ylim([0, 1])
-        ax1.legend(loc="upper left")
-
-        # Add annotation showing compression/expansion regions
-        # Find regions where slope is notably different from 1
-        window = max(1, len(judge_sorted) // 20)
-        for i in range(window, len(judge_sorted) - window, window):
-            local_slope = (
-                calibrated_sorted[i + window] - calibrated_sorted[i - window]
-            ) / (judge_sorted[i + window] - judge_sorted[i - window] + 1e-10)
-            if local_slope < 0.5:
-                ax1.annotate(
-                    "compressed",
-                    xy=(judge_sorted[i], calibrated_sorted[i]),
-                    fontsize=8,
-                    alpha=0.6,
-                    color="red",
-                )
-                break
-        for i in range(window, len(judge_sorted) - window, window):
-            local_slope = (
-                calibrated_sorted[i + window] - calibrated_sorted[i - window]
-            ) / (judge_sorted[i + window] - judge_sorted[i - window] + 1e-10)
-            if local_slope > 1.5:
-                ax1.annotate(
-                    "expanded",
-                    xy=(judge_sorted[i], calibrated_sorted[i]),
-                    fontsize=8,
-                    alpha=0.6,
-                    color="blue",
-                )
-                break
-    else:
-        # If no calibration, just show message
-        ax1.text(
-            0.5,
-            0.5,
-            "No calibration applied",
-            ha="center",
-            va="center",
-            transform=ax1.transAxes,
-            fontsize=12,
-            color="gray",
-        )
-        ax1.set_xlabel("Judge Score (raw)")
-        ax1.set_ylabel("Calibrated Reward")
-        ax1.set_title("A. Calibration Transformation")
-        ax1.grid(True, alpha=0.3)
-        ax1.set_xlim([0, 1])
-        ax1.set_ylim([0, 1])
-
-    # Panel 2: Reliability Diagram (oracle alignment)
-    # Bin the scores for reliability diagram
-    bin_indices = np.digitize(judge_scores, bins) - 1
-    mean_pred_raw = []
-    mean_true_raw = []
-    counts_raw = []
-
-    for i in range(n_bins):
-        mask = bin_indices == i
-        n_in_bin = mask.sum()
-        if n_in_bin > 0:
-            mean_pred_raw.append(judge_scores[mask].mean())
-            mean_true_raw.append(oracle_labels[mask].mean())
-            counts_raw.append(n_in_bin)
-
-    # Size points by number of samples in bin
-    sizes_raw = [min(200, 20 + 180 * c / len(judge_scores)) for c in counts_raw]
-
-    # Plot judge vs oracle
-    judge_label = "Judge (before)" if calibrated_scores is not None else "Judge"
-
-    ax2.scatter(
-        mean_pred_raw,
-        mean_true_raw,
-        label=judge_label,
-        s=sizes_raw,
-        alpha=0.7,
-        color="coral",
-        edgecolors="darkred",
-        linewidth=1,
-    )
-    ax2.plot(mean_pred_raw, mean_true_raw, "-", alpha=0.5, color="coral")
-
-    # Compute raw metrics
-    ece_raw, rmse_raw = compute_calibration_error(judge_scores, oracle_labels)
-
-    # Plot calibrated scores if provided
+    # Labels and formatting
+    ax.set_xlabel("Judge Score")
+    ax.set_ylabel("Oracle Label / Calibrated Reward")
+    ax.set_title("Judge→Oracle Calibration")
+    ax.grid(True, alpha=0.3)
+    ax.set_xlim([0, 1])
+    ax.set_ylim([0, 1])
+    ax.legend(loc="upper left", fontsize=9)
+    
+    # Compute comprehensive statistics
+    total_samples = len(judge_scores)
+    
+    # Compute calibration metrics
+    ece_before, rmse_before = compute_calibration_error(judge_scores, oracle_labels)
+    
+    # Build comprehensive stats text
     if calibrated_scores is not None:
-        bin_indices_cal = np.digitize(calibrated_scores, bins) - 1
-        mean_pred_cal = []
-        mean_true_cal = []
-        counts_cal = []
-
-        for i in range(n_bins):
-            mask = bin_indices_cal == i
-            n_in_bin = mask.sum()
-            if n_in_bin > 0:
-                mean_pred_cal.append(calibrated_scores[mask].mean())
-                mean_true_cal.append(oracle_labels[mask].mean())
-                counts_cal.append(n_in_bin)
-
-        # Size points by number of samples in bin
-        sizes_cal = [
-            min(200, 20 + 180 * c / len(calibrated_scores)) for c in counts_cal
-        ]
-
-        ax2.scatter(
-            mean_pred_cal,
-            mean_true_cal,
-            label="Calibrated (after)",
-            s=sizes_cal,
-            alpha=0.7,
-            color="lightgreen",
-            edgecolors="darkgreen",
-            linewidth=1,
-        )
-        ax2.plot(mean_pred_cal, mean_true_cal, "-", alpha=0.5, color="lightgreen")
-
-        # Compute calibrated metrics
-        ece_cal, rmse_cal = compute_calibration_error(calibrated_scores, oracle_labels)
-
-        # Add improvement metrics to plot
-        improvement_text = (
-            f"Calibration Improvement:\n"
-            f"ECE: {ece_raw:.3f} → {ece_cal:.3f} ({100*(ece_raw-ece_cal)/ece_raw:.0f}% ↓)\n"
-            f"RMSE: {rmse_raw:.3f} → {rmse_cal:.3f} ({100*(rmse_raw-rmse_cal)/rmse_raw:.0f}% ↓)"
+        ece_after, rmse_after = compute_calibration_error(calibrated_scores, oracle_labels)
+        
+        stats_text = (
+            f"Samples: {total_samples:,}\n"
+            f"ECE: {ece_before:.3f} → {ece_after:.3f}\n"
+            f"RMSE: {rmse_before:.3f} → {rmse_after:.3f}\n"
+            f"Judge: [{judge_scores.min():.3f}, {judge_scores.max():.3f}]\n"
+            f"Oracle: [{oracle_labels.min():.3f}, {oracle_labels.max():.3f}]\n"
+            f"Calibrated: [{calibrated_scores.min():.3f}, {calibrated_scores.max():.3f}]"
         )
     else:
-        # Only raw metrics
-        improvement_text = (
-            f"Judge Metrics:\n" f"ECE: {ece_raw:.3f}\n" f"RMSE: {rmse_raw:.3f}"
+        stats_text = (
+            f"Samples: {total_samples:,}\n"
+            f"ECE: {ece_before:.3f}\n"
+            f"RMSE: {rmse_before:.3f}\n"
+            f"Judge: [{judge_scores.min():.3f}, {judge_scores.max():.3f}]\n"
+            f"Oracle: [{oracle_labels.min():.3f}, {oracle_labels.max():.3f}]"
         )
-
-    # Perfect calibration line
-    ax2.plot([0, 1], [0, 1], "--", color="gray", alpha=0.5, label="Perfect calibration")
-
-    # Add shaded region for ±0.1 calibration error
-    x_perfect = np.linspace(0, 1, 100)
-    ax2.fill_between(
-        x_perfect,
-        x_perfect - 0.1,
-        x_perfect + 0.1,
-        alpha=0.1,
-        color="gray",
-        label="±0.1 tolerance",
-    )
-
-    # Add metrics text box
-    ax2.text(
-        0.05,
-        0.95,
-        improvement_text,
-        transform=ax2.transAxes,
-        fontsize=9,
-        verticalalignment="top",
-        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.8),
-    )
-
-    # Labels and formatting for reliability diagram
-    ax2.set_xlabel("Predicted Score")
-    ax2.set_ylabel("Oracle Score")
-    ax2.set_title("B. Oracle Alignment (Reliability)")
-    ax2.legend(loc="lower right", fontsize=9)
-    ax2.grid(True, alpha=0.3)
-    ax2.set_xlim(-0.05, 1.05)
-    ax2.set_ylim(-0.05, 1.05)
-
-    # Add note about point sizes
-    ax2.text(
-        0.95,
-        0.05,
-        "Point size ∝ samples in bin",
-        transform=ax2.transAxes,
+    
+    ax.text(
+        0.98,
+        0.02,
+        stats_text,
+        transform=ax.transAxes,
         fontsize=8,
         horizontalalignment="right",
-        alpha=0.6,
+        verticalalignment="bottom",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.85),
     )
 
-    plt.tight_layout()
-
+    # Save and return figure
     if save_path:
         save_path = Path(save_path)
         fig.savefig(save_path.with_suffix(".png"), dpi=150, bbox_inches="tight")

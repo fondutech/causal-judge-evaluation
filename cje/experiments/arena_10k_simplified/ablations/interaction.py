@@ -39,11 +39,11 @@ class InteractionAblation(BaseAblation):
         """Run 2D grid of oracle coverage × sample size."""
 
         # Define grid
-        oracle_coverages = [0.02, 0.05, 0.10, 0.20]  # 4 levels
-        sample_sizes = [100, 250, 500, 1000, 2500]  # 5 levels
+        oracle_coverages = [0.02, 0.05, 0.10, 0.20, 0.50]  # 5 levels
+        sample_sizes = [100, 250, 500, 1000, 2500, 5000]  # 6 levels
 
         # Fixed parameters
-        estimator = "mrdr"  # Use best method
+        estimator = "stacked-dr"  # Use best method
         n_seeds = 3  # Fewer seeds since we have many configs
 
         logger.info("=" * 70)
@@ -141,10 +141,11 @@ class InteractionAblation(BaseAblation):
         return all_results
 
     def analyze_results(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Analyze interaction effects."""
+        """Analyze interaction effects with MDE-based sweet spots."""
 
-        # Create 2D grid of RMSE values
+        # Create 2D grids for RMSE and SE values
         rmse_grid = {}
+        se_grid = {}
         success_grid = {}
 
         for r in results:
@@ -155,62 +156,96 @@ class InteractionAblation(BaseAblation):
 
                 if key not in rmse_grid:
                     rmse_grid[key] = []
+                    se_grid[key] = []
                     success_grid[key] = 0
 
                 rmse_grid[key].append(r.get("rmse_vs_oracle", np.nan))
+                
+                # Collect standard errors (proper IC-based SEs)
+                if "standard_errors" in r and r["standard_errors"]:
+                    # Average SE across policies for this configuration
+                    avg_se = np.nanmean(list(r["standard_errors"].values()))
+                    se_grid[key].append(avg_se)
+                else:
+                    # Fallback to RMSE if SE not available
+                    se_grid[key].append(r.get("rmse_vs_oracle", np.nan))
+                    
                 success_grid[key] += 1
 
         # Average across seeds
         mean_rmse_grid = {}
+        mean_se_grid = {}
         for key, rmses in rmse_grid.items():
             mean_rmse_grid[key] = np.nanmean(rmses)
+            mean_se_grid[key] = np.nanmean(se_grid[key])
 
         # Extract unique values for axes
         oracle_values = sorted(set(k[0] for k in mean_rmse_grid.keys()))
         sample_values = sorted(set(k[1] for k in mean_rmse_grid.keys()))
 
-        # Create matrix for heatmap
+        # Create matrices for heatmap
         rmse_matrix = np.full((len(oracle_values), len(sample_values)), np.nan)
+        se_matrix = np.full((len(oracle_values), len(sample_values)), np.nan)
         for i, oracle in enumerate(oracle_values):
             for j, n_samples in enumerate(sample_values):
                 if (oracle, n_samples) in mean_rmse_grid:
                     rmse_matrix[i, j] = mean_rmse_grid[(oracle, n_samples)]
+                    se_matrix[i, j] = mean_se_grid[(oracle, n_samples)]
 
-        # Find sweet spots (good trade-offs)
+        # Find sweet spots based on MDE thresholds using proper SEs
+        alpha = 0.05
+        power = 0.80
+        z_alpha = 1.96
+        z_power = 0.84
+        k = z_alpha + z_power  # ≈ 2.80
+        
         sweet_spots = []
-        threshold = np.nanquantile(rmse_matrix, 0.25)  # Top 25% performance
-
+        target_mdes = [0.01, 0.02]  # 1% and 2% effect sizes
+        
         for i, oracle in enumerate(oracle_values):
             for j, n_samples in enumerate(sample_values):
-                if rmse_matrix[i, j] <= threshold:
+                if np.isfinite(se_matrix[i, j]):
                     n_oracle = oracle * n_samples
-                    efficiency = 1.0 / (
-                        n_oracle * rmse_matrix[i, j]
-                    )  # Higher is better
-                    sweet_spots.append(
-                        {
-                            "oracle_coverage": oracle,
-                            "sample_size": n_samples,
-                            "n_oracle": n_oracle,
-                            "rmse": rmse_matrix[i, j],
-                            "efficiency": efficiency,
-                        }
-                    )
+                    
+                    # MDE for two-policy comparison using proper SE
+                    mde_two = k * np.sqrt(2.0) * se_matrix[i, j]
+                    
+                    # Check which MDE targets this config can achieve
+                    achievable_targets = [t for t in target_mdes if mde_two <= t]
+                    
+                    if achievable_targets:
+                        # Compute cost-efficiency (lower is better)
+                        # Assuming unit cost per oracle label for simplicity
+                        cost_per_percent_mde = n_oracle / min(achievable_targets)
+                        
+                        sweet_spots.append(
+                            {
+                                "oracle_coverage": oracle,
+                                "sample_size": n_samples,
+                                "n_oracle": n_oracle,
+                                "rmse": rmse_matrix[i, j],
+                                "mde_two": mde_two,
+                                "achievable_mde": min(achievable_targets),
+                                "cost_efficiency": cost_per_percent_mde,
+                            }
+                        )
 
-        # Sort by efficiency
-        sweet_spots.sort(key=lambda x: x["efficiency"], reverse=True)
+        # Sort by cost efficiency (lower is better)
+        sweet_spots.sort(key=lambda x: x["cost_efficiency"])
 
         return {
             "oracle_values": oracle_values,
             "sample_values": sample_values,
             "rmse_matrix": rmse_matrix,
+            "se_matrix": se_matrix,  # Proper IC-based standard errors
             "mean_rmse_grid": mean_rmse_grid,
+            "mean_se_grid": mean_se_grid,
             "success_grid": success_grid,
-            "sweet_spots": sweet_spots[:5],  # Top 5 trade-offs
+            "sweet_spots": sweet_spots[:5],  # Top 5 most cost-efficient
         }
 
     def create_figure(self, results: List[Dict[str, Any]], output_path: Path = None):
-        """Create Figure 3: Interaction heatmap."""
+        """Create Figure 3: Interaction heatmap with MDE contours."""
 
         analysis = self.analyze_results(results)
 
@@ -222,19 +257,21 @@ class InteractionAblation(BaseAblation):
         plt.style.use("seaborn-v0_8-darkgrid")
         fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
-        # Convert to percentages for display
-        oracle_labels = [f"{x:.0%}" for x in analysis["oracle_values"]]
-        sample_labels = [str(x) for x in analysis["sample_values"]]
-
-        # Panel A: RMSE heatmap
+        # Panel A: RMSE heatmap with improved formatting
         ax = axes[0]
+        rmse = analysis["rmse_matrix"]
+        mask = ~np.isfinite(rmse)
+        
         sns.heatmap(
-            analysis["rmse_matrix"],
+            rmse,
+            mask=mask,
             annot=True,
             fmt=".3f",
-            cmap="RdYlGn_r",  # Red=bad, Green=good
-            xticklabels=sample_labels,
-            yticklabels=oracle_labels,
+            cmap="viridis_r",  # Sequential colormap, colorblind-friendly
+            vmin=0.0,
+            vmax=np.nanquantile(rmse, 0.95),  # Consistent scale across runs
+            xticklabels=[str(x) for x in analysis["sample_values"]],
+            yticklabels=[f"{int(100*y)}%" for y in analysis["oracle_values"]],
             cbar_kws={"label": "RMSE"},
             ax=ax,
         )
@@ -242,51 +279,70 @@ class InteractionAblation(BaseAblation):
         ax.set_ylabel("Oracle Coverage", fontsize=12)
         ax.set_title("A. RMSE vs Oracle Truth", fontsize=14, fontweight="bold")
 
-        # Panel B: Efficiency contours (1 / (n_oracle * RMSE))
+        # Panel B: MDE contours (ability to detect 1-2% differences)
         ax = axes[1]
 
-        # Compute efficiency matrix
-        efficiency_matrix = np.zeros_like(analysis["rmse_matrix"])
-        for i, oracle in enumerate(analysis["oracle_values"]):
-            for j, n_samples in enumerate(analysis["sample_values"]):
-                n_oracle = oracle * n_samples
-                if np.isfinite(analysis["rmse_matrix"][i, j]):
-                    efficiency_matrix[i, j] = 1000.0 / (
-                        n_oracle * analysis["rmse_matrix"][i, j]
-                    )
-                else:
-                    efficiency_matrix[i, j] = np.nan
+        # Use proper IC-based standard errors from estimators
+        se_grid = np.array(analysis["se_matrix"], dtype=float)
 
-        # Create contour plot
-        X, Y = np.meshgrid(range(len(sample_labels)), range(len(oracle_labels)))
-        contour = ax.contour(
-            X, Y, efficiency_matrix, levels=5, colors="black", alpha=0.4
+        # Power calculation settings
+        alpha = 0.05  # 5% significance level
+        power = 0.80  # 80% power
+        z_alpha = 1.96  # stats.norm.ppf(1 - alpha/2)
+        z_power = 0.84  # stats.norm.ppf(power)
+        k = z_alpha + z_power  # ≈ 2.80
+
+        # MDE for single policy and two-policy comparison
+        mde_one = k * se_grid
+        mde_two = k * np.sqrt(2.0) * se_grid  # Conservative: assumes SE_Δ ≈ √2 * SE
+
+        # Build coordinates in actual units (not indices)
+        X, Y = np.meshgrid(analysis["sample_values"], analysis["oracle_values"])
+
+        # Mask invalid cells
+        mask = ~np.isfinite(mde_two)
+        mde_plot = np.ma.array(mde_two, mask=mask)
+
+        # Filled contours of MDE for two-policy comparison
+        cf = ax.contourf(
+            X, Y, mde_plot,
+            levels=[0.005, 0.01, 0.015, 0.02, 0.03, 0.05, 0.1],
+            cmap="viridis",
+            antialiased=True,
         )
-        ax.clabel(contour, inline=True, fontsize=10)
+        cbar = plt.colorbar(cf, ax=ax, label="MDE (two-policy, 80% power, 95% CI)")
 
-        im = ax.contourf(X, Y, efficiency_matrix, levels=10, cmap="viridis")
-        plt.colorbar(im, ax=ax, label="Efficiency Score")
+        # Key iso-lines at 1% and 2% effect sizes
+        cs = ax.contour(
+            X, Y, mde_plot,
+            levels=[0.01, 0.02],
+            colors=["white", "black"],
+            linestyles=["--", "-"],
+            linewidths=[2.0, 2.0],
+        )
+        ax.clabel(cs, fmt={0.01: "1%", 0.02: "2%"}, fontsize=10)
 
-        # Mark sweet spots
-        for spot in analysis["sweet_spots"][:3]:  # Top 3
-            i = analysis["oracle_values"].index(spot["oracle_coverage"])
-            j = analysis["sample_values"].index(spot["sample_size"])
-            ax.plot(j, i, "r*", markersize=15)
+        # Optional: overlay iso-lines of n_oracle (labeling effort)
+        n_oracle = X * Y  # X = sample size, Y = oracle coverage fraction
+        cost_lines = ax.contour(
+            X, Y, np.ma.array(n_oracle, mask=mask),
+            levels=[50, 100, 250, 500, 1000, 2000],
+            colors="gray",
+            linewidths=0.8,
+            alpha=0.5,
+        )
+        ax.clabel(cost_lines, fmt=lambda v: f"{int(v)} labels", fontsize=8)
 
-        ax.set_xticks(range(len(sample_labels)))
-        ax.set_xticklabels(sample_labels)
-        ax.set_yticks(range(len(oracle_labels)))
-        ax.set_yticklabels(oracle_labels)
         ax.set_xlabel("Sample Size", fontsize=12)
         ax.set_ylabel("Oracle Coverage", fontsize=12)
-        ax.set_title(
-            "B. Efficiency (Lower Cost × Error)", fontsize=14, fontweight="bold"
-        )
+        ax.set_title("B. MDE (Can we detect 1-2% effects?)", fontsize=14, fontweight="bold")
+        ax.set_ylim(min(analysis["oracle_values"]), max(analysis["oracle_values"]))
+        ax.invert_yaxis()  # Match heatmap orientation (higher coverage at top)
 
         plt.suptitle(
-            "Oracle × Sample Size Interaction", fontsize=16, fontweight="bold", y=1.02
+            "Oracle × Sample Size Interaction", fontsize=16, fontweight="bold"
         )
-        plt.tight_layout()
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Leave space for suptitle
 
         if output_path:
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -314,8 +370,8 @@ def main():
     logger.info("=" * 70)
 
     if analysis["sweet_spots"]:
-        logger.info("\nTop efficiency configurations:")
-        logger.info("(Balancing oracle cost and RMSE)")
+        logger.info("\nMost cost-efficient configurations:")
+        logger.info("(For detecting 1-2% improvements with 80% power)")
 
         for i, spot in enumerate(analysis["sweet_spots"], 1):
             logger.info(
@@ -323,7 +379,9 @@ def main():
             )
             logger.info(f"   N oracle labels: {spot['n_oracle']:.0f}")
             logger.info(f"   RMSE: {spot['rmse']:.4f}")
-            logger.info(f"   Efficiency score: {spot['efficiency']:.2f}")
+            logger.info(f"   MDE (two-policy): {spot['mde_two']:.1%}")
+            logger.info(f"   Can detect: ≥{spot['achievable_mde']:.0%} effects")
+            logger.info(f"   Cost per % MDE: {spot['cost_efficiency']:.0f} labels")
 
     # Show overall patterns
     if len(analysis["rmse_matrix"]) > 0:
@@ -354,7 +412,7 @@ def main():
                 )
 
     # Create figure
-    figure_path = Path("results/interaction/figure_3_interaction.png")
+    figure_path = Path("results/interaction/interaction_mde_analysis.png")
     ablation.create_figure(results, figure_path)
 
     logger.info("\n" + "=" * 70)

@@ -42,11 +42,19 @@ class SampleSizeAblation(BaseAblation):
         # Define sample sizes to test
         sample_sizes = [100, 250, 500, 1000, 2500, 5000]
 
-        # We'll test two estimators to show efficiency difference
-        estimators = ["calibrated-ips", "mrdr"]
+        # Test key estimators in order of increasing sophistication
+        # Shows progression: Basic IPS → Calibrated IPS → DR → Calibrated DR → Stacked → Calibrated Stacked
+        estimators = [
+            "raw-ips",  # 1. Baseline
+            "calibrated-ips",  # 2. + Weight calibration
+            "dr-cpo",  # 3. + Doubly robust (no weight cal)
+            "calibrated-dr-cpo",  # 4. + Weight calibration on DR
+            "stacked-dr",  # 5. + Ensemble (no weight cal)
+            "cal-stacked-dr",  # 6. + Weight calibration on ensemble
+        ]
 
         # Fixed parameters
-        oracle_coverage = 0.10  # 10% oracle (reasonable default)
+        oracle_coverage = 1.00  # 100% oracle coverage
         n_seeds = 5  # Multiple seeds for stability
 
         logger.info("=" * 70)
@@ -247,40 +255,45 @@ class SampleSizeAblation(BaseAblation):
 
         # Set style
         plt.style.use("seaborn-v0_8-darkgrid")
-        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
-        colors = {"calibrated-ips": "blue", "mrdr": "orange"}
+        colors = {
+            "raw-ips": "red",  # Red for uncalibrated baseline
+            "calibrated-ips": "blue",  # Blue for calibrated IPS
+            "dr-cpo": "orange",  # Orange for uncalibrated DR
+            "calibrated-dr-cpo": "green",  # Green for calibrated DR
+            "stacked-dr": "purple",  # Purple for stacked DR
+            "cal-stacked-dr": "darkviolet",  # Dark violet for calibrated stacked
+        }
 
-        # Panel A: RMSE vs n
-        ax = axes[0, 0]
+        # Panel A: RMSE vs n (Estimation Error)
+        ax = axes[0]
         for estimator, data in analysis.items():
             if data["sample_sizes"]:
                 ax.loglog(
                     data["sample_sizes"],
                     data["mean_rmse"],
                     "o-",
-                    label=estimator.upper(),
+                    label=estimator.upper().replace("-", " "),
                     color=colors.get(estimator, "gray"),
                     linewidth=2,
                     markersize=8,
                 )
         ax.set_xlabel("Sample Size (n)", fontsize=12)
         ax.set_ylabel("RMSE vs Oracle", fontsize=12)
-        ax.set_title(
-            "A. Estimation Error vs Sample Size", fontsize=14, fontweight="bold"
-        )
+        ax.set_title("Estimation Error vs Sample Size", fontsize=14, fontweight="bold")
         ax.legend()
         ax.grid(True, alpha=0.3)
 
-        # Panel B: SE vs n (with √n reference)
-        ax = axes[0, 1]
+        # Panel B: SE vs n (Standard Error Scaling)
+        ax = axes[1]
         for estimator, data in analysis.items():
             if data["sample_sizes"]:
                 ax.loglog(
                     data["sample_sizes"],
                     data["mean_se"],
                     "o-",
-                    label=estimator.upper(),
+                    label=estimator.upper().replace("-", " "),
                     color=colors.get(estimator, "gray"),
                     linewidth=2,
                     markersize=8,
@@ -293,7 +306,7 @@ class SampleSizeAblation(BaseAblation):
 
         ax.set_xlabel("Sample Size (n)", fontsize=12)
         ax.set_ylabel("Standard Error", fontsize=12)
-        ax.set_title("B. Standard Error Scaling", fontsize=14, fontweight="bold")
+        ax.set_title("Standard Error Scaling", fontsize=14, fontweight="bold")
         ax.legend()
         ax.grid(True, alpha=0.3)
 
@@ -308,55 +321,7 @@ class SampleSizeAblation(BaseAblation):
                     fontsize=10,
                 )
 
-        # Panel C: ESS vs n
-        ax = axes[1, 0]
-        for estimator, data in analysis.items():
-            if data["sample_sizes"]:
-                ax.plot(
-                    data["sample_sizes"],
-                    data["mean_ess"],
-                    "o-",
-                    label=estimator.upper(),
-                    color=colors.get(estimator, "gray"),
-                    linewidth=2,
-                    markersize=8,
-                )
-
-        # Add ideal line (ESS = n)
-        n_ideal = np.array([100, 5000])
-        ax.plot(n_ideal, n_ideal, "k--", alpha=0.5, label="Ideal (ESS=n)")
-
-        ax.set_xlabel("Sample Size (n)", fontsize=12)
-        ax.set_ylabel("Effective Sample Size", fontsize=12)
-        ax.set_title("C. Effective Sample Size", fontsize=14, fontweight="bold")
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-
-        # Panel D: ESS percentage
-        ax = axes[1, 1]
-        for estimator, data in analysis.items():
-            if data["sample_sizes"]:
-                ax.semilogx(
-                    data["sample_sizes"],
-                    data["ess_percent"],
-                    "o-",
-                    label=estimator.upper(),
-                    color=colors.get(estimator, "gray"),
-                    linewidth=2,
-                    markersize=8,
-                )
-
-        ax.axhline(100, color="k", linestyle="--", alpha=0.5, label="Ideal (100%)")
-        ax.axhline(
-            10, color="r", linestyle="--", alpha=0.5, label="Gate threshold (10%)"
-        )
-
-        ax.set_xlabel("Sample Size (n)", fontsize=12)
-        ax.set_ylabel("ESS / n (%)", fontsize=12)
-        ax.set_title("D. Relative Efficiency", fontsize=14, fontweight="bold")
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-        ax.set_ylim([0, 110])
+        # Removed ESS panels C and D - focusing on error and SE scaling only
 
         plt.suptitle(
             "Sample Size Requirements for CJE", fontsize=16, fontweight="bold", y=1.02

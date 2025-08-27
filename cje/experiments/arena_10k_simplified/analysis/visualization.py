@@ -162,9 +162,12 @@ def _generate_calibration_comparison(
         plot_dir: Directory to save plots
     """
     # Use the ORIGINAL dataset (before masking) to get all judge/oracle pairs
+    # All samples in the logged dataset are from the base policy by definition
+    # (fresh draws would be in separate FreshDrawDataset objects)
     judge_scores = []
     oracle_labels = []
     for s in dataset.samples:
+        # All logged samples are base policy samples
         if args.judge_field in s.metadata and args.oracle_field in s.metadata:
             j_score = s.metadata.get(args.judge_field)
             o_label = s.metadata.get(args.oracle_field)

@@ -88,9 +88,10 @@ def cfbits_report_fresh_draws(
     # 3. Structural floors on logging data
     logger.info("Computing structural overlap floors")
     try:
-        # Get logging pool judge scores and raw weights
+        # Get logging pool judge scores and RAW importance weights
+        # Important: Use raw weights, not calibrated, to measure structural overlap
         S_log = estimator.sampler.get_judge_scores()
-        W_log = estimator.get_weights(policy)
+        W_log = estimator.sampler.compute_importance_weights(policy, mode="hajek")
 
         if S_log is not None and W_log is not None:
             floors = estimate_overlap_floors(
@@ -263,8 +264,9 @@ def cfbits_report_logging_only(
     # 3. Structural floors (critical for IPS)
     logger.info("Computing structural overlap floors")
     try:
+        # Use RAW weights for structural overlap, not calibrated weights
         S_log = estimator.sampler.get_judge_scores()
-        W_log = estimator.get_weights(policy)
+        W_log = estimator.sampler.compute_importance_weights(policy, mode="hajek")
 
         if S_log is not None and W_log is not None:
             floors = estimate_overlap_floors(

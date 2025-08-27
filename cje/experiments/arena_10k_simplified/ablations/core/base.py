@@ -26,7 +26,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 from cje import load_dataset_from_jsonl
 from cje.calibration import calibrate_dataset
 from cje.data.precomputed_sampler import PrecomputedSampler
-from cje.estimators import CalibratedIPS
+from cje.estimators import CalibratedIPS, StackedDREstimator
 from cje.estimators.dr_base import DRCPOEstimator
 from cje.estimators.mrdr import MRDREstimator
 from cje.estimators.tmle import TMLEEstimator
@@ -135,6 +135,16 @@ class BaseAblation:
                 oracle_slice_config=(
                     spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
                 ),
+                use_calibrated_weights=False,  # No weight calibration
+            ),
+            "calibrated-dr-cpo": lambda s: DRCPOEstimator(
+                s,
+                calibrator=cal_result.calibrator if cal_result else None,
+                n_folds=5,
+                oracle_slice_config=(
+                    spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
+                ),
+                use_calibrated_weights=True,  # Use SIMCal calibrated weights
             ),
             "mrdr": lambda s: MRDREstimator(
                 s,
@@ -143,6 +153,7 @@ class BaseAblation:
                 oracle_slice_config=(
                     spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
                 ),
+                use_calibrated_weights=True,  # Default: use calibrated weights
             ),
             "tmle": lambda s: TMLEEstimator(
                 s,
@@ -151,6 +162,25 @@ class BaseAblation:
                 oracle_slice_config=(
                     spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
                 ),
+                use_calibrated_weights=True,  # Default: use calibrated weights
+            ),
+            "stacked-dr": lambda s: StackedDREstimator(
+                s,
+                calibrator=cal_result.calibrator if cal_result else None,
+                n_folds=5,
+                oracle_slice_config=(
+                    spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
+                ),
+                use_calibrated_weights=False,  # No weight calibration
+            ),
+            "cal-stacked-dr": lambda s: StackedDREstimator(
+                s,
+                calibrator=cal_result.calibrator if cal_result else None,
+                n_folds=5,
+                oracle_slice_config=(
+                    spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
+                ),
+                use_calibrated_weights=True,  # Use SIMCal calibrated weights
             ),
         }
 
@@ -287,14 +317,79 @@ class BaseAblation:
             estimator = self.create_estimator(spec, sampler, cal_result)
 
             # Add fresh draws for DR methods
-            if spec.estimator in ["dr-cpo", "mrdr", "tmle"]:
+            if spec.estimator in [
+                "dr-cpo",
+                "calibrated-dr-cpo",
+                "mrdr",
+                "tmle",
+                "stacked-dr",
+                "cal-stacked-dr",
+            ]:
                 data_dir = Path(spec.dataset_path).parent
+
+                # Get prompt IDs from the subsampled dataset
+                dataset_prompt_ids = set()
+                for sample in calibrated_dataset.samples:
+                    if hasattr(sample, "prompt_id") and sample.prompt_id:
+                        dataset_prompt_ids.add(sample.prompt_id)
+
                 for policy in sampler.target_policies:
                     try:
-                        fresh_draws = load_fresh_draws_auto(
+                        # Load ALL fresh draws
+                        all_fresh_draws = load_fresh_draws_auto(
                             data_dir, policy, verbose=False
                         )
-                        estimator.add_fresh_draws(policy, fresh_draws)
+
+                        # Filter to only include fresh draws matching our subsampled prompts
+                        if dataset_prompt_ids:
+                            filtered_samples = []
+                            for fd_sample in all_fresh_draws.samples:
+                                if (
+                                    hasattr(fd_sample, "prompt_id")
+                                    and fd_sample.prompt_id in dataset_prompt_ids
+                                ):
+                                    filtered_samples.append(fd_sample)
+
+                            # Create filtered fresh draws dataset with required fields
+                            from cje.data.fresh_draws import FreshDrawDataset
+
+                            # Count draws per prompt
+                            draws_per_prompt_dict = {}
+                            for sample in filtered_samples:
+                                prompt_id = (
+                                    sample.prompt_id
+                                    if hasattr(sample, "prompt_id")
+                                    else None
+                                )
+                                if prompt_id:
+                                    draws_per_prompt_dict[prompt_id] = (
+                                        draws_per_prompt_dict.get(prompt_id, 0) + 1
+                                    )
+
+                            # Get the most common draws per prompt value
+                            draws_per_prompt = (
+                                max(
+                                    set(draws_per_prompt_dict.values()),
+                                    key=list(draws_per_prompt_dict.values()).count,
+                                )
+                                if draws_per_prompt_dict
+                                else 10
+                            )
+
+                            filtered_fresh_draws = FreshDrawDataset(
+                                samples=filtered_samples,
+                                target_policy=policy,  # Use the policy we're processing
+                                draws_per_prompt=draws_per_prompt,
+                            )
+
+                            estimator.add_fresh_draws(policy, filtered_fresh_draws)
+                            logger.info(
+                                f"Added {len(filtered_samples)}/{len(all_fresh_draws.samples)} fresh draws for {policy}"
+                            )
+                        else:
+                            # If no prompt IDs, use all fresh draws (fallback)
+                            estimator.add_fresh_draws(policy, all_fresh_draws)
+
                     except FileNotFoundError:
                         logger.warning(f"No fresh draws for {policy}")
 
