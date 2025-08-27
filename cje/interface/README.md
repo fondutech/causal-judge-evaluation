@@ -119,6 +119,25 @@ python -m cje validate <dataset> [options]
 python -m cje validate data.jsonl --verbose
 ```
 
+## Hydra Support (Optional)
+
+For more flexible, composable configs, you can run via Hydra. Hydra is configured to not change the working directory.
+
+```bash
+# Basic
+python -m cje.interface.hydra_entry dataset=data.jsonl
+
+# Choose estimator and pass options
+python -m cje.interface.hydra_entry \
+  dataset=data.jsonl estimator=dr-cpo fresh_draws_dir=responses/ \
+  estimator_config.n_folds=10
+
+# Save results
+python -m cje.interface.hydra_entry dataset=data.jsonl output=results.json
+```
+
+Configs live under `cje/conf/`. Defaults select `estimator: calibrated-ips`.
+
 ## Estimator Choice
 
 | Estimator | When to Use | Requirements |

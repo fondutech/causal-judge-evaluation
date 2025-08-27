@@ -329,8 +329,16 @@ class CalibratedIPS(BaseCJEEstimator):
             # Compute influence functions
             influence = total_contrib - estimate
 
+            # Get fold assignments if using IIC
+            fold_ids = None
+            if self.use_iic:
+                # Compute fold assignments for cross-fitting
+                from ..data.folds import get_fold
+                prompt_ids = [d.get("prompt_id", f"sample_{i}") for i, d in enumerate(data)]
+                fold_ids = np.array([get_fold(pid, 5) for pid in prompt_ids])
+
             # Apply IIC for variance reduction (if enabled)
-            influence = self._apply_iic(influence, policy)
+            influence = self._apply_iic(influence, policy, fold_ids=fold_ids)
 
             # Compute standard error from the (possibly residualized) influence functions
             se = float(np.std(influence, ddof=1) / np.sqrt(n))

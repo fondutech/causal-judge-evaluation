@@ -66,12 +66,8 @@ def create_parser() -> argparse.ArgumentParser:
         help="Directory containing fresh draw response files (for DR estimators)",
     )
 
-    analyze_parser.add_argument(
-        "--oracle-coverage",
-        type=float,
-        default=1.0,
-        help="Fraction of samples with oracle labels to use for calibration (default: 1.0)",
-    )
+    # Note: We intentionally do not expose oracle_coverage here.
+    # Production uses all available oracle labels for calibration.
 
     analyze_parser.add_argument(
         "--estimator-config",
@@ -143,7 +139,6 @@ def run_analysis(args: argparse.Namespace) -> int:
             "estimator": args.estimator,
             "judge_field": args.judge_field,
             "oracle_field": args.oracle_field,
-            "oracle_coverage": args.oracle_coverage,
         }
 
         if args.estimator_config:

@@ -152,13 +152,21 @@ def _prepare_rewards(
 ) -> tuple[Dataset, Optional[Any]]:
     """Prepare rewards through calibration or use existing."""
 
-    # Check if rewards already exist
+    # Check if rewards already exist (and whether complete)
+    n_total = len(dataset.samples)
     rewards_exist = sum(1 for s in dataset.samples if s.reward is not None)
 
-    if rewards_exist > 0:
+    if rewards_exist == n_total and n_total > 0:
         if verbose:
-            logger.info(f"Using pre-computed rewards ({rewards_exist} samples)")
+            logger.info("Using pre-computed rewards for all samples")
         return dataset, None
+    elif 0 < rewards_exist < n_total:
+        # Partial rewards are risky for downstream samplers; recalibrate for consistency
+        logger.warning(
+            "Detected partial rewards ("
+            f"{rewards_exist}/{n_total}). Recalibrating judge scores to produce "
+            "consistent rewards for all samples."
+        )
 
     # Always calibrate using all available oracle labels
     if verbose:

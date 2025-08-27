@@ -594,8 +594,15 @@ class DREstimator(BaseCJEEstimator):
             # Include augmentation in the influence function
             if_contributions = g_fresh + ips_correction_base + aug_vector - dr_estimate
 
+            # Get fold assignments if using IIC
+            fold_ids = None
+            if self.use_iic:
+                # Compute fold assignments for cross-fitting
+                from ..data.folds import get_fold
+                fold_ids = np.array([get_fold(pid, self.n_folds) for pid in logged_prompt_ids])
+
             # Apply IIC for variance reduction (if enabled)
-            if_contributions = self._apply_iic(if_contributions, policy)
+            if_contributions = self._apply_iic(if_contributions, policy, fold_ids=fold_ids)
 
             # Base SE from influence functions (across-prompt variance)
             base_se = np.std(if_contributions, ddof=1) / np.sqrt(len(if_contributions))
