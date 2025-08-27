@@ -5,7 +5,7 @@ to achieve better bias-variance tradeoffs and double robustness properties.
 """
 
 import numpy as np
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any, Union, cast
 import logging
 import dataclasses
 from pathlib import Path
@@ -571,7 +571,7 @@ class DREstimator(BaseCJEEstimator):
             aug_vector, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
                 policy,
                 logged_rewards,  # Always use calibrated rewards
-                data,
+                cast(List[Dict[str, Any]], data),  # PolicyDataDict is structurally compatible
                 self.sampler.dataset.samples,
             )
             self._aug_diagnostics[policy] = aug_diagnostics
@@ -603,7 +603,7 @@ class DREstimator(BaseCJEEstimator):
             if hasattr(self, "_fresh_draw_stats") and policy in self._fresh_draw_stats:
                 stats = self._fresh_draw_stats[policy]
                 fresh_var = stats["variances"]
-                M = stats["draws_per_prompt"]  # Now per-prompt M_i array
+                M = np.asarray(stats["draws_per_prompt"])  # Ensure numpy array
 
                 # MC variance: (1/n^2) * sum_i (1-w_i)^2 * (s2_i / M_i)
                 # Handle variable M_i per prompt
@@ -761,6 +761,8 @@ class DREstimator(BaseCJEEstimator):
             influence_functions=self._influence_functions,
             diagnostics=dr_diagnostics,
             metadata=metadata,
+            robust_standard_errors=None,
+            robust_confidence_intervals=None,
         )
 
     def _build_dr_diagnostics(
@@ -1018,7 +1020,7 @@ class DREstimator(BaseCJEEstimator):
 
                 # Get fresh draw judge scores and recalibrate
                 # Need to collect all fresh draw scores across all prompts
-                fresh_scores_list = []
+                fresh_scores_list: List[float] = []
                 for prompt_id in set(d["prompt_id"] for d in data):
                     prompt_fresh_scores = fresh_draw_data.get_scores_for_prompt_id(
                         prompt_id

@@ -7,7 +7,7 @@ variance, then blends toward uniform to meet variance/ESS constraints.
 """
 
 import numpy as np
-from typing import Dict, Optional, Set, Any
+from typing import Dict, Optional, Set, Any, List, cast
 import logging
 
 from .base_estimator import BaseCJEEstimator
@@ -258,7 +258,7 @@ class CalibratedIPS(BaseCJEEstimator):
             raw_weights = self.get_raw_weights(policy)
             raw_near_zero = 0.0
             if raw_weights is not None:
-                raw_near_zero = np.sum(raw_weights < 1e-10) / len(raw_weights)
+                raw_near_zero = float(np.sum(raw_weights < 1e-10) / len(raw_weights))
 
             # Coefficient of variation as additional check
             cv_weights = (
@@ -314,7 +314,7 @@ class CalibratedIPS(BaseCJEEstimator):
 
             # Add oracle slice augmentation for honest CIs
             aug, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
-                policy, rewards, data, self.sampler.dataset.samples
+                policy, rewards, cast(List[Dict[str, Any]], data), self.sampler.dataset.samples
             )
             self._aug_diagnostics[policy] = aug_diagnostics
 
@@ -362,6 +362,9 @@ class CalibratedIPS(BaseCJEEstimator):
             n_samples_used=n_samples_used,
             method="calibrated_ips" if self.calibrate else "raw_ips",
             influence_functions=influence_functions,
+            diagnostics=None,  # Will be set below
+            robust_standard_errors=None,
+            robust_confidence_intervals=None,
             metadata={
                 "target_policies": list(self.sampler.target_policies),
                 "iic_diagnostics": self._iic_diagnostics if self.use_iic else None,
