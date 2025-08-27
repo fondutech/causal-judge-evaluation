@@ -260,7 +260,9 @@ class IsotonicInfluenceControl:
 
             direction_counts = Counter(directions_used)
             self._last_direction = direction_counts.most_common(1)[0][0]
-            self._last_correlation = np.mean(correlations) if correlations else 0.0
+            self._last_correlation = (
+                float(np.mean(correlations)) if correlations else 0.0
+            )
             self._fold_directions = directions_used  # Store for detailed diagnostics
 
         return fitted

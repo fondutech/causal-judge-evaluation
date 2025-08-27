@@ -306,8 +306,8 @@ def bootstrap_overlap_metrics(
     )
 
     return {
-        "aessf": aessf_ci,
-        "bc": bc_ci,
+        "aessf": (float(aessf_ci[0]), float(aessf_ci[1])),
+        "bc": (float(bc_ci[0]), float(bc_ci[1])),
     }
 
 

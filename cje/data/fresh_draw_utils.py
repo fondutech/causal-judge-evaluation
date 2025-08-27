@@ -29,11 +29,13 @@ def compute_fresh_draw_prompt_stats(
         # Get judge score from metadata
         if hasattr(sample, "judge_score"):
             score = float(sample.judge_score)
-        elif "judge_score" in sample.metadata:
+        elif hasattr(sample, "metadata") and "judge_score" in sample.metadata:
             score = float(sample.metadata["judge_score"])
-        else:
+        elif hasattr(sample, "reward") and sample.reward is not None:
             # Try reward as fallback
-            score = float(sample.reward) if sample.reward is not None else 0.0
+            score = float(sample.reward)
+        else:
+            score = 0.0
 
         scores_by_prompt.setdefault(pid, []).append(score)
 

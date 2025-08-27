@@ -134,9 +134,12 @@ def plot_weight_dashboard_summary(
 
     # Row 2: Distribution analysis
     ax_transform = fig.add_subplot(gs[1, 0])
-    _plot_weight_histograms(
-        ax_transform, raw_weights_dict, calibrated_weights_dict, policies
-    )
+    if calibrated_weights_dict is not None:
+        _plot_weight_histograms(
+            ax_transform, raw_weights_dict, calibrated_weights_dict, policies
+        )
+    else:
+        _plot_weight_histograms(ax_transform, raw_weights_dict, {}, policies)
 
     ax_tail = fig.add_subplot(gs[1, 1])
     if weights_to_plot is not None:
@@ -357,7 +360,7 @@ def plot_weight_dashboard_detailed(
         y=0.98,
     )
 
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.tight_layout(rect=(0, 0, 1, 0.96))
 
     # Save if requested
     if save_path:

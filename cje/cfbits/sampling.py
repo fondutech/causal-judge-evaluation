@@ -188,7 +188,7 @@ def compute_eif_plugin_dr(
 
     eif = base - psi
 
-    return eif
+    return np.asarray(eif)
 
 
 def compute_eif_plugin_ips(
@@ -218,7 +218,7 @@ def compute_eif_plugin_ips(
     # Center
     eif_centered = eif - np.mean(eif)
 
-    return eif_centered
+    return np.asarray(eif_centered)
 
 
 def compute_sampling_width(
@@ -346,7 +346,7 @@ def compute_estimator_eif(
     if hasattr(estimator, "get_eif"):
         eif = estimator.get_eif(policy)
         if eif is not None:
-            return eif
+            return np.asarray(eif)
 
     # Try plug-in based on estimator type
     estimator_type = estimator.__class__.__name__

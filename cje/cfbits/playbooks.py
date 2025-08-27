@@ -45,7 +45,7 @@ def cfbits_report_fresh_draws(
     Returns:
         Complete CF-bits report dictionary
     """
-    report = {"policy": policy, "scenario": "fresh_draws"}
+    report: Dict[str, Any] = {"policy": policy, "scenario": "fresh_draws"}
 
     # 1. Sampling width with OUA
     logger.info(f"Computing sampling width for {policy}")
@@ -208,7 +208,7 @@ def cfbits_report_logging_only(
     Returns:
         Complete CF-bits report dictionary
     """
-    report = {"policy": policy, "scenario": "logging_only"}
+    report: Dict[str, Any] = {"policy": policy, "scenario": "logging_only"}
 
     # 1. Sampling width (with IIC if available)
     logger.info(f"Computing sampling width for {policy}")

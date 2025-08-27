@@ -205,7 +205,7 @@ def _plot_eif_tail_behavior(
         if ifs_data and all(policy in ifs_data for policy in policies):
             has_empirical_ifs = True
 
-    if has_empirical_ifs:
+    if has_empirical_ifs and ifs_data is not None:
         # Use empirical influence functions for exact CCDF
         for i, policy in enumerate(policies):
             ifs = ifs_data[policy]

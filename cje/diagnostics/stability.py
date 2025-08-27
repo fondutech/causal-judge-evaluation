@@ -383,11 +383,13 @@ def compute_stability_diagnostics(
 
     # If we have oracle labels, check calibration stability
     if len(oracle_labels) > 0:
-        oracle_labels = np.array(oracle_labels)
-        paired_judge_scores = np.array(paired_judge_scores)
+        oracle_labels_array = np.array(oracle_labels)
+        paired_judge_scores_array = np.array(paired_judge_scores)
 
         # Overall correlation (using only paired data)
-        overall_tau, _ = stats.kendalltau(paired_judge_scores, oracle_labels)
+        overall_tau, _ = stats.kendalltau(
+            paired_judge_scores_array, oracle_labels_array
+        )
         # Handle potential None or NaN from kendalltau
         if overall_tau is None:
             result["overall_tau_with_oracle"] = np.nan
@@ -396,7 +398,7 @@ def compute_stability_diagnostics(
 
         # Check correlation stability across batches (using paired data)
         tau_per_batch = []
-        n_paired = len(paired_judge_scores)
+        n_paired = len(paired_judge_scores_array)
         paired_batch_size = max(
             10, n_paired // 10
         )  # At least 10, or 10% of paired data
@@ -408,7 +410,7 @@ def compute_stability_diagnostics(
 
             if end - start >= 2:  # Need at least 2 points for correlation
                 batch_tau, _ = stats.kendalltau(
-                    paired_judge_scores[start:end], oracle_labels[start:end]
+                    paired_judge_scores_array[start:end], oracle_labels_array[start:end]
                 )
                 # Ensure we handle potential None values from kendalltau
                 if batch_tau is None:

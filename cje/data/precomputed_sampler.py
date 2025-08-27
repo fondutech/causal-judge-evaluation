@@ -35,7 +35,7 @@ Key Differences:
 See PolicyDataDict for the complete structure returned by get_data_for_policy().
 """
 
-from typing import Dict, List, Optional, Any, Union, TypedDict
+from typing import Dict, List, Optional, Any, Union, TypedDict, cast
 import numpy as np
 import logging
 
@@ -307,7 +307,7 @@ class PrecomputedSampler:
                     }
                 )
 
-        return policy_data if policy_data else None
+        return cast(List[PolicyDataDict], policy_data) if policy_data else None
 
     def __len__(self) -> int:
         """Return the number of valid samples in formatted data."""

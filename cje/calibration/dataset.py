@@ -4,7 +4,7 @@ This module provides functions to calibrate datasets with judge scores
 to match oracle labels, creating calibrated rewards for CJE analysis.
 """
 
-from typing import Dict, List, Any, Optional, Tuple, Literal
+from typing import Dict, List, Any, Optional, Tuple, Literal, cast
 from copy import deepcopy
 import numpy as np
 from ..data.models import Dataset, Sample
@@ -99,7 +99,10 @@ def calibrate_dataset(
 
     # Calibrate judge scores
     calibrator = JudgeCalibrator(
-        calibration_mode=calibration_mode, random_seed=random_seed
+        calibration_mode=cast(
+            Literal["monotone", "two_stage", "auto"], calibration_mode
+        ),
+        random_seed=random_seed,
     )
     if enable_cross_fit:
         # Use cross-fitted calibration for DR support
@@ -239,7 +242,10 @@ def calibrate_from_raw_data(
 
     # Calibrate judge scores
     calibrator = JudgeCalibrator(
-        calibration_mode=calibration_mode, random_seed=random_seed
+        calibration_mode=cast(
+            Literal["monotone", "two_stage", "auto"], calibration_mode
+        ),
+        random_seed=random_seed,
     )
     result = calibrator.fit_transform(
         judge_scores_array, oracle_labels_array, oracle_mask_array

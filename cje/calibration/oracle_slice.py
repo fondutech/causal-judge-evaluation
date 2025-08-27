@@ -155,7 +155,7 @@ class OracleSliceAugmentation:
             # Not enough folds for cross-fitting, use global
             iso = IsotonicRegression(out_of_bounds="clip")
             iso.fit(judge_scores, weights)
-            return iso.predict(judge_scores)
+            return np.asarray(iso.predict(judge_scores))
 
         for fold in unique_folds:
             train_mask = (cv_folds >= 0) & (cv_folds != fold)

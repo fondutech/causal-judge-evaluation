@@ -3,7 +3,7 @@ Weight diagnostic computations for importance sampling.
 """
 
 import numpy as np
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import logging
 
 from .models import Status
@@ -136,7 +136,7 @@ def hill_tail_index(
     log_ratio_sum = np.sum(log_ratios)
     if abs(log_ratio_sum) < 1e-10:
         logger.debug("Hill estimator undefined (uniform weights in tail)")
-        return None  # Undefined for uniform weights
+        return float(np.inf)  # Undefined for uniform weights
 
     hill_estimate = k / log_ratio_sum
 
@@ -168,7 +168,7 @@ def hill_tail_index_stable(
     if k_fractions is None:
         k_fractions = np.array([0.01, 0.02, 0.05, 0.1])
 
-    estimates = []
+    estimates: List[float] = []
     for k_frac in k_fractions:
         est = hill_tail_index(weights, k_fraction=k_frac)
         if np.isfinite(est):
@@ -182,12 +182,12 @@ def hill_tail_index_stable(
             "std": 0.0,
         }
 
-    estimates = np.array(estimates)
+    estimates_array = np.array(estimates)
     return {
-        "estimate": float(np.median(estimates)),
-        "min": float(np.min(estimates)),
-        "max": float(np.max(estimates)),
-        "std": float(np.std(estimates)),
+        "estimate": float(np.median(estimates_array)),
+        "min": float(np.min(estimates_array)),
+        "max": float(np.max(estimates_array)),
+        "std": float(np.std(estimates_array)),
     }
 
 

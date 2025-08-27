@@ -84,7 +84,7 @@ def stationary_bootstrap_se(
     p = 1.0 / mean_block_length
 
     # Bootstrap iterations
-    bootstrap_estimates = []
+    bootstrap_estimates: List[float] = []
 
     for _ in range(n_bootstrap):
         # Generate bootstrap sample using stationary bootstrap
@@ -111,14 +111,14 @@ def stationary_bootstrap_se(
             logger.debug(f"Bootstrap iteration failed: {e}")
             continue
 
-    bootstrap_estimates = np.array(bootstrap_estimates)
+    bootstrap_estimates_array = np.array(bootstrap_estimates)
 
     # Compute standard error
-    se = np.std(bootstrap_estimates, ddof=1)
+    se = np.std(bootstrap_estimates_array, ddof=1)
 
     # Compute confidence interval (percentile method)
-    ci_lower = np.percentile(bootstrap_estimates, 100 * alpha / 2)
-    ci_upper = np.percentile(bootstrap_estimates, 100 * (1 - alpha / 2))
+    ci_lower = np.percentile(bootstrap_estimates_array, 100 * alpha / 2)
+    ci_upper = np.percentile(bootstrap_estimates_array, 100 * (1 - alpha / 2))
 
     result: Dict[str, Any] = {
         "estimate": float(estimate),
@@ -126,12 +126,12 @@ def stationary_bootstrap_se(
         "ci_lower": float(ci_lower),
         "ci_upper": float(ci_upper),
         "mean_block_length": float(mean_block_length),
-        "n_bootstrap": len(bootstrap_estimates),
-        "effective_samples": len(bootstrap_estimates),
+        "n_bootstrap": len(bootstrap_estimates_array),
+        "effective_samples": len(bootstrap_estimates_array),
     }
 
     if return_distribution:
-        result["distribution"] = bootstrap_estimates
+        result["distribution"] = bootstrap_estimates_array
 
     return result
 
@@ -176,7 +176,7 @@ def moving_block_bootstrap_se(
     n_blocks = int(np.ceil(n / block_length))
 
     # Bootstrap iterations
-    bootstrap_estimates = []
+    bootstrap_estimates: List[float] = []
 
     for _ in range(n_bootstrap):
         # Sample blocks with replacement
@@ -200,12 +200,12 @@ def moving_block_bootstrap_se(
             logger.debug(f"Bootstrap iteration failed: {e}")
             continue
 
-    bootstrap_estimates = np.array(bootstrap_estimates)
+    bootstrap_estimates_array = np.array(bootstrap_estimates)
 
     # Compute statistics
-    se = np.std(bootstrap_estimates, ddof=1)
-    ci_lower = np.percentile(bootstrap_estimates, 100 * alpha / 2)
-    ci_upper = np.percentile(bootstrap_estimates, 100 * (1 - alpha / 2))
+    se = np.std(bootstrap_estimates_array, ddof=1)
+    ci_lower = np.percentile(bootstrap_estimates_array, 100 * alpha / 2)
+    ci_upper = np.percentile(bootstrap_estimates_array, 100 * (1 - alpha / 2))
 
     return {
         "estimate": float(estimate),
@@ -213,7 +213,7 @@ def moving_block_bootstrap_se(
         "ci_lower": float(ci_lower),
         "ci_upper": float(ci_upper),
         "block_length": int(block_length),
-        "n_bootstrap": len(bootstrap_estimates),
+        "n_bootstrap": len(bootstrap_estimates_array),
     }
 
 
@@ -487,9 +487,9 @@ def compute_robust_inference(
     n_policies = len(estimates)
 
     # Compute robust SEs for each policy
-    robust_ses = []
-    robust_cis = []
-    p_values = []
+    robust_ses: List[float] = []
+    robust_cis: List[Tuple[float, float]] = []
+    p_values: List[float] = []
 
     for i in range(n_policies):
         if method == "stationary_bootstrap":
@@ -517,17 +517,25 @@ def compute_robust_inference(
                 raise ValueError("Need either influence_functions or data")
 
         elif method == "cluster" and cluster_ids is not None:
-            result = cluster_robust_se(
-                influence_functions[:, i] if influence_functions is not None else data,
-                cluster_ids,
-                lambda x: np.mean(x),
-                alpha=alpha,
-            )
+            if influence_functions is not None:
+                result = cluster_robust_se(
+                    influence_functions[:, i],
+                    cluster_ids,
+                    lambda x: np.mean(x),
+                    alpha=alpha,
+                )
+            else:
+                raise ValueError("Need influence_functions for cluster method")
         else:
             # Fallback to classical
-            se = np.std(
-                influence_functions[:, i] if influence_functions is not None else data
-            ) / np.sqrt(len(data))
+            if influence_functions is not None:
+                se = np.std(influence_functions[:, i]) / np.sqrt(
+                    len(influence_functions)
+                )
+            elif data is not None:
+                se = np.std(data) / np.sqrt(len(data))
+            else:
+                raise ValueError("Need either influence_functions or data")
             result = {
                 "se": se,
                 "ci_lower": estimates[i] - 1.96 * se,
@@ -542,21 +550,21 @@ def compute_robust_inference(
         p_val = 2 * (1 - stats.norm.cdf(abs(z_stat)))
         p_values.append(p_val)
 
-    robust_ses = np.array(robust_ses)
-    p_values = np.array(p_values)
+    robust_ses_array = np.array(robust_ses)
+    p_values_array = np.array(p_values)
 
     # Apply FDR correction if requested
     fdr_results = None
     if apply_fdr and n_policies > 1:
         fdr_results = benjamini_hochberg_correction(
-            p_values,
+            p_values_array,
             alpha=fdr_alpha,
             labels=policy_labels,
         )
 
     return {
         "estimates": estimates,
-        "robust_ses": robust_ses,
+        "robust_ses": robust_ses_array,
         "robust_cis": robust_cis,
         "p_values": p_values,
         "method": method,
