@@ -91,7 +91,7 @@ class StackedDREstimator(BaseCJEEstimator):
         self.oracle_slice_config = oracle_slice_config  # Store the extracted value
 
         # Storage for results
-        self.component_results: Dict[str, EstimationResult] = {}
+        self.component_results: Dict[str, Optional[EstimationResult]] = {}
         self.component_estimators: Dict[str, Any] = (
             {}
         )  # Store estimators for weights/diagnostics
@@ -238,10 +238,11 @@ class StackedDREstimator(BaseCJEEstimator):
         }
 
         # Get n_samples_used from one of the component estimators
-        n_samples_used = {}
-        if valid_estimators and self.component_results[valid_estimators[0]]:
+        n_samples_used: Dict[str, int] = {}
+        if valid_estimators and self.component_results[valid_estimators[0]] is not None:
             first_result = self.component_results[valid_estimators[0]]
-            n_samples_used = first_result.n_samples_used
+            if first_result is not None:  # Type guard
+                n_samples_used = first_result.n_samples_used
         else:
             # Fallback: use sampler info
             for policy in self.sampler.target_policies:
@@ -255,6 +256,8 @@ class StackedDREstimator(BaseCJEEstimator):
             influence_functions=stacked_ifs,
             diagnostics=None,  # Use None for now to avoid validation issues
             metadata=metadata,
+            robust_standard_errors=None,
+            robust_confidence_intervals=None,
         )
 
         self._results = result
@@ -456,7 +459,7 @@ class StackedDREstimator(BaseCJEEstimator):
         shrinkage = self.shrinkage_intensity
 
         # Shrink toward target
-        return (1 - shrinkage) * S + shrinkage * target
+        return np.asarray((1 - shrinkage) * S + shrinkage * target)
 
     def _stack_with_outer_split(
         self, IF_matrix: np.ndarray, policy: str
@@ -503,6 +506,9 @@ class StackedDREstimator(BaseCJEEstimator):
     def _create_passthrough_result(self, estimator_name: str) -> EstimationResult:
         """Create a result that passes through a single estimator's results."""
         result = self.component_results[estimator_name]
+        
+        if result is None:
+            raise ValueError(f"Cannot create passthrough for failed estimator {estimator_name}")
 
         # Add metadata about the passthrough
         metadata = result.metadata.copy() if result.metadata else {}
@@ -523,6 +529,8 @@ class StackedDREstimator(BaseCJEEstimator):
             influence_functions=result.influence_functions,
             diagnostics=result.diagnostics,
             metadata=metadata,
+            robust_standard_errors=None,
+            robust_confidence_intervals=None,
         )
 
     def _build_stacking_diagnostics(
@@ -610,9 +618,11 @@ class StackedDREstimator(BaseCJEEstimator):
                     if hasattr(estimator, "ips_estimator") and hasattr(
                         estimator.ips_estimator, "get_weights"
                     ):
-                        return estimator.ips_estimator.get_weights(policy)
+                        weights = estimator.ips_estimator.get_weights(policy)
+                        return np.asarray(weights) if weights is not None else None
                     elif hasattr(estimator, "get_weights"):
-                        return estimator.get_weights(policy)
+                        weights = estimator.get_weights(policy)
+                        return np.asarray(weights) if weights is not None else None
 
         return None
 

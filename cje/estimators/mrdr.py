@@ -7,7 +7,7 @@ while supporting policy-specific weighted outcome models.
 """
 
 from __future__ import annotations
-from typing import Dict, Optional, Any, List
+from typing import Dict, Optional, Any, List, cast
 import logging
 import numpy as np
 from sklearn.isotonic import IsotonicRegression
@@ -434,7 +434,7 @@ class MRDREstimator(DREstimator):
             aug_vector, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
                 policy,
                 rewards,  # calibrated rewards
-                data,
+                cast(List[Dict[str, Any]], data),
                 self.sampler.dataset.samples,
             )
             self._aug_diagnostics[policy] = aug_diagnostics
@@ -524,4 +524,6 @@ class MRDREstimator(DREstimator):
             influence_functions=self._influence_functions,
             diagnostics=diagnostics,
             metadata=metadata,
+            robust_standard_errors=None,
+            robust_confidence_intervals=None,
         )

@@ -7,7 +7,7 @@ and ensuring consistent diagnostics with other DR methods.
 """
 
 from __future__ import annotations
-from typing import Dict, Optional, Any, List, Tuple, Union
+from typing import Dict, Optional, Any, List, Tuple, Union, cast
 import logging
 import numpy as np
 
@@ -208,7 +208,7 @@ class TMLEEstimator(DREstimator):
             aug_vector, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
                 policy,
                 rewards,  # calibrated rewards
-                data,
+                cast(List[Dict[str, Any]], data),
                 self.sampler.dataset.samples,
             )
             self._aug_diagnostics[policy] = aug_diagnostics
@@ -417,6 +417,8 @@ class TMLEEstimator(DREstimator):
             influence_functions=self._influence_functions,
             diagnostics=diagnostics,  # Add the DRDiagnostics object
             metadata=metadata,
+            robust_standard_errors=None,
+            robust_confidence_intervals=None,
         )
 
     def _solve_logistic_fluctuation(
