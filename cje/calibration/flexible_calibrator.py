@@ -61,7 +61,9 @@ class FlexibleCalibrator:
         self.mode = mode
         self.n_splines = n_splines
         self.random_seed = random_seed
-        self.selected_mode: Optional[Literal["monotone", "two_stage"]] = None  # For auto mode
+        self.selected_mode: Optional[Literal["monotone", "two_stage"]] = (
+            None  # For auto mode
+        )
 
         # Storage for fitted models
         self._monotone_models: Dict[int, Any] = {}
@@ -309,7 +311,11 @@ class FlexibleCalibrator:
         """Predict using two-stage models."""
         if folds is None:
             # Use full model for inference
-            if self._full_g_model is not None and self._full_iso_model is not None and self._full_ecdf is not None:
+            if (
+                self._full_g_model is not None
+                and self._full_iso_model is not None
+                and self._full_ecdf is not None
+            ):
                 g_pred = self._full_g_model.predict(S.reshape(-1, 1))
                 T_ranked = self._full_ecdf(g_pred)
                 return np.asarray(self._full_iso_model.predict(T_ranked))
@@ -367,7 +373,9 @@ class FlexibleCalibrator:
                         Y_hat[mask] = np.mean(S[mask])
             return Y_hat
 
-    def _select_best_mode(self, S: np.ndarray, Y: np.ndarray, folds: np.ndarray) -> Literal["monotone", "two_stage"]:
+    def _select_best_mode(
+        self, S: np.ndarray, Y: np.ndarray, folds: np.ndarray
+    ) -> Literal["monotone", "two_stage"]:
         """Select best mode based on OOF RMSE."""
         # Get OOF predictions for each mode
         pred_mono = self._predict_monotone(S, folds)

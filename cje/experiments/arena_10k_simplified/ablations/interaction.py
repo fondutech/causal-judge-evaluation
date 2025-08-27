@@ -160,7 +160,7 @@ class InteractionAblation(BaseAblation):
                     success_grid[key] = 0
 
                 rmse_grid[key].append(r.get("rmse_vs_oracle", np.nan))
-                
+
                 # Collect standard errors (proper IC-based SEs)
                 if "standard_errors" in r and r["standard_errors"]:
                     # Average SE across policies for this configuration
@@ -169,7 +169,7 @@ class InteractionAblation(BaseAblation):
                 else:
                     # Fallback to RMSE if SE not available
                     se_grid[key].append(r.get("rmse_vs_oracle", np.nan))
-                    
+
                 success_grid[key] += 1
 
         # Average across seeds
@@ -198,26 +198,26 @@ class InteractionAblation(BaseAblation):
         z_alpha = 1.96
         z_power = 0.84
         k = z_alpha + z_power  # ≈ 2.80
-        
+
         sweet_spots = []
         target_mdes = [0.01, 0.02]  # 1% and 2% effect sizes
-        
+
         for i, oracle in enumerate(oracle_values):
             for j, n_samples in enumerate(sample_values):
                 if np.isfinite(se_matrix[i, j]):
                     n_oracle = oracle * n_samples
-                    
+
                     # MDE for two-policy comparison using proper SE
                     mde_two = k * np.sqrt(2.0) * se_matrix[i, j]
-                    
+
                     # Check which MDE targets this config can achieve
                     achievable_targets = [t for t in target_mdes if mde_two <= t]
-                    
+
                     if achievable_targets:
                         # Compute cost-efficiency (lower is better)
                         # Assuming unit cost per oracle label for simplicity
                         cost_per_percent_mde = n_oracle / min(achievable_targets)
-                        
+
                         sweet_spots.append(
                             {
                                 "oracle_coverage": oracle,
@@ -261,7 +261,7 @@ class InteractionAblation(BaseAblation):
         ax = axes[0]
         rmse = analysis["rmse_matrix"]
         mask = ~np.isfinite(rmse)
-        
+
         sns.heatmap(
             rmse,
             mask=mask,
@@ -305,7 +305,9 @@ class InteractionAblation(BaseAblation):
 
         # Filled contours of MDE for two-policy comparison
         cf = ax.contourf(
-            X, Y, mde_plot,
+            X,
+            Y,
+            mde_plot,
             levels=[0.005, 0.01, 0.015, 0.02, 0.03, 0.05, 0.1],
             cmap="viridis",
             antialiased=True,
@@ -314,7 +316,9 @@ class InteractionAblation(BaseAblation):
 
         # Key iso-lines at 1% and 2% effect sizes
         cs = ax.contour(
-            X, Y, mde_plot,
+            X,
+            Y,
+            mde_plot,
             levels=[0.01, 0.02],
             colors=["white", "black"],
             linestyles=["--", "-"],
@@ -325,7 +329,9 @@ class InteractionAblation(BaseAblation):
         # Optional: overlay iso-lines of n_oracle (labeling effort)
         n_oracle = X * Y  # X = sample size, Y = oracle coverage fraction
         cost_lines = ax.contour(
-            X, Y, np.ma.array(n_oracle, mask=mask),
+            X,
+            Y,
+            np.ma.array(n_oracle, mask=mask),
             levels=[50, 100, 250, 500, 1000, 2000],
             colors="gray",
             linewidths=0.8,
@@ -335,13 +341,13 @@ class InteractionAblation(BaseAblation):
 
         ax.set_xlabel("Sample Size", fontsize=12)
         ax.set_ylabel("Oracle Coverage", fontsize=12)
-        ax.set_title("B. MDE (Can we detect 1-2% effects?)", fontsize=14, fontweight="bold")
+        ax.set_title(
+            "B. MDE (Can we detect 1-2% effects?)", fontsize=14, fontweight="bold"
+        )
         ax.set_ylim(min(analysis["oracle_values"]), max(analysis["oracle_values"]))
         ax.invert_yaxis()  # Match heatmap orientation (higher coverage at top)
 
-        plt.suptitle(
-            "Oracle × Sample Size Interaction", fontsize=16, fontweight="bold"
-        )
+        plt.suptitle("Oracle × Sample Size Interaction", fontsize=16, fontweight="bold")
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Leave space for suptitle
 
         if output_path:

@@ -314,7 +314,10 @@ class CalibratedIPS(BaseCJEEstimator):
 
             # Add oracle slice augmentation for honest CIs
             aug, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
-                policy, rewards, cast(List[Dict[str, Any]], data), self.sampler.dataset.samples
+                policy,
+                rewards,
+                cast(List[Dict[str, Any]], data),
+                self.sampler.dataset.samples,
             )
             self._aug_diagnostics[policy] = aug_diagnostics
 

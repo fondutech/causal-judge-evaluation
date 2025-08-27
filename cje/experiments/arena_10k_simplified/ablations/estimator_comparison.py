@@ -311,12 +311,12 @@ class EstimatorComparison(BaseAblation):
                     # For IPS-based estimators, get weights directly
                     if hasattr(estimator, "get_weights"):
                         weights = estimator.get_weights(policy)
-                    
+
                     # For DR estimators, get weights from their internal IPS estimator
                     if weights is None and hasattr(estimator, "ips_estimator"):
                         if hasattr(estimator.ips_estimator, "get_weights"):
                             weights = estimator.ips_estimator.get_weights(policy)
-                    
+
                     # For stacked estimators, try to get from component
                     if weights is None and hasattr(estimator, "_component_estimators"):
                         for comp_est in estimator._component_estimators:
@@ -328,7 +328,9 @@ class EstimatorComparison(BaseAblation):
                             elif hasattr(comp_est, "ips_estimator") and hasattr(
                                 comp_est.ips_estimator, "get_weights"
                             ):
-                                comp_weights = comp_est.ips_estimator.get_weights(policy)
+                                comp_weights = comp_est.ips_estimator.get_weights(
+                                    policy
+                                )
                                 if comp_weights is not None:
                                     weights = comp_weights
                                     break
@@ -337,7 +339,7 @@ class EstimatorComparison(BaseAblation):
                     # If we can't get the calibrated weights, ESS should be NaN
                     # This prevents misleading ESS values that show baseline overlap
                     # instead of post-calibration effective sample size
-                    
+
                     if weights is not None:
                         ess = np.sum(weights) ** 2 / np.sum(weights**2)
                         ess_values[policy] = float(ess)
@@ -363,48 +365,53 @@ class EstimatorComparison(BaseAblation):
 
         return result
 
-    def create_all_scenario_plots(self, results: List[Dict[str, Any]], color_by: str = "se") -> None:
+    def create_all_scenario_plots(
+        self, results: List[Dict[str, Any]], color_by: str = "se"
+    ) -> None:
         """Generate separate policy heterogeneity plots for each scenario.
-        
+
         Args:
             results: All estimator comparison results
             color_by: "se" for standard error or "error" for absolute error
         """
         # Extract unique scenarios from successful results
-        scenarios = sorted({
-            r.get("scenario") 
-            for r in results 
-            if r.get("success", False) and r.get("scenario")
-        })
-        
+        scenarios = sorted(
+            {
+                r.get("scenario")
+                for r in results
+                if r.get("success", False) and r.get("scenario")
+            }
+        )
+
         if not scenarios:
             logger.warning("No scenarios found in results")
             return
-            
+
         logger.info(f"\nGenerating {len(scenarios)} scenario plots...")
-        
+
         for scenario in scenarios:
             logger.info(f"\nProcessing scenario: {scenario}")
-            
+
             # Filter results for this scenario
-            scenario_results = [
-                r for r in results 
-                if r.get("scenario") == scenario
-            ]
-            
+            scenario_results = [r for r in results if r.get("scenario") == scenario]
+
             # Generate filename from scenario
             # Convert "n=1000, oracle=10%" to "n1000_oracle10pct"
-            safe_scenario = scenario.replace("=", "").replace(", ", "_").replace("%", "pct")
-            output_path = Path(f"results/estimator_comparison/policy_heterogeneity_{safe_scenario}_{color_by}.png")
-            
+            safe_scenario = (
+                scenario.replace("=", "").replace(", ", "_").replace("%", "pct")
+            )
+            output_path = Path(
+                f"results/estimator_comparison/policy_heterogeneity_{safe_scenario}_{color_by}.png"
+            )
+
             # Create figure for this scenario
             self.create_policy_heterogeneity_figure(
                 scenario_results,
                 output_path=output_path,
                 scenario_label=scenario,
-                color_by=color_by
+                color_by=color_by,
             )
-        
+
         logger.info(f"\nGenerated {len(scenarios)} policy heterogeneity plots")
 
     def run_ablation(self) -> List[Dict[str, Any]]:
@@ -533,34 +540,36 @@ class EstimatorComparison(BaseAblation):
                 # Compute RMSE across all policies
                 squared_errors = []
                 for policy, estimate in r["estimates"].items():
-                    
+
                     oracle_truth = oracle_means.get(policy, np.nan)
                     if not np.isnan(oracle_truth) and not np.isnan(estimate):
                         squared_error = (estimate - oracle_truth) ** 2
                         squared_errors.append(squared_error)
-                
+
                 # Calculate RMSE if we have any valid squared errors
                 if squared_errors:
                     rmse = np.sqrt(np.mean(squared_errors))
                 else:
                     # Fallback to SE if no oracle truth available
                     se_values = [
-                        r["standard_errors"][p] 
-                        for p in r["standard_errors"] 
+                        r["standard_errors"][p]
+                        for p in r["standard_errors"]
                         if not np.isnan(r["standard_errors"][p])
                     ]
                     rmse = np.mean(se_values) if se_values else np.nan
-                
+
                 by_scenario[scenario][estimator].append(
                     {
                         "rmse": rmse,
                         "runtime": r["runtime"],
                         "ess": (
-                            np.mean([
-                                r.get("ess", {}).get(p, np.nan) 
-                                for p in r.get("ess", {}) 
-                                if p != "unhelpful"
-                            ])
+                            np.mean(
+                                [
+                                    r.get("ess", {}).get(p, np.nan)
+                                    for p in r.get("ess", {})
+                                    if p != "unhelpful"
+                                ]
+                            )
                             if "ess" in r
                             else None
                         ),
@@ -574,7 +583,9 @@ class EstimatorComparison(BaseAblation):
 
             for est_name, runs in estimators.items():
                 if runs:
-                    mean_rmse = np.mean([r["rmse"] for r in runs if not np.isnan(r["rmse"])])
+                    mean_rmse = np.mean(
+                        [r["rmse"] for r in runs if not np.isnan(r["rmse"])]
+                    )
                     mean_runtime = np.mean([r["runtime"] for r in runs])
                     mean_ess = np.mean([r["ess"] for r in runs if r["ess"] is not None])
 
@@ -644,7 +655,7 @@ class EstimatorComparison(BaseAblation):
             ax.set_yticks(range(len(estimators)))
             ax.set_yticklabels(estimators)
             ax.set_xlabel("RMSE (log scale)")
-            ax.set_xscale('log')  # Set log scale for x-axis
+            ax.set_xscale("log")  # Set log scale for x-axis
             ax.set_title(scenario)
             ax.invert_yaxis()  # Best at top
 
@@ -660,7 +671,7 @@ class EstimatorComparison(BaseAblation):
             "Estimator Comparison: RMSE by Scenario",
             fontsize=16,
             fontweight="bold",
-            y=0.98  # Move title up slightly
+            y=0.98,  # Move title up slightly
         )
         plt.tight_layout(rect=[0, 0, 1, 0.96])  # Leave space at top for title
 
@@ -719,7 +730,9 @@ class EstimatorComparison(BaseAblation):
 
         return oracle_means
 
-    def analyze_by_policy(self, results: List[Dict[str, Any]], scenario: Optional[str] = None) -> "pd.DataFrame":
+    def analyze_by_policy(
+        self, results: List[Dict[str, Any]], scenario: Optional[str] = None
+    ) -> "pd.DataFrame":
         """Extract per-policy performance metrics from estimator comparison results.
 
         Creates a DataFrame with one row per (method, policy) combination showing:
@@ -735,7 +748,7 @@ class EstimatorComparison(BaseAblation):
             DataFrame with columns: Method, Policy, Estimate, SE, ESS_%, Oracle_Truth, Error
         """
         import pandas as pd
-        
+
         # Filter by scenario if specified
         if scenario is not None:
             results = [r for r in results if r.get("scenario") == scenario]
@@ -954,7 +967,7 @@ class EstimatorComparison(BaseAblation):
 
                     # Build annotation text with SE, MDE, ESS%, and absolute error
                     text_lines = [f"SE: {se_display}"]
-                    
+
                     # Add MDE for two-policy comparison (3.96 * SE)
                     if se_val >= 1e-6:
                         mde_two = 3.96 * se_val

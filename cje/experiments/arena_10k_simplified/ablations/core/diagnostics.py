@@ -145,7 +145,7 @@ def weight_cv(weights: np.ndarray) -> float:
 
 def compute_rmse(estimates: Dict[str, float], truths: Dict[str, float]) -> float:
     """Compute RMSE between estimates and oracle truths.
-    
+
     Note: The 'unhelpful' policy is excluded from RMSE calculation because
     it has a very different reward distribution (mean ~0.14) compared to
     other policies (mean ~0.76). This causes systematic calibration bias
@@ -168,7 +168,7 @@ def compute_rmse(estimates: Dict[str, float], truths: Dict[str, float]) -> float
         # and causes calibration bias issues
         if policy == "unhelpful":
             continue
-            
+
         if policy in truths:
             est = estimates[policy]
             truth = truths[policy]

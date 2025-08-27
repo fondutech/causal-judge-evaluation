@@ -272,15 +272,15 @@ def main() -> int:
                 step_num = 9 if args.estimator in ["dr-cpo", "mrdr", "tmle"] else 8
                 print(f"\n{step_num}. CF-bits Uncertainty Decomposition:")
                 print("   " + "-" * 60)
-            
+
             # Determine which playbook to use
             is_dr = args.estimator in ["dr-cpo", "mrdr", "tmle", "stacked-dr"]
-            
+
             # Run CF-bits for each policy
             for policy in sampler.target_policies:
                 if not args.quiet:
                     print(f"\n   {policy}:")
-                
+
                 try:
                     if is_dr:
                         # Use fresh draws playbook for DR estimators
@@ -288,7 +288,7 @@ def main() -> int:
                             estimator=estimator,
                             policy=policy,
                             n_boot=args.cfbits_bootstrap,
-                            alpha=0.05
+                            alpha=0.05,
                         )
                     else:
                         # Use logging-only playbook for IPS estimators
@@ -296,28 +296,40 @@ def main() -> int:
                             estimator=estimator,
                             policy=policy,
                             n_boot=args.cfbits_bootstrap,
-                            alpha=0.05
+                            alpha=0.05,
                         )
-                    
+
                     if report:
                         cfbits_data[policy] = report
-                        
+
                         # Display key metrics
                         cfbits = report.get("cfbits", {})
                         if cfbits:
                             bits_tot = cfbits.get("bits_tot", "N/A")
-                            w_tot = cfbits.get("w_tot", "N/A") 
+                            w_tot = cfbits.get("w_tot", "N/A")
                             w_id = cfbits.get("w_id", "N/A")
                             w_var = cfbits.get("w_var", "N/A")
                             dominant = cfbits.get("dominant", "unknown")
                             if not args.quiet:
-                                if isinstance(bits_tot, (int, float)) and isinstance(w_tot, (int, float)):
-                                    print(f"     Total bits: {bits_tot:.2f} (width: {w_tot:.3f}, dominant: {dominant})")
-                                    if args.debug and isinstance(w_id, (int, float)) and isinstance(w_var, (int, float)):
-                                        print(f"       - Wid={w_id:.3f}, Wvar={w_var:.3f}")
+                                if isinstance(bits_tot, (int, float)) and isinstance(
+                                    w_tot, (int, float)
+                                ):
+                                    print(
+                                        f"     Total bits: {bits_tot:.2f} (width: {w_tot:.3f}, dominant: {dominant})"
+                                    )
+                                    if (
+                                        args.debug
+                                        and isinstance(w_id, (int, float))
+                                        and isinstance(w_var, (int, float))
+                                    ):
+                                        print(
+                                            f"       - Wid={w_id:.3f}, Wvar={w_var:.3f}"
+                                        )
                                 else:
-                                    print(f"     Total bits: {bits_tot} (width: {w_tot}, dominant: {dominant})")
-                        
+                                    print(
+                                        f"     Total bits: {bits_tot} (width: {w_tot}, dominant: {dominant})"
+                                    )
+
                         # Display overlap with confidence interval
                         overlap = report.get("overlap", {})
                         if overlap and not args.quiet:
@@ -326,33 +338,46 @@ def main() -> int:
                             aessf_ucb = overlap.get("aessf_ucb")
                             if aessf:
                                 if args.debug and aessf_lcb and aessf_ucb:
-                                    print(f"     A-ESSF: {aessf:.1%} [{aessf_lcb:.1%}, {aessf_ucb:.1%}]")
+                                    print(
+                                        f"     A-ESSF: {aessf:.1%} [{aessf_lcb:.1%}, {aessf_ucb:.1%}]"
+                                    )
                                 else:
-                                    print(f"     A-ESSF: {aessf:.1%} (structural overlap)")
-                        
+                                    print(
+                                        f"     A-ESSF: {aessf:.1%} (structural overlap)"
+                                    )
+
                         # Display efficiency metrics for all estimators
                         efficiency = report.get("efficiency", {})
                         sampling = report.get("sampling_width", {})
-                        
+
                         if efficiency:
                             ifr_main = efficiency.get("ifr_main")
                             ifr_oua = efficiency.get("ifr_oua")
                             if ifr_main is not None and not args.quiet:
                                 if ifr_oua is not None and ifr_oua != ifr_main:
-                                    print(f"     IFR: {ifr_main:.1%} (main) / {ifr_oua:.1%} (with OUA)")
+                                    print(
+                                        f"     IFR: {ifr_main:.1%} (main) / {ifr_oua:.1%} (with OUA)"
+                                    )
                                 else:
-                                    print(f"     IFR: {ifr_main:.1%} (efficiency vs EIF)")
+                                    print(
+                                        f"     IFR: {ifr_main:.1%} (efficiency vs EIF)"
+                                    )
                         elif is_dr and sampling:
                             # Fallback for DR when efficiency not in expected place
                             ifr = sampling.get("IFR_main")
                             if ifr is not None and not args.quiet:
                                 print(f"     IFR: {ifr:.1%} (efficiency vs EIF)")
-                        
+
                         # Display gates with detailed reasons
                         gates = report.get("gates", {})
                         if gates and not args.quiet:
                             state = gates.get("state", "UNKNOWN")
-                            emoji = {"GOOD": "✅", "WARNING": "⚠️", "CRITICAL": "❌", "REFUSE": "🚫"}.get(state, "?")
+                            emoji = {
+                                "GOOD": "✅",
+                                "WARNING": "⚠️",
+                                "CRITICAL": "❌",
+                                "REFUSE": "🚫",
+                            }.get(state, "?")
                             print(f"     Gates: {emoji} {state}")
                             if state != "GOOD":
                                 reasons = gates.get("reasons", [])
@@ -363,60 +388,72 @@ def main() -> int:
                                             print(f"       - {reason}")
                                     else:
                                         print(f"       Issues: {reasons[0]}")
-                                
+
                                 # Show suggestions if available
                                 suggestions = gates.get("suggestions", {})
                                 if suggestions and args.debug:
-                                    first_suggestion = list(suggestions.values())[0] if suggestions else None
+                                    first_suggestion = (
+                                        list(suggestions.values())[0]
+                                        if suggestions
+                                        else None
+                                    )
                                     if first_suggestion:
                                         print(f"       → {first_suggestion}")
-                
+
                 except Exception as e:
                     if args.debug:
                         print(f"     ⚠️ CF-bits failed: {e}")
                     cfbits_data[policy] = {"error": str(e)}
-            
+
             if not args.quiet and cfbits_data:
                 # Summary table if we have multiple policies
                 if len(cfbits_data) > 1:
                     print("\n   Summary Table:")
                     print("   " + "-" * 75)
-                    print(f"   {'Policy':<30} {'A-ESSF':>8} {'IFR':>8} {'Bits':>7} {'Gates':>10}")
+                    print(
+                        f"   {'Policy':<30} {'A-ESSF':>8} {'IFR':>8} {'Bits':>7} {'Gates':>10}"
+                    )
                     print("   " + "-" * 75)
-                    
+
                     for pol, rep in cfbits_data.items():
                         if isinstance(rep, dict) and "error" not in rep:
                             overlap = rep.get("overlap", {})
                             aessf = overlap.get("aessf", 0) if overlap else 0
-                            
+
                             efficiency = rep.get("efficiency", {})
                             sampling = rep.get("sampling_width", {})
                             ifr = None
                             if efficiency:
-                                ifr = efficiency.get("ifr_main") or efficiency.get("ifr_oua")
+                                ifr = efficiency.get("ifr_main") or efficiency.get(
+                                    "ifr_oua"
+                                )
                             elif sampling:
                                 ifr = sampling.get("IFR_main")
-                            
+
                             cfbits = rep.get("cfbits", {})
                             bits = cfbits.get("bits_tot", 0) if cfbits else 0
-                            
+
                             gates = rep.get("gates", {})
                             state = gates.get("state", "?") if gates else "?"
-                            
+
                             # Format display
                             aessf_str = f"{aessf:.1%}" if aessf else "N/A"
                             ifr_str = f"{ifr:.1%}" if ifr is not None else "N/A"
                             bits_str = f"{bits:.2f}" if bits else "N/A"
-                            
-                            print(f"   {pol:<30} {aessf_str:>8} {ifr_str:>8} {bits_str:>7} {state:>10}")
-                    
+
+                            print(
+                                f"   {pol:<30} {aessf_str:>8} {ifr_str:>8} {bits_str:>7} {state:>10}"
+                            )
+
                     print("   " + "-" * 75)
-                
+
                 print("\n   💡 CF-bits Interpretation:")
                 print("   - Bits: Information gain (each bit = halving of width)")
                 print("   - A-ESSF: Structural overlap quality (higher is better)")
                 print("   - IFR: Efficiency vs theoretical best (higher is better)")
-                print("   - Gates: Reliability assessment (GOOD > WARNING > CRITICAL > REFUSE)")
+                print(
+                    "   - Gates: Reliability assessment (GOOD > WARNING > CRITICAL > REFUSE)"
+                )
 
         # 8. Generate visualizations
         generate_visualizations(
