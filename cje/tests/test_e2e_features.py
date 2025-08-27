@@ -289,6 +289,11 @@ class TestCrossFitting:
             estimator = DRCPOEstimator(
                 sampler, calibrator=cal_result.calibrator, n_folds=5
             )
+            
+            # Add fresh draws for each policy
+            for policy, fresh_data in arena_fresh_draws.items():
+                estimator.add_fresh_draws(policy, fresh_data)
+                
             results = estimator.fit_and_estimate()
             estimates_list.append(results.estimates)
 

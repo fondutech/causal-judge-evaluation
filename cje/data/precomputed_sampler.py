@@ -297,10 +297,13 @@ class PrecomputedSampler:
                         "response": record["response"],
                         "prompt_id": sample.prompt_id,
                         "judge_score": sample.metadata.get("judge_score"),
-                        # Compute cv_fold on-demand from prompt_id for backward compatibility
+                        # Compute cv_fold on-demand from prompt_id
+                        # Use metadata if available, else defaults
                         "cv_fold": get_fold(
-                            sample.prompt_id, 5, 42
-                        ),  # Default 5 folds, seed 42
+                            sample.prompt_id,
+                            self.dataset.metadata.get("n_folds", 5),
+                            self.dataset.metadata.get("fold_seed", 42),
+                        ),
                     }
                 )
 
@@ -527,7 +530,7 @@ class PrecomputedSampler:
         return [s.response for s in self.dataset.samples]
 
     def get_folds_for_policy(
-        self, policy: str, n_folds: int = 5, seed: int = 42
+        self, policy: str, n_folds: Optional[int] = None, seed: Optional[int] = None
     ) -> Optional[np.ndarray]:
         """Get consistent fold assignments for policy's valid samples.
 
@@ -537,12 +540,18 @@ class PrecomputedSampler:
 
         Args:
             policy: Target policy name
-            n_folds: Number of cross-validation folds
-            seed: Random seed for reproducibility
+            n_folds: Number of cross-validation folds (uses metadata if None)
+            seed: Random seed for reproducibility (uses metadata if None)
 
         Returns:
             Fold assignments for valid samples, or None if no data
         """
+        # Use metadata values if not provided
+        if n_folds is None:
+            n_folds = self.dataset.metadata.get("n_folds", 5)
+        if seed is None:
+            seed = self.dataset.metadata.get("fold_seed", 42)
+
         data = self.get_data_for_policy(policy)
         if data is None:
             return None

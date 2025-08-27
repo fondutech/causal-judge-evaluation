@@ -256,45 +256,99 @@ class BaseOutcomeModel(ABC):
 class IsotonicOutcomeModel(BaseOutcomeModel):
     """Cross-fitted isotonic outcome model for DR estimation.
 
-    This model uses g(x,a,s) = f^(-k)(s) where f^(-k) is the isotonic
-    calibration function learned from judge scores to rewards, with the
-    k-th fold held out for cross-fitting.
+    This model uses g(x,a,s) = f^(-k)(z) where z is the calibrator's index
+    (either raw judge scores for monotone calibration or transformed index
+    for two-stage calibration), and f^(-k) is the isotonic regression learned
+    with the k-th fold held out for cross-fitting.
 
     The isotonic models are trained fresh during the DR fit process,
     ensuring proper cross-fitting for orthogonality.
     """
 
-    def __init__(self, n_folds: int = 5):
+    def __init__(self, n_folds: int = 5, calibrator: Optional[Any] = None):
         """Initialize isotonic outcome model.
 
         Args:
             n_folds: Number of cross-fitting folds (default 5)
+            calibrator: Optional calibrator with index() method for transforming scores
         """
         super().__init__(n_folds)
+        self.calibrator = calibrator
+
+    def fit(
+        self,
+        prompts: List[str],
+        responses: List[str],
+        rewards: np.ndarray,
+        judge_scores: Optional[np.ndarray] = None,
+        fold_ids: Optional[np.ndarray] = None,
+    ) -> None:
+        """Fit cross-fitted models with proper index transformation."""
+        if fold_ids is None:
+            raise ValueError("fold_ids is required for cross-fitted outcome models")
+
+        if judge_scores is None:
+            raise ValueError("judge_scores is required for outcome models")
+
+        # Pre-compute transformed indices if calibrator is available
+        if self.calibrator is not None and hasattr(self.calibrator, "index"):
+            # Get OOF indices for all data at once
+            transformed_scores = self.calibrator.index(judge_scores, fold_ids)
+        else:
+            transformed_scores = judge_scores
+
+        # Store original judge_scores for later use, replace with transformed
+        self._original_judge_scores = judge_scores
+        judge_scores_to_use = transformed_scores
+
+        # Call parent fit with transformed scores
+        super().fit(prompts, responses, rewards, judge_scores_to_use, fold_ids)
 
     def _fit_single_model(
         self,
         prompts: List[str],
         responses: List[str],
         rewards: np.ndarray,
-        judge_scores: np.ndarray,
+        judge_scores: np.ndarray,  # These are already transformed indices
     ) -> Any:
         """Fit an isotonic regression model on training data."""
         from sklearn.isotonic import IsotonicRegression
 
-        # Fit isotonic model from judge scores to rewards
+        # judge_scores are already transformed by fit() method
         model = IsotonicRegression(out_of_bounds="clip")
         model.fit(judge_scores, rewards)
         return model
+
+    def predict(
+        self,
+        prompts: List[str],
+        responses: List[str],
+        judge_scores: Optional[np.ndarray] = None,
+        fold_ids: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
+        """Predict using cross-fitted models with proper index transformation."""
+        if judge_scores is None:
+            raise ValueError("judge_scores required for prediction")
+
+        # Transform judge scores if calibrator is available
+        if self.calibrator is not None and hasattr(self.calibrator, "index"):
+            # For prediction, use the ensemble index (folds=None)
+            transformed_scores = self.calibrator.index(judge_scores, folds=None)
+        else:
+            transformed_scores = judge_scores
+
+        # Call parent predict with transformed scores
+        return super().predict(prompts, responses, transformed_scores, fold_ids)
 
     def _predict_single_model(
         self,
         model: Any,
         prompts: List[str],
         responses: List[str],
-        judge_scores: np.ndarray,
+        judge_scores: np.ndarray,  # These are already transformed indices
     ) -> np.ndarray:
         """Predict using the fitted isotonic model."""
+        # judge_scores are already transformed by predict() method
         predictions: np.ndarray = model.predict(judge_scores)
         return predictions
 

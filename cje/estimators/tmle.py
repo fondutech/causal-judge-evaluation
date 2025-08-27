@@ -60,7 +60,8 @@ class TMLEEstimator(DREstimator):
         **kwargs: Any,
     ):
         # Initialize DR base with standard isotonic outcome model
-        outcome_model = IsotonicOutcomeModel(n_folds=n_folds)
+        # Pass calibrator for proper index transformation with two-stage calibration
+        outcome_model = IsotonicOutcomeModel(n_folds=n_folds, calibrator=calibrator)
 
         super().__init__(
             sampler=sampler,

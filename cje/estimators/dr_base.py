@@ -98,8 +98,12 @@ class DREstimator(BaseCJEEstimator):
 
         # Choose default outcome model based on available calibrator
         if outcome_model is None:
-            if calibrator is not None and hasattr(calibrator, "_fold_models"):
-                # We have a cross-fitted calibrator, use it for outcome model
+            if (
+                calibrator is not None
+                and hasattr(calibrator, "_fold_models")
+                and calibrator._fold_models
+            ):
+                # We have a cross-fitted calibrator with standard isotonic models, use it for outcome model
                 logger.info(
                     "Using CalibratorBackedOutcomeModel (reusing calibration models)"
                 )
@@ -122,7 +126,10 @@ class DREstimator(BaseCJEEstimator):
                     )
 
                 # Fall back to standard isotonic outcome model
-                outcome_model = IsotonicOutcomeModel(n_folds=n_folds)
+                # Pass calibrator if available for proper index transformation
+                outcome_model = IsotonicOutcomeModel(
+                    n_folds=n_folds, calibrator=calibrator
+                )
         self.outcome_model = outcome_model
 
         # Storage for fresh draws (added via add_fresh_draws)

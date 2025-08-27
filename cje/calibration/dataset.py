@@ -4,7 +4,7 @@ This module provides functions to calibrate datasets with judge scores
 to match oracle labels, creating calibrated rewards for CJE analysis.
 """
 
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Literal
 from copy import deepcopy
 import numpy as np
 from ..data.models import Dataset, Sample
@@ -17,12 +17,15 @@ def calibrate_dataset(
     oracle_field: str = "oracle_label",
     enable_cross_fit: bool = False,
     n_folds: int = 5,
+    calibration_mode: Optional[str] = None,
+    random_seed: int = 42,
 ) -> Tuple[Dataset, CalibrationResult]:
     """Calibrate judge scores in a dataset to match oracle labels.
 
     This function extracts judge scores and oracle labels from the dataset,
     calibrates the judge scores to match the oracle distribution, and returns
-    a new dataset with calibrated rewards.
+    a new dataset with calibrated rewards. By default, uses auto mode to
+    automatically select between monotone and flexible calibration.
 
     Args:
         dataset: Dataset containing judge scores and oracle labels
@@ -30,6 +33,8 @@ def calibrate_dataset(
         oracle_field: Field name in metadata containing oracle labels
         enable_cross_fit: If True, also fits cross-fitted models for DR
         n_folds: Number of CV folds (only used if enable_cross_fit=True)
+        calibration_mode: Calibration mode ('auto', 'monotone', 'two_stage').
+                         If None, defaults to 'auto' for cross-fit, 'monotone' otherwise.
 
     Returns:
         Tuple of (calibrated_dataset, calibration_result)
@@ -87,8 +92,15 @@ def calibrate_dataset(
     if not np.any(oracle_mask_array):
         raise ValueError(f"No oracle labels found in field '{oracle_field}'")
 
+    # Determine calibration mode
+    if calibration_mode is None:
+        # Default to auto for cross-fit (better for DR), monotone otherwise
+        calibration_mode = "auto" if enable_cross_fit else "monotone"
+
     # Calibrate judge scores
-    calibrator = JudgeCalibrator()
+    calibrator = JudgeCalibrator(
+        calibration_mode=calibration_mode, random_seed=random_seed
+    )
     if enable_cross_fit:
         # Use cross-fitted calibration for DR support
         # Pass prompt_ids to enable unified fold system
@@ -143,7 +155,23 @@ def calibrate_dataset(
         "n_folds": n_folds if enable_cross_fit else None,
         "oof_rmse": result.oof_rmse if enable_cross_fit else None,
         "oof_coverage": result.oof_coverage_at_01 if enable_cross_fit else None,
+        "calibration_mode": calibration_mode,
     }
+
+    # Store fold configuration for reproducibility
+    dataset_metadata["n_folds"] = n_folds
+    dataset_metadata["fold_seed"] = random_seed
+
+    # Store selected calibration mode if auto was used
+    if (
+        hasattr(calibrator, "_flexible_calibrator")
+        and calibrator._flexible_calibrator is not None
+    ):
+        dataset_metadata["calibration_info"][
+            "selected_mode"
+        ] = calibrator._flexible_calibrator.selected_mode
+    elif calibration_mode == "auto" and hasattr(calibrator, "selected_mode"):
+        dataset_metadata["calibration_info"]["selected_mode"] = calibrator.selected_mode
 
     calibrated_dataset = Dataset(
         samples=calibrated_samples,
@@ -159,6 +187,8 @@ def calibrate_from_raw_data(
     judge_field: str = "judge_score",
     oracle_field: str = "oracle_label",
     reward_field: str = "reward",
+    calibration_mode: Optional[Literal["auto", "monotone", "two_stage"]] = "monotone",
+    random_seed: int = 42,
 ) -> Tuple[List[Dict[str, Any]], CalibrationResult]:
     """Calibrate judge scores in raw data to create calibrated rewards.
 
@@ -170,6 +200,8 @@ def calibrate_from_raw_data(
         judge_field: Field name containing judge scores
         oracle_field: Field name containing oracle labels
         reward_field: Field name to store calibrated rewards
+        calibration_mode: Calibration mode ('auto', 'monotone', 'two_stage').
+                         Defaults to 'monotone' for backward compatibility.
 
     Returns:
         Tuple of (calibrated_data, calibration_result)
@@ -206,7 +238,9 @@ def calibrate_from_raw_data(
         raise ValueError(f"No oracle labels found in field '{oracle_field}'")
 
     # Calibrate judge scores
-    calibrator = JudgeCalibrator()
+    calibrator = JudgeCalibrator(
+        calibration_mode=calibration_mode, random_seed=random_seed
+    )
     result = calibrator.fit_transform(
         judge_scores_array, oracle_labels_array, oracle_mask_array
     )

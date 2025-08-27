@@ -27,9 +27,10 @@ class WeightedIsotonicOutcomeModel(BaseOutcomeModel):
     Extends BaseOutcomeModel to support sample weights in isotonic regression.
     """
 
-    def __init__(self, n_folds: int = 5):
+    def __init__(self, n_folds: int = 5, calibrator: Optional[Any] = None):
         super().__init__(n_folds)
         self.sample_weights: Optional[np.ndarray] = None
+        self.calibrator = calibrator
         self._promptid_to_fold: Dict[str, int] = {}  # Store for MRDR to access
 
     def set_weights(self, weights: np.ndarray) -> None:
@@ -48,7 +49,7 @@ class WeightedIsotonicOutcomeModel(BaseOutcomeModel):
         prompts: List[str],
         responses: List[str],
         rewards: np.ndarray,
-        judge_scores: np.ndarray,
+        judge_scores: np.ndarray,  # These will be pre-transformed by fit() if calibrator exists
         sample_weight: Optional[np.ndarray] = None,
     ) -> Any:
         """Fit a weighted isotonic regression model on training data."""
@@ -66,7 +67,7 @@ class WeightedIsotonicOutcomeModel(BaseOutcomeModel):
         model: Any,
         prompts: List[str],
         responses: List[str],
-        judge_scores: np.ndarray,
+        judge_scores: np.ndarray,  # These will be pre-transformed by predict() if calibrator exists
     ) -> np.ndarray:
         """Predict using the fitted isotonic model."""
         predictions: np.ndarray = model.predict(judge_scores)
@@ -88,8 +89,36 @@ class WeightedIsotonicOutcomeModel(BaseOutcomeModel):
                 pid: int(fid) for pid, fid in zip(prompt_ids, fold_ids)
             }
 
-        # Call base class fit
-        super().fit(prompts, responses, rewards, judge_scores, fold_ids)
+        # Pre-compute transformed indices if calibrator is available
+        if self.calibrator is not None and hasattr(self.calibrator, "index"):
+            # Get OOF indices for all data at once
+            transformed_scores = self.calibrator.index(judge_scores, fold_ids)
+        else:
+            transformed_scores = judge_scores
+
+        # Call base class fit with transformed scores
+        super().fit(prompts, responses, rewards, transformed_scores, fold_ids)
+
+    def predict(
+        self,
+        prompts: List[str],
+        responses: List[str],
+        judge_scores: Optional[np.ndarray] = None,
+        fold_ids: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
+        """Predict using cross-fitted models with proper index transformation."""
+        if judge_scores is None:
+            raise ValueError("judge_scores required for prediction")
+
+        # Transform judge scores if calibrator is available
+        if self.calibrator is not None and hasattr(self.calibrator, "index"):
+            # For prediction, use the ensemble index (folds=None)
+            transformed_scores = self.calibrator.index(judge_scores, folds=None)
+        else:
+            transformed_scores = judge_scores
+
+        # Call parent predict with transformed scores
+        return super().predict(prompts, responses, transformed_scores, fold_ids)
 
 
 class MRDREstimator(DREstimator):
@@ -132,7 +161,8 @@ class MRDREstimator(DREstimator):
         # Use standard isotonic as default (will be overridden if policy-specific)
         from .outcome_models import IsotonicOutcomeModel
 
-        outcome_model = IsotonicOutcomeModel(n_folds=n_folds)
+        # Pass calibrator for proper index transformation with two-stage calibration
+        outcome_model = IsotonicOutcomeModel(n_folds=n_folds, calibrator=calibrator)
 
         # Initialize DR base (which will pass calibrator to CalibratedIPS)
         super().__init__(
@@ -228,7 +258,10 @@ class MRDREstimator(DREstimator):
             prompt_ids = [str(d.get("prompt_id")) for d in data]
 
             # Create and fit weighted model for this policy
-            model = WeightedIsotonicOutcomeModel(n_folds=self.n_folds)
+            # Pass calibrator for proper index transformation with two-stage calibration
+            model = WeightedIsotonicOutcomeModel(
+                n_folds=self.n_folds, calibrator=self.calibrator
+            )
             model.set_weights(omega)
 
             # Use cv_map if available (from calibration), otherwise create new folds
