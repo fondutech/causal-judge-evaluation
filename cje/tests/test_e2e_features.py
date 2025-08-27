@@ -20,7 +20,7 @@ from cje.estimators import CalibratedIPS, DRCPOEstimator
 class TestIICFeature:
     """Test Isotonic Influence Control (IIC) variance reduction."""
 
-    def test_iic_variance_reduction_pipeline(self, arena_sample):
+    def test_iic_variance_reduction_pipeline(self, arena_sample) -> None:
         """Test IIC reduces variance in real estimation."""
         import random
 
@@ -78,7 +78,7 @@ class TestIICFeature:
                 assert "r_squared" in policy_diag
                 assert 0 <= policy_diag["r_squared"] <= 1
 
-    def test_iic_with_dr_estimators(self, arena_sample, arena_fresh_draws):
+    def test_iic_with_dr_estimators(self, arena_sample, arena_fresh_draws) -> None:
         """Test IIC works with DR estimators."""
         import random
 
@@ -131,7 +131,7 @@ class TestIICFeature:
 class TestSIMCalFeature:
     """Test SIMCal (Surrogate-Indexed Monotone Calibration) variance control."""
 
-    def test_simcal_variance_cap_pipeline(self, arena_sample):
+    def test_simcal_variance_cap_pipeline(self, arena_sample) -> None:
         """Test SIMCal caps variance as promised."""
         import random
 
@@ -154,7 +154,7 @@ class TestSIMCalFeature:
         # For now, skip this specific test
         pytest.skip("variance_cap parameter has been refactored")
 
-    def test_simcal_mean_preservation(self, arena_sample):
+    def test_simcal_mean_preservation(self, arena_sample) -> None:
         """Test SIMCal preserves mean of weights."""
         import random
 
@@ -192,7 +192,7 @@ class TestSIMCalFeature:
 class TestOracleAugmentation:
     """Test oracle slice augmentation for honest uncertainty quantification."""
 
-    def test_oracle_augmentation_pipeline(self, arena_sample):
+    def test_oracle_augmentation_pipeline(self, arena_sample) -> None:
         """Test oracle slice augmentation improves CIs."""
         import random
 
@@ -261,7 +261,7 @@ class TestOracleAugmentation:
 class TestCrossFitting:
     """Test cross-fitting for orthogonality in DR estimators."""
 
-    def test_cross_fitting_consistency(self, arena_sample, arena_fresh_draws):
+    def test_cross_fitting_consistency(self, arena_sample, arena_fresh_draws) -> None:
         """Test cross-fitting gives consistent results across runs."""
         import random
 
@@ -308,7 +308,7 @@ class TestCrossFitting:
                 estimate_range < 0.05
             ), f"Policy {i}: range {estimate_range:.4f} across seeds"
 
-    def test_fold_assignment_stability(self, arena_sample):
+    def test_fold_assignment_stability(self, arena_sample) -> None:
         """Test that fold assignments are stable based on prompt_id."""
         from cje.data.folds import get_fold
 
@@ -338,7 +338,9 @@ class TestCrossFitting:
 class TestIntegrationScenarios:
     """Test complete scenarios combining multiple features."""
 
-    def test_full_pipeline_with_all_features(self, arena_sample, arena_fresh_draws):
+    def test_full_pipeline_with_all_features(
+        self, arena_sample, arena_fresh_draws
+    ) -> None:
         """Test complete pipeline with IIC, SIMCal, cross-fitting, and oracle augmentation."""
         import random
 

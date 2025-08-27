@@ -86,7 +86,7 @@ def _prepare_output_data(
     }
 
     # Add weight diagnostics for best policy
-    if best_diag:
+    if best_diag and isinstance(best_diag, dict):
         output_data["weight_diagnostics"]["best_policy"] = {
             "ess_fraction": float(best_diag.get("ess_fraction", 1.0)),
             "max_weight": float(best_diag.get("max_weight", 1.0)),
@@ -94,6 +94,8 @@ def _prepare_output_data(
         }
 
     # Add base policy results
+    if "policies" not in output_data["estimation"]:
+        output_data["estimation"]["policies"] = {}
     output_data["estimation"]["policies"]["base"] = {
         "estimate": float(summary_data["base_mean"]),
         "standard_error": float(summary_data["base_se"]),

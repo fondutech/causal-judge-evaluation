@@ -24,6 +24,7 @@ def create_test_dataset(n_samples: int = 100) -> Dataset:
                 prompt=f"Test prompt {i}",
                 response=f"Response {i}",
                 reward=np.random.random(),
+                base_policy_logprob=-10.0,
                 target_policy_logprobs={"policy": -10.0},
             )
         )
@@ -90,7 +91,9 @@ class TestFilteringRobustness:
         folds_before = get_folds_for_dataset(dataset)
 
         # Filter to subset (keep samples with reward > 0.5)
-        filtered_samples = [s for s in dataset.samples if s.reward > 0.5]
+        filtered_samples = [
+            s for s in dataset.samples if s.reward is not None and s.reward > 0.5
+        ]
         filtered_dataset = Dataset(samples=filtered_samples, target_policies=["policy"])
         folds_after = get_folds_for_dataset(filtered_dataset)
 

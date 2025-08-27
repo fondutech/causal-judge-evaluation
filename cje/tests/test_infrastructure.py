@@ -7,7 +7,7 @@ that E2E tests might miss.
 
 import pytest
 import numpy as np
-from typing import List
+from typing import List, Dict, Optional
 
 from cje.data.models import Sample, Dataset
 from cje.data.folds import get_fold
@@ -18,7 +18,7 @@ from cje.estimators import CalibratedIPS
 class TestFoldInfrastructure:
     """Test critical fold computation infrastructure."""
 
-    def test_fold_computation_deterministic(self):
+    def test_fold_computation_deterministic(self) -> None:
         """Fold assignment must be deterministic based on prompt_id."""
         prompt_ids = [f"test_{i}" for i in range(100)]
 
@@ -29,7 +29,7 @@ class TestFoldInfrastructure:
         # Must be identical
         assert folds1 == folds2
 
-    def test_fold_distribution(self):
+    def test_fold_distribution(self) -> None:
         """Folds should be roughly balanced."""
         n_samples = 1000
         n_folds = 5
@@ -48,7 +48,7 @@ class TestFoldInfrastructure:
             assert 0 <= fold_id < n_folds
             assert 0.8 * expected_per_fold <= count <= 1.2 * expected_per_fold
 
-    def test_fold_consistency_across_n_folds(self):
+    def test_fold_consistency_across_n_folds(self) -> None:
         """Same prompt should map consistently across different n_folds."""
         prompt_id = "test_prompt_123"
 
@@ -65,7 +65,7 @@ class TestFoldInfrastructure:
         # Should be deterministic
         assert get_fold(prompt_id, 5) == fold_5
 
-    def test_fold_validation(self):
+    def test_fold_validation(self) -> None:
         """Test fold assignment validation."""
         samples = [
             Sample(
@@ -98,13 +98,13 @@ class TestFoldInfrastructure:
 class TestEdgeCases:
     """Test edge cases that E2E might miss."""
 
-    def test_empty_dataset(self):
+    def test_empty_dataset(self) -> None:
         """Handle empty dataset gracefully."""
         # Dataset requires at least one sample due to Pydantic validation
         with pytest.raises(ValueError, match="at least 1 item"):
             dataset = Dataset(samples=[], target_policies=["policy"])
 
-    def test_single_sample(self):
+    def test_single_sample(self) -> None:
         """Handle single sample dataset."""
         sample = Sample(
             prompt_id="single",
@@ -128,7 +128,7 @@ class TestEdgeCases:
         with pytest.raises(ValueError, match="Cannot have number of splits"):
             results = estimator.fit_and_estimate()
 
-    def test_nan_rewards(self):
+    def test_nan_rewards(self) -> None:
         """Handle NaN rewards properly."""
         # Pydantic validation doesn't allow NaN rewards
         # Test that it's properly rejected
@@ -142,7 +142,7 @@ class TestEdgeCases:
                 target_policy_logprobs={"policy": -9.0},
             )
 
-    def test_extreme_weights(self):
+    def test_extreme_weights(self) -> None:
         """Handle extreme importance weights."""
         samples = []
         for i in range(20):
@@ -178,13 +178,13 @@ class TestEdgeCases:
         # Standard errors should be non-negative (could be 0 in edge cases)
         assert results.standard_errors[0] >= 0
 
-    def test_missing_logprobs(self):
+    def test_missing_logprobs(self) -> None:
         """Handle missing log probabilities."""
         samples = []
         for i in range(10):
             # Some samples missing target logprobs
             if i % 3 == 0:
-                target_logprobs = {}  # Missing
+                target_logprobs: Dict[str, Optional[float]] = {}  # Missing
             else:
                 target_logprobs = {"policy": -9.0}
 
@@ -214,7 +214,7 @@ class TestEdgeCases:
             # With < 5 samples, can't do 5-fold CV
             assert sampler.n_valid_samples < 5
 
-    def test_all_same_reward(self):
+    def test_all_same_reward(self) -> None:
         """Handle case where all rewards are identical."""
         samples = []
         for i in range(20):
@@ -246,7 +246,7 @@ class TestEdgeCases:
 class TestDataIntegrity:
     """Test data integrity and validation."""
 
-    def test_prompt_id_uniqueness(self):
+    def test_prompt_id_uniqueness(self) -> None:
         """Ensure prompt_ids are handled correctly even if not unique."""
         samples = []
         for i in range(10):
@@ -278,7 +278,7 @@ class TestDataIntegrity:
                 if samples[i].prompt_id == samples[j].prompt_id:
                     assert fold_ids[i] == fold_ids[j]
 
-    def test_policy_name_mismatch(self):
+    def test_policy_name_mismatch(self) -> None:
         """Handle mismatch between dataset policies and sample policies."""
         samples = []
         for i in range(10):

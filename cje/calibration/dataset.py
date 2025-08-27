@@ -171,16 +171,18 @@ def calibrate_dataset(
     dataset_metadata["fold_seed"] = random_seed
 
     # Store selected calibration mode and update method field
-    selected_mode = calibration_mode  # Default to the requested mode
+    selected_mode: Optional[str] = calibration_mode  # Default to the requested mode
     if (
         hasattr(calibrator, "_flexible_calibrator")
         and calibrator._flexible_calibrator is not None
     ):
         selected_mode = calibrator._flexible_calibrator.selected_mode
-        dataset_metadata["calibration_info"]["selected_mode"] = selected_mode
+        if selected_mode is not None:
+            dataset_metadata["calibration_info"]["selected_mode"] = selected_mode
     elif calibration_mode == "auto" and hasattr(calibrator, "selected_mode"):
         selected_mode = calibrator.selected_mode
-        dataset_metadata["calibration_info"]["selected_mode"] = selected_mode
+        if selected_mode is not None:
+            dataset_metadata["calibration_info"]["selected_mode"] = selected_mode
 
     # Update method field to reflect actual calibration mode used
     if selected_mode:

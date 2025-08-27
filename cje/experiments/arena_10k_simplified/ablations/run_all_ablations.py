@@ -42,7 +42,6 @@ def main() -> int:
 
     # Ablations to run in order
     ablations = [
-        "oracle_coverage.py",  # Effect of oracle slice size
         "sample_size.py",  # Effect of dataset size
         "estimator_comparison.py",  # Compare all estimators
         "interaction.py",  # Oracle × sample size interaction

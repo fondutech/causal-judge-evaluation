@@ -173,10 +173,10 @@ def _calibrate_with_coverage(
         print(f"   ✓ Calibrated using {cal_result.n_oracle} oracle labels")
         print(f"   ✓ Calibration RMSE: {cal_result.calibration_rmse:.3f}")
 
-    # Store original labels for later restoration
-    calibrated_dataset._original_oracle_labels = original_oracle_labels
+    # Store original labels in metadata for later restoration
+    calibrated_dataset.metadata["_original_oracle_labels"] = original_oracle_labels
     # Also store on original dataset so it can be restored there too
-    dataset._original_oracle_labels = original_oracle_labels
+    dataset.metadata["_original_oracle_labels"] = original_oracle_labels
 
     return calibrated_dataset, cal_result
 

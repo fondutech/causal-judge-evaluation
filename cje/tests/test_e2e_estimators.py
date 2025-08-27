@@ -26,7 +26,7 @@ from cje.estimators import (
 class TestE2EEstimators:
     """Complete pipeline tests for each estimator."""
 
-    def test_calibrated_ips_pipeline(self, arena_sample):
+    def test_calibrated_ips_pipeline(self, arena_sample) -> None:
         """Test CalibratedIPS: load → calibrate → estimate → diagnostics."""
         # 1. Calibrate dataset with partial oracle coverage
         import random
@@ -79,7 +79,7 @@ class TestE2EEstimators:
             assert 0 <= results.estimates[i] <= 1
             assert results.standard_errors[i] > 0
 
-    def test_dr_cpo_pipeline(self, arena_sample, arena_fresh_draws):
+    def test_dr_cpo_pipeline(self, arena_sample, arena_fresh_draws) -> None:
         """Test DR-CPO: load → calibrate → add fresh draws → estimate."""
         # 1. Calibrate dataset
         import random
@@ -128,7 +128,7 @@ class TestE2EEstimators:
         # DR should generally have smaller SEs than IPS
         assert all(se > 0 for se in results.standard_errors)
 
-    def test_mrdr_pipeline(self, arena_sample, arena_fresh_draws):
+    def test_mrdr_pipeline(self, arena_sample, arena_fresh_draws) -> None:
         """Test MRDR: multiply robust doubly robust estimation."""
         # 1. Prepare dataset
         import random
@@ -177,7 +177,7 @@ class TestE2EEstimators:
         assert "omega_mode" in results.metadata
         assert results.metadata["omega_mode"] == "w2"
 
-    def test_tmle_pipeline(self, arena_sample, arena_fresh_draws):
+    def test_tmle_pipeline(self, arena_sample, arena_fresh_draws) -> None:
         """Test TMLE: targeted maximum likelihood estimation."""
         # 1. Prepare dataset
         import random
