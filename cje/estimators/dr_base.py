@@ -571,7 +571,9 @@ class DREstimator(BaseCJEEstimator):
             aug_vector, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
                 policy,
                 logged_rewards,  # Always use calibrated rewards
-                cast(List[Dict[str, Any]], data),  # PolicyDataDict is structurally compatible
+                cast(
+                    List[Dict[str, Any]], data
+                ),  # PolicyDataDict is structurally compatible
                 self.sampler.dataset.samples,
             )
             self._aug_diagnostics[policy] = aug_diagnostics
@@ -1018,29 +1020,27 @@ class DREstimator(BaseCJEEstimator):
                     fold_model.predict(judge_scores_logged), 0.0, 1.0
                 )
 
-                # Get fresh draw judge scores and recalibrate
-                # Need to collect all fresh draw scores across all prompts
-                fresh_scores_list: List[float] = []
+                # Compute per-prompt fresh draw means (like main estimate() does)
+                g_fresh_means = []
                 for prompt_id in set(d["prompt_id"] for d in data):
                     prompt_fresh_scores = fresh_draw_data.get_scores_for_prompt_id(
                         prompt_id
                     )
-                    fresh_scores_list.extend(prompt_fresh_scores)
+                    if len(prompt_fresh_scores) > 0:
+                        # Predict and average for this prompt
+                        prompt_preds = fold_model.predict(np.array(prompt_fresh_scores))
+                        prompt_preds = np.clip(prompt_preds, 0.0, 1.0)
+                        g_fresh_means.append(prompt_preds.mean())
 
-                if len(fresh_scores_list) == 0:
+                if len(g_fresh_means) == 0:
                     logger.warning(f"No fresh draw scores found for fold {fold_id}")
                     continue
-
-                judge_scores_fresh = np.array(fresh_scores_list)
-                fresh_rewards_loo = np.clip(
-                    fold_model.predict(judge_scores_fresh), 0.0, 1.0
-                )
 
                 # Get outcome model predictions (these use cross-fitted models already)
                 g_logged = self._outcome_predictions[policy]
 
-                # Compute leave-one-out DR estimate
-                dm_term = fresh_rewards_loo.mean()
+                # Compute leave-one-out DR estimate with per-prompt averaging
+                dm_term = float(np.mean(g_fresh_means))
                 ips_correction = (weights * (logged_rewards_loo - g_logged)).mean()
 
                 # Note: We're not recomputing augmentation for each fold

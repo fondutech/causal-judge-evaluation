@@ -288,6 +288,15 @@ class BaseCJEEstimator(ABC):
             logger.warning(f"All judge scores missing for {policy}, skipping IIC")
             return influence
 
+        # Get fold IDs from data for cross-fitting if not provided
+        if fold_ids is None and data:
+            # Try to get fold IDs from the data (cv_fold field)
+            fold_ids_list = [d.get("cv_fold", -1) for d in data]
+            if any(f >= 0 for f in fold_ids_list):
+                fold_ids = np.array(fold_ids_list)
+            else:
+                fold_ids = None  # No valid folds available
+
         # Apply IIC
         residualized, diagnostics = self.iic.residualize(
             influence, judge_scores, policy, fold_ids

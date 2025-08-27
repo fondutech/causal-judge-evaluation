@@ -82,11 +82,14 @@ def calibrate_dataset(
             oracle_labels.append(float(sample.metadata[oracle_field]))
             oracle_mask.append(True)
         else:
+            oracle_labels.append(np.nan)  # Placeholder for missing oracle
             oracle_mask.append(False)
 
     # Convert to arrays
     judge_scores_array = np.array(judge_scores)
-    oracle_labels_array = np.array(oracle_labels) if oracle_labels else None
+    oracle_labels_array = np.array(
+        oracle_labels
+    )  # Now always same length as judge_scores
     oracle_mask_array = np.array(oracle_mask)
 
     if not np.any(oracle_mask_array):
@@ -154,7 +157,9 @@ def calibrate_dataset(
         "coverage": result.coverage_at_01,
         "n_oracle": result.n_oracle,
         "n_total": len(judge_scores),
-        "method": "cross_fitted_isotonic" if enable_cross_fit else "isotonic",
+        "method": (
+            "cross_fitted_isotonic" if enable_cross_fit else "isotonic"
+        ),  # Will be updated below
         "n_folds": n_folds if enable_cross_fit else None,
         "oof_rmse": result.oof_rmse if enable_cross_fit else None,
         "oof_coverage": result.oof_coverage_at_01 if enable_cross_fit else None,
@@ -165,16 +170,23 @@ def calibrate_dataset(
     dataset_metadata["n_folds"] = n_folds
     dataset_metadata["fold_seed"] = random_seed
 
-    # Store selected calibration mode if auto was used
+    # Store selected calibration mode and update method field
+    selected_mode = calibration_mode  # Default to the requested mode
     if (
         hasattr(calibrator, "_flexible_calibrator")
         and calibrator._flexible_calibrator is not None
     ):
-        dataset_metadata["calibration_info"][
-            "selected_mode"
-        ] = calibrator._flexible_calibrator.selected_mode
+        selected_mode = calibrator._flexible_calibrator.selected_mode
+        dataset_metadata["calibration_info"]["selected_mode"] = selected_mode
     elif calibration_mode == "auto" and hasattr(calibrator, "selected_mode"):
-        dataset_metadata["calibration_info"]["selected_mode"] = calibrator.selected_mode
+        selected_mode = calibrator.selected_mode
+        dataset_metadata["calibration_info"]["selected_mode"] = selected_mode
+
+    # Update method field to reflect actual calibration mode used
+    if selected_mode:
+        dataset_metadata["calibration_info"]["method"] = (
+            f"cross_fitted_{selected_mode}" if enable_cross_fit else selected_mode
+        )
 
     calibrated_dataset = Dataset(
         samples=calibrated_samples,
@@ -234,7 +246,9 @@ def calibrate_from_raw_data(
 
     # Convert to arrays
     judge_scores_array = np.array(judge_scores)
-    oracle_labels_array = np.array(oracle_labels) if oracle_labels else None
+    oracle_labels_array = np.array(
+        oracle_labels
+    )  # Now always same length as judge_scores
     oracle_mask_array = np.array(oracle_mask)
 
     if not np.any(oracle_mask_array):

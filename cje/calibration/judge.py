@@ -75,7 +75,9 @@ class JudgeCalibrator:
         )
         self.selected_mode: Optional[str] = None  # For storing auto mode selection
         self._final_calibrator: Optional[IsotonicRegression] = None
-        self._flexible_calibrator: Optional["FlexibleCalibrator"] = None  # Will hold FlexibleCalibrator if needed
+        self._flexible_calibrator: Optional["FlexibleCalibrator"] = (
+            None  # Will hold FlexibleCalibrator if needed
+        )
         self._fold_models: Dict[int, IsotonicRegression] = {}
         self._fold_ids: Optional[np.ndarray] = None
         self._n_folds: int = 5
@@ -277,7 +279,7 @@ class JudgeCalibrator:
                 raise ValueError("oracle_labels required when oracle_mask provided")
             oracle_labels = np.asarray(oracle_labels)
             oracle_scores = judge_scores[oracle_mask]
-            oracle_y = oracle_labels
+            oracle_y = oracle_labels[oracle_mask]  # Extract oracle subset
         elif oracle_labels is not None and len(oracle_labels) < n_total:
             n_oracle = len(oracle_labels)
             oracle_scores = judge_scores[:n_oracle]
@@ -310,22 +312,14 @@ class JudgeCalibrator:
         # Step 1: Assign fold IDs to all samples first (unified approach)
         if prompt_ids is not None:
             # Use the unified fold system when prompt_ids are available
-            from ..data.folds import (
-                get_folds_for_prompts,
-                get_folds_with_oracle_balance,
-            )
+            # ALWAYS use hash-based folds to ensure consistency across all components
+            from ..data.folds import get_folds_for_prompts
 
             self._prompt_ids = prompt_ids
-            if self.balance_oracle_folds:
-                # Ensure oracle samples are evenly distributed across folds
-                self._fold_ids = get_folds_with_oracle_balance(
-                    prompt_ids, oracle_mask, n_folds, self.random_seed
-                )
-            else:
-                # Simple hash-based for all samples
-                self._fold_ids = get_folds_for_prompts(
-                    prompt_ids, n_folds, self.random_seed
-                )
+            # Always use hash-based folds for consistency
+            self._fold_ids = get_folds_for_prompts(
+                prompt_ids, n_folds, self.random_seed
+            )
         else:
             # Fallback to old system for backward compatibility
             self._fold_ids = np.zeros(n_total, dtype=int)

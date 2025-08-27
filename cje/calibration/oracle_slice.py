@@ -106,7 +106,10 @@ class OracleSliceAugmentation:
             self._m_hat_models[policy] = iso_global
 
             # Fill any missing values (unlabeled rows) with global fit
-            unlabeled = (cv_folds < 0) | np.isnan(cv_folds)
+            unlabeled = cv_folds < 0
+            # Only check isnan for float dtypes
+            if np.issubdtype(cv_folds.dtype, np.floating):
+                unlabeled |= np.isnan(cv_folds)
             if np.any(unlabeled):
                 m_hat[unlabeled] = iso_global.predict(judge_scores[unlabeled])
 

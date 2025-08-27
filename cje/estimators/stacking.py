@@ -221,10 +221,7 @@ class StackedDREstimator(BaseCJEEstimator):
             stacked_estimates.append(estimate)
             stacked_ses.append(se)
 
-        # Step 3: Build diagnostics
-        diagnostics = self._build_stacking_diagnostics(valid_estimators)
-
-        # Step 4: Create and return result
+        # Step 3: Create result object first (needed for diagnostics)
         metadata = {
             "stacking_weights": self.weights_per_policy,
             "valid_estimators": valid_estimators,
@@ -233,7 +230,6 @@ class StackedDREstimator(BaseCJEEstimator):
             ],
             "used_outer_split": self.use_outer_split,
             "V_folds": self.V_folds if self.use_outer_split else None,
-            "stacking_diagnostics": diagnostics,  # Add the detailed diagnostics to metadata
             "iic_diagnostics": self._iic_diagnostics if self.use_iic else None,
         }
 
@@ -254,13 +250,21 @@ class StackedDREstimator(BaseCJEEstimator):
             n_samples_used=n_samples_used,
             method=f"StackedDR({', '.join(valid_estimators)})",
             influence_functions=stacked_ifs,
-            diagnostics=None,  # Use None for now to avoid validation issues
+            diagnostics=None,  # Will be set after building diagnostics
             metadata=metadata,
             robust_standard_errors=None,
             robust_confidence_intervals=None,
         )
 
+        # Set _results before building diagnostics (needed for variance reduction calculation)
         self._results = result
+
+        # Step 4: Build diagnostics (now that self._results is set)
+        diagnostics = self._build_stacking_diagnostics(valid_estimators)
+
+        # Add diagnostics to metadata
+        result.metadata["stacking_diagnostics"] = diagnostics
+
         return result
 
     def fit_and_estimate(self) -> EstimationResult:
@@ -506,9 +510,11 @@ class StackedDREstimator(BaseCJEEstimator):
     def _create_passthrough_result(self, estimator_name: str) -> EstimationResult:
         """Create a result that passes through a single estimator's results."""
         result = self.component_results[estimator_name]
-        
+
         if result is None:
-            raise ValueError(f"Cannot create passthrough for failed estimator {estimator_name}")
+            raise ValueError(
+                f"Cannot create passthrough for failed estimator {estimator_name}"
+            )
 
         # Add metadata about the passthrough
         metadata = result.metadata.copy() if result.metadata else {}
