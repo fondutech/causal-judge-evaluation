@@ -76,6 +76,13 @@ class DREstimator(BaseCJEEstimator):
         self.use_calibrated_weights = use_calibrated_weights
         self.random_seed = random_seed
 
+        # Extract oua_jackknife from oracle_slice_config if present
+        oracle_config = kwargs.get("oracle_slice_config", {})
+        if isinstance(oracle_config, dict):
+            self.oua_jackknife = oracle_config.get("oua_jackknife", False)
+        else:
+            self.oua_jackknife = False
+
         # Initialize the IPS estimator with appropriate mode
         self.ips_estimator: CalibratedIPS
         # Pass calibrator to CalibratedIPS for DR-aware direction selection if calibrating
@@ -599,10 +606,15 @@ class DREstimator(BaseCJEEstimator):
             if self.use_iic:
                 # Compute fold assignments for cross-fitting
                 from ..data.folds import get_fold
-                fold_ids = np.array([get_fold(pid, self.n_folds) for pid in logged_prompt_ids])
+
+                fold_ids = np.array(
+                    [get_fold(pid, self.n_folds) for pid in logged_prompt_ids]
+                )
 
             # Apply IIC for variance reduction (if enabled)
-            if_contributions = self._apply_iic(if_contributions, policy, fold_ids=fold_ids)
+            if_contributions = self._apply_iic(
+                if_contributions, policy, fold_ids=fold_ids
+            )
 
             # Base SE from influence functions (across-prompt variance)
             base_se = np.std(if_contributions, ddof=1) / np.sqrt(len(if_contributions))
@@ -762,7 +774,7 @@ class DREstimator(BaseCJEEstimator):
         if self.use_iic and self._iic_diagnostics:
             metadata["iic_diagnostics"] = self._iic_diagnostics
 
-        return EstimationResult(
+        base_result = EstimationResult(
             estimates=np.array(estimates),
             standard_errors=np.array(standard_errors),
             n_samples_used=n_samples_used,
@@ -773,6 +785,43 @@ class DREstimator(BaseCJEEstimator):
             robust_standard_errors=None,
             robust_confidence_intervals=None,
         )
+
+        # Optionally compute and attach oracle-uncertainty (OUA) adjusted SEs
+        if self.oua_jackknife and self.calibrator is not None:
+            try:
+                oua_ses: List[float] = []
+                var_oracle_map: Dict[str, float] = {}
+                jk_counts: Dict[str, int] = {}
+                for i, policy in enumerate(self.sampler.target_policies):
+                    se_main = (
+                        float(base_result.standard_errors[i])
+                        if i < len(base_result.standard_errors)
+                        else float("nan")
+                    )
+                    var_orc = 0.0
+                    K = 0
+                    jack = self.get_oracle_jackknife(policy)
+                    if jack is not None and len(jack) >= 2:
+                        K = len(jack)
+                        psi_bar = float(np.mean(jack))
+                        var_orc = (K - 1) / K * float(np.mean((jack - psi_bar) ** 2))
+                    var_oracle_map[policy] = var_orc
+                    jk_counts[policy] = K
+                    oua_ses.append(float(np.sqrt(se_main**2 + var_orc)))
+
+                base_result.robust_standard_errors = np.array(oua_ses)
+                if isinstance(base_result.metadata, dict):
+                    base_result.metadata.setdefault("oua", {})
+                    base_result.metadata["oua"].update(
+                        {
+                            "var_oracle_per_policy": var_oracle_map,
+                            "jackknife_counts": jk_counts,
+                        }
+                    )
+            except Exception as e:
+                logger.debug(f"OUA jackknife failed: {e}")
+
+        return base_result
 
     def _build_dr_diagnostics(
         self,

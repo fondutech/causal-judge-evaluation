@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 # Type alias for builder functions
 BuilderFn = Callable[
     [PrecomputedSampler, Dict[str, Any], Optional[Any], bool],
-    Union[CalibratedIPS, DRCPOEstimator, MRDREstimator, TMLEEstimator, StackedDREstimator],
+    Union[
+        CalibratedIPS, DRCPOEstimator, MRDREstimator, TMLEEstimator, StackedDREstimator
+    ],
 ]
 
 
@@ -58,7 +60,9 @@ def _build_dr_cpo(
     if calibration_result and getattr(calibration_result, "calibrator", None):
         if verbose:
             logger.info("Using calibration models for DR outcome model")
-        return DRCPOEstimator(sampler, n_folds=n_folds, calibrator=calibration_result.calibrator)
+        return DRCPOEstimator(
+            sampler, n_folds=n_folds, calibrator=calibration_result.calibrator
+        )
     return DRCPOEstimator(sampler, n_folds=n_folds)
 
 
@@ -141,8 +145,7 @@ def create_estimator(
     config: Dict[str, Any],
     calibration_result: Optional[Any],
     verbose: bool,
-):
+) -> Any:
     if name not in REGISTRY:
         raise ValueError(f"Unknown estimator type: {name}")
     return REGISTRY[name](sampler, config, calibration_result, verbose)
-

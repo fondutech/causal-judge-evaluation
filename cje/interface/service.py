@@ -41,9 +41,13 @@ class AnalysisService:
             logger.info(f"Valid samples after filtering: {sampler.n_valid_samples}")
 
         # Determine estimator (support 'auto' default)
-        chosen_estimator = config.estimator.lower() if config.estimator else "calibrated-ips"
+        chosen_estimator = (
+            config.estimator.lower() if config.estimator else "calibrated-ips"
+        )
         if chosen_estimator == "auto":
-            chosen_estimator = "stacked-dr" if config.fresh_draws_dir else "calibrated-ips"
+            chosen_estimator = (
+                "stacked-dr" if config.fresh_draws_dir else "calibrated-ips"
+            )
 
         estimator_obj = create_estimator(
             chosen_estimator,
@@ -63,10 +67,12 @@ class AnalysisService:
                 )
 
             for policy in sampler.target_policies:
-                fd = load_fresh_draws_auto(Path(config.fresh_draws_dir), policy, verbose=config.verbose)
+                fd = load_fresh_draws_auto(
+                    Path(config.fresh_draws_dir), policy, verbose=config.verbose
+                )
                 estimator_obj.add_fresh_draws(policy, fd)
 
-        results = estimator_obj.fit_and_estimate()
+        results: EstimationResult = estimator_obj.fit_and_estimate()
 
         # Minimal metadata enrichment
         results.metadata["dataset_path"] = config.dataset_path

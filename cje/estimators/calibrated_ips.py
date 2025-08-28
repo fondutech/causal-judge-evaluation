@@ -65,6 +65,7 @@ class CalibratedIPS(BaseCJEEstimator):
         baseline_shrink: float = 0.0,
         run_diagnostics: bool = True,
         refuse_unreliable: bool = False,
+        oua_jackknife: bool = False,
         **kwargs: Any,
     ):
         # Pass oracle_slice_config to base if provided, otherwise use default "auto"
@@ -82,6 +83,8 @@ class CalibratedIPS(BaseCJEEstimator):
         self.include_baseline = include_baseline if calibrate else True
         self.baseline_shrink = baseline_shrink if calibrate else 0.0
         self.refuse_unreliable = refuse_unreliable
+        # Optional oracle-uncertainty jackknife (disabled by default)
+        self.oua_jackknife = bool(oua_jackknife)
         self._no_overlap_policies: Set[str] = set()
         self._calibration_info: Dict[str, Dict] = {}  # Store calibration details
         self._diagnostics: Optional[IPSDiagnostics] = None
@@ -334,7 +337,10 @@ class CalibratedIPS(BaseCJEEstimator):
             if self.use_iic:
                 # Compute fold assignments for cross-fitting
                 from ..data.folds import get_fold
-                prompt_ids = [d.get("prompt_id", f"sample_{i}") for i, d in enumerate(data)]
+
+                prompt_ids = [
+                    d.get("prompt_id", f"sample_{i}") for i, d in enumerate(data)
+                ]
                 fold_ids = np.array([get_fold(pid, 5) for pid in prompt_ids])
 
             # Apply IIC for variance reduction (if enabled)
@@ -387,6 +393,36 @@ class CalibratedIPS(BaseCJEEstimator):
             },
         )
 
+        # Optionally add oracle-uncertainty jackknife variance
+        if self.oua_jackknife and self.calibrator is not None:
+            oua_ses: List[float] = []
+            var_oracle_map: Dict[str, float] = {}
+            jk_counts: Dict[str, int] = {}
+            base_se = result.standard_errors
+            for i, policy in enumerate(self.sampler.target_policies):
+                var_orc = 0.0
+                K = 0
+                jack = self.get_oracle_jackknife(policy)
+                if jack is not None and len(jack) >= 2 and i < len(base_se):
+                    K = len(jack)
+                    psi_bar = float(np.mean(jack))
+                    var_orc = (K - 1) / K * float(np.mean((jack - psi_bar) ** 2))
+                var_oracle_map[policy] = var_orc
+                jk_counts[policy] = K
+                se_main = float(base_se[i]) if i < len(base_se) else float("nan")
+                oua_ses.append(float(np.sqrt(se_main**2 + var_orc)))
+
+            result.robust_standard_errors = np.array(oua_ses)
+            # Attach OUA metadata
+            if isinstance(result.metadata, dict):
+                result.metadata.setdefault("oua", {})
+                result.metadata["oua"].update(
+                    {
+                        "var_oracle_per_policy": var_oracle_map,
+                        "jackknife_counts": jk_counts,
+                    }
+                )
+
         # Build and attach diagnostics directly
         diagnostics = self._build_diagnostics(result)
         result.diagnostics = diagnostics
@@ -396,6 +432,56 @@ class CalibratedIPS(BaseCJEEstimator):
         self._results = result
 
         return result
+
+    def get_oracle_jackknife(self, policy: str) -> Optional[np.ndarray]:
+        """Leave-one-oracle-fold jackknife estimates for IPS.
+
+        For each calibrator fold model f^(−k), recompute the IPS estimate using
+        rewards R^(−k) = f^(−k)(S) and the same calibrated weights, and include
+        oracle augmentation with the updated residuals.
+
+        Returns an array of K estimates, or None if not applicable.
+        """
+        try:
+            if self.calibrator is None or not hasattr(self.calibrator, "_fold_models"):
+                return None
+            fold_models = getattr(self.calibrator, "_fold_models", {})
+            if not fold_models:
+                return None
+
+            # Get required data
+            data = self.sampler.get_data_for_policy(policy)
+            if not data:
+                return None
+            weights = self.get_weights(policy)
+            if weights is None:
+                return None
+
+            judge_scores = np.array([d.get("judge_score") for d in data], dtype=float)
+
+            # Sanity check alignment
+            if len(judge_scores) != len(weights):
+                return None
+
+            jack: List[float] = []
+            for fold_id, fold_model in fold_models.items():
+                # Recompute rewards under leave-one-fold calibrator
+                rewards_loo = np.clip(fold_model.predict(judge_scores), 0.0, 1.0)
+
+                # Recompute augmentation with the updated rewards
+                aug_vec, _ = self.oracle_augmentation.compute_augmentation(
+                    policy,
+                    rewards_loo,
+                    cast(List[Dict[str, Any]], data),
+                    self.sampler.dataset.samples,
+                )
+                contrib = weights * rewards_loo + aug_vec
+                jack.append(float(np.mean(contrib)))
+
+            return np.asarray(jack, dtype=float) if jack else None
+        except Exception as e:
+            logger.debug(f"get_oracle_jackknife failed for {policy}: {e}")
+            return None
 
     def get_raw_weights(self, target_policy: str) -> Optional[np.ndarray]:
         """Get raw (uncalibrated) importance weights.
