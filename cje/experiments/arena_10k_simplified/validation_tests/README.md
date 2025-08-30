@@ -29,7 +29,6 @@ To test specific features:
 ```bash
 python test_auto_fresh_draws.py  # Test fresh draw auto-loading
 python test_var_cap.py           # Test SIMCal variance cap
-python diagnostic_check.py       # Quick diagnostic check
 ```
 
 ## Expected Results

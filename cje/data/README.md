@@ -36,6 +36,7 @@ data/
 ├── factory.py            # Factory pattern for Dataset creation
 ├── precomputed_sampler.py # Sampler wrapper for estimators
 ├── fresh_draws.py        # Fresh draw models for DR
+├── fresh_draw_utils.py   # Utilities for fresh draw statistics
 ├── folds.py              # Unified fold management for cross-validation
 ├── validation.py         # Data validation functions
 └── reward_utils.py       # Reward manipulation utilities
