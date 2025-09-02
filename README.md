@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="docs/img/CJE_logo.svg" alt="CJE Logo" width="400">
+</div>
+
 # Causal Judge Evaluation (CJE)
 
 [![Docs](https://readthedocs.org/projects/causal-judge-evaluation/badge/?version=latest)](https://causal-judge-evaluation.readthedocs.io/en/latest/)
