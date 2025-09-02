@@ -1121,7 +1121,7 @@ def main() -> List[Dict[str, Any]]:
         logger.info("-" * 40)
         for i, r in enumerate(ranking, 1):
             logger.info(
-                f"{i}. {r['estimator']:15s}: SE={r['mean_se']:.4f}, Runtime={r['mean_runtime']:.1f}s"
+                f"{i}. {r['estimator']:15s}: RMSE={r['mean_rmse']:.4f}, Runtime={r['mean_runtime']:.1f}s"
             )
 
     # Create figures

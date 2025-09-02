@@ -201,6 +201,7 @@ def _generate_calibration_comparison(
             calibrated_scores=(
                 np.array(calibrated_preds) if calibrated_preds else None
             ),
+            calibrator=cal_result.calibrator if cal_result else None,
             save_path=plot_dir / "calibration_comparison",
         )
         print(f"   ✓ Calibration comparison → {plot_dir}/calibration_comparison.png")

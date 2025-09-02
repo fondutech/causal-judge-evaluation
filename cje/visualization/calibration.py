@@ -10,6 +10,7 @@ def plot_calibration_comparison(
     judge_scores: np.ndarray,
     oracle_labels: np.ndarray,
     calibrated_scores: Optional[np.ndarray] = None,
+    calibrator: Optional[object] = None,
     n_bins: int = 10,
     save_path: Optional[Path] = None,
     figsize: tuple = (12, 5),
@@ -257,23 +258,46 @@ def plot_calibration_comparison(
             zorder=11,
         )
 
-    # Plot the calibration function if available
-    if calibrated_scores is not None:
+    # Plot the calibration function if calibrator is available
+    if calibrator is not None and hasattr(calibrator, "predict"):
+        # Create a fine grid of judge scores
+        judge_grid = np.linspace(0, 1, 200)
+
+        # Get predictions from the calibrator
+        try:
+            calibrated_grid = calibrator.predict(judge_grid)
+            calibrated_grid = np.clip(calibrated_grid, 0, 1)  # Ensure in [0,1]
+
+            # Plot the calibration function
+            ax.plot(
+                judge_grid,
+                calibrated_grid,
+                "-",
+                color="red",
+                alpha=0.9,
+                linewidth=3,
+                label="Calibration function f(Judge)",
+                zorder=12,  # On top
+            )
+        except Exception as e:
+            print(f"Warning: Could not plot calibration function: {e}")
+
+    # Also plot individual calibrated points if available
+    elif calibrated_scores is not None:
         # Sort for smooth curve
         sorted_idx = np.argsort(judge_scores)
         judge_sorted = judge_scores[sorted_idx]
         calibrated_sorted = calibrated_scores[sorted_idx]
 
-        # Plot calibration function
-        ax.plot(
-            judge_sorted,
-            calibrated_sorted,
-            "-",
+        # Plot as scatter to show actual calibrated values
+        ax.scatter(
+            judge_sorted[::10],  # Subsample for visibility
+            calibrated_sorted[::10],
+            s=20,
+            alpha=0.5,
             color="red",
-            alpha=0.9,
-            linewidth=3,
-            label="Isotonic calibration f(Judge)",
-            zorder=10,  # Make sure it's on top
+            label="Calibrated rewards",
+            zorder=11,
         )
 
     # Add diagonal reference
