@@ -393,6 +393,33 @@ class CalibratedIPS(BaseCJEEstimator):
             },
         )
 
+        # Add calibration-floor metrics (logged only) per policy
+        try:
+            cal_info = getattr(self.sampler.dataset, "metadata", {}).get(
+                "calibration_info", {}
+            )
+            f_min = float(cal_info.get("f_min", float("nan")))
+            eps = 1e-6
+            floor_meta: Dict[str, Dict[str, float]] = {}
+            for policy in self.sampler.target_policies:
+                data = self.sampler.get_data_for_policy(policy)
+                if not data:
+                    continue
+                rewards = np.array([d["reward"] for d in data], dtype=float)
+                if np.isfinite(f_min):
+                    floor_mass_logged = float(np.mean(np.abs(rewards - f_min) <= eps))
+                else:
+                    floor_mass_logged = float("nan")
+                floor_meta[policy] = {
+                    "f_min": f_min,
+                    "floor_mass_logged": floor_mass_logged,
+                }
+            # Attach to metadata
+            if isinstance(result.metadata, dict):
+                result.metadata["calibration_floor"] = floor_meta
+        except Exception:
+            pass
+
         # Optionally add oracle-uncertainty jackknife variance
         if self.oua_jackknife and self.calibrator is not None:
             oua_ses: List[float] = []
@@ -427,6 +454,39 @@ class CalibratedIPS(BaseCJEEstimator):
         diagnostics = self._build_diagnostics(result)
         result.diagnostics = diagnostics
         self._diagnostics = diagnostics
+
+        # Attach compact core summary for empirical analysis (no UX change)
+        try:
+            core_summary: Dict[str, Dict[str, Any]] = {}
+            ess = diagnostics.ess_per_policy if diagnostics else {}
+            tails = getattr(diagnostics, "tail_indices", None) or {}
+            hell_all = getattr(diagnostics, "hellinger_affinity", None)
+            hell_per = getattr(diagnostics, "hellinger_per_policy", None) or {}
+            cal_floor = (
+                result.metadata.get("calibration_floor", {})
+                if isinstance(result.metadata, dict)
+                else {}
+            )
+            for policy in self.sampler.target_policies:
+                core_summary[policy] = {
+                    "ess_fraction": float(ess.get(policy, 0.0)) if ess else None,
+                    "tail_index": (
+                        float(tails.get(policy))
+                        if policy in tails and tails.get(policy) is not None
+                        else None
+                    ),
+                    "hellinger_affinity": (
+                        float(hell_per.get(policy))
+                        if policy in hell_per
+                        else (float(hell_all) if hell_all is not None else None)
+                    ),
+                }
+                if policy in cal_floor:
+                    core_summary[policy].update(cal_floor[policy])
+            if isinstance(result.metadata, dict):
+                result.metadata["core_summary"] = core_summary
+        except Exception:
+            pass
 
         # Store for later access
         self._results = result

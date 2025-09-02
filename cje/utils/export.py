@@ -50,10 +50,25 @@ def export_results_json(
         export_data["metadata"] = _serialize_metadata(results.metadata)
 
     # Add diagnostics if requested
-    if include_diagnostics and "diagnostics" in results.metadata:
-        export_data["diagnostics"] = _serialize_diagnostics(
-            results.metadata.get("diagnostics", {})
-        )
+    if include_diagnostics:
+        # Prefer the diagnostics object on the result, if present
+        if getattr(results, "diagnostics", None) is not None:
+            diag_obj = getattr(results, "diagnostics")
+            # Try to_dict, else fallback to attribute dict
+            if hasattr(diag_obj, "to_dict"):
+                export_data["diagnostics"] = diag_obj.to_dict()
+            else:
+                try:
+                    export_data["diagnostics"] = _serialize_diagnostics(
+                        diag_obj.__dict__
+                    )
+                except Exception:
+                    pass
+        # Also allow diagnostics embedded in metadata for legacy paths
+        elif "diagnostics" in results.metadata:
+            export_data["diagnostics"] = _serialize_diagnostics(
+                results.metadata.get("diagnostics", {})
+            )
 
     # Add target policies if available
     if "target_policies" in results.metadata:

@@ -386,6 +386,8 @@ class DREstimator(BaseCJEEstimator):
         estimates = []
         standard_errors = []
         n_samples_used = {}
+        # Calibration-floor metrics per policy
+        calibration_floor_meta: Dict[str, Dict[str, float]] = {}
 
         for policy in self.sampler.target_policies:
             # Check fresh draws are available
@@ -668,6 +670,48 @@ class DREstimator(BaseCJEEstimator):
             standard_errors.append(se)
             n_samples_used[policy] = len(data)
 
+            # Compute calibration-floor metrics (logged and fresh)
+            try:
+                cal_info = getattr(self.sampler.dataset, "metadata", {}).get(
+                    "calibration_info", {}
+                )
+                f_min = float(cal_info.get("f_min", float("nan")))
+                eps = 1e-6
+                # Logged floor mass
+                floor_mass_logged = (
+                    float(np.mean(np.abs(logged_rewards - f_min) <= eps))
+                    if np.isfinite(f_min)
+                    else float("nan")
+                )
+                # Fresh floor mass (use global calibrator on fresh scores)
+                floor_mass_fresh = float("nan")
+                if (
+                    self.calibrator is not None
+                    and policy in self._fresh_draws
+                    and np.isfinite(f_min)
+                ):
+                    fresh_dataset = self._fresh_draws[policy]
+                    fresh_scores_all = []
+                    for pid in set(d["prompt_id"] for d in data):
+                        sc = fresh_dataset.get_scores_for_prompt_id(pid)
+                        if sc is not None and len(sc) > 0:
+                            fresh_scores_all.extend(list(sc))
+                    if fresh_scores_all:
+                        fresh_scores_arr = np.asarray(fresh_scores_all, dtype=float)
+                        fresh_pred = np.clip(
+                            self.calibrator.predict(fresh_scores_arr), 0.0, 1.0
+                        )
+                        floor_mass_fresh = float(
+                            np.mean(np.abs(fresh_pred - f_min) <= eps)
+                        )
+                calibration_floor_meta[policy] = {
+                    "f_min": f_min,
+                    "floor_mass_logged": floor_mass_logged,
+                    "floor_mass_fresh": floor_mass_fresh,
+                }
+            except Exception:
+                pass
+
             logger.info(
                 f"DR estimate for policy '{policy}': {dr_estimate:.4f} ± {se:.4f} "
                 f"(DM={dm_term:.4f}, IPS_corr={ips_correction:.4f})"
@@ -773,6 +817,67 @@ class DREstimator(BaseCJEEstimator):
         # Add IIC diagnostics to metadata
         if self.use_iic and self._iic_diagnostics:
             metadata["iic_diagnostics"] = self._iic_diagnostics
+
+        # Attach calibration-floor meta if available
+        if calibration_floor_meta:
+            metadata["calibration_floor"] = calibration_floor_meta
+
+        # Attach compact core summary for empirical analysis (no UX change)
+        try:
+            core_summary: Dict[str, Dict[str, Any]] = {}
+            ess = ips_diag.ess_per_policy if ips_diag else {}
+            tails_dict: Dict[str, Optional[float]] = (
+                getattr(ips_diag, "tail_indices", None) if ips_diag else None
+            ) or {}
+            hell_all = (
+                getattr(ips_diag, "hellinger_affinity", None) if ips_diag else None
+            )
+            hell_per = (
+                getattr(ips_diag, "hellinger_per_policy", None) if ips_diag else None
+            )
+            cal_floor = metadata.get("calibration_floor", {})
+            for policy in self.sampler.target_policies:
+                core_summary[policy] = {
+                    "ess_fraction": float(ess.get(policy, 0.0)) if ess else None,
+                    "tail_index": (
+                        float(tails_dict.get(policy))
+                        if policy in tails_dict and tails_dict.get(policy) is not None
+                        else None
+                    ),
+                    "hellinger_affinity": (
+                        float(hell_per.get(policy))
+                        if hell_per and policy in hell_per
+                        else (float(hell_all) if hell_all is not None else None)
+                    ),
+                }
+                # Be explicit for mypy: calibration_floor is dict-like
+                try:
+                    from typing import cast
+
+                    cf = cast(Dict[str, Dict[str, Any]], cal_floor)
+                    if policy in cf:
+                        core_summary[policy].update(cf[policy])
+                except Exception:
+                    pass
+                # DR orthogonality pass (if available)
+                ortho = self._orthogonality_scores.get(policy)
+                if ortho and all(k in ortho for k in ("ci_lower", "ci_upper")):
+                    ci_l = (
+                        float(ortho["ci_lower"])
+                        if ortho["ci_lower"] is not None
+                        else None
+                    )
+                    ci_u = (
+                        float(ortho["ci_upper"])
+                        if ortho["ci_upper"] is not None
+                        else None
+                    )
+                    core_summary[policy]["orthogonality_pass"] = bool(
+                        ci_l is not None and ci_u is not None and ci_l <= 0 <= ci_u
+                    )
+            metadata["core_summary"] = core_summary
+        except Exception:
+            pass
 
         base_result = EstimationResult(
             estimates=np.array(estimates),

@@ -85,7 +85,9 @@ def calibrate_dataset(
     # Convert to arrays
     judge_scores_array = np.array(judge_scores)
     oracle_labels_array = np.array(oracle_labels) if oracle_labels else np.array([])
-    oracle_mask_array = np.array(oracle_mask, dtype=int) if oracle_mask else np.array([], dtype=int)
+    oracle_mask_array = (
+        np.array(oracle_mask, dtype=int) if oracle_mask else np.array([], dtype=int)
+    )
 
     if len(oracle_labels_array) == 0:
         raise ValueError(f"No oracle labels found in field '{oracle_field}'")
@@ -159,6 +161,57 @@ def calibrate_dataset(
         "oof_coverage": result.oof_coverage_at_01 if enable_cross_fit else None,
         "calibration_mode": calibration_mode,
     }
+
+    # Lightweight calibration-floor instrumentation
+    try:
+        # Build boolean oracle mask aligned with dataset order
+        n_total = len(judge_scores_array)
+        oracle_bool = np.zeros(n_total, dtype=bool)
+        if oracle_mask_array.size > 0:
+            oracle_bool[oracle_mask_array] = True
+
+        # f_min/f_max computed on oracle subset predictions
+        if result.calibrated_scores is not None and oracle_bool.any():
+            cal_scores = np.asarray(result.calibrated_scores)
+            oracle_cal = cal_scores[oracle_bool]
+            f_min = float(np.min(oracle_cal))
+            f_max = float(np.max(oracle_cal))
+            # Number of unique isotonic levels on oracle subset (rounded to avoid FP noise)
+            levels = np.unique(np.round(oracle_cal, 6))
+            n_levels = int(len(levels))
+        else:
+            f_min = float("nan")
+            f_max = float("nan")
+            n_levels = 0
+
+        # Low-S label coverage (bottom deciles of S over all rows)
+        q10 = float(np.quantile(judge_scores_array, 0.10))
+        q20 = float(np.quantile(judge_scores_array, 0.20))
+
+        def _coverage(threshold: float) -> float:
+            sel = judge_scores_array <= threshold
+            denom = int(np.sum(sel))
+            if denom <= 0:
+                return 0.0
+            return float(np.sum(oracle_bool & sel) / denom)
+
+        cov_b10 = _coverage(q10)
+        cov_b20 = _coverage(q20)
+
+        dataset_metadata["calibration_info"].update(
+            {
+                "f_min": f_min,
+                "f_max": f_max,
+                "n_isotonic_levels_on_oracle": n_levels,
+                "low_s_label_coverage_bottom10": cov_b10,
+                "low_s_label_coverage_bottom20": cov_b20,
+                "s_q10": q10,
+                "s_q20": q20,
+            }
+        )
+    except Exception:
+        # Best effort only; do not fail calibration if instrumentation fails
+        pass
 
     # Store fold configuration for reproducibility
     dataset_metadata["n_folds"] = n_folds
