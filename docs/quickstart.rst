@@ -10,7 +10,7 @@ Install CJE using pip:
 
 .. code-block:: bash
 
-   git clone https://github.com/your-org/causal-judge-evaluation.git
+   git clone https://github.com/fondutech/causal-judge-evaluation.git
    cd causal-judge-evaluation
    pip install -e .
 
@@ -67,7 +67,7 @@ See :doc:`modules/data` for detailed data format documentation.
 Next Steps
 ----------
 
-- :doc:`user_guide/index` - Comprehensive user guide
-- :doc:`modules/index` - Detailed module documentation  
-- :doc:`examples/index` - Example notebooks and scripts
-- :doc:`theory/index` - Theoretical foundations
+- :doc:`modules/index` - Module documentation
+- :doc:`examples/index` - Examples
+- :doc:`../howto/choose_estimator` - Choose the right estimator
+- :doc:`theory/index` - Theory and background

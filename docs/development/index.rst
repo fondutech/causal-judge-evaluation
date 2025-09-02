@@ -16,7 +16,7 @@ To set up a development environment:
 
 .. code-block:: bash
 
-   git clone https://github.com/your-org/causal-judge-evaluation.git
+   git clone https://github.com/fondutech/causal-judge-evaluation.git
    cd causal-judge-evaluation
    poetry install
    poetry run pytest

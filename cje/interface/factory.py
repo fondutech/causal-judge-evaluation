@@ -117,12 +117,17 @@ def _build_stacked_dr(
     parallel = config.get("parallel", True)
     if verbose:
         logger.info(f"Using stacked DR with estimators: {estimators}")
-    return StackedDREstimator(
-        sampler,
-        estimators=estimators,
-        use_outer_split=use_outer_split,
-        parallel=parallel,
-    )
+    # Pass calibrator when available so DR components can reuse calibration models
+    kwargs: Dict[str, Any] = {
+        "estimators": estimators,
+        "use_outer_split": use_outer_split,
+        "parallel": parallel,
+    }
+    if calibration_result and getattr(calibration_result, "calibrator", None):
+        if verbose:
+            logger.info("Using calibration models for stacked DR components")
+        kwargs["calibrator"] = calibration_result.calibrator
+    return StackedDREstimator(sampler, **kwargs)
 
 
 REGISTRY: Dict[str, BuilderFn] = {

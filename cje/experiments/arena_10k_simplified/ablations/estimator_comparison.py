@@ -19,6 +19,7 @@ Estimators compared:
 import json
 import logging
 import numpy as np
+import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union
 import matplotlib.pyplot as plt
@@ -141,13 +142,12 @@ class EstimatorComparison(BaseAblation):
 
         elif config.estimator_class == "dr-cpo":
             # DR-CPO with or without calibrated weights
-            estimator = DRCPOEstimator(
+            return DRCPOEstimator(
                 sampler,
                 calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
                 use_calibrated_weights=config.use_calibration,
             )
-            return estimator
 
         elif config.estimator_class == "stacked":
             # Stacked DR with or without calibration
@@ -155,7 +155,7 @@ class EstimatorComparison(BaseAblation):
             # For Cal-Stacked-DR, we pass calibrator and it will be used
             if config.use_calibration and cal_result:
                 # Cal-Stacked-DR: pass calibrator for component estimators to use
-                estimator = StackedDREstimator(
+                return StackedDREstimator(
                     sampler,
                     estimators=["dr-cpo", "tmle", "mrdr"],
                     V_folds=5,
@@ -164,14 +164,13 @@ class EstimatorComparison(BaseAblation):
                 )
             else:
                 # Stacked-DR: no calibrator, components will use raw weights
-                estimator = StackedDREstimator(
+                return StackedDREstimator(
                     sampler,
                     estimators=["dr-cpo", "tmle", "mrdr"],
                     V_folds=5,
                     parallel=True,
                     # Explicitly no calibrator - components will use raw weights
                 )
-            return estimator
 
         else:
             raise ValueError(f"Unknown estimator class: {config.estimator_class}")
@@ -262,7 +261,7 @@ class EstimatorComparison(BaseAblation):
             estimator = self.create_custom_estimator(config, sampler, cal_result)
 
             # Add fresh draws for DR methods
-            if config.is_dr:
+            if config.is_dr and hasattr(estimator, "add_fresh_draws"):
                 data_dir = Path(dataset_path).parent
                 for policy in sampler.target_policies:
                     try:
@@ -376,11 +375,15 @@ class EstimatorComparison(BaseAblation):
         """
         # Extract unique scenarios from successful results
         scenarios = sorted(
-            {
-                r.get("scenario")
-                for r in results
-                if r.get("success", False) and r.get("scenario")
-            }
+            [
+                s
+                for s in {
+                    r.get("scenario")
+                    for r in results
+                    if r.get("success", False) and r.get("scenario")
+                }
+                if s is not None
+            ]
         )
 
         if not scenarios:
@@ -399,6 +402,8 @@ class EstimatorComparison(BaseAblation):
             # Convert "n=1000, oracle=10%" to "n1000_oracle10pct"
             safe_scenario = (
                 scenario.replace("=", "").replace(", ", "_").replace("%", "pct")
+                if scenario
+                else "unknown"
             )
             output_path = Path(
                 f"results/estimator_comparison/policy_heterogeneity_{safe_scenario}_{color_by}.png"
@@ -491,7 +496,7 @@ class EstimatorComparison(BaseAblation):
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Convert numpy types for JSON serialization
-        def convert_numpy(obj):
+        def convert_numpy(obj: Any) -> Any:
             """Convert numpy types to Python types for JSON."""
             import numpy as np
 
@@ -501,7 +506,7 @@ class EstimatorComparison(BaseAblation):
                 return float(obj)
             elif isinstance(obj, np.ndarray):
                 return obj.tolist()
-            elif isinstance(obj, (np.bool_, np.bool8)):
+            elif isinstance(obj, np.bool_):
                 return bool(obj)
             elif isinstance(obj, dict):
                 return {k: convert_numpy(v) for k, v in obj.items()}
@@ -673,7 +678,7 @@ class EstimatorComparison(BaseAblation):
             fontweight="bold",
             y=0.98,  # Move title up slightly
         )
-        plt.tight_layout(rect=[0, 0, 1, 0.96])  # Leave space at top for title
+        plt.tight_layout(rect=(0, 0, 1, 0.96))  # Leave space at top for title
 
         if output_path:
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -704,8 +709,8 @@ class EstimatorComparison(BaseAblation):
             "unhelpful": "../data/responses/unhelpful_responses.jsonl",
         }
 
-        for policy, file_path in response_files.items():
-            file_path = Path(file_path)
+        for policy, file_path_str in response_files.items():
+            file_path = Path(file_path_str)
             if file_path.exists():
                 oracle_values = []
                 try:
@@ -1052,14 +1057,16 @@ class EstimatorComparison(BaseAblation):
             if results and "spec" in results[0]:
                 sample_size = results[0]["spec"].get("sample_size", "unknown")
                 oracle_coverage = results[0]["spec"].get("oracle_coverage", "unknown")
-                if oracle_coverage != "unknown":
-                    oracle_pct = (
+                if oracle_coverage != "unknown" and isinstance(
+                    oracle_coverage, (int, float)
+                ):
+                    oracle_pct_num = (
                         int(oracle_coverage * 100)
                         if oracle_coverage < 1
                         else int(oracle_coverage)
                     )
                     output_path = Path(
-                        f"results/estimator_comparison/policy_heterogeneity_n{sample_size}_oracle{oracle_pct}pct{suffix}.png"
+                        f"results/estimator_comparison/policy_heterogeneity_n{sample_size}_oracle{oracle_pct_num}pct{suffix}.png"
                     )
                 else:
                     output_path = Path(

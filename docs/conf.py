@@ -78,6 +78,9 @@ autodoc_default_options = {
     "exclude-members": "__weakref__",
 }
 
+# Autosummary
+autosummary_generate = True
+
 # Intersphinx
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),

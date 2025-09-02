@@ -54,27 +54,44 @@ Documentation
 .. toctree::
    :maxdepth: 2
    :caption: Getting Started
-   
+
    quickstart
    examples/index
-   
+   tutorials/dr_quickstart
+
+.. toctree::
+   :maxdepth: 2
+   :caption: How‑to Guides
+
+   howto/choose_estimator
+   howto/fresh_draws
+   howto/diagnostics
+   howto/validate_and_troubleshoot
+   howto/export_and_compare
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Explanation
+
+   explanation/how_it_works
+
 .. toctree::
    :maxdepth: 2
    :caption: Reference
-   
+
    modules/index
    api/index
-   
+
 .. toctree::
    :maxdepth: 2
    :caption: Theory
-   
+
    theory/index
-   
+
 .. toctree::
    :maxdepth: 2
    :caption: Development
-   
+
    development/index
 
 Key Results
