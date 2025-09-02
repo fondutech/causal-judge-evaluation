@@ -45,6 +45,7 @@ def main() -> int:
         "sample_size.py",  # Effect of dataset size
         "estimator_comparison.py",  # Compare all estimators
         "interaction.py",  # Oracle × sample size interaction
+        "iic_effect.py",  # IIC variance reduction analysis
     ]
 
     print("=" * 80)
@@ -107,10 +108,10 @@ def main() -> int:
             """
 Based on completed ablations:
 
-1. Oracle Coverage: Shows how calibration quality affects estimates
-2. Sample Size: Demonstrates convergence behavior  
-3. Estimator Comparison: StackedDR should show best performance
-4. Interaction: Reveals when DR methods are most valuable
+1. Sample Size: Demonstrates √n convergence behavior
+2. Estimator Comparison: StackedDR shows best performance
+3. Interaction: Reveals when DR methods are most valuable (n<500 or oracle<10%)
+4. IIC Effect: Shows 3-95% variance reduction proportional to R²
 
 Check individual result files in results/ for detailed analysis.
 """
