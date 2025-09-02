@@ -2,81 +2,40 @@
 
 ## Overview
 
-Comprehensive test suite for the Causal Judge Evaluation framework, ensuring correctness of causal inference methods, calibration algorithms, and diagnostic tools. The suite combines unit tests, integration tests, and end-to-end validation using real Arena 10K data.
-
-**Note**: See [TEST_IMPROVEMENT_PLAN.md](../../tests/TEST_IMPROVEMENT_PLAN.md) for ongoing test suite improvements.
-
-## When to Use
-
-### Use **Unit Tests** when:
-- Developing new calibration methods
-- Adding estimator functionality
-- Modifying core algorithms
-- Need fast feedback during development
-
-### Use **Integration Tests** when:
-- Testing complete workflows
-- Validating estimator interactions
-- Checking data flow through pipelines
-- Verifying cross-component behavior
-
-### Use **Arena Sample Tests** when:
-- Validating against real data
-- Testing production scenarios
-- Benchmarking performance
-- Ensuring backward compatibility
+The CJE test suite has been radically simplified to focus on end-to-end testing with real data. We've reduced from 28 test files (238 tests) to 7 core test files (~80 tests) while maintaining comprehensive coverage of critical functionality.
 
 ## File Structure
 
 ```
 tests/
-├── conftest.py                    # Shared fixtures and utilities
+├── conftest.py                    # Shared fixtures and arena data loaders
 ├── run_all_tests.py              # Test runner script
 │
-├── Core Tests                    
-│   ├── test_simple.py            # Minimal judge calibration
-│   ├── test_pipeline.py          # End-to-end workflows
-│   ├── test_integration.py       # Full system integration
-│   └── test_data_models.py       # Data model validation
+├── E2E Tests                    
+│   ├── test_e2e_estimators.py    # Complete pipelines for all estimators
+│   ├── test_e2e_features.py      # IIC, SIMCal, oracle augmentation
+│   └── test_interface_integration.py # High-level API testing
 │
-├── API Tests
-│   ├── test_analysis.py          # analyze_dataset() with Arena data
-│   ├── test_cli.py               # CLI commands and parsing
-│   └── test_export.py            # JSON/CSV export formats
-│
-├── Estimator Tests
-│   ├── test_dr_basic.py          # DR estimation fundamentals
-│   ├── test_dr_diagnostics.py    # All estimator diagnostics
-│   ├── test_stacked_simcal.py    # SIMCal weight calibration
-│   ├── test_oracle_slice.py      # Oracle slice augmentation
-│   └── test_custom_outcome_model.py # Custom outcome models
-│
-├── Diagnostic Tests
-│   ├── test_new_diagnostics.py   # IPSDiagnostics, DRDiagnostics
-│   ├── test_stability_diagnostics.py # Tail index, ESS, stability
-│   └── test_robust_inference.py  # Inference robustness checks
-│
-├── Utility Tests
-│   ├── test_fresh_draws.py       # Fresh draw loading
-│   ├── test_teacher_forcing.py   # Chat templates, log prob
-│   ├── test_validation.py        # Dataset validation
-│   └── test_edge_cases.py        # Missing values, extremes
-│
-├── Documentation Tests
-│   └── test_documentation_examples.py # README code validation
+├── Core Tests
+│   ├── test_infrastructure.py    # Critical infrastructure and edge cases
+│   ├── test_unified_folds.py     # Comprehensive fold management
+│   ├── test_mc_variance.py       # Monte Carlo variance testing
+│   └── test_cfbits.py           # CF-bits framework tests
 │
 └── data/                          # Test datasets
-    ├── arena_sample/              # Real Arena 10K subset
-    └── *.jsonl                    # Synthetic test data
+    ├── arena_sample/              # Real Arena 10K subset (100 samples)
+    │   ├── dataset.jsonl          # Main dataset with judge scores
+    │   └── responses/             # Fresh draws for DR estimation
+    └── *.jsonl                    # Synthetic test data for edge cases
 ```
 
 ## Core Concepts
 
-### 1. Test Categories
-Tests are organized by functionality and marked with pytest markers:
-- **@pytest.mark.unit** - Fast, isolated component tests
-- **@pytest.mark.integration** - Multi-component workflow tests
-- **@pytest.mark.slow** - Tests requiring API calls or heavy computation
+### 1. End-to-End Focus
+Instead of testing individual functions, we test complete pipelines:
+- Load data → Calibrate → Create sampler → Estimate → Validate results
+- All E2E tests use real Arena data for authentic testing
+- Tests verify user-visible outcomes, not implementation details
 
 ### 2. Arena Sample Data
 Real subset from Arena 10K evaluation:
@@ -87,94 +46,102 @@ Real subset from Arena 10K evaluation:
 
 ### 3. Fixture Architecture
 Shared fixtures in `conftest.py` provide consistent test data:
-- **basic_dataset**: Simple 20-sample dataset with all fields
-- **dataset_with_oracle**: 50% oracle coverage for calibration testing
-- **dataset_for_dr**: Cross-validation folds for DR testing
-- **synthetic_fresh_draws**: Mock fresh draws for DR without files
+- **arena_sample**: Real 100-sample Arena dataset
+- **arena_fresh_draws**: Filtered fresh draws matching dataset prompts
+- **arena_calibrated**: Pre-calibrated Arena dataset
+- **synthetic datasets**: Edge case testing (NaN, extreme weights)
 
-### 4. Assertion Helpers
-Standard validation functions ensure consistency:
-- **assert_valid_estimation_result**: Validates EstimationResult structure
-- **assert_weights_calibrated**: Checks weight calibration properties
-- **assert_dataset_valid**: Comprehensive dataset validation
-- **assert_diagnostics_complete**: Verifies diagnostic completeness
+### 4. Test Philosophy
+- **Real Data Priority**: Use arena sample for integration tests
+- **Complete Workflows**: Test what users actually do
+- **Fast Feedback**: Most tests run in < 1 second
+- **Clear Intent**: Each test has one clear purpose
 
-## Common Interface
-
-### Running Tests
+## Running Tests
 
 ```bash
 # Run all tests
 poetry run pytest cje/tests/
 
-# Run by category
-poetry run pytest -m unit          # Fast unit tests only
-poetry run pytest -m integration   # Integration tests
-poetry run pytest -m "not slow"    # Skip slow tests
+# Run E2E tests only (recommended for quick validation)
+poetry run pytest cje/tests/test_e2e*.py -q
 
-# Run specific modules
-poetry run pytest cje/tests/test_analysis.py -v      # High-level API
-poetry run pytest cje/tests/test_dr_diagnostics.py   # DR diagnostics
-poetry run pytest cje/tests/test_simple.py::test_judge_calibration  # Single test
+# Run specific test files
+poetry run pytest cje/tests/test_e2e_estimators.py -v
+poetry run pytest cje/tests/test_unified_folds.py
+
+# Run with markers
+poetry run pytest cje/tests -m e2e
+poetry run pytest cje/tests -m "not slow"
 
 # With coverage
 poetry run pytest --cov=cje --cov-report=html cje/tests/
+
+# Quick health check (single E2E test)
+poetry run pytest cje/tests/test_e2e_estimators.py::TestE2EEstimators::test_calibrated_ips_pipeline -v
 ```
 
-### Writing New Tests
+## Writing New Tests
+
+When adding tests, follow these guidelines:
+
+1. **Prefer E2E tests** - Test complete workflows
+2. **Use arena data** - Real data finds real bugs
+3. **Keep it focused** - Each test should have one clear purpose
+4. **Document intent** - Clear test names and docstrings
 
 ```python
-import pytest
-from cje import analyze_dataset
-
-class TestNewFeature:
-    """Test new feature functionality."""
+def test_new_feature_workflow(arena_sample):
+    """Test that new feature improves estimates."""
+    # 1. Calibrate dataset
+    calibrated, cal_result = calibrate_dataset(
+        arena_sample,
+        judge_field="judge_score",
+        oracle_field="oracle_label"
+    )
     
-    def setup_method(self):
-        """Setup test data."""
-        self.test_data = Path(__file__).parent / "data" / "basic_test_data.jsonl"
+    # 2. Create sampler
+    sampler = PrecomputedSampler(calibrated)
     
-    @pytest.mark.unit
-    def test_feature_basic(self, basic_dataset):
-        """Test basic feature behavior."""
-        result = your_feature(basic_dataset)
-        assert_valid_result(result)
+    # 3. Run estimation with new feature
+    estimator = YourEstimator(sampler, new_feature=True)
+    results = estimator.fit_and_estimate()
     
-    @pytest.mark.integration
-    def test_feature_with_real_data(self):
-        """Test with Arena sample data."""
-        result = analyze_dataset(
-            "data/arena_sample/dataset.jsonl",
-            your_new_parameter=True
-        )
-        assert result.metadata["your_feature"] == expected_value
+    # 4. Validate results
+    assert len(results.estimates) == 4  # 4 policies
+    assert all(0 <= e <= 1 for e in results.estimates)
+    # Test that new feature had expected effect
+    assert results.metadata["new_feature_applied"] == True
 ```
 
 ## Key Design Decisions
 
-### 1. **Real Data Testing**
+### 1. **Simplified Test Suite**
+Reduced from 238 tests to ~80 focused tests:
+- 73% reduction in test count
+- Comprehensive coverage maintained
+- Faster execution and easier maintenance
+- Focus on integration over unit testing
+
+### 2. **Real Data Testing**
 Arena sample data provides ground truth validation:
 - Catches regressions in production scenarios
-- Validates against known-good results
 - Tests all estimators with same data
+- Reveals integration issues unit tests miss
 
-### 2. **Modular Test Organization**
-Tests grouped by functionality, not implementation:
-- Easy to find relevant tests
-- Clear what each file tests
-- Parallel test execution friendly
+### 3. **E2E Testing Priority**
+Complete workflows over isolated functions:
+- Test what users actually do
+- Catch integration bugs
+- Validate full pipelines
+- Ensure components work together
 
-### 3. **Shared Fixtures**
-Common data patterns centralized in conftest.py:
-- Consistent test data across modules
-- Reduced boilerplate
-- Easy to add new data patterns
-
-### 4. **Progressive Complexity**
-Tests build from simple to complex:
-- `test_simple.py` - Minimal functionality
-- `test_pipeline.py` - Component integration
-- `test_analysis.py` - Full system with real data
+### 4. **Unified Fold System**
+Consistent cross-validation across all components:
+- Hash-based fold assignment from prompt_id
+- Prevents data leakage
+- Ensures reproducibility
+- Single source of truth (`data/folds.py`)
 
 ## Common Issues
 
@@ -201,17 +168,18 @@ pip install -e .
 
 ## Performance
 
-- **Unit tests**: < 1 second each
-- **Integration tests**: 1-5 seconds each
-- **Full suite**: ~30 seconds without slow tests
-- **With slow tests**: ~2 minutes (includes API calls)
+- **E2E tests**: < 2 seconds each
+- **Infrastructure tests**: < 1 second each  
+- **Full suite**: ~15 seconds for all tests
+- **CF-bits tests**: May be slower due to complex computations
 
 Test execution tips:
 - Use `-x` to stop on first failure
 - Use `-k pattern` to run tests matching pattern
 - Use `--lf` to run last failed tests
-- Use `-n auto` for parallel execution (requires pytest-xdist)
+- Use `-q` for quiet output during development
+- Run E2E tests first for quick validation
 
 ## Summary
 
-The CJE test suite provides comprehensive validation through 155+ tests covering all estimators, calibration methods, and diagnostic tools. It combines fast unit tests for development, integration tests for workflow validation, and real Arena data tests for production confidence, ensuring the framework produces correct, unbiased causal estimates.
+The CJE test suite has been transformed from 238 scattered unit tests to ~80 focused tests that test real workflows with real data. This simplified approach catches more integration issues, runs faster, and is easier to maintain while providing comprehensive coverage of all estimators, calibration methods, and diagnostic tools.

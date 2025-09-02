@@ -852,8 +852,6 @@ class DREstimator(BaseCJEEstimator):
                 }
                 # Be explicit for mypy: calibration_floor is dict-like
                 try:
-                    from typing import cast
-
                     cf = cast(Dict[str, Dict[str, Any]], cal_floor)
                     if policy in cf:
                         core_summary[policy].update(cf[policy])
