@@ -258,3 +258,12 @@ cje/experiments/arena_10k_simplified/test_e2e_data/logprobs/
 .ablation_cache/
 ablation_results/
 *.log
+
+# Development and helper files
+concat_readmes.sh
+concat_py_files.sh
+cje_python_code.txt
+cje_all_readmes.txt
+all_readmes.txt
+CLAUDE.md
+AGENTS.md
