@@ -18,8 +18,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
 
-from .core.base import BaseAblation
-from .core.schemas import ExperimentSpec
+from core.base import BaseAblation
+from core.schemas import ExperimentSpec
 
 logger = logging.getLogger(__name__)
 

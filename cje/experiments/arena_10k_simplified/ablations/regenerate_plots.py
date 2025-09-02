@@ -28,12 +28,8 @@ try:
 except ImportError:
     HAS_IIC = False
 
-try:
-    from fresh_draws import FreshDrawsAblation
-
-    HAS_FRESH = True
-except ImportError:
-    HAS_FRESH = False
+# Fresh draws ablation has been removed
+HAS_FRESH = False
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -88,8 +84,7 @@ def regenerate_plot(ablation_name: str) -> None:
 
     if HAS_IIC:
         ablation_map["iic_effect"] = IICEffectAblation
-    if HAS_FRESH:
-        ablation_map["fresh_draws"] = FreshDrawsAblation
+    # Fresh draws ablation has been removed
 
     if ablation_name not in ablation_map:
         logger.error(f"Unknown ablation: {ablation_name}")
@@ -180,8 +175,6 @@ def main() -> None:
         ablations = ["sample_size", "estimator_comparison", "interaction"]
         if HAS_IIC:
             ablations.append("iic_effect")
-        if HAS_FRESH:
-            ablations.append("fresh_draws")
 
         for abl in ablations:
             try:
