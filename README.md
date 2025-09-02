@@ -1,6 +1,6 @@
 # Causal Judge Evaluation (CJE) with SIMCal
 
-[![Tests](https://img.shields.io/badge/tests-155%20passing-brightgreen)](cje/tests)
+[![Tests](https://img.shields.io/badge/tests-83%20passing-brightgreen)](cje/tests)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 

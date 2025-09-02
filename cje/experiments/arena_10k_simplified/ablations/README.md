@@ -12,15 +12,18 @@ python run_all_ablations.py
 python sample_size.py           # Sample size scaling behavior
 python estimator_comparison.py  # Compare all estimation methods
 python interaction.py           # Oracle × sample size interaction
+python iic_effect.py            # IIC variance reduction analysis
 
 # Analyze and visualize results
 python analyze_results.py
 
 # Regenerate plots from existing data (without re-running experiments)
-python regenerate_estimator_plots.py
+python regenerate_plots.py --list       # See what results are available
+python regenerate_plots.py all          # Regenerate all plots
+python regenerate_plots.py iic_effect   # Regenerate specific ablation
 
-# Or regenerate with analyze_results for other ablations
-python analyze_results.py --figures
+# Quick regeneration for estimator comparison
+python regenerate_estimator_plots.py
 ```
 
 ## What Each Ablation Tests
@@ -45,6 +48,13 @@ python analyze_results.py --figures
 **Question**: When is DR most valuable vs Cal-IPS alone?
 - Tests: 3×3 grid of oracle coverage × sample size
 - Finding: DR critical when n < 500 or oracle < 10%
+
+### 4. IIC Effect (`iic_effect.py`)
+**Question**: How much does Isotonic Influence Control reduce variance?
+- Tests: DR estimators (DRCPO, TMLE, MRDR) with and without IIC
+- Compares: Multiple oracle coverage levels (10%, 20%, 50%)
+- Shows: R² vs SE reduction relationship - variance reduction proportional to judge explainability
+- Finding: 3-95% SE reduction; highest for policies well-explained by judge scores (e.g., clone: 95% reduction)
 
 ## File Structure
 
