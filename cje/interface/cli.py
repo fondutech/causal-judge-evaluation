@@ -47,10 +47,11 @@ def create_parser() -> argparse.ArgumentParser:
     analyze_parser.add_argument(
         "--estimator",
         choices=choices,
-        default="auto",
+        default="stacked-dr",
         help=(
-            "Estimation method. Default: auto (stacked-dr if --fresh-draws-dir is set, "
-            "otherwise calibrated-ips)."
+            "Estimation method. Default: stacked-dr (robust ensemble). "
+            "Use calibrated-ips for speed over robustness. "
+            "Use 'auto' to let CJE decide based on your data."
         ),
     )
 
@@ -137,7 +138,9 @@ def run_analysis(args: argparse.Namespace) -> int:
         # Determine estimator default based on presence of fresh draws
         estimator_choice = args.estimator
         if estimator_choice in (None, "auto"):
-            estimator_choice = "stacked-dr" if args.fresh_draws_dir else "calibrated-ips"
+            estimator_choice = (
+                "stacked-dr" if args.fresh_draws_dir else "calibrated-ips"
+            )
 
         kwargs = {
             "estimator": estimator_choice,

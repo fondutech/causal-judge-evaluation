@@ -93,7 +93,7 @@ python -m cje analyze <dataset> [options]
 ```
 
 **Options:**
-- `--estimator {auto,calibrated-ips,raw-ips,stacked-dr,dr-cpo,mrdr,tmle}`: Estimation method. Default `auto` picks stacked-dr if `--fresh-draws-dir` is set, otherwise calibrated-ips.
+- `--estimator {stacked-dr,calibrated-ips,raw-ips,dr-cpo,mrdr,tmle,auto}`: Estimation method. Default `stacked-dr` (robust ensemble). Use `calibrated-ips` for speed.
 - `--estimator-config JSON`: Configuration as JSON string
 - `--judge-field FIELD`: Judge score field name (default: judge_score)
 - `--oracle-field FIELD`: Oracle label field name (default: oracle_label)
@@ -136,16 +136,16 @@ python -m cje.interface.hydra_entry \
 python -m cje.interface.hydra_entry dataset=data.jsonl output=results.json
 ```
 
-Configs live under `cje/conf/`. Default estimator is `auto` (stacked-dr if `fresh_draws_dir` is provided, else calibrated-ips).
+Configs live under `cje/conf/`. Default estimator is `stacked-dr` (robust ensemble).
 
 ## Estimator Choice
 
 | Estimator | When to Use | Requirements |
 |-----------|-------------|--------------|
-| `calibrated-ips` | **Default - start here** | Judge scores |
+| `stacked-dr` | **Default - most robust** - combines all DR methods | Fresh draws |
+| `calibrated-ips` | Need speed over robustness | Judge scores |
 | `raw-ips` | Diagnostic comparison | None |
-| `stacked-dr` | **Best DR option** - combines all DR methods | Fresh draws |
-| `dr-cpo` | Low overlap (ESS < 10%) | Fresh draws |
+| `dr-cpo` | Individual DR method | Fresh draws |
 | `mrdr` | Research/advanced | Fresh draws |
 | `tmle` | Research/advanced | Fresh draws |
 

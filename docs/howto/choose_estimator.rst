@@ -1,27 +1,24 @@
 Choosing an Estimator
 =====================
 
-Defaults
---------
+Default Recommendation
+----------------------
 
-- Non‑DR (no fresh draws): ``calibrated-ips`` — IPS with SIMCal weight calibration
-- DR (with fresh draws): ``stacked-dr`` — calibrated stacked doubly‑robust ensemble
+**Use ``stacked-dr`` (the default)** — A robust ensemble of DR estimators (DR-CPO + TMLE + MRDR). This is the most reliable choice for production use when you have fresh draws available.
 
-Auto Selection
---------------
+When to Use Other Estimators
+-----------------------------
 
-``--estimator auto`` (CLI) or ``estimator="auto"`` (API) selects:
+- **``calibrated-ips``** — When you need speed over robustness, or when computational resources are limited
+- **``auto``** — Let CJE decide based on your setup (uses ``stacked-dr`` if fresh draws available, ``calibrated-ips`` otherwise)
 
-- ``stacked-dr`` if ``--fresh-draws-dir`` / ``fresh_draws_dir`` is provided
-- ``calibrated-ips`` otherwise
+Why DR is More Robust
+---------------------
 
-When to Use Which
------------------
-
-- Use ``calibrated-ips`` when you only have logged data and judge scores
-  - SIMCal stabilizes weights, improves ESS, and adds honest CIs via oracle slice augmentation
-- Use ``stacked-dr`` when you can collect fresh draws from target policies
-  - DR improves efficiency and robustness; the stacked variant mixes DR‑CPO, TMLE, MRDR
+- **Double robustness**: Consistent if either weights OR outcome model is correct
+- **Ensemble averaging**: ``stacked-dr`` combines multiple DR estimators, reducing variance
+- **Better with poor overlap**: DR methods handle low ESS situations better than IPS
+- **Reduced variance**: Outcome models reduce Monte Carlo variance in estimation
 
 Advanced Notes
 --------------

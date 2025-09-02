@@ -30,11 +30,8 @@ The simplest way to use CJE is through the ``analyze_dataset`` function:
    from cje import analyze_dataset
    
    # Analyze your logged data
-   results = analyze_dataset(
-       "your_data.jsonl",
-       estimator="calibrated-ips"  # Recommended default
-       # Automatically uses all available oracle labels
-   )
+   results = analyze_dataset("your_data.jsonl")
+   # Defaults to stacked-dr (most robust)
    
    # View results
    print(f"Policy value: {results.estimates[0]:.3f}")
