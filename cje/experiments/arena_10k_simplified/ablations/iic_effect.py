@@ -198,23 +198,34 @@ class IICEffectAblation(BaseAblation):
                 ha="left",
             )
 
-        # Add trend line
+        # Add trend line (with error handling for numerical issues)
         if len(policy_stats) > 2:
-            z = np.polyfit(
-                policy_stats["r_squared"], policy_stats["se_reduction"] * 100, 1
-            )
-            p = np.poly1d(z)
-            x_trend = np.linspace(
-                policy_stats["r_squared"].min(), policy_stats["r_squared"].max(), 100
-            )
-            ax.plot(
-                x_trend,
-                p(x_trend),
-                "r--",
-                alpha=0.5,
-                linewidth=2,
-                label=f"Trend: SE reduction ≈ {z[0]:.0f} × R²",
-            )
+            try:
+                # Filter out any NaN or infinite values
+                valid_mask = np.isfinite(
+                    policy_stats["r_squared"].values
+                ) & np.isfinite(policy_stats["se_reduction"].values)
+                if valid_mask.sum() > 2:
+                    x_valid = policy_stats.loc[valid_mask, "r_squared"].values
+                    y_valid = policy_stats.loc[valid_mask, "se_reduction"].values * 100
+
+                    # Use robust fitting with rcond to avoid SVD issues
+                    z = np.polyfit(x_valid, y_valid, 1, rcond=None)
+                    p = np.poly1d(z)
+                    x_trend = np.linspace(x_valid.min(), x_valid.max(), 100)
+                    ax.plot(
+                        x_trend,
+                        p(x_trend),
+                        "r--",
+                        alpha=0.5,
+                        linewidth=2,
+                        label=f"Trend: SE reduction ≈ {z[0]:.0f} × R²",
+                    )
+            except np.linalg.LinAlgError:
+                # Skip trend line if fitting fails
+                logger.warning("Could not fit trend line due to numerical issues")
+            except Exception as e:
+                logger.warning(f"Error fitting trend line: {e}")
 
         # Formatting
         ax.set_xlabel("R² (Judge Explainability of Influence Functions)", fontsize=12)
@@ -257,13 +268,18 @@ class IICEffectAblation(BaseAblation):
             bbox=dict(boxstyle="round,pad=0.5", facecolor="wheat", alpha=0.8),
         )
 
-        # Add legend if trend line exists
-        if len(policy_stats) > 2:
+        # Add legend if there are labeled elements
+        if ax.get_legend_handles_labels()[0]:
             ax.legend(loc="lower right", fontsize=10)
 
-        # Set axis limits with padding
-        ax.set_xlim(-0.05, policy_stats["r_squared"].max() + 0.1)
-        ax.set_ylim(-5, policy_stats["se_reduction"].max() * 100 + 10)
+        # Set axis limits with padding (handle potential NaN)
+        r_squared_max = policy_stats["r_squared"].max()
+        se_reduction_max = policy_stats["se_reduction"].max()
+
+        if np.isfinite(r_squared_max):
+            ax.set_xlim(-0.05, r_squared_max + 0.1)
+        if np.isfinite(se_reduction_max):
+            ax.set_ylim(-5, se_reduction_max * 100 + 10)
 
         plt.tight_layout()
         plt.savefig(output_dir / "iic_effect.png", dpi=150, bbox_inches="tight")
