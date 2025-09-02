@@ -9,6 +9,7 @@ This ablation demonstrates:
 4. Visual proof that IIC preserves unbiasedness while shrinking CIs
 """
 
+import json
 import logging
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
@@ -283,6 +284,14 @@ class IICEffectAblation(BaseAblation):
         )
 
         summary_by_policy.to_csv(output_dir / "iic_policy_summary.csv")
+
+        # Save results as JSONL for regeneration
+        results_path = output_dir / "results.jsonl"
+        with open(results_path, "w") as f:
+            for result in results:
+                json.dump(result, f)
+                f.write("\n")
+        logger.info(f"Saved {len(results)} results to {results_path}")
 
         # Print summary
         print("\n" + "=" * 60)
