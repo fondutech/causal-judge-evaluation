@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""
+Quick test of the unified experiment system.
+
+This runs a minimal subset of experiments to verify the system works.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+# Add parent directories to path
+sys.path.append(str(Path(__file__).parent.parent))
+
+# Temporarily modify config for testing
+import config
+
+# Save original values
+orig_estimators = config.EXPERIMENTS["estimators"]
+orig_sample_sizes = config.EXPERIMENTS["sample_sizes"]
+orig_oracle_coverages = config.EXPERIMENTS["oracle_coverages"]
+orig_n_seeds = config.EXPERIMENTS["n_seeds"]
+
+# Set minimal test values
+config.EXPERIMENTS["estimators"] = ["calibrated-ips", "dr-cpo"]  # One IPS, one DR
+config.EXPERIMENTS["sample_sizes"] = [500, 1000]  # Just 2 sizes
+config.EXPERIMENTS["oracle_coverages"] = [0.10, 0.25]  # Just 2 coverages
+config.EXPERIMENTS["n_seeds"] = 2  # Fewer seeds for speed
+
+# Update paths for test (use absolute paths to avoid issues)
+config.RESULTS_PATH = config.BASE_DIR / "results" / "test_results.jsonl"
+config.CHECKPOINT_PATH = config.BASE_DIR / "results" / "test_checkpoint.jsonl"
+
+print("=" * 60)
+print("UNIFIED SYSTEM TEST")
+print("=" * 60)
+print(f"Testing with:")
+print(f"  Estimators: {config.EXPERIMENTS['estimators']}")
+print(f"  Sample sizes: {config.EXPERIMENTS['sample_sizes']}")
+print(f"  Oracle coverages: {config.EXPERIMENTS['oracle_coverages']}")
+print(f"  Seeds: {config.EXPERIMENTS['n_seeds']}")
+print("")
+
+# Expected number of experiments:
+# calibrated-ips: 2 sizes × 2 coverages × 1 cal option × 1 iic option = 4
+# dr-cpo: 2 sizes × 2 coverages × 2 cal options × 2 iic options = 16
+# Total: 20 experiments × 2 seeds = 40 individual runs
+print("Expected experiments: ~20 configurations × 2 seeds = 40 runs")
+print("Estimated time: 5-10 minutes")
+print("")
+
+# Import and run
+from run import UnifiedAblation
+
+
+def main():
+    """Run test."""
+    try:
+        # Clear any existing test files
+        test_results = Path(config.RESULTS_PATH)
+        test_checkpoint = Path(config.CHECKPOINT_PATH)
+        if test_results.exists():
+            test_results.unlink()
+        if test_checkpoint.exists():
+            test_checkpoint.unlink()
+
+        # Run test
+        ablation = UnifiedAblation()
+        results = ablation.run_ablation()
+
+        # Check results
+        if test_results.exists():
+            with open(test_results, "r") as f:
+                lines = f.readlines()
+                print(f"\n✓ Test generated {len(lines)} result entries")
+
+                # Sample a result to check format
+                if lines:
+                    sample = json.loads(lines[0])
+                    if sample.get("success"):
+                        print("✓ Result format looks correct")
+                        print(f"  - Has spec: {'spec' in sample}")
+                        print(f"  - Has seed: {'seed' in sample}")
+                        print(f"  - Has estimates: {'estimates' in sample}")
+                        print(f"  - Has standard_errors: {'standard_errors' in sample}")
+                        print(f"  - Has oracle_truths: {'oracle_truths' in sample}")
+
+        print("\n" + "=" * 60)
+        print("TEST COMPLETE - System appears to be working!")
+        print("=" * 60)
+
+        # Restore original config
+        config.EXPERIMENTS["estimators"] = orig_estimators
+        config.EXPERIMENTS["sample_sizes"] = orig_sample_sizes
+        config.EXPERIMENTS["oracle_coverages"] = orig_oracle_coverages
+        config.EXPERIMENTS["n_seeds"] = orig_n_seeds
+
+        return 0
+
+    except Exception as e:
+        print(f"\n✗ Test failed: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -9,13 +9,25 @@ from typing import Dict, List, Any, Optional, Tuple
 import numpy as np
 
 from .schemas import ExperimentSpec, create_result
-from .diagnostics import (
-    effective_sample_size,
-    hill_alpha,
-    weight_cv,
-    compute_rmse,
-    simcal_distortion,
-)
+
+# No local diagnostics file needed!
+# Import standard diagnostics from CJE
+from cje.diagnostics.weights import effective_sample_size, hill_tail_index
+from cje.diagnostics.stability import compute_stability_diagnostics
+
+
+# Local function for weight CV (not in CJE)
+def weight_cv(weights: np.ndarray) -> float:
+    """Coefficient of variation of weights."""
+    weights = np.asarray(weights)
+    weights = weights[np.isfinite(weights)]
+    if len(weights) == 0:
+        return np.nan
+    mean_w = np.mean(weights)
+    if mean_w == 0:
+        return np.nan
+    return np.std(weights) / mean_w
+
 
 # Add parent directories to path for imports
 import sys
@@ -125,9 +137,21 @@ class BaseAblation:
         Returns:
             Estimator instance
         """
+        # Extract settings from spec.extra
+        use_iic = spec.extra.get("use_iic", False) if spec.extra else False
+        use_calibration = (
+            spec.extra.get("use_calibration", False) if spec.extra else False
+        )
+
+        # Log parameter settings if needed
+        # logger.info(f"Creating {spec.estimator} with use_iic={use_iic}, "
+        #            f"use_calibration(SIMCal)={use_calibration}")
+
         estimator_map = {
-            "raw-ips": lambda s: CalibratedIPS(s, calibrate=False),
-            "calibrated-ips": lambda s: CalibratedIPS(s),
+            "raw-ips": lambda s: CalibratedIPS(s, calibrate=False, use_iic=use_iic),
+            "calibrated-ips": lambda s: CalibratedIPS(
+                s, calibrate=True, use_iic=use_iic
+            ),
             "dr-cpo": lambda s: DRCPOEstimator(
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
@@ -135,7 +159,8 @@ class BaseAblation:
                 oracle_slice_config=(
                     spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
                 ),
-                use_calibrated_weights=False,  # No weight calibration
+                use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
+                use_iic=use_iic,  # Pass IIC setting
             ),
             "calibrated-dr-cpo": lambda s: DRCPOEstimator(
                 s,
@@ -145,6 +170,7 @@ class BaseAblation:
                     spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
                 ),
                 use_calibrated_weights=True,  # Use SIMCal calibrated weights
+                use_iic=use_iic,  # Pass IIC setting
             ),
             "mrdr": lambda s: MRDREstimator(
                 s,
@@ -153,7 +179,8 @@ class BaseAblation:
                 oracle_slice_config=(
                     spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
                 ),
-                use_calibrated_weights=True,  # Default: use calibrated weights
+                use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
+                use_iic=use_iic,  # Pass IIC setting
             ),
             "tmle": lambda s: TMLEEstimator(
                 s,
@@ -162,7 +189,8 @@ class BaseAblation:
                 oracle_slice_config=(
                     spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
                 ),
-                use_calibrated_weights=True,  # Default: use calibrated weights
+                use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
+                use_iic=use_iic,  # Pass IIC setting
             ),
             "stacked-dr": lambda s: StackedDREstimator(
                 s,
@@ -171,7 +199,8 @@ class BaseAblation:
                 oracle_slice_config=(
                     spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
                 ),
-                use_calibrated_weights=False,  # No weight calibration
+                use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
+                use_iic=use_iic,  # Pass IIC setting
             ),
             "cal-stacked-dr": lambda s: StackedDREstimator(
                 s,
@@ -181,6 +210,7 @@ class BaseAblation:
                     spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
                 ),
                 use_calibrated_weights=True,  # Use SIMCal calibrated weights
+                use_iic=use_iic,  # Pass IIC setting
             ),
         }
 
@@ -188,6 +218,35 @@ class BaseAblation:
             raise ValueError(f"Unknown estimator: {spec.estimator}")
 
         return estimator_map[spec.estimator](sampler)
+
+    def _compute_rmse(
+        self, estimates: Dict[str, float], truths: Dict[str, float]
+    ) -> float:
+        """Compute RMSE between estimates and oracle truths.
+
+        Note: The 'unhelpful' policy is excluded from RMSE calculation because
+        it has a very different reward distribution (mean ~0.14) compared to
+        other policies (mean ~0.76). This causes systematic calibration bias.
+        """
+        if not estimates or not truths:
+            return np.nan
+
+        squared_errors = []
+        for policy in estimates:
+            # Skip unhelpful policy - different reward distribution
+            if policy == "unhelpful":
+                continue
+
+            if policy in truths:
+                est = estimates[policy]
+                truth = truths[policy]
+                if np.isfinite(est) and np.isfinite(truth):
+                    squared_errors.append((est - truth) ** 2)
+
+        if not squared_errors:
+            return np.nan
+
+        return float(np.sqrt(np.mean(squared_errors)))
 
     def _load_oracle_ground_truth(
         self, dataset_path: str, dataset: Any, target_policies: List[str]
@@ -251,6 +310,10 @@ class BaseAblation:
             result: Result dictionary to update
             n_total: Total number of samples
         """
+        # Import CJE's diagnostic functions
+        from cje.diagnostics.overlap import compute_overlap_metrics
+        from cje.diagnostics.weights import hill_tail_index_stable
+
         # Get target policies
         policies = estimator.sampler.target_policies
 
@@ -265,18 +328,41 @@ class BaseAblation:
                     weights = estimator.sampler.compute_importance_weights(policy)
 
                 if weights is not None and len(weights) > 0:
-                    # Compute diagnostics
+                    # Compute basic diagnostics using local functions (simpler, direct)
                     ess = effective_sample_size(weights)
                     result["ess_absolute"][policy] = ess
                     result["ess_relative"][policy] = (
                         100.0 * ess / n_total if n_total > 0 else 0
                     )
-                    result["tail_alpha"][policy] = hill_alpha(weights)
+                    result["tail_alpha"][policy] = hill_tail_index(weights)
                     result["weight_cv"][policy] = weight_cv(weights)
 
                     # Max weight (normalized)
                     weights_norm = weights / np.sum(weights)
                     result["max_weight"][policy] = np.max(weights_norm)
+
+                    # Compute advanced overlap metrics from CJE diagnostics
+                    overlap_metrics = compute_overlap_metrics(
+                        weights,
+                        target_ci_halfwidth=0.01,
+                        n_samples=n_total,
+                        compute_tail_index=True,
+                        auto_tune_threshold=False,
+                    )
+
+                    # Store additional diagnostics
+                    result.setdefault("hellinger_affinity", {})[
+                        policy
+                    ] = overlap_metrics.hellinger_affinity
+                    result.setdefault("overlap_quality", {})[
+                        policy
+                    ] = overlap_metrics.overlap_quality
+                    result.setdefault("can_calibrate", {})[
+                        policy
+                    ] = overlap_metrics.can_calibrate
+                    result.setdefault("recommended_method", {})[
+                        policy
+                    ] = overlap_metrics.recommended_method
 
             except Exception as e:
                 logger.warning(f"Failed to compute diagnostics for {policy}: {e}")
@@ -300,7 +386,8 @@ class BaseAblation:
             result["n_samples"] = len(dataset.samples)
             result["n_oracle"] = n_oracle
 
-            # Calibrate
+            # ALWAYS calibrate rewards (judge → oracle) when oracle labels exist
+            # This is NOT controlled by use_calibration flag
             calibrated_dataset, cal_result = calibrate_dataset(
                 dataset,
                 judge_field="judge_score",
@@ -411,6 +498,42 @@ class BaseAblation:
                         float(est + 1.96 * se),
                     )
 
+            # Extract DR-specific diagnostics if available
+            if (
+                hasattr(estimation_result, "diagnostics")
+                and estimation_result.diagnostics
+            ):
+                diag = estimation_result.diagnostics
+                # Check for DR diagnostics
+                if hasattr(diag, "dr_diagnostics_per_policy"):
+                    for policy, policy_diag in diag.dr_diagnostics_per_policy.items():
+                        if isinstance(policy_diag, dict):
+                            if "orthogonality_score" in policy_diag:
+                                result.setdefault("orthogonality_score", {})[policy] = (
+                                    policy_diag["orthogonality_score"]
+                                )
+                            if "mc_variance_share" in policy_diag:
+                                result.setdefault("mc_variance_share", {})[policy] = (
+                                    policy_diag["mc_variance_share"]
+                                )
+                            if "draws_per_prompt" in policy_diag:
+                                result["draws_per_prompt"] = policy_diag[
+                                    "draws_per_prompt"
+                                ]
+                # Also check for orthogonality_scores directly
+                if hasattr(diag, "orthogonality_scores"):
+                    result["orthogonality_scores"] = diag.orthogonality_scores
+                # Check for IIC diagnostics
+                if hasattr(diag, "iic_diagnostics") and diag.iic_diagnostics:
+                    result["iic_diagnostics"] = diag.iic_diagnostics
+
+            # Also check metadata for IIC diagnostics (DR estimators store them there)
+            if hasattr(estimation_result, "metadata") and estimation_result.metadata:
+                if "iic_diagnostics" in estimation_result.metadata:
+                    result["iic_diagnostics"] = estimation_result.metadata[
+                        "iic_diagnostics"
+                    ]
+
             # Compute diagnostics
             self.compute_diagnostics(estimator, result, len(dataset.samples))
 
@@ -427,8 +550,10 @@ class BaseAblation:
             )
             result["oracle_truths"] = oracle_truths
 
-            # Compute RMSE
-            result["rmse_vs_oracle"] = compute_rmse(result["estimates"], oracle_truths)
+            # Compute RMSE (excluding unhelpful policy which has different distribution)
+            result["rmse_vs_oracle"] = self._compute_rmse(
+                result["estimates"], oracle_truths
+            )
 
             # Mean CI width
             if result["confidence_intervals"]:

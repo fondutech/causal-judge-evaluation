@@ -5,32 +5,33 @@ Ablation study of CJE estimators on simulated competition data, demonstrating 13
 ## Quick Start
 
 ```bash
-# Run comprehensive ablation studies
+# Run comprehensive ablation studies (1800 experiments)
 cd ablations/
-python run_all_ablations.py
+python run.py  # Run all experiments with checkpoint/resume support
 
-# Or run individual analysis
-python analyze_dataset.py --data data/cje_dataset.jsonl --estimator calibrated-ips
+# Or run individual analysis on the dataset
+python analyze_dataset.py --data data/cje_dataset.jsonl --estimator stacked-dr
 
-# Generate plots from ablation results
+# Generate tables and plots from ablation results
 cd ablations/
-python analyze_results.py
+python analyze_simple.py  # Generate summary tables and basic analysis
 ```
 
-## Files
+## Directory Structure
 
-- `ablations/` - Comprehensive ablation experiments (see ablations/README.md)
-- `analyze_dataset.py` - Direct CJE analysis with detailed diagnostics  
-- `experiment_config.py` - Policy definitions and experiment parameters
-- `generate_arena_data.py` - Main data generation orchestrator
-- `analysis/` - Modular analysis components used by analyze_dataset.py
-- `data_generation/` - Scripts to reproduce dataset from scratch
-  - `compute_logprobs.py` - Compute log probabilities with teacher forcing (supports multi-pass)
-  - `generate_additional_passes.py` - Orchestrate multiple passes for non-determinism analysis
-  - `prepare_cje_data.py` - Combine responses and logprobs into final dataset
-  - `generate_responses.py` - Generate fresh responses for DR estimators
-  - `add_scores_with_resume.py` - Add judge/oracle scores with resume capability
-- `data/` - Main dataset with ~5000 Arena samples
+- **`ablations/`** - Unified ablation system with all experiments
+  - `run.py` - Main experiment runner with checkpoint/resume
+  - `analyze_simple.py` - Analysis script for results
+  - `config.py` - Experiment configuration
+  - See ablations/README.md for details
+- **`analyze_dataset.py`** - Direct CJE analysis with detailed diagnostics  
+- **`analysis/`** - Modular analysis pipeline used by analyze_dataset.py
+- **`data/`** - Main dataset with ~5000 Arena samples
+  - `cje_dataset.jsonl` - Primary dataset
+  - `responses/` - Fresh draws for DR methods
+  - `logprobs/` - Log probabilities for all policies
+- **`data_generation/`** - Scripts to reproduce dataset from scratch
+- **`experiment_config.py`** - Policy definitions for data generation
 
 ## Key Results
 
@@ -90,18 +91,15 @@ python generate_additional_passes.py --data-dir ../data --n-passes 5
 ## Example Commands
 
 ```bash
-# Run all ablations
+# Run all ablations with default configuration
 cd ablations/
-python run_all_ablations.py
+python run.py
 
-# Or run individual ablations
-python oracle_coverage.py  # Test oracle coverage requirements
-python sample_size.py      # Test sample size scaling
-python estimator_comparison.py  # Compare all estimators
-python interaction.py      # Oracle × sample interaction
+# Quick test with reduced parameters
+python test_quick.py  # Runs 5 experiments to verify setup
 
-# Generate plots from ablation results
-python analyze_results.py
+# Analyze existing results
+python analyze_simple.py  # Generate summary tables and plots
 
 # Analyze with detailed diagnostics
 python analyze_dataset.py --data "data/cje_dataset.jsonl" --estimator calibrated-ips

@@ -1,20 +1,11 @@
 """Core infrastructure for CJE ablations."""
 
-from .schemas import ExperimentSpec, create_result
-from .diagnostics import (
-    effective_sample_size,
-    hill_alpha,
-    simcal_distortion,
-    weight_cv,
-    compute_rmse,
-)
+from .base import BaseAblation
+from .schemas import ExperimentSpec, create_result, aggregate_results
 
 __all__ = [
+    "BaseAblation",
     "ExperimentSpec",
     "create_result",
-    "effective_sample_size",
-    "hill_alpha",
-    "simcal_distortion",
-    "weight_cv",
-    "compute_rmse",
+    "aggregate_results",
 ]
