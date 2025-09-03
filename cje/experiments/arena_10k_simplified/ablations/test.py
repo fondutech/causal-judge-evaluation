@@ -53,7 +53,7 @@ print("")
 from run import UnifiedAblation
 
 
-def main():
+def main() -> int:
     """Run test."""
     try:
         # Clear any existing test files

@@ -93,12 +93,14 @@ def create_diagnostic_summary(results: List[Dict[str, Any]]) -> pd.DataFrame:
         )
 
         # Count overlap quality categories
-        quality_counts = {}
+        quality_counts: Dict[str, int] = {}
         if r.get("overlap_quality"):
             for q in r["overlap_quality"].values():
                 quality_counts[q] = quality_counts.get(q, 0) + 1
         predominant_quality = (
-            max(quality_counts, key=quality_counts.get) if quality_counts else "N/A"
+            max(quality_counts, key=lambda k: quality_counts[k])
+            if quality_counts
+            else "N/A"
         )
 
         # DR-specific diagnostics
@@ -257,8 +259,8 @@ def create_main_comparison_table(df: pd.DataFrame) -> pd.DataFrame:
     table_df.columns = [col.replace(" ", "") for col in table_df.columns]
 
     # Format estimator name to include calibration/IIC status
-    def format_estimator(row):
-        est = row["Estimator"]
+    def format_estimator(row: pd.Series) -> str:
+        est = str(row["Estimator"])
         use_cal = row.get("UseCalibration", False)
         use_iic = row.get("UseIIC", False)
         if use_cal and est not in ["calibrated-ips", "raw-ips"]:
@@ -418,7 +420,7 @@ def create_iic_comparison_table(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(comparison_data)
 
 
-def plot_rmse_by_configuration(df: pd.DataFrame, output_dir: Path):
+def plot_rmse_by_configuration(df: pd.DataFrame, output_dir: Path) -> None:
     """Plot RMSE for different configurations."""
     if df.empty:
         return
@@ -493,7 +495,7 @@ def plot_rmse_by_configuration(df: pd.DataFrame, output_dir: Path):
     logger.info(f"Saved RMSE plot to {output_path}")
 
 
-def save_all_tables(aggregated: pd.DataFrame, output_dir: Path):
+def save_all_tables(aggregated: pd.DataFrame, output_dir: Path) -> None:
     """Save all tables to CSV files."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -523,7 +525,7 @@ def save_all_tables(aggregated: pd.DataFrame, output_dir: Path):
     )
 
 
-def print_summary(results: List[Dict[str, Any]], aggregated: pd.DataFrame):
+def print_summary(results: List[Dict[str, Any]], aggregated: pd.DataFrame) -> None:
     """Print summary statistics."""
     print("\n" + "=" * 70)
     print("UNIFIED EXPERIMENT ANALYSIS SUMMARY")
@@ -593,7 +595,7 @@ def print_summary(results: List[Dict[str, Any]], aggregated: pd.DataFrame):
                     print(f"Overall improvement: {improvement:+.1f}%")
 
 
-def main():
+def main() -> None:
     """Run complete analysis."""
     # Load results
     results = load_results()

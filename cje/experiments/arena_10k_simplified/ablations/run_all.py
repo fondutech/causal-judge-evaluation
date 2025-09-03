@@ -23,7 +23,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def main():
+def main() -> int:
     """Run complete analysis pipeline."""
     print("=" * 70)
     print("CJE COMPLETE ABLATION ANALYSIS")

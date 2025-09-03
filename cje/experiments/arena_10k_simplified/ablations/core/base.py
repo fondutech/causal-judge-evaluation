@@ -22,11 +22,11 @@ def weight_cv(weights: np.ndarray) -> float:
     weights = np.asarray(weights)
     weights = weights[np.isfinite(weights)]
     if len(weights) == 0:
-        return np.nan
+        return float(np.nan)
     mean_w = np.mean(weights)
     if mean_w == 0:
-        return np.nan
-    return np.std(weights) / mean_w
+        return float(np.nan)
+    return float(np.std(weights) / mean_w)
 
 
 # Add parent directories to path for imports
@@ -244,7 +244,7 @@ class BaseAblation:
                     squared_errors.append((est - truth) ** 2)
 
         if not squared_errors:
-            return np.nan
+            return float(np.nan)
 
         return float(np.sqrt(np.mean(squared_errors)))
 
@@ -441,7 +441,7 @@ class BaseAblation:
                             from cje.data.fresh_draws import FreshDrawDataset
 
                             # Count draws per prompt
-                            draws_per_prompt_dict = {}
+                            draws_per_prompt_dict: Dict[str, int] = {}
                             for sample in filtered_samples:
                                 prompt_id = (
                                     sample.prompt_id

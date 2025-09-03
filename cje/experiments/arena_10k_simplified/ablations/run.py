@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 class UnifiedAblation(BaseAblation):
     """Unified ablation that tests all parameters systematically."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(name="unified")
         self.checkpoint_file = (
             CHECKPOINT_PATH
@@ -77,7 +77,7 @@ class UnifiedAblation(BaseAblation):
         ]
         return "_".join(key_params)
 
-    def _save_checkpoint(self, result: Dict[str, Any]):
+    def _save_checkpoint(self, result: Dict[str, Any]) -> None:
         """Append result to checkpoint file."""
         self.checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
         with open(self.checkpoint_file, "a") as f:
@@ -255,7 +255,7 @@ class UnifiedAblation(BaseAblation):
         return all_results
 
 
-def main():
+def main() -> None:
     """Run unified ablation experiments."""
     ablation = UnifiedAblation()
     results = ablation.run_ablation()

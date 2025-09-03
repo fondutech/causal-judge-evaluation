@@ -55,7 +55,7 @@ class TestAblation(BaseAblation):
             spec = ExperimentSpec(
                 ablation="test",
                 dataset_path=str(DATA_PATH),
-                estimator=config["estimator"],
+                estimator=str(config["estimator"]),  # Ensure it's a string
                 sample_size=500,  # Small for quick test
                 oracle_coverage=0.5,
                 n_seeds=1,
@@ -77,7 +77,7 @@ class TestAblation(BaseAblation):
                     print(f"Estimates: {result.get('estimates')}")
 
                     # Check for DR diagnostics
-                    if "dr" in config["estimator"]:
+                    if "dr" in str(config["estimator"]):
                         print(
                             f"Has orthogonality_score: {'orthogonality_score' in result}"
                         )
@@ -132,7 +132,7 @@ class TestAblation(BaseAblation):
         )
 
 
-def main():
+def main() -> None:
     """Run test."""
     ablation = TestAblation(name="test_params")
     ablation.run_all(test_mode=True)

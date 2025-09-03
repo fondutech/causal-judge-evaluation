@@ -45,7 +45,7 @@ def paired_t_test(group1: np.ndarray, group2: np.ndarray) -> Tuple[float, float]
     return t_stat, p_value
 
 
-def main():
+def main() -> None:
     """Run detailed calibration analysis."""
     print("Loading results...")
     results = load_results()

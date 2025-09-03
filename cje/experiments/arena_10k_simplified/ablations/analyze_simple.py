@@ -18,7 +18,7 @@ def load_results(path: str = "results/all_experiments.jsonl") -> List[Dict]:
         return [json.loads(line) for line in f if json.loads(line).get("success")]
 
 
-def main():
+def main() -> None:
     """Run simple analysis."""
     print("Loading results...")
     results = load_results()
