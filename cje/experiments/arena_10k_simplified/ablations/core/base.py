@@ -493,7 +493,10 @@ class BaseAblation:
             ):
                 diag = estimation_result.diagnostics
                 # Check for DR diagnostics
-                if hasattr(diag, "dr_diagnostics_per_policy"):
+                if (
+                    hasattr(diag, "dr_diagnostics_per_policy")
+                    and diag.dr_diagnostics_per_policy is not None
+                ):
                     for policy, policy_diag in diag.dr_diagnostics_per_policy.items():
                         if isinstance(policy_diag, dict):
                             if "orthogonality_score" in policy_diag:
@@ -561,12 +564,15 @@ class BaseAblation:
 
         # Convert numpy bools in diagnostic outputs to Python bools for JSON serialization
         # These come from the CJE library diagnostics
-        if "orthogonality_scores" in result:
+        if (
+            "orthogonality_scores" in result
+            and result["orthogonality_scores"] is not None
+        ):
             for policy, scores in result["orthogonality_scores"].items():
                 if isinstance(scores, dict) and "passes_test" in scores:
                     scores["passes_test"] = bool(scores["passes_test"])
 
-        if "iic_diagnostics" in result:
+        if "iic_diagnostics" in result and result["iic_diagnostics"] is not None:
             for policy, diag in result["iic_diagnostics"].items():
                 if isinstance(diag, dict) and "mean_preserved" in diag:
                     diag["mean_preserved"] = bool(diag["mean_preserved"])
