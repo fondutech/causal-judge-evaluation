@@ -43,6 +43,7 @@ class CalibratedIPS(BaseCJEEstimator):
     Args:
         sampler: PrecomputedSampler with data
         calibrate: Whether to apply SIMCal calibration (default True)
+        weight_mode: "hajek" for mean-one normalized weights, "raw" for unnormalized (default "hajek")
         clip_weight: Maximum weight value before calibration (default None = no clipping)
         ess_floor: Minimum ESS as fraction of n (default 0.2 = 20% ESS) [only used if calibrate=True]
         var_cap: Maximum allowed variance of calibrated weights (default None = no cap) [only used if calibrate=True]
@@ -57,6 +58,7 @@ class CalibratedIPS(BaseCJEEstimator):
         self,
         sampler: PrecomputedSampler,
         calibrate: bool = True,
+        weight_mode: str = "hajek",
         clip_weight: Optional[float] = None,
         ess_floor: Optional[float] = 0.2,
         var_cap: Optional[float] = None,
@@ -76,6 +78,7 @@ class CalibratedIPS(BaseCJEEstimator):
             **kwargs,  # Passes oracle_slice_config if provided
         )
         self.calibrate = calibrate
+        self.weight_mode = weight_mode
         self.clip_weight = clip_weight
         self.ess_floor = ess_floor if calibrate else None
         self.var_cap = var_cap if calibrate else None
@@ -95,9 +98,9 @@ class CalibratedIPS(BaseCJEEstimator):
         judge_scores = self.sampler.get_judge_scores()
 
         for policy in self.sampler.target_policies:
-            # Get raw weights (with optional pre-clipping)
+            # Get raw weights (with optional pre-clipping and weight mode)
             raw_weights = self.sampler.compute_importance_weights(
-                policy, clip_weight=self.clip_weight
+                policy, clip_weight=self.clip_weight, mode=self.weight_mode
             )
             if raw_weights is None:
                 continue
@@ -377,7 +380,7 @@ class CalibratedIPS(BaseCJEEstimator):
             estimates=np.array(estimates),
             standard_errors=np.array(standard_errors),
             n_samples_used=n_samples_used,
-            method="calibrated_ips" if self.calibrate else "raw_ips",
+            method="calibrated_ips" if self.calibrate else "snips",
             influence_functions=influence_functions,
             diagnostics=None,  # Will be set below
             robust_standard_errors=None,

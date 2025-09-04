@@ -20,6 +20,8 @@ EXPERIMENTS = {
     "use_iic": [True, False],
     # Reward calibration mode ablation
     "reward_calibration_mode": ["auto", "monotone", "two_stage"],
+    # Weight normalization mode ablation (hajek vs raw)
+    "weight_mode": ["hajek", "raw"],
     "seed": 42,  # Single seed for simplicity
 }
 

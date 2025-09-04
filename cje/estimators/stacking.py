@@ -71,6 +71,8 @@ class StackedDREstimator(BaseCJEEstimator):
         """
         # Extract calibrator before passing to base class (base doesn't accept it)
         self.calibrator = kwargs.pop("calibrator", None)
+        # Extract weight_mode for DR estimators
+        self.weight_mode = kwargs.pop("weight_mode", "hajek")
         # Extract oracle_slice_config to pass to base class
         oracle_slice_config = kwargs.pop("oracle_slice_config", True)
 
@@ -331,6 +333,7 @@ class StackedDREstimator(BaseCJEEstimator):
                 self.sampler,
                 calibrator=self.calibrator,
                 use_calibrated_weights=(self.calibrator is not None),
+                weight_mode=self.weight_mode,
                 oracle_slice_config=self.oracle_slice_config,
             )
         else:

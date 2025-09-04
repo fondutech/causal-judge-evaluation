@@ -74,6 +74,7 @@ class UnifiedAblation(BaseAblation):
             str(spec.get("extra", {}).get("use_calibration", False)),
             str(spec.get("extra", {}).get("use_iic", False)),
             str(spec.get("extra", {}).get("reward_calibration_mode", "auto")),
+            str(spec.get("extra", {}).get("weight_mode", "hajek")),
             str(spec.get("seed_base", 42)),
         ]
         return "_".join(key_params)
@@ -99,12 +100,25 @@ class UnifiedAblation(BaseAblation):
         estimator_name = spec.estimator
         use_calibration = spec.extra.get("use_calibration", False)
         use_iic = spec.extra.get("use_iic", False)
+        weight_mode = spec.extra.get("weight_mode", "hajek")
 
-        # Handle IPS variants
+        # Handle IPS variants with weight_mode
         if estimator_name == "raw-ips":
-            return super().create_estimator(spec, sampler, cal_result)
+            from cje.estimators.calibrated_ips import CalibratedIPS
+
+            return CalibratedIPS(
+                sampler, calibrate=False, use_iic=use_iic, weight_mode=weight_mode
+            )
         elif estimator_name == "calibrated-ips":
-            return super().create_estimator(spec, sampler, cal_result)
+            from cje.estimators.calibrated_ips import CalibratedIPS
+
+            return CalibratedIPS(
+                sampler,
+                calibrate=True,
+                use_iic=use_iic,
+                weight_mode=weight_mode,
+                calibrator=cal_result.calibrator if cal_result else None,
+            )
 
         # Handle DR methods with our parameters
         if estimator_name in ["dr-cpo", "tmle", "mrdr"]:
@@ -122,6 +136,7 @@ class UnifiedAblation(BaseAblation):
                 "sampler": sampler,
                 "n_folds": DR_CONFIG["n_folds"],
                 "use_iic": use_iic,
+                "weight_mode": weight_mode,
             }
 
             # Add calibrator if calibration is enabled
@@ -140,6 +155,7 @@ class UnifiedAblation(BaseAblation):
                 calibrator=(
                     cal_result.calibrator if use_calibration and cal_result else None
                 ),
+                weight_mode=weight_mode,
                 parallel=False,
                 use_iic=use_iic,
             )
@@ -181,69 +197,74 @@ class UnifiedAblation(BaseAblation):
                             for reward_calibration_mode in EXPERIMENTS[
                                 "reward_calibration_mode"
                             ]:
-                                # Create specification
-                                spec = ExperimentSpec(
-                                    ablation="unified",
-                                    dataset_path=str(DATA_PATH),
-                                    estimator=estimator,
-                                    sample_size=sample_size,
-                                    oracle_coverage=oracle_coverage,
-                                    n_seeds=1,  # Single seed
-                                    seed_base=EXPERIMENTS["seed"],
-                                    extra={
-                                        "use_calibration": use_calibration,
-                                        "use_iic": use_iic,
-                                        "reward_calibration_mode": reward_calibration_mode,
-                                    },
-                                )
+                                # Add weight mode loop (hajek vs raw)
+                                for weight_mode in EXPERIMENTS["weight_mode"]:
+                                    # Create specification
+                                    spec = ExperimentSpec(
+                                        ablation="unified",
+                                        dataset_path=str(DATA_PATH),
+                                        estimator=estimator,
+                                        sample_size=sample_size,
+                                        oracle_coverage=oracle_coverage,
+                                        n_seeds=1,  # Single seed
+                                        seed_base=EXPERIMENTS["seed"],
+                                        extra={
+                                            "use_calibration": use_calibration,
+                                            "use_iic": use_iic,
+                                            "reward_calibration_mode": reward_calibration_mode,
+                                            "weight_mode": weight_mode,
+                                        },
+                                    )
 
-                            # Check if already completed
-                            exp_id = self._generate_exp_id(spec.to_dict())
-                            if exp_id in self.completed_experiments:
-                                skipped += 1
-                                logger.debug(f"Skipping completed: {exp_id}")
-                                continue
+                                    # Check if already completed
+                                    exp_id = self._generate_exp_id(spec.to_dict())
+                                    if exp_id in self.completed_experiments:
+                                        skipped += 1
+                                        logger.debug(f"Skipping completed: {exp_id}")
+                                        continue
 
-                            total_experiments += 1
+                                    total_experiments += 1
 
-                            # Run experiment with single seed
-                            logger.info(
-                                f"\n[{completed + failed + 1}/{total_experiments}] "
-                                f"Running: {estimator} n={sample_size} "
-                                f"oracle={oracle_coverage:.0%} "
-                                f"cal={use_calibration} iic={use_iic} "
-                                f"mode={reward_calibration_mode}"
-                            )
+                                    # Run experiment with single seed
+                                    logger.info(
+                                        f"\n[{completed + failed + 1}/{total_experiments}] "
+                                        f"Running: {estimator} n={sample_size} "
+                                        f"oracle={oracle_coverage:.0%} "
+                                        f"cal={use_calibration} iic={use_iic} "
+                                        f"mode={reward_calibration_mode} weight={weight_mode}"
+                                    )
 
-                            try:
-                                # Run with single seed
-                                result = self.run_single(spec, EXPERIMENTS["seed"])
-
-                                # Save result
-                                self._save_checkpoint(result)
-                                all_results.append(result)
-                                completed += 1
-
-                                # Log summary
-                                if result.get("success"):
-                                    if "rmse_vs_oracle" in result:
-                                        logger.info(
-                                            f"  ✓ RMSE: {result['rmse_vs_oracle']:.4f}"
+                                    try:
+                                        # Run with single seed
+                                        result = self.run_single(
+                                            spec, EXPERIMENTS["seed"]
                                         )
-                                    else:
-                                        logger.info("  ✓ Completed")
 
-                            except Exception as e:
-                                logger.error(f"  ✗ Failed: {e}")
-                                failed += 1
+                                        # Save result
+                                        self._save_checkpoint(result)
+                                        all_results.append(result)
+                                        completed += 1
 
-                                # Save failed result
-                                failed_result = {
-                                    "spec": spec.to_dict(),
-                                    "success": False,
-                                    "error": str(e),
-                                }
-                                self._save_checkpoint(failed_result)
+                                        # Log summary
+                                        if result.get("success"):
+                                            if "rmse_vs_oracle" in result:
+                                                logger.info(
+                                                    f"  ✓ RMSE: {result['rmse_vs_oracle']:.4f}"
+                                                )
+                                            else:
+                                                logger.info("  ✓ Completed")
+
+                                    except Exception as e:
+                                        logger.error(f"  ✗ Failed: {e}")
+                                        failed += 1
+
+                                        # Save failed result
+                                        failed_result = {
+                                            "spec": spec.to_dict(),
+                                            "success": False,
+                                            "error": str(e),
+                                        }
+                                        self._save_checkpoint(failed_result)
 
         # Final summary
         logger.info("\n" + "=" * 60)

@@ -48,6 +48,7 @@ class DREstimator(BaseCJEEstimator):
         outcome_model: Outcome model for predictions (default: IsotonicOutcomeModel)
         n_folds: Number of cross-fitting folds (default 5)
         use_calibrated_weights: If True, use SIMCal calibration; if False, use raw weights (default True)
+        weight_mode: "hajek" for mean-one normalized weights, "raw" for unnormalized (default "hajek")
         calibrator: Optional calibrator for CalibratorBackedOutcomeModel
         **kwargs: Additional arguments passed to the base class (e.g., oracle_slice_config)
     """
@@ -58,6 +59,7 @@ class DREstimator(BaseCJEEstimator):
         outcome_model: Optional[Any] = None,
         n_folds: int = 5,
         use_calibrated_weights: bool = True,
+        weight_mode: str = "hajek",
         calibrator: Optional[Any] = None,
         random_seed: int = 42,
         run_diagnostics: bool = True,
@@ -86,8 +88,9 @@ class DREstimator(BaseCJEEstimator):
         # Initialize the IPS estimator with appropriate mode
         self.ips_estimator: CalibratedIPS
         # Pass calibrator to CalibratedIPS for DR-aware direction selection if calibrating
-        ips_kwargs = {
+        ips_kwargs: Dict[str, Any] = {
             "calibrate": use_calibrated_weights,
+            "weight_mode": weight_mode,
             "run_diagnostics": run_diagnostics,
         }
         if use_calibrated_weights and calibrator is not None:
@@ -1254,6 +1257,7 @@ class DRCPOEstimator(DREstimator):
         outcome_model: Optional[Any] = None,
         n_folds: int = 5,
         use_calibrated_weights: bool = True,
+        weight_mode: str = "hajek",
         calibrator: Optional[Any] = None,
         random_seed: int = 42,
         **kwargs: Any,
@@ -1264,6 +1268,7 @@ class DRCPOEstimator(DREstimator):
             outcome_model=outcome_model,
             n_folds=n_folds,
             use_calibrated_weights=use_calibrated_weights,
+            weight_mode=weight_mode,
             calibrator=calibrator,
             random_seed=random_seed,
             **kwargs,

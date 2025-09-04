@@ -56,6 +56,7 @@ class TMLEEstimator(DREstimator):
         max_iter: int = 50,
         tol: float = 1e-8,
         use_calibrated_weights: bool = True,
+        weight_mode: str = "hajek",
         calibrator: Optional[Any] = None,
         **kwargs: Any,
     ):
@@ -68,6 +69,7 @@ class TMLEEstimator(DREstimator):
             outcome_model=outcome_model,
             n_folds=n_folds,
             use_calibrated_weights=use_calibrated_weights,
+            weight_mode=weight_mode,
             calibrator=calibrator,
             **kwargs,
         )
