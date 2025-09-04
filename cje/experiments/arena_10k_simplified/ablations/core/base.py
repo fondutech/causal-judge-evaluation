@@ -217,7 +217,7 @@ class BaseAblation:
         other policies (mean ~0.76). This causes systematic calibration bias.
         """
         if not estimates or not truths:
-            return np.nan
+            return float(np.nan)
 
         squared_errors = []
         for policy in estimates:
