@@ -1,7 +1,7 @@
 """Base class for CJE estimators."""
 
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, Union, Tuple
 import numpy as np
 import logging
 
@@ -258,7 +258,7 @@ class BaseCJEEstimator(ABC):
 
     def _apply_iic(
         self, influence: np.ndarray, policy: str, fold_ids: Optional[np.ndarray] = None
-    ) -> np.ndarray:
+    ) -> Tuple[np.ndarray, float]:
         """Apply Isotonic Influence Control to reduce variance.
 
         This residualizes the influence function against judge scores,
@@ -270,23 +270,23 @@ class BaseCJEEstimator(ABC):
             fold_ids: Optional fold assignments for cross-fitting
 
         Returns:
-            Residualized influence function with reduced variance
+            Tuple of (residualized influence function, point estimate adjustment)
         """
         if not self.use_iic or self.iic is None:
-            return influence
+            return influence, 0.0
 
         # Get judge scores for this policy
         data = self.sampler.get_data_for_policy(policy)
         if not data:
             logger.warning(f"No data for policy {policy}, skipping IIC")
-            return influence
+            return influence, 0.0
 
         judge_scores = np.array([d.get("judge_score", np.nan) for d in data])
 
         # Handle missing judge scores
         if np.all(np.isnan(judge_scores)):
             logger.warning(f"All judge scores missing for {policy}, skipping IIC")
-            return influence
+            return influence, 0.0
 
         # Get fold IDs from data for cross-fitting if not provided
         if fold_ids is None and data:
@@ -305,9 +305,13 @@ class BaseCJEEstimator(ABC):
         # Store diagnostics
         self._iic_diagnostics[policy] = diagnostics
 
+        # Extract point estimate adjustment
+        adjustment = diagnostics.get("point_estimate_adjustment", 0.0)
+
         if diagnostics.get("applied", False):
             logger.debug(
-                f"IIC applied to {policy}: SE reduction={diagnostics.get('se_reduction', 0):.1%}"
+                f"IIC applied to {policy}: SE reduction={diagnostics.get('se_reduction', 0):.1%}, "
+                f"estimate adjustment={adjustment:.6f}"
             )
 
-        return residualized
+        return residualized, adjustment

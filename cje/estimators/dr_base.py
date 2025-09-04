@@ -617,9 +617,17 @@ class DREstimator(BaseCJEEstimator):
                 )
 
             # Apply IIC for variance reduction (if enabled)
-            if_contributions = self._apply_iic(
+            if_contributions, iic_adjustment = self._apply_iic(
                 if_contributions, policy, fold_ids=fold_ids
             )
+
+            # Store IIC adjustment for metadata (for transparency)
+            if not hasattr(self, "_iic_adjustments"):
+                self._iic_adjustments = {}
+            self._iic_adjustments[policy] = iic_adjustment
+
+            # Adjust the point estimate to maintain consistency with the influence function
+            dr_estimate += iic_adjustment
 
             # Base SE from influence functions (across-prompt variance)
             base_se = np.std(if_contributions, ddof=1) / np.sqrt(len(if_contributions))
@@ -801,6 +809,10 @@ class DREstimator(BaseCJEEstimator):
             "orthogonality_scores": self._orthogonality_scores,  # New: orthogonality diagnostics
             "dm_ips_decompositions": self._dm_ips_decompositions,  # New: DM-IPS breakdown
             "dr_influence": self._influence_functions,  # Store influence functions for CF-bits analysis
+            "iic_adjustments": getattr(
+                self, "_iic_adjustments", {}
+            ),  # IIC adjustments applied
+            "iic_estimate_adjusted": self.use_iic,  # Flag: estimates already adjusted
         }
 
         # Get IPS diagnostics if available

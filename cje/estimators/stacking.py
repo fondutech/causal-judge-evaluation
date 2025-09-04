@@ -27,14 +27,15 @@ class StackedDREstimator(BaseCJEEstimator):
 
     Key features:
     - Runs multiple DR estimators with shared resources (folds, fresh draws)
-    - Computes optimal weights by minimizing IF variance
+    - Optional IIC at component level for variance reduction (use_iic=True)
+    - Computes optimal weights via exact QP for K≤6 or projection for larger K
     - Uses outer split for honest inference (default)
-    - Robust covariance estimation via Ledoit-Wolf shrinkage
+    - Robust covariance estimation via adaptive Ledoit-Wolf shrinkage
     - Parallel execution of component estimators
 
     Example:
         >>> sampler = PrecomputedSampler.from_jsonl("data.jsonl")
-        >>> stacked = StackedDREstimator(sampler)
+        >>> stacked = StackedDREstimator(sampler, use_iic=True)
         >>> result = stacked.fit_and_estimate()
         >>> print(f"Estimate: {result.estimates[0]:.3f} ± {result.standard_errors[0]:.3f}")
     """
@@ -46,11 +47,12 @@ class StackedDREstimator(BaseCJEEstimator):
         use_outer_split: bool = True,
         V_folds: int = 5,
         robust_cov: bool = True,
-        shrinkage_intensity: float = 0.1,
+        shrinkage_intensity: Optional[float] = None,
         parallel: bool = True,
         min_weight: float = 0.0,
         fallback_on_failure: bool = True,
         seed: int = 42,
+        use_iic: bool = False,  # Whether component estimators should use IIC
         **kwargs: Any,
     ):
         """Initialize the stacked estimator.
@@ -61,12 +63,13 @@ class StackedDREstimator(BaseCJEEstimator):
                 Default: ["dr-cpo", "tmle", "mrdr"]
             use_outer_split: If True, use V-fold outer split for honest inference
             V_folds: Number of outer folds for honest stacking
-            robust_cov: If True, use Ledoit-Wolf shrinkage for covariance
-            shrinkage_intensity: Shrinkage parameter for Ledoit-Wolf (0 to 1)
+            robust_cov: If True, use Ledoit-Wolf optimal shrinkage for covariance
+            shrinkage_intensity: Manual override for shrinkage (0 to 1, None for automatic)
             parallel: If True, run component estimators in parallel
             min_weight: Minimum weight for any estimator (for stability)
             fallback_on_failure: If True, fall back to best single estimator on failure
             seed: Random seed for reproducibility
+            use_iic: If True, component estimators use IIC for variance reduction
             **kwargs: Additional arguments passed to base class
         """
         # Extract calibrator before passing to base class (base doesn't accept it)
@@ -90,6 +93,7 @@ class StackedDREstimator(BaseCJEEstimator):
         self.min_weight = min_weight
         self.fallback_on_failure = fallback_on_failure
         self.seed = seed
+        self.use_iic = use_iic
         self.oracle_slice_config = oracle_slice_config  # Store the extracted value
 
         # Storage for results
@@ -191,15 +195,17 @@ class StackedDREstimator(BaseCJEEstimator):
 
             # Compute stacked influence function
             if self.use_outer_split:
-                stacked_if, weights = self._stack_with_outer_split(IF_matrix, policy)
+                # Learn fold-specific weights but use averaged weights for consistency
+                _, weights = self._stack_with_outer_split(IF_matrix, policy)
             else:
                 weights = self._compute_optimal_weights(IF_matrix)
-                stacked_if = IF_matrix @ weights
 
+            # Use the same weights for both IF and point estimate (critical for alignment)
+            stacked_if = IF_matrix @ weights
             self.weights_per_policy[policy] = weights
 
-            # Apply IIC for variance reduction (if enabled)
-            stacked_if = self._apply_iic(stacked_if, policy)
+            # Note: IIC is applied at the component level, not at the stacked level
+            # This avoids double residualization and maintains proper alignment
 
             # Store influence function
             stacked_ifs[policy] = stacked_if
@@ -213,6 +219,9 @@ class StackedDREstimator(BaseCJEEstimator):
                     component_estimates.append(result.estimates[policy_idx])
 
             if component_estimates:
+                # Compute weighted average of component estimates
+                # Note: Components already adjust their estimates if IIC is used,
+                # so we don't need to subtract offsets here (avoids double adjustment)
                 estimate = np.dot(weights, component_estimates)
             else:
                 estimate = np.nan
@@ -232,7 +241,7 @@ class StackedDREstimator(BaseCJEEstimator):
             ],
             "used_outer_split": self.use_outer_split,
             "V_folds": self.V_folds if self.use_outer_split else None,
-            "iic_diagnostics": self._iic_diagnostics if self.use_iic else None,
+            "component_iic": self.use_iic,  # IIC applied at component level
         }
 
         # Get n_samples_used from one of the component estimators
@@ -335,12 +344,30 @@ class StackedDREstimator(BaseCJEEstimator):
                 use_calibrated_weights=(self.calibrator is not None),
                 weight_mode=self.weight_mode,
                 oracle_slice_config=self.oracle_slice_config,
+                use_iic=self.use_iic,  # Enable IIC for component estimators
             )
+
+            # Pass shared fold IDs if the estimator supports it
+            if hasattr(estimator, "set_fold_ids"):
+                estimator.set_fold_ids(self.shared_fold_ids)
+            elif hasattr(self, "shared_fold_ids"):
+                # Try to set it directly if the estimator has the attribute
+                try:
+                    estimator.fold_ids = self.shared_fold_ids
+                    logger.debug(f"Set fold_ids for {name}")
+                except AttributeError:
+                    logger.debug(
+                        f"{name} does not accept fold_ids; using its internal split"
+                    )
         else:
             # For non-DR estimators (shouldn't happen with default config)
             estimator = estimator_class(
                 self.sampler, oracle_slice_config=self.oracle_slice_config
             )
+
+            # Try to pass fold IDs even for non-DR estimators
+            if hasattr(estimator, "set_fold_ids"):
+                estimator.set_fold_ids(self.shared_fold_ids)
 
         # Add fresh draws if available
         if self._fresh_draws:
@@ -390,7 +417,7 @@ class StackedDREstimator(BaseCJEEstimator):
     def _compute_optimal_weights(self, IF_matrix: np.ndarray) -> np.ndarray:
         """Compute optimal stacking weights by minimizing IF variance.
 
-        Solves: min_α α^T Σ α  s.t.  α ≥ 0, Σα = 1
+        Solves: min_α α^T Σ α  s.t.  α ≥ 0, 1^T α = 1
 
         Args:
             IF_matrix: n x K matrix of influence functions
@@ -398,42 +425,115 @@ class StackedDREstimator(BaseCJEEstimator):
         Returns:
             weights: K-dimensional weight vector
         """
-        K = IF_matrix.shape[1]
+        # Clean IF matrix: remove rows with any NaN/Inf
+        mask = np.all(np.isfinite(IF_matrix), axis=1)
+        IF_clean = IF_matrix[mask]
+
+        # Log if we dropped rows
+        n_dropped = IF_matrix.shape[0] - IF_clean.shape[0]
+        if n_dropped > 0:
+            logger.debug(f"Dropped {n_dropped} rows with NaN/Inf from IF matrix")
+
+        # If too few valid rows, fall back to uniform weights
+        if IF_clean.shape[0] < 2:
+            logger.warning("Too few valid rows in IF matrix, using uniform weights")
+            return np.ones(IF_matrix.shape[1]) / IF_matrix.shape[1]
+
+        K = IF_clean.shape[1]
 
         # Compute covariance matrix
         if self.robust_cov:
-            Sigma = self._ledoit_wolf_covariance(IF_matrix)
+            Sigma = self._ledoit_wolf_covariance(IF_clean)
         else:
             # Center the IFs first
-            centered_IF = IF_matrix - IF_matrix.mean(axis=0, keepdims=True)
+            centered_IF = IF_clean - IF_clean.mean(axis=0, keepdims=True)
             Sigma = np.cov(centered_IF.T)
 
         # Add small ridge for numerical stability
         Sigma = Sigma + 1e-8 * np.eye(K)
 
-        # Closed-form solution: w ∝ Σ^{-1} 1
+        # For small K, use exact QP solver; otherwise use projection
+        if K <= 6:
+            weights = self._solve_qp_exact(Sigma)
+        else:
+            weights = self._solve_qp_projection(Sigma)
+
+        # Apply minimum weight constraint if specified
+        if self.min_weight > 0:
+            weights = np.maximum(weights, self.min_weight)
+            weights = weights / weights.sum()
+
+        return weights
+
+    def _solve_qp_projection(self, Sigma: np.ndarray) -> np.ndarray:
+        """Solve QP via closed-form + projection (approximate)."""
+        K = Sigma.shape[0]
         ones = np.ones(K)
 
         try:
             # Solve Σw = 1
             weights = np.linalg.solve(Sigma, ones)
-
             # Normalize to sum to 1
             weights = weights / weights.sum()
-
-            # Project to simplex (ensure non-negative)
+            # Project to simplex
             weights = self._project_to_simplex(weights)
-
-            # Apply minimum weight if specified
-            if self.min_weight > 0:
-                weights = np.maximum(weights, self.min_weight)
-                weights = weights / weights.sum()
-
         except np.linalg.LinAlgError:
-            logger.warning("Covariance matrix is singular, using equal weights")
+            logger.warning("Singular covariance matrix, using uniform weights")
             weights = ones / K
 
         return weights
+
+    def _solve_qp_exact(self, Sigma: np.ndarray) -> np.ndarray:
+        """Solve quadratic program exactly.
+
+        Minimize: 0.5 * α^T Σ α
+        Subject to: 1^T α = 1, α ≥ 0
+        """
+        K = Sigma.shape[0]
+
+        # Simple active-set method for small K
+        best_weights = None
+        best_value = float("inf")
+
+        # Try all possible active sets (2^K combinations for small K)
+        for active_mask in range(1, 2**K):
+            active = [(active_mask >> i) & 1 for i in range(K)]
+            active_idx = [i for i in range(K) if active[i]]
+
+            if not active_idx:
+                continue
+
+            # Solve on active set
+            Sigma_active = Sigma[np.ix_(active_idx, active_idx)]
+            ones_active = np.ones(len(active_idx))
+
+            try:
+                # Solve equality-constrained problem
+                w_active = np.linalg.solve(Sigma_active, ones_active)
+                w_active = w_active / w_active.sum()
+
+                # Check if feasible (all non-negative)
+                if np.all(w_active >= -1e-10):
+                    # Construct full weight vector
+                    w_full = np.zeros(K)
+                    for i, idx in enumerate(active_idx):
+                        w_full[idx] = max(0, w_active[i])
+                    w_full = w_full / w_full.sum()
+
+                    # Compute objective value
+                    obj_val = 0.5 * w_full @ Sigma @ w_full
+
+                    if obj_val < best_value:
+                        best_value = obj_val
+                        best_weights = w_full
+            except np.linalg.LinAlgError:
+                continue
+
+        if best_weights is not None:
+            return best_weights
+        else:
+            # Fallback to uniform
+            return np.ones(K) / K
 
     def _project_to_simplex(self, v: np.ndarray) -> np.ndarray:
         """Project vector v onto the probability simplex."""
@@ -448,9 +548,13 @@ class StackedDREstimator(BaseCJEEstimator):
         return w / w.sum() if w.sum() > 0 else np.ones(n) / n
 
     def _ledoit_wolf_covariance(self, IF_matrix: np.ndarray) -> np.ndarray:
-        """Compute shrinkage covariance estimator (Ledoit-Wolf).
+        """Compute Ledoit-Wolf optimal shrinkage covariance estimator.
 
-        Shrinks the sample covariance toward a diagonal target.
+        This implements the Ledoit-Wolf (2004) optimal shrinkage estimator that
+        adaptively chooses the shrinkage intensity to minimize expected squared error.
+
+        The target is a diagonal matrix with sample variances.
+        Reference: "A well-conditioned estimator for large-dimensional covariance matrices"
         """
         # Center the data
         X = IF_matrix - IF_matrix.mean(axis=0, keepdims=True)
@@ -462,31 +566,63 @@ class StackedDREstimator(BaseCJEEstimator):
         # Shrinkage target (diagonal with sample variances)
         target = np.diag(np.diag(S))
 
-        # Use specified shrinkage intensity
-        shrinkage = self.shrinkage_intensity
+        # Compute optimal shrinkage intensity using Ledoit-Wolf formula
+        # We need to estimate:
+        # - phi: sum of variances of sample covariance entries
+        # - gamma: sum of squared differences between S and target
+
+        # Compute phi using the formula from the paper
+        # phi = (1/n^2) * sum_k ||x_k x_k^T - S||^2_F
+        phi = 0.0
+        for k in range(n):
+            xk = X[k : k + 1, :].T  # Column vector
+            xkxkT = xk @ xk.T
+            phi += np.sum((xkxkT - S) ** 2)
+        phi = phi / n
+
+        # Compute gamma = ||S - target||^2_F
+        gamma = np.sum((S - target) ** 2)
+
+        # Compute optimal shrinkage (bounded between 0 and 1)
+        if gamma > 0:
+            kappa = phi / gamma
+            shrinkage = np.clip(kappa, 0.0, 1.0)
+        else:
+            # If S is already diagonal, no shrinkage needed
+            shrinkage = 0.0
+
+        # Allow manual override if user explicitly set a value
+        if self.shrinkage_intensity is not None:
+            shrinkage = float(np.clip(self.shrinkage_intensity, 0.0, 1.0))
+
+        # Store computed shrinkage for diagnostics
+        self._last_shrinkage = float(shrinkage)
 
         # Shrink toward target
         return np.asarray((1 - shrinkage) * S + shrinkage * target)
 
     def _stack_with_outer_split(
         self, IF_matrix: np.ndarray, policy: str
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """Stack with V-fold outer split for honest inference.
+    ) -> Tuple[None, np.ndarray]:
+        """Stack with V-fold outer split for honest weight learning.
+
+        Uses outer split to learn weights honestly (avoiding overfitting),
+        then returns averaged weights for consistent estimator/IF.
 
         Returns:
-            stacked_if: The stacked influence function
-            avg_weights: Average weights across folds (for reporting)
+            None: Placeholder for compatibility
+            avg_weights: Average weights across folds
         """
         n = IF_matrix.shape[0]
-        stacked_if = np.zeros(n)
         fold_weights = []
 
-        # Create V folds
+        # Create V folds deterministically using seed
         indices = np.arange(n)
-        np.random.shuffle(indices)
+        rng = np.random.default_rng(self.seed if hasattr(self, "seed") else 42)
+        rng.shuffle(indices)
         folds = np.array_split(indices, self.V_folds)
 
-        for v, test_idx in enumerate(folds):
+        for test_idx in folds:
             # Training indices are all except test fold
             train_idx = np.setdiff1d(indices, test_idx)
 
@@ -498,17 +634,14 @@ class StackedDREstimator(BaseCJEEstimator):
             weights = self._compute_optimal_weights(train_IF)
             fold_weights.append(weights)
 
-            # Apply to test fold
-            stacked_if[test_idx] = IF_matrix[test_idx] @ weights
-
-        # Average weights across folds for reporting
+        # Average weights across folds
         avg_weights = (
             np.mean(fold_weights, axis=0)
             if fold_weights
             else np.ones(IF_matrix.shape[1]) / IF_matrix.shape[1]
         )
 
-        return stacked_if, avg_weights
+        return None, avg_weights
 
     def _create_passthrough_result(self, estimator_name: str) -> EstimationResult:
         """Create a result that passes through a single estimator's results."""

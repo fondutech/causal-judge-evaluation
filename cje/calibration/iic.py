@@ -78,7 +78,8 @@ class IsotonicInfluenceControl:
         """Residualize influence function against judge scores.
 
         This is the main entry point for IIC. It fits E[φ|S] using isotonic
-        regression and returns the residuals φ - Ê[φ|S].
+        regression and returns the residuals φ - Ê[φ|S], along with the
+        adjustment needed for the point estimate.
 
         The direction (increasing/decreasing) is chosen automatically based on
         which gives better fit, measured by Spearman correlation.
@@ -92,7 +93,7 @@ class IsotonicInfluenceControl:
 
         Returns:
             residualized_if: φ̃ = φ - Ê[φ|S] (same mean, less variance)
-            diagnostics: Dict with R², variance reduction, etc.
+            diagnostics: Dict with R², variance reduction, point_estimate_adjustment, etc.
         """
         if not self.config.enable:
             return influence, {"applied": False, "reason": "disabled"}
@@ -135,12 +136,20 @@ class IsotonicInfluenceControl:
         # Compute residuals: φ̃ = φ - Ê[φ|S]
         residuals = influence - fitted_values
 
+        # CRITICAL: Compute the point estimate adjustment
+        # The new estimate should be: original_estimate + mean(fitted_values)
+        # This ensures the influence function corresponds to the reported estimate
+        point_estimate_adjustment = float(np.mean(fitted_values))
+
         # Store fitted component if requested (for visualization)
         if self.config.store_components:
             self._fitted_components[policy] = fitted_values
 
         # Compute diagnostics
-        diagnostics = {"applied": True}
+        diagnostics = {
+            "applied": True,
+            "point_estimate_adjustment": point_estimate_adjustment,
+        }
         if self.config.compute_diagnostics:
             diagnostics.update(
                 self._compute_diagnostics(influence, fitted_values, residuals, policy)

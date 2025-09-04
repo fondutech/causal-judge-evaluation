@@ -347,7 +347,18 @@ class CalibratedIPS(BaseCJEEstimator):
                 fold_ids = np.array([get_fold(pid, 5) for pid in prompt_ids])
 
             # Apply IIC for variance reduction (if enabled)
-            influence = self._apply_iic(influence, policy, fold_ids=fold_ids)
+            influence, iic_adjustment = self._apply_iic(
+                influence, policy, fold_ids=fold_ids
+            )
+
+            # Store IIC adjustment for transparency
+            if not hasattr(self, "_iic_adjustments"):
+                self._iic_adjustments = {}
+            self._iic_adjustments[policy] = iic_adjustment
+
+            # Adjust the point estimate to maintain consistency with the influence function
+            estimate += iic_adjustment
+            estimates[-1] = estimate  # Update the stored estimate
 
             # Compute standard error from the (possibly residualized) influence functions
             se = float(np.std(influence, ddof=1) / np.sqrt(n))
@@ -388,6 +399,10 @@ class CalibratedIPS(BaseCJEEstimator):
             metadata={
                 "target_policies": list(self.sampler.target_policies),
                 "iic_diagnostics": self._iic_diagnostics if self.use_iic else None,
+                "iic_adjustments": getattr(
+                    self, "_iic_adjustments", {}
+                ),  # IIC adjustments applied
+                "iic_estimate_adjusted": self.use_iic,  # Flag: estimates already adjusted
                 "calibration_method": "simcal" if self.calibrate else None,
                 "ess_floor": self.ess_floor,
                 "var_cap": self.var_cap,
