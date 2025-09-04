@@ -90,6 +90,7 @@ def create_result(spec: ExperimentSpec, seed: int) -> Dict[str, Any]:
         "weight_cv": {},  # Coefficient of variation
         # Calibration metrics
         "calibration_rmse": None,  # RMSE of judge→oracle calibration
+        "reward_calibration_used": None,  # Which mode was used (auto may select)
         # "simcal_distortion": {},  # Not currently computed
         "rho_used": {},  # Actual ρ used per policy
         "blend_alpha": {},  # SIMCal blend parameter α

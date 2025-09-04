@@ -73,7 +73,10 @@ class JudgeCalibrator:
         self.calibration_mode = (
             calibration_mode if calibration_mode is not None else "monotone"
         )
-        self.selected_mode: Optional[str] = None  # For storing auto mode selection
+        # Store selected mode (for auto, this gets updated after selection)
+        self.selected_mode: Optional[str] = (
+            None if calibration_mode == "auto" else calibration_mode
+        )
         self._final_calibrator: Optional[IsotonicRegression] = None
         self._flexible_calibrator: Optional["FlexibleCalibrator"] = (
             None  # Will hold FlexibleCalibrator if needed
@@ -126,7 +129,7 @@ class JudgeCalibrator:
             if oracle_labels is None:
                 raise ValueError("oracle_labels required when oracle_mask provided")
             oracle_labels = np.asarray(oracle_labels)
-            
+
             # Check if mask is indices (integers) or boolean
             if oracle_mask_array.dtype in [np.int32, np.int64, int]:
                 # Convert indices to boolean mask
@@ -136,7 +139,7 @@ class JudgeCalibrator:
             else:
                 # Already boolean
                 oracle_mask = oracle_mask_array.astype(bool)
-            
+
             # Extract oracle subset
             oracle_scores = judge_scores[oracle_mask]
             oracle_y = oracle_labels
@@ -289,7 +292,7 @@ class JudgeCalibrator:
             if oracle_labels is None:
                 raise ValueError("oracle_labels required when oracle_mask provided")
             oracle_labels = np.asarray(oracle_labels)
-            
+
             # Check if mask is indices (integers) or boolean
             if oracle_mask_array.dtype in [np.int32, np.int64, int]:
                 # Convert indices to boolean mask
@@ -299,7 +302,7 @@ class JudgeCalibrator:
             else:
                 # Already boolean
                 oracle_mask = oracle_mask_array.astype(bool)
-            
+
             oracle_scores = judge_scores[oracle_mask]
             oracle_y = oracle_labels  # oracle_labels is already compact
         elif oracle_labels is not None and len(oracle_labels) < n_total:

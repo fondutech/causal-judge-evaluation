@@ -20,8 +20,9 @@ EXPERIMENTS = {
     "use_calibration": [True, False],  # Test with and without calibration
     # IIC for DR methods
     "use_iic": [True, False],
-    "n_seeds": 3,
-    "seed_base": 42,
+    # Reward calibration mode ablation
+    "reward_calibration_mode": ["auto", "monotone", "two_stage"],
+    "seed": 42,  # Single seed for simplicity
 }
 
 # Method-specific constraints
@@ -52,6 +53,6 @@ CHECKPOINT_PATH = BASE_DIR / "results" / "checkpoint.jsonl"
 RUNTIME = {
     "checkpoint_every": 10,  # Save progress every N experiments
     "verbose": True,
-    "parallel": True,
+    "parallel": False,
     "max_workers": 10,
 }

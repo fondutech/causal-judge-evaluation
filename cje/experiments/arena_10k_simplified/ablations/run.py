@@ -73,6 +73,7 @@ class UnifiedAblation(BaseAblation):
             str(spec.get("oracle_coverage", "")),
             str(spec.get("extra", {}).get("use_calibration", False)),
             str(spec.get("extra", {}).get("use_iic", False)),
+            str(spec.get("extra", {}).get("reward_calibration_mode", "auto")),
             str(spec.get("seed_base", 42)),
         ]
         return "_".join(key_params)
@@ -178,20 +179,25 @@ class UnifiedAblation(BaseAblation):
                             iic_values = [False]  # IPS methods don't use IIC
 
                         for use_iic in iic_values:
-                            # Create specification
-                            spec = ExperimentSpec(
-                                ablation="unified",
-                                dataset_path=str(DATA_PATH),
-                                estimator=estimator,
-                                sample_size=sample_size,
-                                oracle_coverage=oracle_coverage,
-                                n_seeds=EXPERIMENTS["n_seeds"],
-                                seed_base=EXPERIMENTS["seed_base"],
-                                extra={
-                                    "use_calibration": use_calibration,
-                                    "use_iic": use_iic,
-                                },
-                            )
+                            # Add reward calibration mode loop
+                            for reward_calibration_mode in EXPERIMENTS[
+                                "reward_calibration_mode"
+                            ]:
+                                # Create specification
+                                spec = ExperimentSpec(
+                                    ablation="unified",
+                                    dataset_path=str(DATA_PATH),
+                                    estimator=estimator,
+                                    sample_size=sample_size,
+                                    oracle_coverage=oracle_coverage,
+                                    n_seeds=1,  # Single seed
+                                    seed_base=EXPERIMENTS["seed"],
+                                    extra={
+                                        "use_calibration": use_calibration,
+                                        "use_iic": use_iic,
+                                        "reward_calibration_mode": reward_calibration_mode,
+                                    },
+                                )
 
                             # Check if already completed
                             exp_id = self._generate_exp_id(spec.to_dict())
@@ -202,34 +208,32 @@ class UnifiedAblation(BaseAblation):
 
                             total_experiments += 1
 
-                            # Run experiment with multiple seeds
+                            # Run experiment with single seed
                             logger.info(
                                 f"\n[{completed + failed + 1}/{total_experiments}] "
                                 f"Running: {estimator} n={sample_size} "
                                 f"oracle={oracle_coverage:.0%} "
-                                f"cal={use_calibration} iic={use_iic}"
+                                f"cal={use_calibration} iic={use_iic} "
+                                f"mode={reward_calibration_mode}"
                             )
 
                             try:
-                                # Run with multiple seeds
-                                seed_results = self.run_with_seeds(spec)
+                                # Run with single seed
+                                result = self.run_single(spec, EXPERIMENTS["seed"])
 
-                                # Aggregate across seeds
-                                aggregated = aggregate_results(seed_results)
-                                aggregated["spec"] = spec.to_dict()
-
-                                # Save individual seed results and aggregated
-                                for seed_result in seed_results:
-                                    self._save_checkpoint(seed_result)
-
-                                all_results.append(aggregated)
+                                # Save result
+                                self._save_checkpoint(result)
+                                all_results.append(result)
                                 completed += 1
 
                                 # Log summary
-                                if "rmse_vs_oracle" in aggregated:
-                                    logger.info(
-                                        f"  ✓ RMSE: {aggregated['rmse_vs_oracle']:.4f}"
-                                    )
+                                if result.get("success"):
+                                    if "rmse_vs_oracle" in result:
+                                        logger.info(
+                                            f"  ✓ RMSE: {result['rmse_vs_oracle']:.4f}"
+                                        )
+                                    else:
+                                        logger.info("  ✓ Completed")
 
                             except Exception as e:
                                 logger.error(f"  ✗ Failed: {e}")

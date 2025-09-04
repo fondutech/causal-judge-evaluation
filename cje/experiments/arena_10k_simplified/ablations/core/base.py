@@ -376,16 +376,27 @@ class BaseAblation:
 
             # ALWAYS calibrate rewards (judge → oracle) when oracle labels exist
             # This is NOT controlled by use_calibration flag
+            # Get reward calibration mode from spec
+            reward_calibration_mode = spec.extra.get("reward_calibration_mode", "auto")
+
             calibrated_dataset, cal_result = calibrate_dataset(
                 dataset,
                 judge_field="judge_score",
                 oracle_field="oracle_label",
                 enable_cross_fit=True,
                 n_folds=5 if n_oracle >= 50 else 3,
+                calibration_mode=reward_calibration_mode,
             )
 
             if cal_result:
                 result["calibration_rmse"] = cal_result.calibration_rmse
+                # Track which calibration mode was actually used (auto may select one)
+                if hasattr(cal_result.calibrator, "selected_mode"):
+                    result["reward_calibration_used"] = (
+                        cal_result.calibrator.selected_mode
+                    )
+                else:
+                    result["reward_calibration_used"] = reward_calibration_mode
 
             # Create sampler and estimator
             sampler = PrecomputedSampler(calibrated_dataset)
