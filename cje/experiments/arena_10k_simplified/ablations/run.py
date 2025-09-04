@@ -172,11 +172,9 @@ class UnifiedAblation(BaseAblation):
                         calibration_values = EXPERIMENTS["use_calibration"]
 
                     for use_calibration in calibration_values:
-                        # Determine IIC values based on estimator
-                        if estimator in ["dr-cpo", "tmle", "mrdr", "stacked-dr"]:
-                            iic_values = EXPERIMENTS["use_iic"]
-                        else:
-                            iic_values = [False]  # IPS methods don't use IIC
+                        # IIC works for all estimators (IPS and DR)
+                        # It's a general variance reduction technique for any asymptotically linear estimator
+                        iic_values = EXPERIMENTS["use_iic"]
 
                         for use_iic in iic_values:
                             # Add reward calibration mode loop

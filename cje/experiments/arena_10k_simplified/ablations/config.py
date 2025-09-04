@@ -10,8 +10,6 @@ EXPERIMENTS = {
         "raw-ips",  # Baseline: no calibration
         "calibrated-ips",  # IPS with SIMCal
         "dr-cpo",  # Basic DR
-        "tmle",  # TMLE
-        "mrdr",  # Multiply robust DR
         "stacked-dr",  # Ensemble of DR methods
     ],
     "sample_sizes": [500, 1000, 2500, 5000],
