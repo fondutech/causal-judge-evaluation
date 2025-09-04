@@ -7,8 +7,7 @@ This defines all parameter combinations we want to test.
 # Core experiment parameters
 EXPERIMENTS = {
     "estimators": [
-        "raw-ips",  # Baseline: no calibration
-        "calibrated-ips",  # IPS with SIMCal
+        "ips",  # IPS (can be calibrated or not)
         "dr-cpo",  # Basic DR
         "stacked-dr",  # Ensemble of DR methods
     ],
@@ -25,15 +24,10 @@ EXPERIMENTS = {
     "seed": 42,  # Single seed for simplicity
 }
 
-# Method-specific constraints
-CONSTRAINTS = {
-    # raw-ips never uses calibration (it's the uncalibrated baseline)
-    "raw-ips": {"use_calibration": [False]},
-    # calibrated-ips always uses calibration (it's the whole point)
-    "calibrated-ips": {"use_calibration": [True]},
-    # IIC only applies to DR methods
-    "non_dr_methods": ["raw-ips", "calibrated-ips"],
-}
+# Method-specific constraints (empty now since all methods test all modes)
+from typing import Dict, Any
+
+CONSTRAINTS: Dict[str, Any] = {}
 
 # Fixed parameters for DR methods
 DR_CONFIG = {

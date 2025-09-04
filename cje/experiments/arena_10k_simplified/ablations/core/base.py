@@ -148,9 +148,8 @@ class BaseAblation:
         #            f"use_calibration(SIMCal)={use_calibration}")
 
         estimator_map = {
-            "raw-ips": lambda s: CalibratedIPS(s, calibrate=False, use_iic=use_iic),
-            "calibrated-ips": lambda s: CalibratedIPS(
-                s, calibrate=True, use_iic=use_iic
+            "ips": lambda s: CalibratedIPS(
+                s, calibrate=use_calibration, use_iic=use_iic
             ),
             "dr-cpo": lambda s: DRCPOEstimator(
                 s,

@@ -102,22 +102,18 @@ class UnifiedAblation(BaseAblation):
         use_iic = spec.extra.get("use_iic", False)
         weight_mode = spec.extra.get("weight_mode", "hajek")
 
-        # Handle IPS variants with weight_mode
-        if estimator_name == "raw-ips":
-            from cje.estimators.calibrated_ips import CalibratedIPS
-
-            return CalibratedIPS(
-                sampler, calibrate=False, use_iic=use_iic, weight_mode=weight_mode
-            )
-        elif estimator_name == "calibrated-ips":
+        # Handle IPS with calibration and weight_mode
+        if estimator_name == "ips":
             from cje.estimators.calibrated_ips import CalibratedIPS
 
             return CalibratedIPS(
                 sampler,
-                calibrate=True,
+                calibrate=use_calibration,  # Now controlled by ablation parameter
                 use_iic=use_iic,
                 weight_mode=weight_mode,
-                calibrator=cal_result.calibrator if cal_result else None,
+                calibrator=(
+                    cal_result.calibrator if use_calibration and cal_result else None
+                ),
             )
 
         # Handle DR methods with our parameters
@@ -178,16 +174,8 @@ class UnifiedAblation(BaseAblation):
             for sample_size in EXPERIMENTS["sample_sizes"]:
                 for oracle_coverage in EXPERIMENTS["oracle_coverages"]:
 
-                    # Determine calibration values based on estimator
-                    if estimator == "raw-ips":
-                        calibration_values = [False]  # Never uses calibration
-                    elif estimator == "calibrated-ips":
-                        calibration_values = [True]  # Always uses calibration
-                    else:
-                        # DR methods: test both
-                        calibration_values = EXPERIMENTS["use_calibration"]
-
-                    for use_calibration in calibration_values:
+                    # All estimators now test both calibration modes
+                    for use_calibration in EXPERIMENTS["use_calibration"]:
                         # IIC works for all estimators (IPS and DR)
                         # It's a general variance reduction technique for any asymptotically linear estimator
                         iic_values = EXPERIMENTS["use_iic"]
