@@ -156,9 +156,7 @@ class BaseAblation:
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
-                oracle_slice_config=(
-                    spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
-                ),
+                oracle_slice_config="auto",  # Let estimator auto-detect based on actual oracle coverage
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
             ),
@@ -166,9 +164,7 @@ class BaseAblation:
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
-                oracle_slice_config=(
-                    spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
-                ),
+                oracle_slice_config="auto",  # Let estimator auto-detect based on actual oracle coverage
                 use_calibrated_weights=True,  # Use SIMCal calibrated weights
                 use_iic=use_iic,  # Pass IIC setting
             ),
@@ -176,9 +172,7 @@ class BaseAblation:
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
-                oracle_slice_config=(
-                    spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
-                ),
+                oracle_slice_config="auto",  # Let estimator auto-detect based on actual oracle coverage
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
             ),
@@ -186,9 +180,7 @@ class BaseAblation:
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
-                oracle_slice_config=(
-                    spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
-                ),
+                oracle_slice_config="auto",  # Let estimator auto-detect based on actual oracle coverage
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
             ),
@@ -196,9 +188,7 @@ class BaseAblation:
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
-                oracle_slice_config=(
-                    spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
-                ),
+                oracle_slice_config="auto",  # Let estimator auto-detect based on actual oracle coverage
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
             ),
@@ -206,9 +196,7 @@ class BaseAblation:
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
-                oracle_slice_config=(
-                    spec.oracle_coverage < 1.0 if spec.oracle_coverage else False
-                ),
+                oracle_slice_config="auto",  # Let estimator auto-detect based on actual oracle coverage
                 use_calibrated_weights=True,  # Use SIMCal calibrated weights
                 use_iic=use_iic,  # Pass IIC setting
             ),
@@ -570,6 +558,18 @@ class BaseAblation:
             result["success"] = False
 
         result["runtime_s"] = time.time() - result["start_ts"]
+
+        # Convert numpy bools in diagnostic outputs to Python bools for JSON serialization
+        # These come from the CJE library diagnostics
+        if "orthogonality_scores" in result:
+            for policy, scores in result["orthogonality_scores"].items():
+                if isinstance(scores, dict) and "passes_test" in scores:
+                    scores["passes_test"] = bool(scores["passes_test"])
+
+        if "iic_diagnostics" in result:
+            for policy, diag in result["iic_diagnostics"].items():
+                if isinstance(diag, dict) and "mean_preserved" in diag:
+                    diag["mean_preserved"] = bool(diag["mean_preserved"])
 
         return result
 
