@@ -28,10 +28,12 @@ def main() -> None:
     rows = []
     for r in results:
         spec = r["spec"]
-        # Extract use_calibration and use_iic from extra or directly from spec
+        # Extract parameters from extra or directly from spec
         extra = spec.get("extra", {})
         use_cal = extra.get("use_calibration", spec.get("use_calibration", False))
         use_iic = extra.get("use_iic", spec.get("use_iic", False))
+        weight_mode = extra.get("weight_mode", "hajek")
+        reward_calib_mode = extra.get("reward_calibration_mode", "auto")
 
         row = {
             "estimator": spec["estimator"],
@@ -39,7 +41,9 @@ def main() -> None:
             "oracle_pct": spec["oracle_coverage"],
             "use_cal": use_cal,
             "use_iic": use_iic,
-            "seed": r["seed"],
+            "weight_mode": weight_mode,
+            "reward_calib_mode": reward_calib_mode,
+            "seed": r.get("seed", spec.get("seed_base", "N/A")),
             "rmse": r.get("rmse_vs_oracle", np.nan),
             "runtime": r.get("runtime_s", 0),
         }
@@ -73,9 +77,9 @@ def main() -> None:
     print("CALIBRATION IMPACT")
     print("=" * 80)
 
-    # Compare DR methods with/without calibration
-    dr_methods = ["dr-cpo", "tmle", "mrdr", "stacked-dr"]
-    for method in dr_methods:
+    # Compare all methods with/without calibration
+    all_methods = ["ips", "dr-cpo", "stacked-dr"]  # removed tmle, mrdr from config
+    for method in all_methods:
         method_df = df[df["estimator"] == method]
         if not method_df.empty:
             cal_on = method_df[method_df["use_cal"] == True]["rmse"].mean()
@@ -87,10 +91,10 @@ def main() -> None:
 
     # 3. IIC impact
     print("\n" + "=" * 80)
-    print("IIC IMPACT (DR methods only)")
+    print("IIC IMPACT (all methods)")
     print("=" * 80)
 
-    for method in dr_methods:
+    for method in all_methods:
         method_df = df[df["estimator"] == method]
         if not method_df.empty:
             iic_on = method_df[method_df["use_iic"] == True]["rmse"].mean()
@@ -116,7 +120,35 @@ def main() -> None:
     oracle_summary = df.groupby(["estimator", "oracle_pct"])["rmse"].mean().unstack()
     print(oracle_summary.round(4))
 
-    # 6. Policy-specific performance
+    # 6. Weight mode impact (Hajek vs Raw)
+    print("\n" + "=" * 80)
+    print("WEIGHT MODE IMPACT (Hajek vs Raw)")
+    print("=" * 80)
+
+    all_methods = df["estimator"].unique()
+    for method in all_methods:
+        method_df = df[df["estimator"] == method]
+        if not method_df.empty:
+            hajek = method_df[method_df["weight_mode"] == "hajek"]["rmse"].mean()
+            raw = method_df[method_df["weight_mode"] == "raw"]["rmse"].mean()
+            if not pd.isna(hajek) and not pd.isna(raw):
+                diff = raw - hajek
+                print(
+                    f"{method:15s}: Hajek={hajek:.4f}, Raw={raw:.4f}, Diff={diff:+.4f}"
+                )
+
+    # 7. Reward calibration mode impact
+    print("\n" + "=" * 80)
+    print("REWARD CALIBRATION MODE IMPACT")
+    print("=" * 80)
+
+    calib_summary = (
+        df.groupby(["estimator", "reward_calib_mode"])["rmse"].mean().unstack()
+    )
+    if not calib_summary.empty:
+        print(calib_summary.round(4))
+
+    # 8. Policy-specific performance
     print("\n" + "=" * 80)
     print("POLICY-SPECIFIC ERRORS (mean absolute error)")
     print("=" * 80)
@@ -195,7 +227,7 @@ def main() -> None:
     # Plot 4: Calibration impact
     ax = axes[1, 1]
     cal_data = []
-    for method in dr_methods:
+    for method in all_methods:
         method_df = df[df["estimator"] == method]
         if not method_df.empty:
             cal_on = method_df[method_df["use_cal"] == True]["rmse"].mean()

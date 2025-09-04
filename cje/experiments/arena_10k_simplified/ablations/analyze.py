@@ -115,14 +115,25 @@ def create_diagnostic_summary(results: List[Dict[str, Any]]) -> pd.DataFrame:
             mc_vals = [v for v in r["mc_variance_share"].values() if np.isfinite(v)]
             avg_mc_var = np.mean(mc_vals) if mc_vals else np.nan
 
+        # Extract parameters from spec.extra if present
+        extra = spec.get("extra", {})
+        use_calibration = extra.get(
+            "use_calibration", spec.get("use_calibration", False)
+        )
+        use_iic = extra.get("use_iic", spec.get("use_iic", False))
+        weight_mode = extra.get("weight_mode", "hajek")
+        reward_calibration_mode = extra.get("reward_calibration_mode", "auto")
+
         rows.append(
             {
                 "Estimator": spec["estimator"],
                 "Sample Size": spec.get("sample_size", "N/A"),
                 "Oracle Coverage": spec.get("oracle_coverage", "N/A"),
-                "Use Calibration": spec.get("use_calibration", False),
-                "Use IIC": spec.get("use_iic", False),
-                "Seed": r["seed"],
+                "Use Calibration": use_calibration,
+                "Use IIC": use_iic,
+                "Weight Mode": weight_mode,
+                "Reward Calib Mode": reward_calibration_mode,
+                "Seed": r.get("seed", spec.get("seed_base", "N/A")),
                 "Avg ESS (%)": avg_ess,
                 "Avg Tail Index": avg_tail,
                 "Avg Weight CV": avg_cv,
@@ -142,8 +153,7 @@ def create_diagnostic_summary(results: List[Dict[str, Any]]) -> pd.DataFrame:
 def aggregate_by_scenario(df: pd.DataFrame) -> pd.DataFrame:
     """Aggregate results by experimental scenario.
 
-    Groups by (estimator, sample_size, oracle_coverage, use_calibration, use_iic)
-    and computes mean and std across seeds.
+    Groups by all parameter combinations and computes mean and std across seeds.
     """
     if df.empty:
         return pd.DataFrame()
@@ -154,6 +164,8 @@ def aggregate_by_scenario(df: pd.DataFrame) -> pd.DataFrame:
         "Oracle Coverage",
         "Use Calibration",
         "Use IIC",
+        "Weight Mode",
+        "Reward Calib Mode",
     ]
 
     # Metrics to aggregate
@@ -258,15 +270,31 @@ def create_main_comparison_table(df: pd.DataFrame) -> pd.DataFrame:
     # Standardize column names for downstream processing
     table_df.columns = [col.replace(" ", "") for col in table_df.columns]
 
-    # Format estimator name to include calibration/IIC status
+    # Format estimator name to include calibration/IIC/weight mode status
     def format_estimator(row: pd.Series) -> str:
         est = str(row["Estimator"])
         use_cal = row.get("UseCalibration", False)
         use_iic = row.get("UseIIC", False)
-        if use_cal and est not in ["calibrated-ips", "raw-ips"]:
-            est += " (cal)"
+        weight_mode = row.get("WeightMode", "hajek")
+
+        # For IPS, show calibration status
+        if est == "ips":
+            if use_cal:
+                est = "ips-cal"
+            else:
+                est = "ips-raw"
+        # For DR methods, show calibration status
+        elif use_cal:
+            est += "-cal"
+
+        # Add weight mode if not default hajek
+        if weight_mode == "raw":
+            est += "-HT"  # Horvitz-Thompson
+
+        # Add IIC if enabled
         if use_iic:
-            est += " + IIC"
+            est += "+IIC"
+
         return est
 
     table_df["Method"] = table_df.apply(format_estimator, axis=1)
@@ -438,8 +466,19 @@ def plot_rmse_by_configuration(df: pd.DataFrame, output_dir: Path) -> None:
         plot_data = []
         for _, row in cov_df.iterrows():
             est_name = row["Estimator"]
-            if row["UseCalibration"] and est_name not in ["calibrated-ips", "raw-ips"]:
+            # Handle new unified "ips" estimator
+            if est_name == "ips":
+                if row["UseCalibration"]:
+                    est_name = "ips-cal"
+                else:
+                    est_name = "ips-raw"
+            elif row["UseCalibration"]:
                 est_name += "\n(cal)"
+
+            # Add weight mode if Horvitz-Thompson
+            if row.get("WeightMode", "hajek") == "raw":
+                est_name += "-HT"
+
             if row["UseIIC"]:
                 est_name += "+IIC"
 
