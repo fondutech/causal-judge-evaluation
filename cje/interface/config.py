@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 class AnalysisConfig(BaseModel):
     dataset_path: str = Field(..., description="Path to JSONL dataset")
     estimator: str = Field(
-        "calibrated-ips",
+        "stacked-dr",
         description="Estimator name (see interface.factory for options)",
     )
     judge_field: str = Field("judge_score")
@@ -26,4 +26,3 @@ class AnalysisConfig(BaseModel):
     @classmethod
     def normalize_estimator(cls, v: str) -> str:
         return v.strip()
-

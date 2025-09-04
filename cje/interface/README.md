@@ -44,7 +44,7 @@ The main entry point for CJE analysis. Handles the complete workflow automatical
 ```python
 def analyze_dataset(
     dataset_path: str,
-    estimator: str = "calibrated-ips",
+    estimator: str = "stacked-dr",
     judge_field: str = "judge_score",
     oracle_field: str = "oracle_label",
     estimator_config: Optional[Dict[str, Any]] = None,
