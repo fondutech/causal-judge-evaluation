@@ -20,7 +20,7 @@ EXPERIMENTS = {
     "use_calibration": [True, False],  # Test with and without calibration
     # IIC for DR methods
     "use_iic": [True, False],
-    "n_seeds": 5,
+    "n_seeds": 3,
     "seed_base": 42,
 }
 
@@ -53,5 +53,5 @@ RUNTIME = {
     "checkpoint_every": 10,  # Save progress every N experiments
     "verbose": True,
     "parallel": True,
-    "max_workers": 8,
+    "max_workers": 10,
 }
