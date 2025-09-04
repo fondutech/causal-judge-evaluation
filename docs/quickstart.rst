@@ -29,9 +29,15 @@ The simplest way to use CJE is through the ``analyze_dataset`` function:
 
    from cje import analyze_dataset
    
-   # Analyze your logged data
-   results = analyze_dataset("your_data.jsonl")
-   # Defaults to stacked-dr (most robust)
+   # Analyze your logged data (with fresh draws for DR)
+   results = analyze_dataset(
+       "your_data.jsonl",
+       fresh_draws_dir="responses/"  # Required for stacked-dr default
+   )
+   # Defaults to stacked-dr (most robust ensemble)
+   
+   # Or use calibrated-ips if no fresh draws available
+   # results = analyze_dataset("your_data.jsonl", estimator="calibrated-ips")
    
    # View results
    print(f"Policy value: {results.estimates[0]:.3f}")

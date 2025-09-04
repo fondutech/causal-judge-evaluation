@@ -149,7 +149,7 @@ class BaseAblation:
 
         estimator_map = {
             "ips": lambda s: CalibratedIPS(
-                s, calibrate=use_calibration, use_iic=use_iic
+                s, calibrate=use_calibration  # IPS doesn't support IIC
             ),
             "dr-cpo": lambda s: DRCPOEstimator(
                 s,

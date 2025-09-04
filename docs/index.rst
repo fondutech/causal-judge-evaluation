@@ -38,12 +38,15 @@ Quick Start
 
    from cje import analyze_dataset
    
-   # One-line causal evaluation
+   # One-line causal evaluation (with fresh draws for DR)
    results = analyze_dataset(
        "logs.jsonl",
-       estimator="calibrated-ips"  # Uses SIMCal by default
+       fresh_draws_dir="responses/"  # Required for stacked-dr default
        # Automatically uses all available oracle labels
    )
+   
+   # Or use calibrated-ips if no fresh draws available
+   # results = analyze_dataset("logs.jsonl", estimator="calibrated-ips")
    
    # Get policy value estimate with 95% CI
    print(f"Policy value: {results.estimates[0]:.3f} ± {1.96 * results.standard_errors[0]:.3f}")

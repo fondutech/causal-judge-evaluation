@@ -26,16 +26,22 @@ Python API:
 ```python
 from cje import analyze_dataset
 
-# Defaults to stacked-dr (most robust)
-results = analyze_dataset("logs.jsonl")
+# Defaults to stacked-dr (most robust, requires fresh draws)
+results = analyze_dataset("logs.jsonl", fresh_draws_dir="responses/")
 print(f"Estimate: {results.estimates[0]:.3f} ± {1.96*results.standard_errors[0]:.3f}")
+
+# Or use calibrated-ips if no fresh draws available
+# results = analyze_dataset("logs.jsonl", estimator="calibrated-ips")
 ```
 
 CLI:
 
 ```bash
-# Defaults to stacked-dr (most robust)
-python -m cje analyze logs.jsonl -o results.json
+# Defaults to stacked-dr (most robust, requires fresh draws)
+python -m cje analyze logs.jsonl --fresh-draws-dir responses/ -o results.json
+
+# Or use calibrated-ips if no fresh draws available
+# python -m cje analyze logs.jsonl --estimator calibrated-ips -o results.json
 ```
 
 At a Glance
@@ -54,9 +60,10 @@ Where: X=prompt, A=response, S=judge score, lp=log probability.
 Choosing an Estimator
 ---------------------
 
-**Default: `stacked-dr`** - Robust ensemble of DR estimators (DR-CPO + TMLE + MRDR). Most reliable choice.
+**Default: `stacked-dr`** - Robust ensemble of DR estimators (DR-CPO + TMLE + MRDR). Most reliable choice. **Requires fresh draws.**
 
-- **Need speed over robustness** → `calibrated-ips` (faster but less stable)
+- **No fresh draws available** → `calibrated-ips` (still very good, faster)
+- **Need maximum speed** → `calibrated-ips` (faster but less stable than DR)
 - **Debugging or research** → Individual estimators (`dr-cpo`, `tmle`, `mrdr`, `raw-ips`)
 
 Data Format (minimal)
