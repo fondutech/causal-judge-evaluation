@@ -183,7 +183,7 @@ class FlexibleCalibrator:
             # Fit spline + ridge for smooth transformation
             n_knots = min(max(5, self.n_splines), len(S_train) // 4)  # Minimum 5 knots
             spline = SplineTransformer(n_knots=n_knots, degree=3, include_bias=False)
-            ridge = RidgeCV(alphas=np.logspace(-3, 3, 13), store_cv_values=False)
+            ridge = RidgeCV(alphas=np.logspace(-3, 3, 13), store_cv_results=False)
             g_model = make_pipeline(spline, ridge)
 
             # Fit g(S) to predict Y
@@ -232,7 +232,7 @@ class FlexibleCalibrator:
                 spline = SplineTransformer(
                     n_knots=n_knots, degree=3, include_bias=False
                 )
-                ridge = RidgeCV(alphas=np.logspace(-3, 3, 13), store_cv_values=False)
+                ridge = RidgeCV(alphas=np.logspace(-3, 3, 13), store_cv_results=False)
                 self._full_g_model = make_pipeline(spline, ridge)
                 self._full_g_model.fit(S.reshape(-1, 1), Y)
 
