@@ -642,11 +642,10 @@ class DREstimator(BaseCJEEstimator):
                 fresh_var = stats["variances"]
                 M = np.asarray(stats["draws_per_prompt"])  # Ensure numpy array
 
-                # MC variance: (1/n^2) * sum_i (1-w_i)^2 * (s2_i / M_i)
+                # MC variance for DM term: (1/n^2) * sum_i (s2_i / M_i)
+                # The DM term is just the average of fresh predictions, so no weight factor
                 # Handle variable M_i per prompt
-                mc_var = np.sum(
-                    ((1.0 - weights) ** 2) * (fresh_var / np.maximum(M, 1))
-                ) / (len(data) ** 2)
+                mc_var = np.sum(fresh_var / np.maximum(M, 1)) / (len(data) ** 2)
 
                 # Store MC diagnostics
                 if not hasattr(self, "_mc_diagnostics"):

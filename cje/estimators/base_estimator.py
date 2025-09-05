@@ -13,6 +13,34 @@ from ..calibration.iic import IsotonicInfluenceControl, IICConfig
 logger = logging.getLogger(__name__)
 
 
+def ensure_mean_one(weights: np.ndarray, eps: float = 1e-12) -> np.ndarray:
+    """Ensure weights have mean exactly 1.0 for unbiased estimation.
+
+    Args:
+        weights: Array of importance weights
+        eps: Minimum mean threshold to avoid division by near-zero
+
+    Returns:
+        Normalized weights with mean 1.0
+    """
+    weights = np.asarray(weights)
+    mean_w = float(weights.mean())
+
+    # If already mean-one (within tolerance), return as-is
+    if abs(mean_w - 1.0) < 1e-6:
+        return weights
+
+    # If mean is too small, can't normalize reliably
+    if mean_w < eps:
+        logger.warning(
+            f"Weights have near-zero mean ({mean_w:.2e}), cannot normalize to mean-one"
+        )
+        return weights
+
+    # Normalize to mean-one
+    return weights / mean_w
+
+
 class BaseCJEEstimator(ABC):
     """Abstract base class for CJE estimators.
 

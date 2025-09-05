@@ -154,32 +154,44 @@ class CalibratedIPS(BaseCJEEstimator):
                 continue
             rewards = np.array([d["reward"] for d in data], dtype=float)
 
-            # Try to get DR residuals and cross-fitted rewards if calibrator available
-            residuals = None
-            fold_ids = None
-            g_oof = None
+            # Try to get cross-fitted rewards if calibrator available (for SIMCal ordering)
+            # Note: DR residuals are computed separately per policy subset
+            g_oof = None  # OOF predictions for full dataset (used as SIMCal ordering)
+
             if self.calibrator is not None and hasattr(self.calibrator, "predict_oof"):
                 try:
-                    # Extract fold IDs from data
-                    fold_list = [d.get("cv_fold") for d in data]
-                    if all(v is not None for v in fold_list) and len(fold_list) == len(
-                        judge_scores
+                    # Use global fold IDs from calibrator for OOF predictions
+                    if (
+                        hasattr(self.calibrator, "_fold_ids")
+                        and self.calibrator._fold_ids is not None
                     ):
-                        fold_ids = np.asarray(fold_list, dtype=int)
-                        # Compute cross-fitted predictions
-                        g_oof = self.calibrator.predict_oof(judge_scores, fold_ids)
-                        residuals = rewards - g_oof
-                        logger.debug(f"Using DR residuals for policy '{policy}'")
+                        global_fold_ids = np.asarray(
+                            self.calibrator._fold_ids, dtype=int
+                        )
+
+                        # Compute OOF predictions for full dataset
+                        g_oof = self.calibrator.predict_oof(
+                            judge_scores, global_fold_ids
+                        )
                         logger.debug(
-                            f"Using cross-fitted rewards as SIMCal ordering index"
+                            f"Using cross-fitted rewards (g^OOF) as SIMCal ordering index for policy '{policy}'"
+                        )
+                    else:
+                        logger.debug(
+                            "Calibrator lacks global fold IDs, falling back to raw judge scores"
                         )
                 except Exception as e:
-                    logger.debug(f"Could not compute DR residuals: {e}")
+                    logger.debug(f"Could not compute OOF predictions: {e}")
 
             # Determine the ordering index for SIMCal
             # Use cross-fitted calibrated rewards if available, otherwise raw judge scores
             # This aligns the monotone projection with the actual nuisance function used in DR
             ordering_index = g_oof if g_oof is not None else judge_scores
+
+            # For residuals (used by DR methods), we need policy-specific computations
+            # This is handled separately by DR estimators that have access to the subset mapping
+            residuals = None
+            fold_ids = None
 
             # Run stacked SIMCal calibration
             cfg = SimcalConfig(
@@ -193,8 +205,8 @@ class CalibratedIPS(BaseCJEEstimator):
                 raw_weights,
                 ordering_index,  # Now uses g_oof when available, judge_scores otherwise
                 rewards=rewards,  # Always provide rewards
-                residuals=residuals,  # Provide if available for DR
-                fold_ids=fold_ids,  # Provide if available for consistent OOF
+                residuals=residuals,  # None for IPS (DR estimators handle this separately)
+                fold_ids=fold_ids,  # None for IPS (DR estimators handle this separately)
             )
 
             # Cache results
@@ -344,7 +356,9 @@ class CalibratedIPS(BaseCJEEstimator):
                 prompt_ids = [
                     d.get("prompt_id", f"sample_{i}") for i, d in enumerate(data)
                 ]
-                fold_ids = np.array([get_fold(pid, 5) for pid in prompt_ids])
+                # Use n_folds from dataset metadata (default to 5 if not set)
+                n_folds = self.sampler.dataset.metadata.get("n_folds", 5)
+                fold_ids = np.array([get_fold(pid, n_folds) for pid in prompt_ids])
 
             # Apply IIC for variance reduction (if enabled)
             influence, iic_adjustment = self._apply_iic(
@@ -560,19 +574,6 @@ class CalibratedIPS(BaseCJEEstimator):
         except Exception as e:
             logger.debug(f"get_oracle_jackknife failed for {policy}: {e}")
             return None
-
-    def get_raw_weights(self, target_policy: str) -> Optional[np.ndarray]:
-        """Get raw (uncalibrated) importance weights.
-
-        Args:
-            target_policy: Name of target policy
-
-        Returns:
-            Array of raw weights or None if not available
-        """
-        return self.sampler.compute_importance_weights(
-            target_policy, clip_weight=None, mode="raw"
-        )
 
     def get_calibration_info(self, target_policy: str) -> Optional[Dict]:
         """Get calibration information for a policy.

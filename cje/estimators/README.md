@@ -296,8 +296,8 @@ DR estimators now correctly include MC uncertainty from finite fresh draws:
 # Base variance (across-prompt)
 base_var = np.var(influence_functions, ddof=1) / n
 
-# MC variance add-on (within-prompt)
-mc_var = (1/n²) × Σᵢ (1-wᵢ)² × (σ²ᵢ / Mᵢ)
+# MC variance add-on (within-prompt) for DM term
+mc_var = (1/n²) × Σᵢ (σ²ᵢ / Mᵢ)
 
 # Total SE
 se = np.sqrt(base_var + mc_var)
