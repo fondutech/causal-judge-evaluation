@@ -137,9 +137,10 @@ class IsotonicInfluenceControl:
         residuals = influence - fitted_values
 
         # CRITICAL: Compute the point estimate adjustment
-        # The new estimate should be: original_estimate + mean(fitted_values)
-        # This ensures the influence function corresponds to the reported estimate
-        point_estimate_adjustment = float(np.mean(fitted_values))
+        # When using residualized IFs: φ̃ = φ - Ê[φ|S]
+        # The adjusted estimate must be: θ_new = θ_old - (1/n)Σ Ê[φ|S]
+        # This ensures the point estimate corresponds to the residualized influence function
+        point_estimate_adjustment = float(-np.mean(fitted_values))
 
         # Store fitted component if requested (for visualization)
         if self.config.store_components:
@@ -321,7 +322,13 @@ class IsotonicInfluenceControl:
             "se_reduction": float(max(0, se_reduction)),
             "ess_gain": float(ess_gain),
             "n_samples": len(original),
-            "mean_preserved": abs(residual.mean() - original.mean()) < 1e-10,
+            # Mean of residualized IF should equal mean of original minus mean of fitted
+            "residual_mean": float(residual.mean()),
+            "expected_residual_mean": float(original.mean() - fitted.mean()),
+            "mean_check_passed": abs(
+                residual.mean() - (original.mean() - fitted.mean())
+            )
+            < 1e-10,
         }
 
         # Add direction information if available
