@@ -389,7 +389,7 @@ class BaseAblation:
 
                     # Max weight (normalized)
                     weights_norm = weights / np.sum(weights)
-                    result["max_weight"][policy] = np.max(weights_norm)
+                    result["max_weight"][policy] = float(np.max(weights_norm))
 
                     # Mass concentration (fraction of weights near zero)
                     # Use threshold of 1/(10*n) as "near zero"
@@ -408,15 +408,15 @@ class BaseAblation:
                     )
 
                     # Store additional diagnostics
-                    result.setdefault("hellinger_affinity", {})[
-                        policy
-                    ] = overlap_metrics.hellinger_affinity
+                    result.setdefault("hellinger_affinity", {})[policy] = float(
+                        overlap_metrics.hellinger_affinity
+                    )
                     result.setdefault("overlap_quality", {})[
                         policy
                     ] = overlap_metrics.overlap_quality
-                    result.setdefault("can_calibrate", {})[
-                        policy
-                    ] = overlap_metrics.can_calibrate
+                    result.setdefault("can_calibrate", {})[policy] = bool(
+                        overlap_metrics.can_calibrate
+                    )
                     result.setdefault("recommended_method", {})[
                         policy
                     ] = overlap_metrics.recommended_method
@@ -672,7 +672,7 @@ class BaseAblation:
                 widths = [
                     ci[1] - ci[0] for ci in result["confidence_intervals"].values()
                 ]
-                result["mean_ci_width"] = np.mean(widths)
+                result["mean_ci_width"] = float(np.mean(widths))
 
             # Compute CF-bits efficiency metrics (minimal integration)
             self._compute_cfbits_metrics(estimator, result)
@@ -701,7 +701,29 @@ class BaseAblation:
                 if isinstance(diag, dict) and "mean_preserved" in diag:
                     diag["mean_preserved"] = bool(diag["mean_preserved"])
 
+        # Convert all numpy types to Python types for JSON serialization
+        result = self._convert_numpy(result)
         return result
+
+    def _convert_numpy(self, obj: Any) -> Any:
+        """Convert numpy types to Python types for JSON serialization."""
+        import numpy as np
+
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {k: self._convert_numpy(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._convert_numpy(v) for v in obj]
+        elif hasattr(obj, "item"):
+            return obj.item()
+        return obj
 
     def run_with_seeds(self, spec: ExperimentSpec) -> List[Dict[str, Any]]:
         """Run experiment with multiple seeds.

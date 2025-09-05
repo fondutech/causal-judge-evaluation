@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from typing import Dict, List, Any
 from itertools import product
+import numpy as np
 
 # Add parent directories to path
 import sys
@@ -44,6 +45,25 @@ class UnifiedAblation(BaseAblation):
             RESULTS_PATH if isinstance(RESULTS_PATH, Path) else Path(RESULTS_PATH)
         )
         self.completed_experiments = self._load_checkpoint()
+
+    @staticmethod
+    def _convert_numpy(obj: Any) -> Any:
+        """Convert numpy types to Python types for JSON serialization."""
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {k: UnifiedAblation._convert_numpy(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [UnifiedAblation._convert_numpy(v) for v in obj]
+        elif hasattr(obj, "item"):
+            return obj.item()
+        return obj
 
     def _load_checkpoint(self) -> set:
         """Load completed experiment IDs from checkpoint."""
@@ -81,6 +101,9 @@ class UnifiedAblation(BaseAblation):
 
     def _save_checkpoint(self, result: Dict[str, Any]) -> None:
         """Append result to checkpoint file."""
+        # Convert numpy types before saving
+        result = self._convert_numpy(result)
+
         self.checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
         with open(self.checkpoint_file, "a") as f:
             f.write(json.dumps(result) + "\n")
@@ -275,15 +298,15 @@ def main() -> None:
     if results:
         summary_file = Path(RESULTS_PATH).parent / "unified_summary.json"
         with open(summary_file, "w") as f:
-            json.dump(
+            # Convert numpy types before saving
+            summary_data = UnifiedAblation._convert_numpy(
                 {
                     "timestamp": time.time(),
                     "n_experiments": len(results),
                     "results": results,
-                },
-                f,
-                indent=2,
+                }
             )
+            json.dump(summary_data, f, indent=2)
         logger.info(f"Summary saved to: {summary_file}")
 
 
