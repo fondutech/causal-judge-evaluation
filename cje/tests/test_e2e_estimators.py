@@ -19,6 +19,7 @@ from cje.data.precomputed_sampler import PrecomputedSampler
 from cje.estimators import (
     CalibratedIPS,
     OrthogonalizedCalibratedIPS,
+    OrthogonalizedDRCPO,
     DRCPOEstimator,
     MRDREstimator,
     TMLEEstimator,
@@ -152,6 +153,95 @@ class TestE2EEstimators:
             # Both should have positive SEs
             assert oc_results.standard_errors[i] > 0
             assert std_results.standard_errors[i] > 0
+
+    def test_orthogonalized_dr_pipeline(
+        self, arena_sample: Any, arena_fresh_draws: Any
+    ) -> None:
+        """Test OrthogonalizedDR: OC-IPS + outcome modeling for full orthogonalization."""
+        # 1. Calibrate dataset with partial oracle coverage
+        import random
+
+        random.seed(42)
+        np.random.seed(42)
+
+        # Use 50% oracle coverage
+        for i, sample in enumerate(arena_sample.samples):
+            if i % 2 == 1 and "oracle_label" in sample.metadata:
+                sample.metadata["oracle_label"] = None
+
+        calibrated, cal_result = calibrate_dataset(
+            arena_sample,
+            judge_field="judge_score",
+            oracle_field="oracle_label",
+            enable_cross_fit=True,
+            n_folds=5,
+        )
+
+        assert cal_result is not None
+        assert 0 < cal_result.n_oracle < len(arena_sample.samples)
+
+        # 2. Create sampler
+        sampler = PrecomputedSampler(calibrated)
+
+        # 3. Create ODR estimator
+        odr_estimator = OrthogonalizedDRCPO(
+            sampler,
+            calibrator=cal_result.calibrator,
+            use_calibrated_weights=True,
+            use_orthogonalization=True,
+            use_iic=True,
+            n_folds=5,
+        )
+
+        # 4. Add fresh draws for each policy
+        for policy, fresh_dataset in arena_fresh_draws.items():
+            if policy in sampler.target_policies:
+                odr_estimator.add_fresh_draws(policy, fresh_dataset)
+
+        # 5. Run estimation
+        odr_results = odr_estimator.fit_and_estimate()
+
+        # 6. Validate results
+        assert odr_results is not None
+        assert odr_results.method == "odr_cpo"
+        assert len(odr_results.estimates) == 4  # Arena has 4 policies
+        assert len(odr_results.standard_errors) == 4
+
+        # Check diagnostics - ODR implementation stores diagnostics in metadata
+        assert odr_results.metadata is not None
+        assert "orthogonalization_diagnostics" in odr_results.metadata
+
+        # Check orthogonalization diagnostics exist for each policy
+        orthog_diags = odr_results.metadata["orthogonalization_diagnostics"]
+        for policy in sampler.target_policies:
+            if policy in orthog_diags:
+                assert "orthog_residual" in orthog_diags[policy]
+                assert "retarget_residual" in orthog_diags[policy]
+
+        # Check that estimates are reasonable
+        for est in odr_results.estimates:
+            if not np.isnan(est):
+                assert 0 <= est <= 1
+
+        # 7. Compare with standard DR-CPO
+        std_dr = DRCPOEstimator(
+            sampler,
+            calibrator=cal_result.calibrator,
+            n_folds=5,
+        )
+        for policy, fresh_dataset in arena_fresh_draws.items():
+            if policy in sampler.target_policies:
+                std_dr.add_fresh_draws(policy, fresh_dataset)
+
+        std_dr_results = std_dr.fit_and_estimate()
+
+        # ODR should have similar point estimates but potentially better robustness
+        for i in range(len(odr_results.estimates)):
+            if not np.isnan(odr_results.estimates[i]) and not np.isnan(
+                std_dr_results.estimates[i]
+            ):
+                # Point estimates should be somewhat close
+                assert abs(odr_results.estimates[i] - std_dr_results.estimates[i]) < 0.5
 
     def test_dr_cpo_pipeline(self, arena_sample: Any, arena_fresh_draws: Any) -> None:
         """Test DR-CPO: load → calibrate → add fresh draws → estimate."""
