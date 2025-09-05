@@ -19,7 +19,7 @@ from cje.data.precomputed_sampler import PrecomputedSampler
 from cje.estimators import (
     CalibratedIPS,
     OrthogonalizedCalibratedIPS,
-    OrthogonalizedDRCPO,
+    OrthogonalizedCalibratedDRCPO,
     DRCPOEstimator,
     MRDREstimator,
     TMLEEstimator,
@@ -157,7 +157,7 @@ class TestE2EEstimators:
     def test_orthogonalized_dr_pipeline(
         self, arena_sample: Any, arena_fresh_draws: Any
     ) -> None:
-        """Test OrthogonalizedDR: OC-IPS + outcome modeling for full orthogonalization."""
+        """Test OC-DR-CPO: Orthogonalized Calibrated DR with triple robustness."""
         # 1. Calibrate dataset with partial oracle coverage
         import random
 
@@ -183,8 +183,8 @@ class TestE2EEstimators:
         # 2. Create sampler
         sampler = PrecomputedSampler(calibrated)
 
-        # 3. Create ODR estimator
-        odr_estimator = OrthogonalizedDRCPO(
+        # 3. Create OC-DR-CPO estimator
+        odr_estimator = OrthogonalizedCalibratedDRCPO(
             sampler,
             calibrator=cal_result.calibrator,
             use_calibrated_weights=True,
@@ -203,7 +203,7 @@ class TestE2EEstimators:
 
         # 6. Validate results
         assert odr_results is not None
-        assert odr_results.method == "odr_cpo"
+        assert odr_results.method == "oc_dr_cpo"
         assert len(odr_results.estimates) == 4  # Arena has 4 policies
         assert len(odr_results.standard_errors) == 4
 

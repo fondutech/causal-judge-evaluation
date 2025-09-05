@@ -1,9 +1,9 @@
-# orthogonalized_dr.py
+# orthogonalized_calibrated_dr.py
 # -*- coding: utf-8 -*-
 """
-Orthogonalized DR-CPO (ODR-CPO).
+Orthogonalized Calibrated DR-CPO (OC-DR-CPO).
 
-This module implements the SIMCal-anchored, orthogonalized DR estimator:
+This module implements the SIMCal-anchored, orthogonalized calibrated DR estimator:
     V̂_ODR
       = P_n[ g(X) + W̃ * { R - q(X,A) } ]
       + P_n[ (W - m̂^OOF) * (R^OOF - f̂^OOF) ]                 # orthogonalizer
@@ -44,8 +44,8 @@ from ..data.folds import get_fold
 logger = logging.getLogger(__name__)
 
 
-class OrthogonalizedDRCPO(DREstimator):
-    """Orthogonalized DR-CPO estimator (SIMCal-anchored).
+class OrthogonalizedCalibratedDRCPO(DREstimator):
+    """Orthogonalized Calibrated DR-CPO estimator (OC-DR-CPO).
 
     Estimator formula (per-sample contributions):
         contrib = g_fresh
@@ -440,7 +440,7 @@ class OrthogonalizedDRCPO(DREstimator):
             }
 
             logger.info(
-                f"ODR-CPO[{policy}]: {V_hat:.4f} ± {se:.4f} | "
+                f"OC-DR-CPO[{policy}]: {V_hat:.4f} ± {se:.4f} | "
                 f"orthog={ortho_mean:+.4e} [{ortho_lo:+.4e},{ortho_hi:+.4e}], "
                 f"retarget={retgt_mean:+.4e} [{retgt_lo:+.4e},{retgt_hi:+.4e}]"
             )
@@ -450,7 +450,7 @@ class OrthogonalizedDRCPO(DREstimator):
             estimates=np.asarray(estimates, dtype=float),
             standard_errors=np.asarray(ses, dtype=float),
             n_samples_used=n_used,
-            method="odr_cpo",
+            method="oc_dr_cpo",
             influence_functions=ifs,
             diagnostics=None,  # The caller (suite) or parent infra can attach suites; we add metadata below
             robust_standard_errors=None,
@@ -497,7 +497,7 @@ class OrthogonalizedDRCPO(DREstimator):
                         }
                     )
             except Exception as e:
-                logger.debug(f"ODR-CPO OUA jackknife failed: {e}")
+                logger.debug(f"OC-DR-CPO OUA jackknife failed: {e}")
 
         # Store IFs on self for downstream tools
         self._influence_functions = ifs

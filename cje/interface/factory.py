@@ -11,7 +11,7 @@ from ..data.precomputed_sampler import PrecomputedSampler
 from ..estimators.calibrated_ips import CalibratedIPS
 from ..estimators.orthogonalized_ips import OrthogonalizedCalibratedIPS
 from ..estimators.dr_base import DRCPOEstimator
-from ..estimators.orthogonalized_dr import OrthogonalizedDRCPO
+from ..estimators.orthogonalized_calibrated_dr import OrthogonalizedCalibratedDRCPO
 from ..estimators.mrdr import MRDREstimator
 from ..estimators.tmle import TMLEEstimator
 from ..estimators.stacking import StackedDREstimator
@@ -25,7 +25,7 @@ BuilderFn = Callable[
         CalibratedIPS,
         OrthogonalizedCalibratedIPS,
         DRCPOEstimator,
-        OrthogonalizedDRCPO,
+        OrthogonalizedCalibratedDRCPO,
         MRDREstimator,
         TMLEEstimator,
         StackedDREstimator,
@@ -88,20 +88,20 @@ def _build_dr_cpo(
     return DRCPOEstimator(sampler, n_folds=n_folds)
 
 
-def _build_odr_cpo(
+def _build_oc_dr_cpo(
     sampler: PrecomputedSampler,
     config: Dict[str, Any],
     calibration_result: Optional[Any],
     verbose: bool,
-) -> OrthogonalizedDRCPO:
+) -> OrthogonalizedCalibratedDRCPO:
     n_folds = config.get("n_folds", 5)
     if calibration_result and getattr(calibration_result, "calibrator", None):
         if verbose:
-            logger.info("Using calibration models for ODR-CPO")
-        return OrthogonalizedDRCPO(
+            logger.info("Using calibration models for OC-DR-CPO")
+        return OrthogonalizedCalibratedDRCPO(
             sampler, n_folds=n_folds, calibrator=calibration_result.calibrator
         )
-    return OrthogonalizedDRCPO(sampler, n_folds=n_folds)
+    return OrthogonalizedCalibratedDRCPO(sampler, n_folds=n_folds)
 
 
 def _build_mrdr(
@@ -173,7 +173,7 @@ REGISTRY: Dict[str, BuilderFn] = {
     "orthogonalized-ips": _build_orthogonalized_ips,
     "raw-ips": _build_raw_ips,
     "dr-cpo": _build_dr_cpo,
-    "odr-cpo": _build_odr_cpo,
+    "oc-dr-cpo": _build_oc_dr_cpo,
     "mrdr": _build_mrdr,
     "tmle": _build_tmle,
     "stacked-dr": _build_stacked_dr,

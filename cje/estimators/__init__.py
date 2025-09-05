@@ -9,7 +9,7 @@ This module contains:
 from .base_estimator import BaseCJEEstimator
 from .calibrated_ips import CalibratedIPS
 from .orthogonalized_ips import OrthogonalizedCalibratedIPS
-from .orthogonalized_dr import OrthogonalizedDRCPO
+from .orthogonalized_calibrated_dr import OrthogonalizedCalibratedDRCPO
 from .stacking import StackedDREstimator
 from ..data.models import (
     Sample,
@@ -34,7 +34,7 @@ __all__ = [
     "BaseCJEEstimator",
     "CalibratedIPS",
     "OrthogonalizedCalibratedIPS",
-    "OrthogonalizedDRCPO",
+    "OrthogonalizedCalibratedDRCPO",
     "StackedDREstimator",
     # Data models
     "Sample",

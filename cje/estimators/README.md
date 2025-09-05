@@ -13,7 +13,7 @@ BaseCJEEstimator (abstract)
 ├── StackedDREstimator         # Optimal stacking of DR estimators
 └── DREstimator                # Doubly robust base (abstract)
     ├── DRCPOEstimator         # Basic DR with CPO
-    ├── OrthogonalizedDRCPO    # ODR-CPO with triple robustness
+    ├── OrthogonalizedCalibratedDRCPO  # OC-DR-CPO with triple robustness
     ├── MRDREstimator          # Multiple robust DR
     └── TMLEEstimator          # Targeted maximum likelihood
 ```
@@ -46,7 +46,7 @@ Forms an optimal convex combination of multiple DR estimators (DR-CPO, TMLE, MRD
 ### 7. Orthogonalized Estimators
 Achieve first-order insensitivity to nuisance estimation errors through cross-fitting:
 - **OC-IPS**: Robust to errors in reward calibration f̂(S) and weight calibration m̂(S)
-- **ODR-CPO**: Additionally robust to outcome model errors q̂(X,A), providing triple robustness
+- **OC-DR-CPO**: Additionally robust to outcome model errors q̂(X,A), providing triple robustness
 
 ## File Structure
 
@@ -57,7 +57,7 @@ estimators/
 ├── orthogonalized_ips.py  # OC-IPS with robustness to calibration errors
 ├── stacking.py            # Optimal stacking of DR estimators
 ├── dr_base.py             # Doubly robust base class
-├── orthogonalized_dr.py   # ODR-CPO with triple robustness
+├── orthogonalized_calibrated_dr.py  # OC-DR-CPO with triple robustness
 ├── mrdr.py                # Multiple robust DR
 ├── mrdr_tmle.py           # MRDR with TMLE fluctuation
 ├── tmle.py                # Standard TMLE
@@ -90,7 +90,7 @@ estimators/
 - Fresh draws are available (REQUIRED)
 - You want basic doubly robust estimation
 
-### Use **OrthogonalizedDRCPO** when:
+### Use **OrthogonalizedCalibratedDRCPO** when:
 - You need maximum robustness to all nuisance errors
 - Fresh draws are available (REQUIRED)
 - Oracle coverage is partial (< 100%)
