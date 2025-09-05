@@ -9,7 +9,9 @@ import logging
 
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..estimators.calibrated_ips import CalibratedIPS
+from ..estimators.orthogonalized_ips import OrthogonalizedCalibratedIPS
 from ..estimators.dr_base import DRCPOEstimator
+from ..estimators.orthogonalized_dr import OrthogonalizedDRCPO
 from ..estimators.mrdr import MRDREstimator
 from ..estimators.tmle import TMLEEstimator
 from ..estimators.stacking import StackedDREstimator
@@ -20,7 +22,13 @@ logger = logging.getLogger(__name__)
 BuilderFn = Callable[
     [PrecomputedSampler, Dict[str, Any], Optional[Any], bool],
     Union[
-        CalibratedIPS, DRCPOEstimator, MRDREstimator, TMLEEstimator, StackedDREstimator
+        CalibratedIPS,
+        OrthogonalizedCalibratedIPS,
+        DRCPOEstimator,
+        OrthogonalizedDRCPO,
+        MRDREstimator,
+        TMLEEstimator,
+        StackedDREstimator,
     ],
 ]
 
@@ -50,6 +58,20 @@ def _build_raw_ips(
     return CalibratedIPS(sampler, calibrate=False, clip_weight=clip_weight)
 
 
+def _build_orthogonalized_ips(
+    sampler: PrecomputedSampler,
+    config: Dict[str, Any],
+    calibration_result: Optional[Any],
+    verbose: bool,
+) -> OrthogonalizedCalibratedIPS:
+    cfg = dict(config)
+    if calibration_result and getattr(calibration_result, "calibrator", None):
+        cfg.setdefault("calibrator", calibration_result.calibrator)
+        if verbose:
+            logger.info("Using calibrator for OC-IPS orthogonalization")
+    return OrthogonalizedCalibratedIPS(sampler, **cfg)
+
+
 def _build_dr_cpo(
     sampler: PrecomputedSampler,
     config: Dict[str, Any],
@@ -64,6 +86,22 @@ def _build_dr_cpo(
             sampler, n_folds=n_folds, calibrator=calibration_result.calibrator
         )
     return DRCPOEstimator(sampler, n_folds=n_folds)
+
+
+def _build_odr_cpo(
+    sampler: PrecomputedSampler,
+    config: Dict[str, Any],
+    calibration_result: Optional[Any],
+    verbose: bool,
+) -> OrthogonalizedDRCPO:
+    n_folds = config.get("n_folds", 5)
+    if calibration_result and getattr(calibration_result, "calibrator", None):
+        if verbose:
+            logger.info("Using calibration models for ODR-CPO")
+        return OrthogonalizedDRCPO(
+            sampler, n_folds=n_folds, calibrator=calibration_result.calibrator
+        )
+    return OrthogonalizedDRCPO(sampler, n_folds=n_folds)
 
 
 def _build_mrdr(
@@ -132,8 +170,10 @@ def _build_stacked_dr(
 
 REGISTRY: Dict[str, BuilderFn] = {
     "calibrated-ips": _build_calibrated_ips,
+    "orthogonalized-ips": _build_orthogonalized_ips,
     "raw-ips": _build_raw_ips,
     "dr-cpo": _build_dr_cpo,
+    "odr-cpo": _build_odr_cpo,
     "mrdr": _build_mrdr,
     "tmle": _build_tmle,
     "stacked-dr": _build_stacked_dr,

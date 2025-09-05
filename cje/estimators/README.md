@@ -8,12 +8,14 @@ The estimators module contains all causal inference estimation methods for unbia
 
 ```
 BaseCJEEstimator (abstract)
-├── CalibratedIPS       # IPS with optional SIMCal calibration
-├── StackedDREstimator  # Optimal stacking of DR estimators
-└── DREstimator         # Doubly robust base (abstract)
-    ├── DRCPOEstimator  # Basic DR with CPO
-    ├── MRDREstimator   # Multiple robust DR
-    └── TMLEEstimator   # Targeted maximum likelihood
+├── CalibratedIPS              # IPS with optional SIMCal calibration
+│   └── OrthogonalizedCalibratedIPS  # OC-IPS with robustness to f̂ and m̂ errors
+├── StackedDREstimator         # Optimal stacking of DR estimators
+└── DREstimator                # Doubly robust base (abstract)
+    ├── DRCPOEstimator         # Basic DR with CPO
+    ├── OrthogonalizedDRCPO    # ODR-CPO with triple robustness
+    ├── MRDREstimator          # Multiple robust DR
+    └── TMLEEstimator          # Targeted maximum likelihood
 ```
 
 ## Core Concepts
@@ -41,14 +43,21 @@ Optimally combines outcome models and importance weights through targeted fluctu
 ### 6. Estimator Stacking
 Forms an optimal convex combination of multiple DR estimators (DR-CPO, TMLE, MRDR) by minimizing the variance of the combined influence function. Uses outer split for honest inference.
 
+### 7. Orthogonalized Estimators
+Achieve first-order insensitivity to nuisance estimation errors through cross-fitting:
+- **OC-IPS**: Robust to errors in reward calibration f̂(S) and weight calibration m̂(S)
+- **ODR-CPO**: Additionally robust to outcome model errors q̂(X,A), providing triple robustness
+
 ## File Structure
 
 ```
 estimators/
 ├── base_estimator.py      # Abstract base with common interface
 ├── calibrated_ips.py      # IPS with optional SIMCal calibration
+├── orthogonalized_ips.py  # OC-IPS with robustness to calibration errors
 ├── stacking.py            # Optimal stacking of DR estimators
 ├── dr_base.py             # Doubly robust base class
+├── orthogonalized_dr.py   # ODR-CPO with triple robustness
 ├── mrdr.py                # Multiple robust DR
 ├── mrdr_tmle.py           # MRDR with TMLE fluctuation
 ├── tmle.py                # Standard TMLE
@@ -70,10 +79,22 @@ estimators/
 - Fresh draws are not available
 - Oracle slice augmentation is automatically enabled when partial oracle labels detected
 
+### Use **OrthogonalizedCalibratedIPS** when:
+- You need robustness to calibration errors
+- Oracle coverage is partial (< 100%)
+- You want first-order insensitivity to f̂ and m̂ errors
+- Fresh draws are not available
+
 ### Use **DRCPOEstimator** when:
 - You have poor overlap (ESS < 20%)
 - Fresh draws are available (REQUIRED)
 - You want basic doubly robust estimation
+
+### Use **OrthogonalizedDRCPO** when:
+- You need maximum robustness to all nuisance errors
+- Fresh draws are available (REQUIRED)
+- Oracle coverage is partial (< 100%)
+- You want first-order insensitivity to f̂, m̂, and q̂ errors
 
 ### Use **MRDREstimator** when:
 - You need robustness to both weight and outcome model misspecification
