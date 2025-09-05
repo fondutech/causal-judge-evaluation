@@ -76,6 +76,8 @@ class StackedDREstimator(BaseCJEEstimator):
         self.calibrator = kwargs.pop("calibrator", None)
         # Extract weight_mode for DR estimators
         self.weight_mode = kwargs.pop("weight_mode", "hajek")
+        # Extract use_calibrated_weights to control SIMCal
+        self.use_calibrated_weights = kwargs.pop("use_calibrated_weights", True)
         # Extract oracle_slice_config to pass to base class
         oracle_slice_config = kwargs.pop("oracle_slice_config", True)
 
@@ -336,12 +338,12 @@ class StackedDREstimator(BaseCJEEstimator):
         # but they will use the same seed which helps
         # Pass calibrator as a named parameter for DR estimators
         if name in ["dr-cpo", "tmle", "mrdr"]:
-            # If we have a calibrator, components should use calibrated weights
-            # If no calibrator, components should use raw weights
+            # Always pass calibrator for outcome model (if available)
+            # use_calibrated_weights controls SIMCal, independent of calibrator
             estimator = estimator_class(
                 self.sampler,
                 calibrator=self.calibrator,
-                use_calibrated_weights=(self.calibrator is not None),
+                use_calibrated_weights=self.use_calibrated_weights,
                 weight_mode=self.weight_mode,
                 oracle_slice_config=self.oracle_slice_config,
                 use_iic=self.use_iic,  # Enable IIC for component estimators

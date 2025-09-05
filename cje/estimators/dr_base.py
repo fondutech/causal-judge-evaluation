@@ -49,8 +49,11 @@ class DREstimator(BaseCJEEstimator):
         n_folds: Number of cross-fitting folds (default 5)
         use_calibrated_weights: If True, use SIMCal calibration; if False, use raw weights (default True)
         weight_mode: "hajek" for mean-one normalized weights, "raw" for unnormalized (default "hajek")
-        calibrator: Optional calibrator for CalibratorBackedOutcomeModel
+        calibrator: Optional reward calibrator for CalibratorBackedOutcomeModel (always use if available)
         **kwargs: Additional arguments passed to the base class (e.g., oracle_slice_config)
+
+    Note: The calibrator (for reward calibration) is independent of use_calibrated_weights (for weight
+    calibration). DR estimators should receive the calibrator whenever oracle coverage < 100%.
     """
 
     def __init__(
@@ -855,13 +858,15 @@ class DREstimator(BaseCJEEstimator):
                 core_summary[policy] = {
                     "ess_fraction": float(ess.get(policy, 0.0)) if ess else None,
                     "tail_index": (
-                        float(tails_dict.get(policy))
-                        if policy in tails_dict and tails_dict.get(policy) is not None
+                        float(val)
+                        if (val := tails_dict.get(policy)) is not None
                         else None
                     ),
                     "hellinger_affinity": (
-                        float(hell_per.get(policy))
-                        if hell_per and policy in hell_per
+                        float(hell_per[policy])
+                        if hell_per
+                        and policy in hell_per
+                        and hell_per[policy] is not None
                         else (float(hell_all) if hell_all is not None else None)
                     ),
                 }

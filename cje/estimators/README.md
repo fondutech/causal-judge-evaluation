@@ -23,6 +23,7 @@ The foundation of off-policy evaluation. Reweights logged data to estimate perfo
 
 ### 2. Weight Calibration (SIMCal)
 Stabilizes importance weights through monotone projection with variance control.
+**Important**: Weight calibration is independent of reward calibration - DR estimators always use calibrated rewards when oracle coverage < 100%, but weight calibration is optional.
 See `cje/calibration/README.md` for algorithm details.
 
 ### 3. Doubly Robust (DR) Estimation

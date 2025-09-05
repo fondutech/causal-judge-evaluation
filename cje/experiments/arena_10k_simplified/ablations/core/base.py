@@ -486,7 +486,9 @@ class BaseAblation:
                                 f"does not cover full [0,1] oracle range - estimates may be biased"
                             )
                 # Track which calibration mode was actually used (auto may select one)
-                if hasattr(cal_result.calibrator, "selected_mode"):
+                if cal_result.calibrator and hasattr(
+                    cal_result.calibrator, "selected_mode"
+                ):
                     result["reward_calibration_used"] = (
                         cal_result.calibrator.selected_mode
                     )
@@ -523,7 +525,12 @@ class BaseAblation:
 
                         # Filter to only include fresh draws matching our subsampled prompts
                         if dataset_prompt_ids:
-                            filtered_samples = []
+                            from cje.data.fresh_draws import (
+                                FreshDrawSample,
+                                FreshDrawDataset,
+                            )
+
+                            filtered_samples: List[FreshDrawSample] = []
                             for fd_sample in all_fresh_draws.samples:
                                 if (
                                     hasattr(fd_sample, "prompt_id")
@@ -532,14 +539,13 @@ class BaseAblation:
                                     filtered_samples.append(fd_sample)
 
                             # Create filtered fresh draws dataset with required fields
-                            from cje.data.fresh_draws import FreshDrawDataset
 
                             # Count draws per prompt
                             draws_per_prompt_dict: Dict[str, int] = {}
-                            for sample in filtered_samples:
+                            for fd_sample in filtered_samples:
                                 prompt_id = (
-                                    sample.prompt_id
-                                    if hasattr(sample, "prompt_id")
+                                    fd_sample.prompt_id
+                                    if hasattr(fd_sample, "prompt_id")
                                     else None
                                 )
                                 if prompt_id:
@@ -620,6 +626,11 @@ class BaseAblation:
                 ):
                     for policy, policy_diag in diag.dr_diagnostics_per_policy.items():
                         if isinstance(policy_diag, dict):
+                            # Extract outcome model R² per policy
+                            if "r2_oof" in policy_diag:
+                                result.setdefault("outcome_r2", {})[policy] = (
+                                    policy_diag["r2_oof"]
+                                )
                             if "orthogonality_score" in policy_diag:
                                 result.setdefault("orthogonality_score", {})[policy] = (
                                     policy_diag["orthogonality_score"]

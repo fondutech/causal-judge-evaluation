@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from collections import defaultdict
 
 
@@ -33,16 +33,17 @@ def create_estimator_labels(
 ) -> str:
     """Create descriptive label for estimator configuration."""
     if estimator == "ips":
+        # Build base label based on calibration and weight mode
         if use_cal:
-            if weight_mode == "hajek":
-                return "Cal-IPS"
-            else:
-                return "Cal-IPS (raw)"
+            base = "Cal-IPS" if weight_mode == "hajek" else "Cal-IPS (raw)"
         else:
-            if weight_mode == "hajek":
-                return "SNIPS"
-            else:
-                return "Raw IPS"
+            base = "SNIPS" if weight_mode == "hajek" else "Raw IPS"
+
+        # Add IIC suffix if enabled
+        if use_iic:
+            return f"{base}+IIC"
+        else:
+            return base
 
     elif estimator == "dr-cpo":
         base = "DR-CPO"
@@ -93,6 +94,10 @@ def analyze_by_scenario(results: List[Dict]) -> Dict[str, List[Dict]]:
         label = create_estimator_labels(estimator, use_cal, use_iic, weight_mode)
 
         # Store result
+        # Exclude unhelpful policy from mean SE calculation
+        se_dict = r.get("standard_errors", {})
+        se_no_unhelpful = {k: v for k, v in se_dict.items() if k != "unhelpful"}
+
         scenarios[scenario].append(
             {
                 "label": label,
@@ -102,8 +107,8 @@ def analyze_by_scenario(results: List[Dict]) -> Dict[str, List[Dict]]:
                 "weight_mode": weight_mode,
                 "rmse": r.get("rmse_vs_oracle", np.nan),
                 "mean_se": (
-                    np.mean(list(r.get("standard_errors", {}).values()))
-                    if r.get("standard_errors")
+                    np.mean(list(se_no_unhelpful.values()))
+                    if se_no_unhelpful
                     else np.nan
                 ),
             }
@@ -158,7 +163,9 @@ def compute_rankings(
 
 
 def create_method_comparison_matrix(
-    rankings: Dict[str, List[Dict]], output_path: Path = None
+    rankings: Dict[str, List[Dict]],
+    output_path: Optional[Path] = None,
+    metric: str = "SE",
 ) -> plt.Figure:
     """Create a heatmap showing method rankings across all scenarios."""
 
@@ -235,9 +242,14 @@ def create_method_comparison_matrix(
 
     ax.set_xlabel("Scenario", fontsize=12)
     ax.set_ylabel("Estimator", fontsize=12)
-    ax.set_title(
-        "Estimator Rankings Across All Scenarios", fontsize=14, fontweight="bold"
-    )
+
+    # Set title based on metric
+    if metric == "RMSE":
+        title = "Estimator Rankings by RMSE (vs Oracle Ground Truth)\n(Excluding 'unhelpful' Policy)"
+    else:
+        title = "Estimator Rankings by Standard Error\n(Excluding 'unhelpful' Policy)"
+
+    ax.set_title(title, fontsize=14, fontweight="bold")
 
     plt.tight_layout()
 
@@ -268,29 +280,52 @@ def main() -> Dict[str, List[Dict]]:
 
     # Compute rankings using standard error
     print("\nComputing rankings by standard error...")
-    rankings = compute_rankings(scenarios, metric="se")
+    rankings_se = compute_rankings(scenarios, metric="se")
+
+    # Also compute rankings using RMSE
+    print("\nComputing rankings by RMSE...")
+    rankings_rmse = compute_rankings(scenarios, metric="rmse")
 
     # Print top performers for a few key scenarios
     key_scenarios = ["n=1000, oracle=50%", "n=5000, oracle=10%", "n=5000, oracle=100%"]
 
+    print("\n--- STANDARD ERROR RANKINGS ---")
     for scenario in key_scenarios:
-        if scenario in rankings:
+        if scenario in rankings_se:
             print(f"\n{scenario}:")
             print("  Top 5 estimators (by SE):")
-            for i, r in enumerate(rankings[scenario][:5], 1):
+            for i, r in enumerate(rankings_se[scenario][:5], 1):
                 print(f"    {i}. {r['estimator']}: SE = {r['mean_value']:.5f}")
 
-    # Create visualizations
-    print("\nCreating visualization...")
-    fig = create_method_comparison_matrix(
-        rankings, Path("results/analysis/estimator_rankings_heatmap.png")
+    print("\n--- RMSE RANKINGS ---")
+    for scenario in key_scenarios:
+        if scenario in rankings_rmse:
+            print(f"\n{scenario}:")
+            print("  Top 5 estimators (by RMSE):")
+            for i, r in enumerate(rankings_rmse[scenario][:5], 1):
+                print(f"    {i}. {r['estimator']}: RMSE = {r['mean_value']:.5f}")
+
+    # Create SE visualization
+    print("\nCreating SE-based heatmap...")
+    fig_se = create_method_comparison_matrix(
+        rankings_se,
+        Path("results/analysis/estimator_rankings_heatmap_se.png"),
+        metric="SE",
+    )
+
+    # Create RMSE visualization
+    print("\nCreating RMSE-based heatmap...")
+    fig_rmse = create_method_comparison_matrix(
+        rankings_rmse,
+        Path("results/analysis/estimator_rankings_heatmap_rmse.png"),
+        metric="RMSE",
     )
 
     print("\n" + "=" * 70)
     print("ESTIMATOR COMPARISON COMPLETE")
     print("=" * 70)
 
-    return rankings
+    return rankings_se  # Return SE rankings as default
 
 
 if __name__ == "__main__":

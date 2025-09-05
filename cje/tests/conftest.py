@@ -20,6 +20,7 @@ from cje.data.fresh_draws import (
     FreshDrawDataset,
     load_fresh_draws_from_jsonl,
 )
+from cje.data.precomputed_sampler import PrecomputedSampler
 from cje import load_dataset_from_jsonl
 
 
@@ -55,20 +56,20 @@ def arena_sample() -> Dataset:
 
 
 @pytest.fixture
-def arena_sample_small(arena_dataset) -> Dataset:
+def arena_sample_small(arena_dataset: Dataset) -> Dataset:
     """First 20 samples of arena dataset for fast tests.
 
     Smaller subset for unit tests that need real data but fast execution.
     """
     from copy import deepcopy
 
-    small_dataset = deepcopy(arena_dataset)
+    small_dataset: Dataset = deepcopy(arena_dataset)
     small_dataset.samples = small_dataset.samples[:20]
     return small_dataset
 
 
 @pytest.fixture
-def arena_calibrated(arena_sample) -> Dataset:
+def arena_calibrated(arena_sample: Dataset) -> Dataset:
     """Pre-calibrated arena data with 50% oracle coverage.
 
     Ready for use with estimators that need calibrated rewards.
@@ -105,7 +106,7 @@ def arena_calibrated(arena_sample) -> Dataset:
 
 
 @pytest.fixture
-def arena_sampler(arena_calibrated) -> "PrecomputedSampler":
+def arena_sampler(arena_calibrated: Dataset) -> PrecomputedSampler:
     """Ready-to-use sampler with calibrated arena data.
 
     For tests that need a fully configured sampler.
@@ -162,6 +163,7 @@ def arena_fresh_draws() -> Dict[str, FreshDrawDataset]:
                     response=data.get(
                         "response", ""
                     ),  # Include response for completeness
+                    fold_id=None,  # Will be assigned by sampler if needed
                 )
                 samples.append(sample)
 
@@ -303,6 +305,7 @@ def synthetic_fresh_draws() -> Dict[str, FreshDrawDataset]:
                     judge_score=float(np.clip(score, 0, 1)),
                     draw_idx=draw_idx,
                     fold_id=prompt_id % 5,
+                    response=f"Response for {policy} draw {draw_idx}",
                 )
                 samples.append(sample)
 

@@ -49,17 +49,11 @@ The unified system (`run.py`) tests all combinations of:
 - **Estimators**: raw-ips, calibrated-ips, dr-cpo, tmle, mrdr, stacked-dr
 - **Sample sizes**: 500, 1000, 2500, 5000
 - **Oracle coverage**: 5%, 10%, 25%, 50%, 100%
-- **SIMCal weight calibration**: On/off for DR methods (controlled by `use_calibration`)
+- **SIMCal weight calibration**: On/off for all estimators (controlled by `use_calibration`)
 - **IIC (Isotonic Influence Control)**: On/off for all methods (controlled by `use_iic`)
 - **Seeds**: 5 random seeds per configuration
 
-### Important Bug Fixes (December 2024)
-- **Fixed**: IIC parameter now properly passed to estimators
-- **Fixed**: SIMCal weight calibration now controlled by experiment flag (was hardcoded)
-- **Fixed**: calibrated-ips now explicitly sets calibrate=True
-- **Fixed**: IIC diagnostics now properly captured in results
-
-### Expected Results (After Bug Fixes)
+### Expected Results
 - **SIMCal weight calibration**: Should improve DR methods (reduces weight variance)
 - **IIC**: 3-95% variance reduction (proportional to R² between influence and judge scores)
 - **DR methods**: Critical when n < 500 or oracle < 10%

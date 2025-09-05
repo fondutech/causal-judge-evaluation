@@ -69,7 +69,7 @@ def _prepare_output_data(
     best_policy = summary_data.get("best_policy")
     best_diag = weight_diagnostics.get(best_policy) if best_policy else None
 
-    output_data = {
+    output_data: Dict[str, Any] = {
         "timestamp": datetime.now().isoformat(),
         "dataset": {
             "path": args.data,
@@ -87,16 +87,17 @@ def _prepare_output_data(
 
     # Add weight diagnostics for best policy
     if best_diag and isinstance(best_diag, dict):
-        output_data["weight_diagnostics"]["best_policy"] = {
+        weight_diags: Dict[str, Any] = output_data["weight_diagnostics"]
+        weight_diags["best_policy"] = {
             "ess_fraction": float(best_diag.get("ess_fraction", 1.0)),
             "max_weight": float(best_diag.get("max_weight", 1.0)),
             "mean_weight": float(best_diag.get("mean_weight", 1.0)),
         }
 
     # Add base policy results
-    if "policies" not in output_data["estimation"]:
-        output_data["estimation"]["policies"] = {}
-    output_data["estimation"]["policies"]["base"] = {
+    estimation: Dict[str, Any] = output_data["estimation"]
+    policies: Dict[str, Any] = estimation["policies"]
+    policies["base"] = {
         "estimate": float(summary_data["base_mean"]),
         "standard_error": float(summary_data["base_se"]),
         "ci_lower": float(summary_data["base_ci_lower"]),
@@ -112,7 +113,7 @@ def _prepare_output_data(
         ci_lower,
         ci_upper,
     ):
-        output_data["estimation"]["policies"][policy] = {
+        policies[policy] = {
             "estimate": float(estimate),
             "standard_error": float(se),
             "ci_lower": float(ci_l),

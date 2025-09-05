@@ -156,10 +156,12 @@ class UnifiedAblation(BaseAblation):
                 "n_folds": DR_CONFIG["n_folds"],
                 "use_iic": use_iic,
                 "weight_mode": weight_mode,
+                "use_calibrated_weights": use_calibration,  # Controls SIMCal for weights
             }
 
-            # Add calibrator if calibration is enabled
-            if use_calibration and cal_result:
+            # Always pass calibrator for outcome model (if available)
+            # This is independent of weight calibration
+            if cal_result and cal_result.calibrator:
                 kwargs["calibrator"] = cal_result.calibrator
 
             return estimator_class(**kwargs)
@@ -167,17 +169,22 @@ class UnifiedAblation(BaseAblation):
         elif estimator_name == "stacked-dr":
             from cje.estimators.stacking import StackedDREstimator
 
-            return StackedDREstimator(
-                sampler=sampler,
-                estimators=["dr-cpo", "tmle", "mrdr"],
-                V_folds=5,
-                calibrator=(
-                    cal_result.calibrator if use_calibration and cal_result else None
-                ),
-                weight_mode=weight_mode,
-                parallel=False,
-                use_iic=use_iic,
-            )
+            kwargs = {
+                "sampler": sampler,
+                "estimators": ["dr-cpo", "tmle", "mrdr"],
+                "V_folds": 5,
+                "weight_mode": weight_mode,
+                "parallel": False,
+                "use_iic": use_iic,
+                "use_calibrated_weights": use_calibration,  # Controls SIMCal for weights
+            }
+
+            # Always pass calibrator for outcome model (if available)
+            # This is independent of weight calibration
+            if cal_result and cal_result.calibrator:
+                kwargs["calibrator"] = cal_result.calibrator
+
+            return StackedDREstimator(**kwargs)
 
         else:
             # Fall back to base implementation

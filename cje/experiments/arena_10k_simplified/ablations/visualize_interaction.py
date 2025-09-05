@@ -170,7 +170,7 @@ def analyze_interaction(
 
 def create_interaction_plot(
     analysis: Dict[str, Any], estimator: str, output_path: Optional[Path] = None
-) -> plt.Figure:
+) -> Optional[plt.Figure]:
     """
     Create interaction heatmaps.
 
@@ -180,7 +180,7 @@ def create_interaction_plot(
         output_path: Where to save the figure
 
     Returns:
-        matplotlib Figure object
+        matplotlib Figure object or None if no data
     """
 
     if not analysis["oracle_values"] or not analysis["sample_values"]:

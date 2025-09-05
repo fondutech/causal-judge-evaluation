@@ -489,13 +489,13 @@ class CalibratedIPS(BaseCJEEstimator):
                 core_summary[policy] = {
                     "ess_fraction": float(ess.get(policy, 0.0)) if ess else None,
                     "tail_index": (
-                        float(tails.get(policy))
-                        if policy in tails and tails.get(policy) is not None
+                        float(tails[policy])
+                        if policy in tails and tails[policy] is not None
                         else None
                     ),
                     "hellinger_affinity": (
-                        float(hell_per.get(policy))
-                        if policy in hell_per
+                        float(hell_per[policy])
+                        if policy in hell_per and hell_per[policy] is not None
                         else (float(hell_all) if hell_all is not None else None)
                     ),
                 }
