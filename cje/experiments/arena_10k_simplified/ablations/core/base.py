@@ -464,6 +464,27 @@ class BaseAblation:
                     result["calibration_r2"] = cal_result.calibration_r2
                 elif hasattr(cal_result, "r2"):
                     result["calibration_r2"] = cal_result.r2
+
+                # Extract calibrated reward range to detect overlap issues
+                # This catches the unhelpful policy problem (min ~0.4 instead of 0)
+                if calibrated_dataset and calibrated_dataset.metadata:
+                    cal_info = calibrated_dataset.metadata.get("calibration_info", {})
+                    if "f_min" in cal_info:
+                        result["calibrated_reward_min"] = cal_info["f_min"]
+                    if "f_max" in cal_info:
+                        result["calibrated_reward_max"] = cal_info["f_max"]
+
+                    # Flag overlap issues: calibration can't extrapolate beyond observed range
+                    # If min > 0.1 or max < 0.9, we have incomplete coverage of [0,1]
+                    if "f_min" in cal_info and "f_max" in cal_info:
+                        f_min = cal_info["f_min"]
+                        f_max = cal_info["f_max"]
+                        if f_min > 0.1 or f_max < 0.9:
+                            result["reward_overlap_warning"] = True
+                            logger.warning(
+                                f"Calibrated reward range [{f_min:.3f}, {f_max:.3f}] "
+                                f"does not cover full [0,1] oracle range - estimates may be biased"
+                            )
                 # Track which calibration mode was actually used (auto may select one)
                 if hasattr(cal_result.calibrator, "selected_mode"):
                     result["reward_calibration_used"] = (

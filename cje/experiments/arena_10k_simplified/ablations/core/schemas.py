@@ -93,6 +93,9 @@ def create_result(spec: ExperimentSpec, seed: int) -> Dict[str, Any]:
         # Calibration metrics
         "calibration_rmse": None,  # RMSE of judge→oracle calibration
         "calibration_r2": None,  # R² of judge→oracle calibration (more interpretable)
+        "calibrated_reward_min": None,  # Min calibrated reward on oracle slice (detects overlap issues!)
+        "calibrated_reward_max": None,  # Max calibrated reward on oracle slice
+        "reward_overlap_warning": None,  # True if min > 0.1 or max < 0.9 (indicates extrapolation issues)
         "reward_calibration_used": None,  # Which mode was used (auto may select)
         # "simcal_distortion": {},  # Not currently computed
         "rho_used": {},  # Actual ρ used per policy
