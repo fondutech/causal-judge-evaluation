@@ -47,6 +47,6 @@ CHECKPOINT_PATH = BASE_DIR / "results" / "checkpoint.jsonl"
 RUNTIME = {
     "checkpoint_every": 10,  # Save progress every N experiments
     "verbose": True,
-    "parallel": True,
-    "max_workers": 8,
+    "parallel": False,
+    "max_workers": 10,
 }

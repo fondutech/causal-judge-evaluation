@@ -88,8 +88,11 @@ def create_result(spec: ExperimentSpec, seed: int) -> Dict[str, Any]:
         "max_weight": {},  # Maximum single weight
         "tail_alpha": {},  # Hill estimator of tail index
         "weight_cv": {},  # Coefficient of variation
+        "hellinger_affinity": {},  # Structural overlap metric (cannot be improved by calibration)
+        "mass_concentration": {},  # Fraction of weights near zero
         # Calibration metrics
         "calibration_rmse": None,  # RMSE of judge→oracle calibration
+        "calibration_r2": None,  # R² of judge→oracle calibration (more interpretable)
         "reward_calibration_used": None,  # Which mode was used (auto may select)
         # "simcal_distortion": {},  # Not currently computed
         "rho_used": {},  # Actual ρ used per policy
@@ -99,9 +102,16 @@ def create_result(spec: ExperimentSpec, seed: int) -> Dict[str, Any]:
         "oracle_slice_size": None,  # Number of oracle labels used
         # DR-specific metrics
         "mc_variance_share": {},  # Monte Carlo share of variance
+        "outcome_r2_min": None,  # Minimum outcome model R² across policies
+        "outcome_r2_max": None,  # Maximum outcome model R² across policies
         "draws_per_prompt": None,  # K value used
         "policies_skipped": [],  # Policies that couldn't be estimated
+        # CF-bits efficiency metrics (minimal integration)
+        "ifr_main": {},  # Information Fraction Ratio (efficiency)
+        "aess_adjusted": {},  # Adjusted ESS (n * IFR)
+        "cf_dominant": {},  # "identification" or "sampling" - dominant uncertainty source
         # Overall metrics
+        "overall_status": None,  # Health check: "GOOD", "WARNING", or "CRITICAL"
         "rmse_vs_oracle": None,  # RMSE across all policies
         "mean_ci_width": None,  # Average CI width
         "n_samples": None,  # Actual number of samples used

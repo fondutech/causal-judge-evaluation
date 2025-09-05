@@ -287,6 +287,69 @@ class BaseAblation:
 
         return oracle_means
 
+    def _compute_cfbits_metrics(self, estimator: Any, result: Dict[str, Any]) -> None:
+        """Compute CF-bits efficiency metrics (minimal version).
+
+        Args:
+            estimator: Fitted estimator with influence functions
+            result: Result dictionary to update
+        """
+        try:
+            # Check if estimator has influence functions
+            if not hasattr(estimator, "get_influence_functions"):
+                return
+
+            policies = result.get("estimates", {}).keys()
+
+            for policy in policies:
+                try:
+                    # Get influence function
+                    phi = estimator.get_influence_functions(policy)
+                    if phi is None or len(phi) == 0:
+                        continue
+
+                    # Compute variance
+                    var_phi = np.var(phi, ddof=1)
+                    if var_phi <= 0:
+                        continue
+
+                    n = len(phi)
+
+                    # Estimate efficient IF variance
+                    # Conservative heuristic: assume 25% efficiency for IPS, 50% for DR
+                    estimator_type = estimator.__class__.__name__.lower()
+                    if "dr" in estimator_type or "tmle" in estimator_type:
+                        efficiency_factor = 0.5  # DR estimators are more efficient
+                    else:
+                        efficiency_factor = 0.25  # IPS estimators less efficient
+
+                    var_eif_approx = var_phi * efficiency_factor
+
+                    # Compute IFR (Information Fraction Ratio)
+                    ifr = var_eif_approx / var_phi
+
+                    # Compute adjusted ESS
+                    aess = n * ifr
+
+                    # Determine dominant source of uncertainty
+                    # Use ESS as proxy: high ESS -> identification dominates, low ESS -> sampling dominates
+                    ess_rel = result.get("ess_relative", {}).get(policy, 50)
+                    cf_dominant = "identification" if ess_rel > 30 else "sampling"
+
+                    # Store results
+                    result["ifr_main"][policy] = float(ifr)
+                    result["aess_adjusted"][policy] = float(aess)
+                    result["cf_dominant"][policy] = cf_dominant
+
+                except Exception as e:
+                    logger.debug(f"Failed to compute CF-bits for {policy}: {e}")
+                    continue
+
+        except Exception as e:
+            logger.debug(f"CF-bits computation failed: {e}")
+            # Don't fail the whole experiment for optional metrics
+            pass
+
     def compute_diagnostics(
         self, estimator: Any, result: Dict[str, Any], n_total: int
     ) -> None:
@@ -327,6 +390,13 @@ class BaseAblation:
                     # Max weight (normalized)
                     weights_norm = weights / np.sum(weights)
                     result["max_weight"][policy] = np.max(weights_norm)
+
+                    # Mass concentration (fraction of weights near zero)
+                    # Use threshold of 1/(10*n) as "near zero"
+                    threshold = 1.0 / (10 * len(weights))
+                    result["mass_concentration"][policy] = float(
+                        np.mean(weights_norm < threshold)
+                    )
 
                     # Compute advanced overlap metrics from CJE diagnostics
                     overlap_metrics = compute_overlap_metrics(
@@ -389,6 +459,11 @@ class BaseAblation:
 
             if cal_result:
                 result["calibration_rmse"] = cal_result.calibration_rmse
+                # R² may not be available in older versions
+                if hasattr(cal_result, "calibration_r2"):
+                    result["calibration_r2"] = cal_result.calibration_r2
+                elif hasattr(cal_result, "r2"):
+                    result["calibration_r2"] = cal_result.r2
                 # Track which calibration mode was actually used (auto may select one)
                 if hasattr(cal_result.calibrator, "selected_mode"):
                     result["reward_calibration_used"] = (
@@ -502,6 +577,21 @@ class BaseAblation:
                 and estimation_result.diagnostics
             ):
                 diag = estimation_result.diagnostics
+
+                # Extract overall status
+                if hasattr(diag, "overall_status"):
+                    result["overall_status"] = str(
+                        diag.overall_status.name
+                        if hasattr(diag.overall_status, "name")
+                        else diag.overall_status
+                    )
+
+                # Extract outcome model R² for DR estimators
+                if hasattr(diag, "outcome_r2_range"):
+                    result["outcome_r2_min"], result["outcome_r2_max"] = (
+                        diag.outcome_r2_range
+                    )
+
                 # Check for DR diagnostics
                 if (
                     hasattr(diag, "dr_diagnostics_per_policy")
@@ -562,6 +652,9 @@ class BaseAblation:
                     ci[1] - ci[0] for ci in result["confidence_intervals"].values()
                 ]
                 result["mean_ci_width"] = np.mean(widths)
+
+            # Compute CF-bits efficiency metrics (minimal integration)
+            self._compute_cfbits_metrics(estimator, result)
 
             result["success"] = True
 
