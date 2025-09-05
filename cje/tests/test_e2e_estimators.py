@@ -7,8 +7,10 @@ and diagnostics using the 100-sample arena dataset.
 import pytest
 import numpy as np
 from pathlib import Path
+from typing import Any
 
 from cje import load_dataset_from_jsonl
+from cje.data.models import Dataset
 
 # Mark all tests in this file as E2E tests
 pytestmark = [pytest.mark.e2e, pytest.mark.uses_arena_sample]
@@ -16,6 +18,7 @@ from cje.calibration import calibrate_dataset
 from cje.data.precomputed_sampler import PrecomputedSampler
 from cje.estimators import (
     CalibratedIPS,
+    OrthogonalizedCalibratedIPS,
     DRCPOEstimator,
     MRDREstimator,
     TMLEEstimator,
@@ -26,7 +29,7 @@ from cje.estimators import (
 class TestE2EEstimators:
     """Complete pipeline tests for each estimator."""
 
-    def test_calibrated_ips_pipeline(self, arena_sample) -> None:
+    def test_calibrated_ips_pipeline(self, arena_sample: Any) -> None:
         """Test CalibratedIPS: load → calibrate → estimate → diagnostics."""
         # 1. Calibrate dataset with partial oracle coverage
         import random
@@ -79,7 +82,78 @@ class TestE2EEstimators:
             assert 0 <= results.estimates[i] <= 1
             assert results.standard_errors[i] > 0
 
-    def test_dr_cpo_pipeline(self, arena_sample, arena_fresh_draws) -> None:
+    def test_orthogonalized_calibrated_ips_pipeline(self, arena_sample: Any) -> None:
+        """Test OC-IPS: load → calibrate → estimate with orthogonalization."""
+        # 1. Calibrate dataset with partial oracle coverage
+        import random
+
+        random.seed(42)
+        np.random.seed(42)
+
+        # Mask 50% of oracle labels to simulate realistic scenario
+        for i, sample in enumerate(arena_sample.samples):
+            if i % 2 == 1 and "oracle_label" in sample.metadata:
+                sample.metadata["oracle_label"] = None
+
+        calibrated, cal_result = calibrate_dataset(
+            arena_sample,
+            judge_field="judge_score",
+            oracle_field="oracle_label",
+            enable_cross_fit=True,  # Important for OC-IPS
+            n_folds=5,
+        )
+
+        assert cal_result is not None
+        assert cal_result.calibrator is not None  # Need calibrator for rewards
+
+        # 2. Create sampler
+        sampler = PrecomputedSampler(calibrated)
+
+        # 3. Run OC-IPS estimation
+        oc_estimator = OrthogonalizedCalibratedIPS(
+            sampler,
+            calibrate=True,
+            use_orthogonalization=True,
+            calibrator=cal_result.calibrator,  # Pass calibrator for rewards
+        )
+        oc_results = oc_estimator.fit_and_estimate()
+
+        # 4. Validate results
+        assert len(oc_results.estimates) == 4
+        assert all(0 <= e <= 1 for e in oc_results.estimates)
+        assert all(se > 0 for se in oc_results.standard_errors)
+        assert oc_results.method == "oc-ips"
+
+        # 5. Check orthogonalization diagnostics
+        assert hasattr(oc_estimator, "_orthogonalization_diagnostics")
+        for policy in sampler.target_policies:
+            if policy in oc_estimator._orthogonalization_diagnostics:
+                diag = oc_estimator._orthogonalization_diagnostics[policy]
+                # Check required diagnostic fields
+                assert "retarget_residual" in diag
+                assert "retarget_se" in diag
+                assert "retarget_ci_lower" in diag
+                assert "retarget_ci_upper" in diag
+                # Retarget residual CI should contain 0 for good orthogonalization
+                # (but may not in finite samples)
+
+        # 6. Compare with standard CalibratedIPS
+        std_estimator = CalibratedIPS(
+            sampler,
+            calibrate=True,
+            calibrator=cal_result.calibrator,
+        )
+        std_results = std_estimator.fit_and_estimate()
+
+        # OC-IPS should have similar point estimates but potentially different SEs
+        for i in range(len(oc_results.estimates)):
+            # Point estimates should be somewhat close
+            assert abs(oc_results.estimates[i] - std_results.estimates[i]) < 0.5
+            # Both should have positive SEs
+            assert oc_results.standard_errors[i] > 0
+            assert std_results.standard_errors[i] > 0
+
+    def test_dr_cpo_pipeline(self, arena_sample: Any, arena_fresh_draws: Any) -> None:
         """Test DR-CPO: load → calibrate → add fresh draws → estimate."""
         # 1. Calibrate dataset
         import random
@@ -128,7 +202,7 @@ class TestE2EEstimators:
         # DR should generally have smaller SEs than IPS
         assert all(se > 0 for se in results.standard_errors)
 
-    def test_mrdr_pipeline(self, arena_sample, arena_fresh_draws) -> None:
+    def test_mrdr_pipeline(self, arena_sample: Any, arena_fresh_draws: Any) -> None:
         """Test MRDR: multiply robust doubly robust estimation."""
         # 1. Prepare dataset
         import random
@@ -177,7 +251,7 @@ class TestE2EEstimators:
         assert "omega_mode" in results.metadata
         assert results.metadata["omega_mode"] == "w2"
 
-    def test_tmle_pipeline(self, arena_sample, arena_fresh_draws) -> None:
+    def test_tmle_pipeline(self, arena_sample: Any, arena_fresh_draws: Any) -> None:
         """Test TMLE: targeted maximum likelihood estimation."""
         # 1. Prepare dataset
         import random
@@ -222,7 +296,9 @@ class TestE2EEstimators:
         summary = results.diagnostics.summary()
         assert "Weight ESS" in summary
 
-    def test_stacked_dr_pipeline(self, arena_sample, arena_fresh_draws):
+    def test_stacked_dr_pipeline(
+        self, arena_sample: Any, arena_fresh_draws: Any
+    ) -> None:
         """Test StackedDR: optimal combination of DR estimators."""
         # 1. Prepare dataset
         import random
@@ -289,7 +365,9 @@ class TestE2EEstimators:
 class TestEstimatorConsistency:
     """Test that different estimators give consistent results on good data."""
 
-    def test_estimator_agreement(self, arena_sample, arena_fresh_draws):
+    def test_estimator_agreement(
+        self, arena_sample: Any, arena_fresh_draws: Any
+    ) -> None:
         """Different estimators should broadly agree on arena data."""
         import random
 
@@ -352,7 +430,9 @@ class TestEstimatorConsistency:
                 estimate_range < tolerance
             ), f"Policy {i}: range {estimate_range:.3f} > tolerance {tolerance:.3f}"
 
-    def test_dr_improves_over_ips(self, arena_sample, arena_fresh_draws):
+    def test_dr_improves_over_ips(
+        self, arena_sample: Any, arena_fresh_draws: Any
+    ) -> None:
         """DR estimators should generally have lower variance than IPS."""
         import random
 
@@ -402,7 +482,7 @@ class TestEstimatorConsistency:
 class TestEstimatorStress:
     """Stress tests for estimators with edge cases."""
 
-    def test_low_oracle_coverage(self, arena_sample):
+    def test_low_oracle_coverage(self, arena_sample: Any) -> None:
         """Test with very limited oracle labels (10%)."""
         import random
 
@@ -436,7 +516,7 @@ class TestEstimatorStress:
         # Standard errors should be relatively high due to limited oracle data
         assert all(se > 0.01 for se in results.standard_errors)
 
-    def test_all_oracle_coverage(self, arena_sample):
+    def test_all_oracle_coverage(self, arena_sample: Any) -> None:
         """Test with 100% oracle coverage (ideal case)."""
         # Don't mask any oracle labels
         calibrated, cal_result = calibrate_dataset(
