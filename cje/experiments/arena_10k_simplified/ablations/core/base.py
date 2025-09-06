@@ -161,7 +161,6 @@ class BaseAblation:
             "orthogonalized-ips": lambda s: OrthogonalizedCalibratedIPS(
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
-                n_folds=5,
             ),
             "dr-cpo": lambda s: DRCPOEstimator(
                 s,
