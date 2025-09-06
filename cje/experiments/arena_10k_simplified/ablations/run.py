@@ -21,7 +21,14 @@ sys.path.append(str(Path(__file__).parent.parent))
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
 # Import configuration
-from config import EXPERIMENTS, DR_CONFIG, DATA_PATH, RESULTS_PATH, CHECKPOINT_PATH
+from config import (
+    EXPERIMENTS,
+    CONSTRAINTS,
+    DR_CONFIG,
+    DATA_PATH,
+    RESULTS_PATH,
+    CHECKPOINT_PATH,
+)
 
 # Import existing ablation infrastructure
 from ablations.core.base import BaseAblation
@@ -93,8 +100,6 @@ class UnifiedAblation(BaseAblation):
             str(spec.get("oracle_coverage", "")),
             str(spec.get("extra", {}).get("use_calibration", False)),
             str(spec.get("extra", {}).get("use_iic", False)),
-            str(spec.get("extra", {}).get("reward_calibration_mode", "auto")),
-            str(spec.get("extra", {}).get("weight_mode", "hajek")),
             str(spec.get("seed_base", 42)),
         ]
         return "_".join(key_params)
@@ -123,9 +128,8 @@ class UnifiedAblation(BaseAblation):
         estimator_name = spec.estimator
         use_calibration = spec.extra.get("use_calibration", False)
         use_iic = spec.extra.get("use_iic", False)
-        weight_mode = spec.extra.get("weight_mode", "hajek")
 
-        # Handle IPS with calibration and weight_mode
+        # Handle IPS with calibration
         if estimator_name == "ips":
             from cje.estimators.calibrated_ips import CalibratedIPS
 
@@ -133,7 +137,6 @@ class UnifiedAblation(BaseAblation):
                 sampler,
                 calibrate=use_calibration,  # Now controlled by ablation parameter
                 use_iic=use_iic,
-                weight_mode=weight_mode,
                 calibrator=(
                     cal_result.calibrator if use_calibration and cal_result else None
                 ),
@@ -155,7 +158,6 @@ class UnifiedAblation(BaseAblation):
                 "sampler": sampler,
                 "n_folds": DR_CONFIG["n_folds"],
                 "use_iic": use_iic,
-                "weight_mode": weight_mode,
                 "use_calibrated_weights": use_calibration,  # Controls SIMCal for weights
             }
 
@@ -173,7 +175,6 @@ class UnifiedAblation(BaseAblation):
                 "sampler": sampler,
                 "estimators": ["dr-cpo", "tmle", "mrdr"],
                 "V_folds": 5,
-                "weight_mode": weight_mode,
                 "parallel": False,
                 "use_iic": use_iic,
                 "use_calibrated_weights": use_calibration,  # Controls SIMCal for weights
@@ -206,83 +207,82 @@ class UnifiedAblation(BaseAblation):
 
                     # All estimators now test both calibration modes
                     for use_calibration in EXPERIMENTS["use_calibration"]:
+                        # Skip invalid combinations based on constraints
+                        if estimator in CONSTRAINTS.get("requires_calibration", set()):
+                            # These estimators MUST have calibration
+                            if not use_calibration:
+                                continue  # Skip this combination
+                        elif estimator == "raw-ips":
+                            # raw-ips never uses calibration
+                            if use_calibration:
+                                continue  # Skip this combination
+
                         # IIC works for all estimators (IPS and DR)
                         # It's a general variance reduction technique for any asymptotically linear estimator
                         iic_values = EXPERIMENTS["use_iic"]
 
                         for use_iic in iic_values:
-                            # Add reward calibration mode loop
-                            for reward_calibration_mode in EXPERIMENTS[
-                                "reward_calibration_mode"
-                            ]:
-                                # Add weight mode loop (hajek vs raw)
-                                for weight_mode in EXPERIMENTS["weight_mode"]:
-                                    # Create specification
-                                    spec = ExperimentSpec(
-                                        ablation="unified",
-                                        dataset_path=str(DATA_PATH),
-                                        estimator=estimator,
-                                        sample_size=sample_size,
-                                        oracle_coverage=oracle_coverage,
-                                        n_seeds=1,  # Single seed
-                                        seed_base=EXPERIMENTS["seed"],
-                                        extra={
-                                            "use_calibration": use_calibration,
-                                            "use_iic": use_iic,
-                                            "reward_calibration_mode": reward_calibration_mode,
-                                            "weight_mode": weight_mode,
-                                        },
-                                    )
+                            # Create specification
+                            spec = ExperimentSpec(
+                                ablation="unified",
+                                dataset_path=str(DATA_PATH),
+                                estimator=estimator,
+                                sample_size=sample_size,
+                                oracle_coverage=oracle_coverage,
+                                n_seeds=1,  # Single seed
+                                seed_base=EXPERIMENTS["seed"],
+                                extra={
+                                    "use_calibration": use_calibration,
+                                    "use_iic": use_iic,
+                                },
+                            )
 
-                                    # Check if already completed
-                                    exp_id = self._generate_exp_id(spec.to_dict())
-                                    if exp_id in self.completed_experiments:
-                                        skipped += 1
-                                        logger.debug(f"Skipping completed: {exp_id}")
-                                        continue
+                            # Check if already completed
+                            exp_id = self._generate_exp_id(spec.to_dict())
+                            if exp_id in self.completed_experiments:
+                                skipped += 1
+                                logger.debug(f"Skipping completed: {exp_id}")
+                                continue
 
-                                    total_experiments += 1
+                            total_experiments += 1
 
-                                    # Run experiment with single seed
-                                    logger.info(
-                                        f"\n[{completed + failed + 1}/{total_experiments}] "
-                                        f"Running: {estimator} n={sample_size} "
-                                        f"oracle={oracle_coverage:.0%} "
-                                        f"cal={use_calibration} iic={use_iic} "
-                                        f"mode={reward_calibration_mode} weight={weight_mode}"
-                                    )
+                            # Run experiment with single seed
+                            logger.info(
+                                f"\n[{completed + failed + 1}/{total_experiments}] "
+                                f"Running: {estimator} n={sample_size} "
+                                f"oracle={oracle_coverage:.0%} "
+                                f"cal={use_calibration} iic={use_iic}"
+                            )
 
-                                    try:
-                                        # Run with single seed
-                                        result = self.run_single(
-                                            spec, EXPERIMENTS["seed"]
+                            try:
+                                # Run with single seed
+                                result = self.run_single(spec, EXPERIMENTS["seed"])
+
+                                # Save result
+                                self._save_checkpoint(result)
+                                all_results.append(result)
+                                completed += 1
+
+                                # Log summary
+                                if result.get("success"):
+                                    if "rmse_vs_oracle" in result:
+                                        logger.info(
+                                            f"  ✓ RMSE: {result['rmse_vs_oracle']:.4f}"
                                         )
+                                    else:
+                                        logger.info("  ✓ Completed")
 
-                                        # Save result
-                                        self._save_checkpoint(result)
-                                        all_results.append(result)
-                                        completed += 1
+                            except Exception as e:
+                                logger.error(f"  ✗ Failed: {e}")
+                                failed += 1
 
-                                        # Log summary
-                                        if result.get("success"):
-                                            if "rmse_vs_oracle" in result:
-                                                logger.info(
-                                                    f"  ✓ RMSE: {result['rmse_vs_oracle']:.4f}"
-                                                )
-                                            else:
-                                                logger.info("  ✓ Completed")
-
-                                    except Exception as e:
-                                        logger.error(f"  ✗ Failed: {e}")
-                                        failed += 1
-
-                                        # Save failed result
-                                        failed_result = {
-                                            "spec": spec.to_dict(),
-                                            "success": False,
-                                            "error": str(e),
-                                        }
-                                        self._save_checkpoint(failed_result)
+                                # Save failed result
+                                failed_result = {
+                                    "spec": spec.to_dict(),
+                                    "success": False,
+                                    "error": str(e),
+                                }
+                                self._save_checkpoint(failed_result)
 
         # Final summary
         logger.info("\n" + "=" * 60)

@@ -296,13 +296,13 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
 
             # Fresh-draw DM vector (per-prompt averages, same fold as the prompt)
             fresh = self._fresh_draws[policy]
-            g_fresh = []
-            fresh_var = []
+            g_fresh_list: List[float] = []
+            fresh_var_list: List[float] = []
             for i, pid in enumerate(pids):
                 scores_i = fresh.get_scores_for_prompt_id(pid)
                 if len(scores_i) == 0:
-                    g_fresh.append(0.0)
-                    fresh_var.append(0.0)
+                    g_fresh_list.append(0.0)
+                    fresh_var_list.append(0.0)
                     continue
                 # Outcome model expects same fold for the prompt's draws
                 fold_vec = np.full(len(scores_i), fold_ids[i], dtype=int)
@@ -312,10 +312,13 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
                     np.asarray(scores_i, dtype=float),
                     fold_vec,
                 )
-                g_fresh.append(float(np.mean(preds_i)))
-                fresh_var.append(float(np.var(preds_i)) if len(preds_i) > 1 else 0.0)
+                g_fresh_list.append(float(np.mean(preds_i)))
+                fresh_var_list.append(
+                    float(np.var(preds_i)) if len(preds_i) > 1 else 0.0
+                )
 
-            g_fresh = np.asarray(g_fresh, dtype=float)
+            g_fresh = np.asarray(g_fresh_list, dtype=float)
+            fresh_var = np.asarray(fresh_var_list, dtype=float)
 
             # OOF rewards for orthogonalization (R^OOF and f̂^OOF)
             # Prefer by-index OOF; else fold-based OOF; else plain predict() (warn).
@@ -366,8 +369,8 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
             m_hat_oof = self._m_hat_oof_cache.get(policy, np.ones_like(W, dtype=float))
 
             # ---------- Build contributions ----------
-            # Baseline DR (anchored on W̃) + oracle augmentation on IPS-like part
-            baseline_ips = W_tilde * (R_logged - q_logged_oof)
+            # Baseline DR (anchored on W̃) - use R_oof for consistency with IF
+            baseline_ips = W_tilde * (R_oof - q_logged_oof)
 
             # Orthogonalizer and retarget terms
             if self.use_orthogonalization:
@@ -377,10 +380,10 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
                 orthog = np.zeros_like(W_tilde)
                 retarget = np.zeros_like(W_tilde)
 
-            # Oracle slice augmentation (same augmentation used by DR-CPO)
+            # Oracle slice augmentation (use R_logged for augmentation as designed)
             aug_vec, aug_diag = self.oracle_augmentation.compute_augmentation(
                 policy,
-                R_logged,
+                R_logged,  # Keep using R_logged for augmentation
                 cast(List[Dict[str, Any]], data),
                 self.sampler.dataset.samples,
             )
@@ -391,15 +394,8 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
             V_hat = float(np.mean(contrib))
             estimates.append(V_hat)
 
-            # ---------- Influence function (OOF path) ----------
-            phi = (
-                g_fresh
-                + W_tilde * (R_oof - q_logged_oof)
-                + (W - m_hat_oof) * (R_oof - f_oof)
-                + (R_oof - q_logged_oof) * (W - W_tilde)
-                + aug_vec
-                - V_hat
-            )
+            # ---------- Influence function (perfectly aligned with estimator) ----------
+            phi = contrib - V_hat
 
             # Optional IIC residualization (variance reduction) + recenter IF
             if self.use_iic:
@@ -411,8 +407,19 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
                 # Update stored estimate
                 estimates[-1] = V_hat
 
-            # Standard error from IF
-            se = float(np.std(phi, ddof=1) / np.sqrt(n)) if n > 1 else 0.0
+            # Standard error from IF + MC variance for finite fresh draws
+            base_se = float(np.std(phi, ddof=1) / np.sqrt(n)) if n > 1 else 0.0
+
+            # Compute MC variance component (mirrors DREstimator logic)
+            draws_per_prompt = []
+            for pid in pids:
+                scores_i = fresh.get_scores_for_prompt_id(pid)
+                draws_per_prompt.append(len(scores_i))
+            M = np.asarray(draws_per_prompt, dtype=float)
+            mc_var = float(np.sum(fresh_var / np.maximum(M, 1.0)) / (n**2))
+
+            # Combined SE
+            se = float(np.sqrt(base_se**2 + mc_var))
             ses.append(se)
             ifs[policy] = phi
 
@@ -437,6 +444,8 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
                 "baseline_dm_mean": float(np.mean(g_fresh)),
                 "baseline_ips_mean": float(np.mean(baseline_ips)),
                 "uses_true_oof_rewards": bool(used_true_oof),
+                "mc_variance": mc_var,
+                "avg_draws_per_prompt": float(np.mean(M)) if len(M) > 0 else 0.0,
             }
 
             logger.info(

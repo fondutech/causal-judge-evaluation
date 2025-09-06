@@ -15,7 +15,8 @@ BaseCJEEstimator (abstract)
     ├── DRCPOEstimator         # Basic DR with CPO
     ├── OrthogonalizedCalibratedDRCPO  # OC-DR-CPO with triple robustness
     ├── MRDREstimator          # Multiple robust DR
-    └── TMLEEstimator          # Targeted maximum likelihood
+    ├── TMLEEstimator          # Targeted maximum likelihood
+    └── TRCPOEstimator         # Triply robust CPO
 ```
 
 ## Core Concepts
@@ -41,12 +42,19 @@ Achieves robustness to:
 Optimally combines outcome models and importance weights through targeted fluctuation to achieve optimal asymptotic efficiency.
 
 ### 6. Estimator Stacking
-Forms an optimal convex combination of multiple DR estimators (DR-CPO, TMLE, MRDR) by minimizing the variance of the combined influence function. Uses outer split for honest inference.
+Forms an optimal convex combination of multiple DR estimators (DR-CPO, TMLE, MRDR, OC-DR-CPO, TR-CPO) by minimizing the variance of the combined influence function. Uses outer split for honest inference.
 
 ### 7. Orthogonalized Estimators
 Achieve first-order insensitivity to nuisance estimation errors through cross-fitting:
 - **OC-IPS**: Robust to errors in reward calibration f̂(S) and weight calibration m̂(S)
 - **OC-DR-CPO**: Additionally robust to outcome model errors q̂(X,A), providing triple robustness
+
+### 8. Triply Robust Estimation (TR-CPO)
+Achieves robustness to misspecification in three components simultaneously:
+- Weight calibration errors (via raw/Hájek weights)
+- Reward calibration errors (via label propensity correction)
+- Outcome model errors (via DR formulation)
+Uses cross-fitted label propensity π̂_L to correct for oracle label selection bias.
 
 ## File Structure
 
@@ -61,6 +69,7 @@ estimators/
 ├── mrdr.py                # Multiple robust DR
 ├── mrdr_tmle.py           # MRDR with TMLE fluctuation
 ├── tmle.py                # Standard TMLE
+├── tr_cpo.py              # Triply robust CPO
 ├── outcome_models.py      # Outcome model implementations
 └── MRDR_OMEGA_WEIGHTS.md  # Documentation on MRDR weighting schemes
 ```
@@ -107,6 +116,12 @@ estimators/
 - Fresh draws are available (REQUIRED for all DR methods)
 - You have well-specified models
 - You need the most sophisticated estimation
+
+### Use **TRCPOEstimator** when:
+- You need robustness to errors in weight calibration (ŵ), reward calibration (f̂), AND outcome modeling (q̂)
+- Oracle labels are partially available (for label propensity modeling)
+- Fresh draws are available (REQUIRED)
+- You want triple robustness without full orthogonalization overhead
 
 ### Use **StackedDREstimator** when:
 - You want the best of all DR methods combined

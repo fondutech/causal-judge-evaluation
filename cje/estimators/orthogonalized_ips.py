@@ -91,8 +91,9 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
 
             # Get fold assignments (local to this policy subset)
             n_folds = self.sampler.dataset.metadata.get("n_folds", 5)
+            seed = self.sampler.dataset.metadata.get("fold_seed", 42)
             prompt_ids = [d.get("prompt_id", f"sample_{i}") for i, d in enumerate(data)]
-            fold_ids = np.array([get_fold(pid, n_folds) for pid in prompt_ids])
+            fold_ids = np.array([get_fold(pid, n_folds, seed) for pid in prompt_ids])
 
             # Cross-fit m̂(S) = E[W|S]
             m_hat_oof = self._fit_m_hat_oof(raw_weights, judge_scores, fold_ids)
@@ -234,45 +235,79 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
             R_oof = R.copy()
             f_oof = R.copy()
 
-            # Try to get OOF rewards using dataset indices (not local folds)
+            # Try to get OOF rewards using dataset indices (best), else fold-based OOF
             if self.calibrator is not None:
-                # Map policy subset indices back to global dataset indices
-                # This preserves the calibrator's original cross-fitting structure
-                dataset_indices: List[int] = []
-                for i, d in enumerate(data):
-                    # Try to get the dataset index for this sample
-                    # The sampler tracks this mapping internally
-                    if hasattr(self.sampler, "_formatted_to_dataset_idx"):
-                        # For now, we can't easily map from policy data back to formatted indices
-                        # So we'll use the calibrator's predict method if available
-                        pass
+                try:
+                    # 1) Prefer dataset-index OOF if available
+                    if hasattr(self.calibrator, "predict_oof_by_index"):
+                        # Build mapping from prompt_id to dataset index
+                        ds_index_by_pid = {
+                            str(s.prompt_id): i
+                            for i, s in enumerate(self.sampler.dataset.samples)
+                        }
+                        ds_idx = np.array(
+                            [
+                                ds_index_by_pid.get(str(d.get("prompt_id")), -1)
+                                for d in data
+                            ],
+                            dtype=int,
+                        )
 
-                # Fallback: use calibrator's predict_oof with judge scores if available
-                if hasattr(self.calibrator, "predict_oof"):
-                    judge_scores = np.array(
-                        [d.get("judge_score", np.nan) for d in data]
-                    )
-                    valid_scores = np.isfinite(judge_scores)
+                        # Only proceed if all indices are valid
+                        if np.all(ds_idx >= 0):
+                            R_pred = self.calibrator.predict_oof_by_index(ds_idx)
+                            if R_pred is not None:
+                                R_oof = np.asarray(R_pred, dtype=float)
+                                f_oof = R_oof
+                                logger.debug(
+                                    f"Using index-based OOF rewards for {policy}"
+                                )
 
-                    if valid_scores.sum() > 0:
-                        try:
-                            # Use the calibrator's own fold structure if it has one
-                            if (
-                                hasattr(self.calibrator, "_fold_ids")
-                                and self.calibrator._fold_ids is not None
-                            ):
-                                # The calibrator already has global folds - use predict directly
-                                R_oof_temp = self.calibrator.predict(judge_scores)
-                                if R_oof_temp is not None:
-                                    R_oof = R_oof_temp
-                                    f_oof = R_oof_temp
-                                    logger.debug(
-                                        f"Using calibrated rewards for {policy}"
-                                    )
-                        except Exception as e:
-                            logger.debug(
-                                f"Could not get calibrated rewards for {policy}: {e}"
-                            )
+                    # 2) Else try fold-based OOF using per-prompt folds
+                    elif hasattr(self.calibrator, "predict_oof"):
+                        from ..data.folds import get_fold
+
+                        n_folds = self.sampler.dataset.metadata.get("n_folds", 5)
+                        seed = self.sampler.dataset.metadata.get("fold_seed", 42)
+                        judge_scores = np.array(
+                            [d.get("judge_score", np.nan) for d in data], dtype=float
+                        )
+                        prompt_ids = [
+                            d.get("prompt_id", f"sample_{i}")
+                            for i, d in enumerate(data)
+                        ]
+                        fold_cal = np.array(
+                            [get_fold(pid, n_folds, seed) for pid in prompt_ids],
+                            dtype=int,
+                        )
+
+                        # Check if we have valid judge scores
+                        valid_scores = np.isfinite(judge_scores)
+                        if valid_scores.sum() > 0:
+                            R_pred = self.calibrator.predict_oof(judge_scores, fold_cal)
+                            if R_pred is not None:
+                                R_oof = np.asarray(R_pred, dtype=float)
+                                f_oof = R_oof
+                                logger.debug(
+                                    f"Using fold-based OOF rewards for {policy}"
+                                )
+
+                    # 3) Fallback: in-fold predict with a warning
+                    elif hasattr(self.calibrator, "predict"):
+                        judge_scores = np.array(
+                            [d.get("judge_score", np.nan) for d in data], dtype=float
+                        )
+                        valid_scores = np.isfinite(judge_scores)
+                        if valid_scores.sum() > 0:
+                            R_pred = self.calibrator.predict(judge_scores)
+                            if R_pred is not None:
+                                R_oof = np.asarray(R_pred, dtype=float)
+                                f_oof = R_oof
+                                logger.warning(
+                                    f"OC-IPS: Using in-fold calibrator.predict() for {policy}; orthogonality guarantees may weaken."
+                                )
+                except Exception as e:
+                    logger.debug(f"OC-IPS: OOF reward path failed for '{policy}': {e}")
 
             # Get m̂^OOF (default to ones if not available)
             m_hat_oof = self._m_hat_oof_cache.get(policy, np.ones_like(W))
@@ -281,8 +316,8 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
             # Since R_oof == f_oof, the orthog term (W-m̂)(R-f̂) is zero
             # We only need baseline + retarget for orthogonality
 
-            # 1. Baseline term (standard Cal-IPS)
-            baseline = W_tilde * R
+            # 1. Baseline term (use OOF rewards for consistency with IF)
+            baseline = W_tilde * R_oof
 
             # 2. Re-targeting term (achieves orthogonality to both f̂ and m̂)
             retarget = f_oof * (W - W_tilde)
@@ -293,7 +328,7 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
             # Add oracle slice augmentation (as in parent)
             aug, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
                 policy,
-                R,
+                R,  # Keep using R for augmentation (it's designed for that)
                 cast(List[Dict[str, Any]], data),
                 self.sampler.dataset.samples,
             )
@@ -306,17 +341,20 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
             V_hat = float(total_contrib.mean())
             estimates.append(V_hat)
 
-            # Influence function (simplified two-term version)
-            # φ = W̃·R^OOF + f̂^OOF(W-W̃) + aug - V̂
-            phi = (W_tilde * R_oof) + (f_oof * (W - W_tilde)) + aug - V_hat
+            # Influence function (perfectly aligned with estimator now)
+            # φ = contrib - V̂ = W̃·R^OOF + f̂^OOF(W-W̃) + aug - V̂
+            phi = contrib + aug - V_hat
 
             # Apply IIC if enabled (variance reduction via residualization)
             if self.use_iic:
                 n_folds = self.sampler.dataset.metadata.get("n_folds", 5)
+                seed = self.sampler.dataset.metadata.get("fold_seed", 42)
                 prompt_ids = [
                     d.get("prompt_id", f"sample_{i}") for i, d in enumerate(data)
                 ]
-                fold_ids = np.array([get_fold(pid, n_folds) for pid in prompt_ids])
+                fold_ids = np.array(
+                    [get_fold(pid, n_folds, seed) for pid in prompt_ids]
+                )
                 phi, iic_adjustment = self._apply_iic(phi, policy, fold_ids=fold_ids)
 
                 # Store IIC adjustment

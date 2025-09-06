@@ -1,6 +1,6 @@
 """Estimator stacking via influence function variance minimization.
 
-This module implements stacking of DR-family estimators (DR-CPO, TMLE, MRDR)
+This module implements stacking of DR-family estimators (DR-CPO, TMLE, MRDR, OC-DR-CPO, TR-CPO)
 by forming an optimal convex combination that minimizes the variance of the
 combined influence function.
 """
@@ -22,7 +22,7 @@ class StackedDREstimator(BaseCJEEstimator):
     Stacks DR estimators via influence function variance minimization.
 
     This implements the estimator stacking approach from the CJE paper,
-    forming an optimal convex combination of DR-CPO, TMLE, and MRDR
+    forming an optimal convex combination of DR-family estimators
     by minimizing the empirical variance of the combined influence function.
 
     Key features:
@@ -61,6 +61,7 @@ class StackedDREstimator(BaseCJEEstimator):
             sampler: PrecomputedSampler with calibrated data
             estimators: List of estimator names to stack.
                 Default: ["dr-cpo", "tmle", "mrdr"]
+                Available: "dr-cpo", "tmle", "mrdr", "oc-dr-cpo", "tr-cpo"
             use_outer_split: If True, use V-fold outer split for honest inference
             V_folds: Number of outer folds for honest stacking
             robust_cov: If True, use Ledoit-Wolf optimal shrinkage for covariance
@@ -121,10 +122,14 @@ class StackedDREstimator(BaseCJEEstimator):
 
         # Use the unified fold system if we have a real dataset
         if hasattr(self.sampler, "dataset"):
+            n_folds = getattr(self.sampler.dataset, "metadata", {}).get("n_folds", 5)
+            seed = getattr(self.sampler.dataset, "metadata", {}).get(
+                "fold_seed", self.seed
+            )
             self.shared_fold_ids = get_folds_for_dataset(
                 self.sampler.dataset,
-                n_folds=5,  # Could make this configurable
-                seed=self.seed,
+                n_folds=n_folds,
+                seed=seed,
             )
         else:
             # Fallback for mock objects in tests
@@ -321,11 +326,17 @@ class StackedDREstimator(BaseCJEEstimator):
         from cje.estimators.dr_base import DRCPOEstimator
         from cje.estimators.tmle import TMLEEstimator
         from cje.estimators.mrdr import MRDREstimator
+        from cje.estimators.orthogonalized_calibrated_dr import (
+            OrthogonalizedCalibratedDRCPO,
+        )
+        from cje.estimators.tr_cpo import TRCPOEstimator
 
         estimator_classes = {
             "dr-cpo": DRCPOEstimator,
             "tmle": TMLEEstimator,
             "mrdr": MRDREstimator,
+            "oc-dr-cpo": OrthogonalizedCalibratedDRCPO,
+            "tr-cpo": TRCPOEstimator,
         }
 
         if name not in estimator_classes:
@@ -337,7 +348,7 @@ class StackedDREstimator(BaseCJEEstimator):
         # Note: We can't directly pass fold_ids to most estimators,
         # but they will use the same seed which helps
         # Pass calibrator as a named parameter for DR estimators
-        if name in ["dr-cpo", "tmle", "mrdr"]:
+        if name in ["dr-cpo", "tmle", "mrdr", "oc-dr-cpo", "tr-cpo"]:
             # Always pass calibrator for outcome model (if available)
             # use_calibrated_weights controls SIMCal, independent of calibrator
             estimator = estimator_class(
@@ -552,56 +563,39 @@ class StackedDREstimator(BaseCJEEstimator):
     def _ledoit_wolf_covariance(self, IF_matrix: np.ndarray) -> np.ndarray:
         """Compute Ledoit-Wolf optimal shrinkage covariance estimator.
 
-        This implements the Ledoit-Wolf (2004) optimal shrinkage estimator that
+        This uses sklearn's implementation of the Ledoit-Wolf (2004) estimator that
         adaptively chooses the shrinkage intensity to minimize expected squared error.
 
         The target is a diagonal matrix with sample variances.
         Reference: "A well-conditioned estimator for large-dimensional covariance matrices"
         """
+        from sklearn.covariance import ledoit_wolf
+
         # Center the data
-        X = IF_matrix - IF_matrix.mean(axis=0, keepdims=True)
-        n, p = X.shape
+        X = IF_matrix - IF_matrix.mean(axis=0, keepdims=True)  # n x K
 
-        # Sample covariance
-        S = (X.T @ X) / n
+        # Compute Ledoit-Wolf shrunk covariance
+        # ledoit_wolf returns (covariance, shrinkage_value)
+        Sigma, shrinkage = ledoit_wolf(X)
+        Sigma = np.asarray(Sigma)  # Ensure it's ndarray for mypy
 
-        # Shrinkage target (diagonal with sample variances)
-        target = np.diag(np.diag(S))
-
-        # Compute optimal shrinkage intensity using Ledoit-Wolf formula
-        # We need to estimate:
-        # - phi: sum of variances of sample covariance entries
-        # - gamma: sum of squared differences between S and target
-
-        # Compute phi using the formula from the paper
-        # phi = (1/n^2) * sum_k ||x_k x_k^T - S||^2_F
-        phi = 0.0
-        for k in range(n):
-            xk = X[k : k + 1, :].T  # Column vector
-            xkxkT = xk @ xk.T
-            phi += np.sum((xkxkT - S) ** 2)
-        phi = phi / n
-
-        # Compute gamma = ||S - target||^2_F
-        gamma = np.sum((S - target) ** 2)
-
-        # Compute optimal shrinkage (bounded between 0 and 1)
-        if gamma > 0:
-            kappa = phi / gamma
-            shrinkage = np.clip(kappa, 0.0, 1.0)
-        else:
-            # If S is already diagonal, no shrinkage needed
-            shrinkage = 0.0
+        # Store shrinkage for diagnostics
+        self._last_shrinkage = float(shrinkage)
 
         # Allow manual override if user explicitly set a value
         if self.shrinkage_intensity is not None:
+            # Recompute with manual shrinkage
             shrinkage = float(np.clip(self.shrinkage_intensity, 0.0, 1.0))
+            S = np.cov(X.T, bias=False)  # Sample covariance
+            target = np.diag(np.diag(S))  # Diagonal target
+            Sigma = (1 - shrinkage) * S + shrinkage * target
+            self._last_shrinkage = shrinkage
 
-        # Store computed shrinkage for diagnostics
-        self._last_shrinkage = float(shrinkage)
-
-        # Shrink toward target
-        return np.asarray((1 - shrinkage) * S + shrinkage * target)
+        # Add small ridge for numerical stability
+        # Cast to ndarray to satisfy mypy
+        Sigma_array: np.ndarray = np.asarray(Sigma)
+        result: np.ndarray = Sigma_array + 1e-8 * np.eye(Sigma_array.shape[0])
+        return result
 
     def _stack_with_outer_split(
         self, IF_matrix: np.ndarray, policy: str
@@ -754,7 +748,7 @@ class StackedDREstimator(BaseCJEEstimator):
         """
         # Try to get weights from first successful component estimator
         # (all DR estimators use the same IPS weights)
-        for name in ["dr-cpo", "tmle", "mrdr"]:
+        for name in ["dr-cpo", "tmle", "mrdr", "tr-cpo", "oc-dr-cpo"]:
             if name in self.component_estimators:
                 estimator = self.component_estimators[name]
                 if estimator:
@@ -779,7 +773,7 @@ class StackedDREstimator(BaseCJEEstimator):
             Diagnostics object or None
         """
         # Try to get diagnostics from the first successful DR component
-        for name in ["dr-cpo", "tmle", "mrdr"]:
+        for name in ["dr-cpo", "tmle", "mrdr", "tr-cpo", "oc-dr-cpo"]:
             if name in self.component_estimators:
                 estimator = self.component_estimators[name]
                 if estimator and hasattr(estimator, "get_diagnostics"):

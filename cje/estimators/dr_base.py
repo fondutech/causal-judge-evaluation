@@ -615,8 +615,9 @@ class DREstimator(BaseCJEEstimator):
                 # Compute fold assignments for cross-fitting
                 from ..data.folds import get_fold
 
+                seed = self.random_seed if hasattr(self, "random_seed") else 42
                 fold_ids = np.array(
-                    [get_fold(pid, self.n_folds) for pid in logged_prompt_ids]
+                    [get_fold(pid, self.n_folds, seed) for pid in logged_prompt_ids]
                 )
 
             # Apply IIC for variance reduction (if enabled)
@@ -1013,7 +1014,9 @@ class DREstimator(BaseCJEEstimator):
                 weight_status=ips_diagnostics.weight_status,
                 ess_per_policy=ips_diagnostics.ess_per_policy,
                 max_weight_per_policy=ips_diagnostics.max_weight_per_policy,
-                weight_tail_ratio_per_policy=ips_diagnostics.weight_tail_ratio_per_policy,
+                weight_tail_ratio_per_policy=getattr(
+                    ips_diagnostics, "weight_tail_ratio_per_policy", {}
+                ),
                 # Calibration fields (may be None)
                 calibration_rmse=ips_diagnostics.calibration_rmse,
                 calibration_r2=ips_diagnostics.calibration_r2,

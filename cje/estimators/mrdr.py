@@ -524,7 +524,8 @@ class MRDREstimator(DREstimator):
 
             # Apply IIC if enabled
             if self.use_iic:
-                if_contrib = self._apply_iic(if_contrib, policy)
+                if_contrib, iic_adjustment = self._apply_iic(if_contrib, policy)
+                psi += iic_adjustment  # Adjust point estimate
 
             se = (
                 float(np.std(if_contrib, ddof=1) / np.sqrt(len(if_contrib)))

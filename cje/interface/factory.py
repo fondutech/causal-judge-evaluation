@@ -144,6 +144,32 @@ def _build_tmle(
     return TMLEEstimator(sampler, n_folds=n_folds, link=link)
 
 
+def _build_tr_cpo(
+    sampler: PrecomputedSampler,
+    config: Dict[str, Any],
+    calibration_result: Optional[Any],
+    verbose: bool,
+) -> Any:
+    from ..estimators.tr_cpo import TRCPOEstimator
+
+    n_folds = config.get("n_folds", 5)
+    weight_mode = config.get("weight_mode", "hajek")
+    use_iic = config.get("use_iic", True)
+    if calibration_result and getattr(calibration_result, "calibrator", None):
+        if verbose:
+            logger.info("Using calibration models for TR-CPO")
+        return TRCPOEstimator(
+            sampler,
+            n_folds=n_folds,
+            weight_mode=weight_mode,
+            use_iic=use_iic,
+            calibrator=calibration_result.calibrator,
+        )
+    return TRCPOEstimator(
+        sampler, n_folds=n_folds, weight_mode=weight_mode, use_iic=use_iic
+    )
+
+
 def _build_stacked_dr(
     sampler: PrecomputedSampler,
     config: Dict[str, Any],
@@ -174,6 +200,7 @@ REGISTRY: Dict[str, BuilderFn] = {
     "raw-ips": _build_raw_ips,
     "dr-cpo": _build_dr_cpo,
     "oc-dr-cpo": _build_oc_dr_cpo,
+    "tr-cpo": _build_tr_cpo,
     "mrdr": _build_mrdr,
     "tmle": _build_tmle,
     "stacked-dr": _build_stacked_dr,

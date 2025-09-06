@@ -27,6 +27,8 @@ results = analyze_dataset(
 |---------------|----------|---------|
 | **Have fresh draws** → Most robust | `stacked-dr` (default) | `analyze_dataset("data.jsonl", fresh_draws_dir="responses/")` |
 | **No fresh draws** → Fast & good | `calibrated-ips` | `analyze_dataset("data.jsonl", estimator="calibrated-ips")` |
+| **Need triple robustness** → Robust to all errors | `tr-cpo` | `analyze_dataset("data.jsonl", estimator="tr-cpo", fresh_draws_dir="responses/")` |
+| **Want orthogonalized IPS** → Robust calibration | `orthogonalized-ips` | `analyze_dataset("data.jsonl", estimator="orthogonalized-ips")` |
 | **Debugging** → Baseline | `raw-ips` | `analyze_dataset("data.jsonl", estimator="raw-ips")` |
 
 ### What are fresh draws?
@@ -165,7 +167,7 @@ def analyze_dataset(
 
 **Parameters:**
 - `dataset_path`: Path to JSONL file with logged data
-- `estimator`: One of: stacked-dr, calibrated-ips, raw-ips, dr-cpo, mrdr, tmle
+- `estimator`: One of: stacked-dr, calibrated-ips, raw-ips, dr-cpo, oc-dr-cpo, tr-cpo, orthogonalized-ips, mrdr, tmle
 - `fresh_draws_dir`: Directory with fresh draw responses (required for DR methods)
 - `verbose`: Print progress messages
 
@@ -179,7 +181,7 @@ def analyze_dataset(
 python -m cje analyze <dataset> [options]
 
 Options:
-  --estimator {stacked-dr,calibrated-ips,raw-ips,dr-cpo,mrdr,tmle}
+  --estimator {stacked-dr,calibrated-ips,raw-ips,dr-cpo,oc-dr-cpo,tr-cpo,orthogonalized-ips,mrdr,tmle}
   --fresh-draws-dir DIR     Directory with fresh draws
   --output FILE            Save results to JSON
   --verbose               Detailed output

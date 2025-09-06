@@ -5,7 +5,7 @@ Systematic ablation studies demonstrating the value of calibrated importance sam
 ## Quick Start
 
 ```bash
-# Run all ablation experiments (1800 total)
+# Run all ablation experiments (400 total with constraints)
 python run.py       # Runs with checkpoint/resume support
 
 # Quick verification test
@@ -46,12 +46,20 @@ ablations/
 The unified system (`run.py`) tests all combinations of:
 
 ### Parameters
-- **Estimators**: raw-ips, calibrated-ips, dr-cpo, tmle, mrdr, stacked-dr
+- **Estimators**: raw-ips, calibrated-ips, orthogonalized-ips, dr-cpo, oc-dr-cpo, tr-cpo, stacked-dr
 - **Sample sizes**: 500, 1000, 2500, 5000
 - **Oracle coverage**: 5%, 10%, 25%, 50%, 100%
-- **SIMCal weight calibration**: On/off for all estimators (controlled by `use_calibration`)
-- **IIC (Isotonic Influence Control)**: On/off for all methods (controlled by `use_iic`)
-- **Seeds**: 5 random seeds per configuration
+- **Calibration**: On/off (controlled by `use_calibration`, with constraints)
+- **IIC (Influence Intercept Calibration)**: On/off for all methods (controlled by `use_iic`)
+- **Seed**: Single seed (42) for reproducibility
+
+### Estimator Constraints
+Some estimators have calibration requirements:
+- **Always calibrated**: calibrated-ips, orthogonalized-ips, oc-dr-cpo
+- **Never calibrated**: raw-ips  
+- **Optional calibration**: dr-cpo, tr-cpo, stacked-dr
+
+This reduces the total experiments from 560 to 400 valid combinations.
 
 ### Expected Results
 - **SIMCal weight calibration**: Should improve DR methods (reduces weight variance)

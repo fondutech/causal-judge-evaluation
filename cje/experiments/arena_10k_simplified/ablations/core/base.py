@@ -40,6 +40,9 @@ from cje.calibration import calibrate_dataset
 from cje.data.precomputed_sampler import PrecomputedSampler
 from cje.estimators import CalibratedIPS, StackedDREstimator
 from cje.estimators.dr_base import DRCPOEstimator
+from cje.estimators.orthogonalized_calibrated_dr import OrthogonalizedCalibratedDRCPO
+from cje.estimators.orthogonalized_ips import OrthogonalizedCalibratedIPS
+from cje.estimators.tr_cpo import TRCPOEstimator
 from cje.estimators.mrdr import MRDREstimator
 from cje.estimators.tmle import TMLEEstimator
 from cje.data.fresh_draws import load_fresh_draws_auto
@@ -148,8 +151,17 @@ class BaseAblation:
         #            f"use_calibration(SIMCal)={use_calibration}")
 
         estimator_map = {
+            "raw-ips": lambda s: CalibratedIPS(s, calibrate=False),  # No calibration
             "ips": lambda s: CalibratedIPS(
                 s, calibrate=use_calibration  # IPS doesn't support IIC
+            ),
+            "calibrated-ips": lambda s: CalibratedIPS(
+                s, calibrate=True  # Always use calibration
+            ),
+            "orthogonalized-ips": lambda s: OrthogonalizedCalibratedIPS(
+                s,
+                calibrator=cal_result.calibrator if cal_result else None,
+                n_folds=5,
             ),
             "dr-cpo": lambda s: DRCPOEstimator(
                 s,
@@ -157,6 +169,20 @@ class BaseAblation:
                 n_folds=5,
                 oracle_slice_config="auto",  # Let estimator auto-detect based on actual oracle coverage
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
+                use_iic=use_iic,  # Pass IIC setting
+            ),
+            "oc-dr-cpo": lambda s: OrthogonalizedCalibratedDRCPO(
+                s,
+                calibrator=cal_result.calibrator if cal_result else None,
+                n_folds=5,
+                oracle_slice_config="auto",  # Let estimator auto-detect based on actual oracle coverage
+                use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
+                use_iic=use_iic,  # Pass IIC setting
+            ),
+            "tr-cpo": lambda s: TRCPOEstimator(
+                s,
+                calibrator=cal_result.calibrator if cal_result else None,
+                n_folds=5,
                 use_iic=use_iic,  # Pass IIC setting
             ),
             "calibrated-dr-cpo": lambda s: DRCPOEstimator(
@@ -445,8 +471,7 @@ class BaseAblation:
 
             # ALWAYS calibrate rewards (judge → oracle) when oracle labels exist
             # This is NOT controlled by use_calibration flag
-            # Get reward calibration mode from spec
-            reward_calibration_mode = spec.extra.get("reward_calibration_mode", "auto")
+            # Use auto mode for reward calibration
 
             calibrated_dataset, cal_result = calibrate_dataset(
                 dataset,
@@ -454,7 +479,7 @@ class BaseAblation:
                 oracle_field="oracle_label",
                 enable_cross_fit=True,
                 n_folds=5 if n_oracle >= 50 else 3,
-                calibration_mode=reward_calibration_mode,
+                calibration_mode="auto",
             )
 
             if cal_result:
@@ -493,7 +518,7 @@ class BaseAblation:
                         cal_result.calibrator.selected_mode
                     )
                 else:
-                    result["reward_calibration_used"] = reward_calibration_mode
+                    result["reward_calibration_used"] = "auto"
 
             # Create sampler and estimator
             sampler = PrecomputedSampler(calibrated_dataset)
@@ -502,6 +527,7 @@ class BaseAblation:
             # Add fresh draws for DR methods
             if spec.estimator in [
                 "dr-cpo",
+                "oc-dr-cpo",
                 "calibrated-dr-cpo",
                 "mrdr",
                 "tmle",

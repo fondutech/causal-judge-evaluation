@@ -24,6 +24,7 @@ try:
     from .dr_base import DRCPOEstimator
     from .tmle import TMLEEstimator
     from .mrdr import MRDREstimator
+    from .tr_cpo import TRCPOEstimator
 
     _dr_available = True
 except ImportError:
@@ -46,4 +47,6 @@ __all__ = [
 ]
 
 if _dr_available:
-    __all__.extend(["DRCPOEstimator", "TMLEEstimator", "MRDREstimator"])
+    __all__.extend(
+        ["DRCPOEstimator", "TMLEEstimator", "MRDREstimator", "TRCPOEstimator"]
+    )

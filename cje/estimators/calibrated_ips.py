@@ -48,8 +48,8 @@ class CalibratedIPS(BaseCJEEstimator):
         ess_floor: Minimum ESS as fraction of n (default 0.2 = 20% ESS) [only used if calibrate=True]
         var_cap: Maximum allowed variance of calibrated weights (default None = no cap) [only used if calibrate=True]
         calibrator: Optional JudgeCalibrator for DR influence functions [only used if calibrate=True]
-        include_baseline: Whether to include raw weights in the stack (default True) [only used if calibrate=True]
-        baseline_shrink: Shrinkage toward baseline for stability (default 0.05) [only used if calibrate=True]
+        include_baseline: Whether to include raw weights in the stack (default False) [only used if calibrate=True]
+        baseline_shrink: Shrinkage toward baseline for stability (default 0.0) [only used if calibrate=True]
         refuse_unreliable: Whether to refuse (return NaN) for unreliable estimates (default False)
         **kwargs: Additional arguments passed to BaseCJEEstimator (e.g., oracle_slice_config)
     """
@@ -94,9 +94,6 @@ class CalibratedIPS(BaseCJEEstimator):
 
     def fit(self) -> None:
         """Fit weights for all target policies (with or without calibration)."""
-        # Get judge scores once (same for all policies)
-        judge_scores = self.sampler.get_judge_scores()
-
         for policy in self.sampler.target_policies:
             # Get raw weights (with optional pre-clipping and weight mode)
             raw_weights = self.sampler.compute_importance_weights(
@@ -124,11 +121,16 @@ class CalibratedIPS(BaseCJEEstimator):
                 # Cache raw weights
                 self._weights_cache[policy] = raw_weights
 
-                # Fit m̂(S) for oracle slice augmentation
-                if judge_scores is not None:
-                    self.oracle_augmentation.fit_m_hat(
-                        raw_weights, judge_scores, policy, cv_folds=None
+                # Fit m̂(S) for oracle slice augmentation (use policy subset)
+                data = self.sampler.get_data_for_policy(policy)
+                if data:
+                    S_policy = np.asarray(
+                        [d.get("judge_score", np.nan) for d in data], dtype=float
                     )
+                    if not np.all(np.isnan(S_policy)):
+                        self.oracle_augmentation.fit_m_hat(
+                            raw_weights, S_policy, policy, cv_folds=None
+                        )
 
                 continue  # Skip calibration for this policy
 
@@ -138,60 +140,89 @@ class CalibratedIPS(BaseCJEEstimator):
                 f"n_samples={len(raw_weights)}, raw_mean={raw_weights.mean():.3f}"
             )
 
-            # Use SIMCal calibration with appropriate ordering index
-            # When calibrator available: use cross-fitted g(s) for better alignment with DR
-            # Otherwise: fall back to raw judge scores
-            if judge_scores is None:
-                raise ValueError(
-                    "Judge scores are required for SIMCal calibration. "
-                    "Ensure samples have 'judge_score' in metadata."
-                )
-
-            # Get rewards for this policy (always needed for influence functions)
+            # Get data and judge scores for this policy
             data = self.sampler.get_data_for_policy(policy)
             if not data:
                 logger.warning(f"No data for policy '{policy}'. Skipping.")
                 continue
+
+            # Policy-subset judge scores (aligned with raw_weights)
+            S_policy = np.asarray(
+                [d.get("judge_score", np.nan) for d in data], dtype=float
+            )
+            if np.all(np.isnan(S_policy)):
+                raise ValueError(
+                    f"Judge scores are required for SIMCal calibration of policy '{policy}'. "
+                    "Ensure samples have 'judge_score' in metadata."
+                )
+
+            # Get rewards for this policy (always needed for influence functions)
             rewards = np.array([d["reward"] for d in data], dtype=float)
 
             # Try to get cross-fitted rewards if calibrator available (for SIMCal ordering)
-            # Note: DR residuals are computed separately per policy subset
-            g_oof = None  # OOF predictions for full dataset (used as SIMCal ordering)
+            # Get OOF predictions for this policy subset
+            g_oof = None
+            fold_ids: Optional[np.ndarray] = (
+                None  # Initialize before conditional blocks
+            )
 
-            if self.calibrator is not None and hasattr(self.calibrator, "predict_oof"):
+            if self.calibrator is not None:
                 try:
-                    # Use global fold IDs from calibrator for OOF predictions
-                    if (
-                        hasattr(self.calibrator, "_fold_ids")
-                        and self.calibrator._fold_ids is not None
-                    ):
-                        global_fold_ids = np.asarray(
-                            self.calibrator._fold_ids, dtype=int
+                    # Option 1: Use index-based OOF for policy subset
+                    if hasattr(self.calibrator, "predict_oof_by_index"):
+                        ds_index_by_pid = {
+                            str(s.prompt_id): i
+                            for i, s in enumerate(self.sampler.dataset.samples)
+                        }
+                        pids = [str(d.get("prompt_id")) for d in data]
+                        ds_idx = np.asarray(
+                            [ds_index_by_pid.get(pid, -1) for pid in pids], dtype=int
                         )
+                        if np.all(ds_idx >= 0):
+                            g_oof = self.calibrator.predict_oof_by_index(ds_idx)
+                            if g_oof is not None:
+                                logger.debug(
+                                    f"Using index-based cross-fitted rewards (g^OOF) as SIMCal ordering for policy '{policy}'"
+                                )
 
-                        # Compute OOF predictions for full dataset
-                        g_oof = self.calibrator.predict_oof(
-                            judge_scores, global_fold_ids
+                    # Option 2: Use fold-based OOF with policy subset
+                    if g_oof is None and hasattr(self.calibrator, "predict_oof"):
+                        from ..data.folds import get_fold
+
+                        n_folds = self.sampler.dataset.metadata.get("n_folds", 5)
+                        seed = self.sampler.dataset.metadata.get("fold_seed", 42)
+                        fold_ids = np.asarray(
+                            [
+                                get_fold(
+                                    str(d.get("prompt_id", f"sample_{i}")),
+                                    n_folds,
+                                    seed,
+                                )
+                                for i, d in enumerate(data)
+                            ],
+                            dtype=int,
                         )
-                        logger.debug(
-                            f"Using cross-fitted rewards (g^OOF) as SIMCal ordering index for policy '{policy}'"
-                        )
-                    else:
-                        logger.debug(
-                            "Calibrator lacks global fold IDs, falling back to raw judge scores"
-                        )
+                        g_oof = self.calibrator.predict_oof(S_policy, fold_ids)
+                        if g_oof is not None:
+                            logger.debug(
+                                f"Using fold-based cross-fitted rewards (g^OOF) as SIMCal ordering for policy '{policy}'"
+                            )
                 except Exception as e:
-                    logger.debug(f"Could not compute OOF predictions: {e}")
+                    logger.debug(f"SIMCal ordering OOF failed for '{policy}': {e}")
+                    g_oof = None
 
             # Determine the ordering index for SIMCal
             # Use cross-fitted calibrated rewards if available, otherwise raw judge scores
-            # This aligns the monotone projection with the actual nuisance function used in DR
-            ordering_index = g_oof if g_oof is not None else judge_scores
+            # Ensure alignment with raw_weights length
+            ordering_index = (
+                g_oof
+                if (g_oof is not None and len(g_oof) == len(raw_weights))
+                else S_policy
+            )
 
             # For residuals (used by DR methods), we need policy-specific computations
             # This is handled separately by DR estimators that have access to the subset mapping
             residuals = None
-            fold_ids = None
 
             # Run stacked SIMCal calibration
             cfg = SimcalConfig(
@@ -216,7 +247,7 @@ class CalibratedIPS(BaseCJEEstimator):
             # Fit m̂(S) for oracle slice augmentation
             # Use the calibrated weights we'll actually use in estimation
             self.oracle_augmentation.fit_m_hat(
-                calibrated, judge_scores, policy, cv_folds=fold_ids
+                calibrated, S_policy, policy, cv_folds=fold_ids
             )
 
         self._fitted = True
@@ -309,8 +340,8 @@ class CalibratedIPS(BaseCJEEstimator):
             if refuse:
                 # Provide detailed explanation of what low ESS means practically
                 warning_msg = (
-                    f"Policy '{policy}' has poor overlap: only {ess:.1%} effective overlap. "
-                    f"This means {(1-ess)*100:.0f}% of your data is essentially ignored. "
+                    f"Policy '{policy}' has poor overlap: ESS fraction = {ess:.1%} (heavy-tailed weighting). "
+                    f"Estimates may be dominated by a small subset of samples. "
                     f"Reasons: {', '.join(reasons)}. "
                     f"Solutions: (1) Use policies with better overlap, "
                     f"(2) Try DR methods with fresh draws, "
@@ -358,7 +389,10 @@ class CalibratedIPS(BaseCJEEstimator):
                 ]
                 # Use n_folds from dataset metadata (default to 5 if not set)
                 n_folds = self.sampler.dataset.metadata.get("n_folds", 5)
-                fold_ids = np.array([get_fold(pid, n_folds) for pid in prompt_ids])
+                seed = self.sampler.dataset.metadata.get("fold_seed", 42)
+                fold_ids = np.array(
+                    [get_fold(pid, n_folds, seed) for pid in prompt_ids]
+                )
 
             # Apply IIC for variance reduction (if enabled)
             influence, iic_adjustment = self._apply_iic(
@@ -405,7 +439,7 @@ class CalibratedIPS(BaseCJEEstimator):
             estimates=np.array(estimates),
             standard_errors=np.array(standard_errors),
             n_samples_used=n_samples_used,
-            method="calibrated_ips" if self.calibrate else "snips",
+            method="calibrated_ips" if self.calibrate else "raw_ips",
             influence_functions=influence_functions,
             diagnostics=None,  # Will be set below
             robust_standard_errors=None,
