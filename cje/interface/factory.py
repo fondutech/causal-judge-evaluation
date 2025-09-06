@@ -65,6 +65,8 @@ def _build_orthogonalized_ips(
     verbose: bool,
 ) -> OrthogonalizedCalibratedIPS:
     cfg = dict(config)
+    # Remove n_folds if present (not used by IPS estimators)
+    cfg.pop("n_folds", None)
     if calibration_result and getattr(calibration_result, "calibrator", None):
         cfg.setdefault("calibrator", calibration_result.calibrator)
         if verbose:
