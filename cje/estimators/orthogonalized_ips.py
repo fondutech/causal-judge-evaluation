@@ -312,18 +312,21 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
             # Get m̂^OOF (default to ones if not available)
             m_hat_oof = self._m_hat_oof_cache.get(policy, np.ones_like(W))
 
-            # Compute OC-IPS (SIMCal-anchored, two-term version)
-            # Since R_oof == f_oof, the orthog term (W-m̂)(R-f̂) is zero
-            # We only need baseline + retarget for orthogonality
+            # Compute OC-IPS (SIMCal-anchored, full three-term version)
+            # V̂ = P_n[W̃·R] + P_n[(W-m̂)(R-f̂)] + P_n[f̂(W-W̃)]
 
             # 1. Baseline term (use OOF rewards for consistency with IF)
             baseline = W_tilde * R_oof
 
-            # 2. Re-targeting term (achieves orthogonality to both f̂ and m̂)
+            # 2. Orthogonalization term (doubly-robust correction)
+            # This is the KEY term that makes us robust to both f̂ and m̂ errors
+            orthogonalization = (W - m_hat_oof) * (R_oof - f_oof)
+
+            # 3. Re-targeting term (aligns with SIMCal weights)
             retarget = f_oof * (W - W_tilde)
 
             # Total contribution before augmentation
-            contrib = baseline + retarget
+            contrib = baseline + orthogonalization + retarget
 
             # Add oracle slice augmentation (as in parent)
             aug, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
@@ -362,9 +365,9 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                     self._iic_adjustments = {}
                 self._iic_adjustments[policy] = iic_adjustment
 
-                # Adjust point estimate and recenter IF
+                # Adjust point estimate
                 V_hat += iic_adjustment
-                phi -= iic_adjustment  # Critical: recenter IF after adjusting V_hat
+                # Note: phi is already residualized by _apply_iic, no need to recenter
 
             # Standard error from influence function
             se = float(np.std(phi, ddof=1) / np.sqrt(n))
@@ -372,10 +375,16 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
             influence_functions[policy] = phi
 
             # Store orthogonalization diagnostics with CIs
+            orthog_se = float(np.std(orthogonalization, ddof=1) / np.sqrt(n))
+            orthog_ci = 1.96 * orthog_se
             retarget_se = float(np.std(retarget, ddof=1) / np.sqrt(n))
             retarget_ci = 1.96 * retarget_se
 
             self._orthogonalization_diagnostics[policy] = {
+                "orthog_residual": float(orthogonalization.mean()),
+                "orthog_se": orthog_se,
+                "orthog_ci_lower": float(orthogonalization.mean() - orthog_ci),
+                "orthog_ci_upper": float(orthogonalization.mean() + orthog_ci),
                 "retarget_residual": float(retarget.mean()),
                 "retarget_se": retarget_se,
                 "retarget_ci_lower": float(retarget.mean() - retarget_ci),
@@ -386,6 +395,7 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
 
             logger.debug(
                 f"OC-IPS for {policy}: V̂={V_hat:.4f}, SE={se:.4f}, "
+                f"orthog={orthogonalization.mean():.6f}±{orthog_se:.6f}, "
                 f"retarget={retarget.mean():.6f}±{retarget_se:.6f}"
             )
 
