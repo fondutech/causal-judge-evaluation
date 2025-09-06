@@ -166,7 +166,6 @@ class BaseAblation:
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
-                oracle_slice_config="auto",  # Let estimator auto-detect based on actual oracle coverage
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
             ),
@@ -174,7 +173,6 @@ class BaseAblation:
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
-                oracle_slice_config="auto",  # Let estimator auto-detect based on actual oracle coverage
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
             ),
@@ -188,7 +186,6 @@ class BaseAblation:
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
-                oracle_slice_config="auto",  # Let estimator auto-detect based on actual oracle coverage
                 use_calibrated_weights=True,  # Use SIMCal calibrated weights
                 use_iic=use_iic,  # Pass IIC setting
             ),
@@ -196,7 +193,6 @@ class BaseAblation:
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
-                oracle_slice_config="auto",  # Let estimator auto-detect based on actual oracle coverage
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
             ),
@@ -204,23 +200,20 @@ class BaseAblation:
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
-                oracle_slice_config="auto",  # Let estimator auto-detect based on actual oracle coverage
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
             ),
             "stacked-dr": lambda s: StackedDREstimator(
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
-                n_folds=5,
-                oracle_slice_config="auto",  # Let estimator auto-detect based on actual oracle coverage
+                V_folds=5,
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
             ),
             "cal-stacked-dr": lambda s: StackedDREstimator(
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
-                n_folds=5,
-                oracle_slice_config="auto",  # Let estimator auto-detect based on actual oracle coverage
+                V_folds=5,
                 use_calibrated_weights=True,  # Use SIMCal calibrated weights
                 use_iic=use_iic,  # Pass IIC setting
             ),
