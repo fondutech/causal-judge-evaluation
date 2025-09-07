@@ -21,7 +21,10 @@ EXPERIMENTS = {
     "use_calibration": [True, False],  # Test with and without calibration
     # IIC for DR methods
     "use_iic": [True, False],
-    "seed": 42,  # Single seed for simplicity
+    # Reward calibration modes
+    "reward_calibration_modes": ["auto", "monotone", "two_stage"],
+    # Multiple seeds for robust results
+    "seeds": [42, 123, 456],  # 3 seeds for statistical robustness
 }
 
 # Method-specific constraints
@@ -49,7 +52,7 @@ CONSTRAINTS = {
 
 # Fixed parameters for DR methods
 DR_CONFIG = {
-    "fresh_draws_k": 10,  # Fixed at reasonable value
+    "fresh_draws_k": 1,
     "n_folds": 5,
 }
 
