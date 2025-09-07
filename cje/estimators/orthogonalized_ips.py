@@ -365,9 +365,8 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                     self._iic_adjustments = {}
                 self._iic_adjustments[policy] = iic_adjustment
 
-                # Adjust point estimate
-                V_hat += iic_adjustment
-                # Note: phi is already residualized by _apply_iic, no need to recenter
+                # IIC is variance-only: it residualizes the IF but does NOT change the point estimate
+                # The point estimate V_hat remains unchanged
 
             # Standard error from influence function
             se = float(np.std(phi, ddof=1) / np.sqrt(n))

@@ -450,10 +450,9 @@ class TRCPOEstimator(DREstimator):
 
             # Optional IIC (variance-only tightening)
             if self.use_iic:
-                phi, iic_adj = self._apply_iic(phi, policy, fold_ids=fold_ids)
-                V_hat += float(iic_adj)
-                phi -= float(iic_adj)  # recenter IF
-                estimates[-1] = V_hat
+                phi, _ = self._apply_iic(phi, policy, fold_ids=fold_ids)
+                # IIC is variance-only: it residualizes the IF but does NOT change the point estimate
+                # The point estimate V_hat remains unchanged
 
             # Compute SE with Monte Carlo variance adjustment
             base_se = float(np.std(phi, ddof=1) / np.sqrt(n)) if n > 1 else 0.0

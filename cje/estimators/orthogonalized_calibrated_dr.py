@@ -397,15 +397,12 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
             # ---------- Influence function (perfectly aligned with estimator) ----------
             phi = contrib - V_hat
 
-            # Optional IIC residualization (variance reduction) + recenter IF
+            # Optional IIC residualization (variance reduction)
             if self.use_iic:
                 # Use per-prompt folds (already built) for the residualizer
-                phi, iic_adjustment = self._apply_iic(phi, policy, fold_ids=fold_ids)
-                # Adjust estimate and re-center IF
-                V_hat += float(iic_adjustment)
-                phi -= float(iic_adjustment)
-                # Update stored estimate
-                estimates[-1] = V_hat
+                phi, _ = self._apply_iic(phi, policy, fold_ids=fold_ids)
+                # IIC is variance-only: it residualizes the IF but does NOT change the point estimate
+                # The point estimate V_hat remains unchanged
 
             # Standard error from IF + MC variance for finite fresh draws
             base_se = float(np.std(phi, ddof=1) / np.sqrt(n)) if n > 1 else 0.0

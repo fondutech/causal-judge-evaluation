@@ -404,9 +404,8 @@ class CalibratedIPS(BaseCJEEstimator):
                 self._iic_adjustments = {}
             self._iic_adjustments[policy] = iic_adjustment
 
-            # Adjust the point estimate to maintain consistency with the influence function
-            estimate += iic_adjustment
-            estimates[-1] = estimate  # Update the stored estimate
+            # IIC is variance-only: it residualizes the IF but does NOT change the point estimate
+            # The point estimate remains unchanged
 
             # Compute standard error from the (possibly residualized) influence functions
             se = float(np.std(influence, ddof=1) / np.sqrt(n))

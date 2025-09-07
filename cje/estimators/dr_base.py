@@ -630,8 +630,8 @@ class DREstimator(BaseCJEEstimator):
                 self._iic_adjustments = {}
             self._iic_adjustments[policy] = iic_adjustment
 
-            # Adjust the point estimate to maintain consistency with the influence function
-            dr_estimate += iic_adjustment
+            # IIC is variance-only: it residualizes the IF but does NOT change the point estimate
+            # The point estimate dr_estimate remains unchanged
 
             # Base SE from influence functions (across-prompt variance)
             base_se = np.std(if_contributions, ddof=1) / np.sqrt(len(if_contributions))

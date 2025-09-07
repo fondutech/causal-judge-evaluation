@@ -58,6 +58,7 @@ class TMLEEstimator(DREstimator):
         use_calibrated_weights: bool = True,
         weight_mode: str = "hajek",
         calibrator: Optional[Any] = None,
+        use_iic: bool = True,  # Enable IIC for variance reduction
         **kwargs: Any,
     ):
         # Initialize DR base with standard isotonic outcome model
@@ -225,6 +226,11 @@ class TMLEEstimator(DREstimator):
 
             # 5) Standard error via empirical IF (include augmentation)
             if_contrib = g_fresh_star + ips_corr_total - psi
+
+            # Apply IIC if enabled (variance-only: residualizes IF but does NOT change point estimate)
+            if self.use_iic:
+                if_contrib, _ = self._apply_iic(if_contrib, policy, fold_ids=fold_ids)
+
             se = (
                 float(np.std(if_contrib, ddof=1) / np.sqrt(len(if_contrib)))
                 if len(if_contrib) > 1
