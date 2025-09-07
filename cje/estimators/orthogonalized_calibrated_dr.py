@@ -112,6 +112,9 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
         self.use_orthogonalization = use_orthogonalization
         self._m_hat_oof_cache: Dict[str, np.ndarray] = {}
         self._orthogonalization_diagnostics: Dict[str, Dict[str, Any]] = {}
+        self._orthogonality_scores: Dict[str, Dict[str, Any]] = (
+            {}
+        )  # Add orthogonality score tracking
 
     # ---------- Fit: add m̂^OOF(S) per policy (local folds) ----------
 
@@ -445,6 +448,17 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
                 "avg_draws_per_prompt": float(np.mean(M)) if len(M) > 0 else 0.0,
             }
 
+            # Compute orthogonality score (same as parent DR-CPO)
+            from cje.diagnostics.dr import compute_orthogonality_score
+
+            ortho_result = compute_orthogonality_score(
+                weights=W_tilde,  # Use calibrated weights for consistency with DR-CPO
+                rewards=R_logged,
+                outcome_predictions=q_logged_oof,
+                return_ci=True,
+            )
+            self._orthogonality_scores[policy] = ortho_result
+
             logger.info(
                 f"OC-DR-CPO[{policy}]: {V_hat:.4f} ± {se:.4f} | "
                 f"orthog={ortho_mean:+.4e} [{ortho_lo:+.4e},{ortho_hi:+.4e}], "
@@ -464,6 +478,7 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
             metadata={
                 "target_policies": list(self.sampler.target_policies),
                 "orthogonalization_diagnostics": self._orthogonalization_diagnostics,
+                "orthogonality_scores": self._orthogonality_scores,  # Include orthogonality scores
                 "iic_estimate_adjusted": bool(self.use_iic),
                 "iic_diagnostics": getattr(self, "_iic_diagnostics", None),
                 "oracle_augmentation": getattr(self, "_aug_diagnostics", None),

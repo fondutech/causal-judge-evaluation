@@ -674,6 +674,11 @@ class BaseAblation:
                     result["iic_diagnostics"] = estimation_result.metadata[
                         "iic_diagnostics"
                     ]
+                # OC-DR-CPO stores orthogonality scores in metadata
+                if "orthogonality_scores" in estimation_result.metadata:
+                    result["orthogonality_scores"] = estimation_result.metadata[
+                        "orthogonality_scores"
+                    ]
 
             # Compute diagnostics
             self.compute_diagnostics(estimator, result, len(dataset.samples))
