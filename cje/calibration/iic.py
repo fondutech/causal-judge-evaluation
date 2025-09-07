@@ -136,11 +136,11 @@ class IsotonicInfluenceControl:
         # Compute residuals: φ̃ = φ - Ê[φ|S]
         residuals = influence - fitted_values
 
-        # CRITICAL: Compute the point estimate adjustment
-        # When using residualized IFs: φ̃ = φ - Ê[φ|S]
-        # The adjusted estimate must be: θ_new = θ_old - (1/n)Σ Ê[φ|S]
-        # This ensures the point estimate corresponds to the residualized influence function
-        point_estimate_adjustment = float(-np.mean(fitted_values))
+        # CRITICAL: IIC must be variance-only
+        # We residualize the influence functions: φ̃ = φ - Ê[φ|S]
+        # But the point estimate should NOT change (variance reduction only)
+        # Therefore, point_estimate_adjustment must always be 0
+        point_estimate_adjustment = 0.0
 
         # Store fitted component if requested (for visualization)
         if self.config.store_components:
