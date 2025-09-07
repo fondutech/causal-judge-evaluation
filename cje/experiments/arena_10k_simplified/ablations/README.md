@@ -50,7 +50,7 @@ The unified system (`run.py`) tests all combinations of:
 - **Sample sizes**: 500, 1000, 2500, 5000
 - **Oracle coverage**: 5%, 10%, 25%, 50%, 100%
 - **Calibration**: On/off (controlled by `use_calibration`, with constraints)
-- **IIC (Influence Intercept Calibration)**: On/off for all methods (controlled by `use_iic`)
+- **IIC (Isotonic Influence Control)**: On/off for all methods (controlled by `use_iic`)
 - **Seed**: Single seed (42) for reproducibility
 
 ### Estimator Constraints
@@ -63,7 +63,7 @@ This reduces the total experiments from 560 to 400 valid combinations.
 
 ### Expected Results
 - **SIMCal weight calibration**: Should improve DR methods (reduces weight variance)
-- **IIC**: 3-95% variance reduction (proportional to R² between influence and judge scores)
+- **IIC**: 5-20% standard error reduction (variance-only, preserves point estimates)
 - **DR methods**: Critical when n < 500 or oracle < 10%
 - **Stacked-DR**: Most robust across scenarios
 
