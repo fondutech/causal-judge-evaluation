@@ -222,67 +222,69 @@ class UnifiedAblation(BaseAblation):
                         iic_values = EXPERIMENTS["use_iic"]
 
                         for use_iic in iic_values:
-                            # Create specification
-                            spec = ExperimentSpec(
-                                ablation="unified",
-                                dataset_path=str(DATA_PATH),
-                                estimator=estimator,
-                                sample_size=sample_size,
-                                oracle_coverage=oracle_coverage,
-                                n_seeds=1,  # Single seed
-                                seed_base=EXPERIMENTS["seed"],
-                                extra={
-                                    "use_calibration": use_calibration,
-                                    "use_iic": use_iic,
-                                },
-                            )
+                            # Iterate over multiple seeds for statistical robustness
+                            for seed in EXPERIMENTS["seeds"]:
+                                # Create specification
+                                spec = ExperimentSpec(
+                                    ablation="unified",
+                                    dataset_path=str(DATA_PATH),
+                                    estimator=estimator,
+                                    sample_size=sample_size,
+                                    oracle_coverage=oracle_coverage,
+                                    n_seeds=1,  # Single seed per experiment
+                                    seed_base=seed,  # Use current seed from iteration
+                                    extra={
+                                        "use_calibration": use_calibration,
+                                        "use_iic": use_iic,
+                                    },
+                                )
 
-                            # Check if already completed
-                            exp_id = self._generate_exp_id(spec.to_dict())
-                            if exp_id in self.completed_experiments:
-                                skipped += 1
-                                logger.debug(f"Skipping completed: {exp_id}")
-                                continue
+                                # Check if already completed
+                                exp_id = self._generate_exp_id(spec.to_dict())
+                                if exp_id in self.completed_experiments:
+                                    skipped += 1
+                                    logger.debug(f"Skipping completed: {exp_id}")
+                                    continue
 
-                            total_experiments += 1
+                                total_experiments += 1
 
-                            # Run experiment with single seed
-                            logger.info(
-                                f"\n[{completed + failed + 1}/{total_experiments}] "
-                                f"Running: {estimator} n={sample_size} "
-                                f"oracle={oracle_coverage:.0%} "
-                                f"cal={use_calibration} iic={use_iic}"
-                            )
+                                # Run experiment with current seed
+                                logger.info(
+                                    f"\n[{completed + failed + 1}/{total_experiments}] "
+                                    f"Running: {estimator} n={sample_size} "
+                                    f"oracle={oracle_coverage:.0%} "
+                                    f"cal={use_calibration} iic={use_iic} seed={seed}"
+                                )
 
-                            try:
-                                # Run with single seed
-                                result = self.run_single(spec, EXPERIMENTS["seed"])
+                                try:
+                                    # Run with current seed
+                                    result = self.run_single(spec, seed)
 
-                                # Save result
-                                self._save_checkpoint(result)
-                                all_results.append(result)
-                                completed += 1
+                                    # Save result
+                                    self._save_checkpoint(result)
+                                    all_results.append(result)
+                                    completed += 1
 
-                                # Log summary
-                                if result.get("success"):
-                                    if "rmse_vs_oracle" in result:
-                                        logger.info(
-                                            f"  ✓ RMSE: {result['rmse_vs_oracle']:.4f}"
-                                        )
-                                    else:
-                                        logger.info("  ✓ Completed")
+                                    # Log summary
+                                    if result.get("success"):
+                                        if "rmse_vs_oracle" in result:
+                                            logger.info(
+                                                f"  ✓ RMSE: {result['rmse_vs_oracle']:.4f}"
+                                            )
+                                        else:
+                                            logger.info("  ✓ Completed")
 
-                            except Exception as e:
-                                logger.error(f"  ✗ Failed: {e}")
-                                failed += 1
+                                except Exception as e:
+                                    logger.error(f"  ✗ Failed: {e}")
+                                    failed += 1
 
-                                # Save failed result
-                                failed_result = {
-                                    "spec": spec.to_dict(),
-                                    "success": False,
-                                    "error": str(e),
-                                }
-                                self._save_checkpoint(failed_result)
+                                    # Save failed result
+                                    failed_result = {
+                                        "spec": spec.to_dict(),
+                                        "success": False,
+                                        "error": str(e),
+                                    }
+                                    self._save_checkpoint(failed_result)
 
         # Final summary
         logger.info("\n" + "=" * 60)
