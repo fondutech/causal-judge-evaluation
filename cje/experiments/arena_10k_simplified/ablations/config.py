@@ -24,7 +24,18 @@ EXPERIMENTS = {
     # Reward calibration modes
     "reward_calibration_modes": ["auto", "monotone", "two_stage"],
     # Multiple seeds for robust results
-    "seeds": [42, 123, 456],  # 3 seeds for statistical robustness
+    "seeds": [
+        42,
+        123,
+        456,
+        789,
+        1011,
+        1213,
+        1415,
+        1617,
+        1819,
+        2021,
+    ],  # 10 seeds for statistical robustness
 }
 
 # Method-specific constraints
