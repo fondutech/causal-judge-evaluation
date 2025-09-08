@@ -1,7 +1,7 @@
 """Base class for CJE estimators."""
 
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, Union, Tuple
+from typing import Optional, Dict, Any, Union, Tuple, List
 import numpy as np
 import logging
 
@@ -30,6 +30,8 @@ class BaseCJEEstimator(ABC):
         diagnostic_config: Optional[Dict[str, Any]] = None,
         use_iic: bool = True,  # Default to True - free variance reduction!
         iic_config: Optional[IICConfig] = None,
+        reward_calibrator: Optional[Any] = None,
+        oua_jackknife: bool = True,  # Default to True for oracle uncertainty augmentation
     ):
         """Initialize estimator.
 
@@ -39,6 +41,8 @@ class BaseCJEEstimator(ABC):
             diagnostic_config: Optional configuration dict (for future use)
             use_iic: Whether to use Isotonic Influence Control for variance reduction (default True)
             iic_config: Optional IIC configuration (uses defaults if None)
+            reward_calibrator: Optional reward calibrator for OUA jackknife
+            oua_jackknife: Whether to enable Oracle Uncertainty Augmentation (default True)
         """
         self.sampler = sampler
         self.run_diagnostics = run_diagnostics
@@ -52,6 +56,10 @@ class BaseCJEEstimator(ABC):
         self.use_iic = use_iic
         self.iic = IsotonicInfluenceControl(iic_config) if use_iic else None
         self._iic_diagnostics: Dict[str, Dict] = {}  # Store IIC diagnostics
+
+        # Configure OUA for oracle uncertainty augmentation
+        self.reward_calibrator = reward_calibrator
+        self.oua_jackknife = oua_jackknife
 
     @abstractmethod
     def fit(self) -> None:
@@ -225,3 +233,62 @@ class BaseCJEEstimator(ABC):
             )
 
         return residualized, adjustment
+
+    def _apply_oua_jackknife(self, result: EstimationResult) -> None:
+        """Apply Oracle Uncertainty Augmentation via jackknife resampling.
+
+        This method computes robust standard errors that account for finite-sample
+        uncertainty in the learned reward calibrator f̂(S). It recomputes estimates
+        using each leave-one-fold calibrator and combines the variance.
+
+        Args:
+            result: EstimationResult to augment with robust standard errors
+        """
+        if not (self.oua_jackknife and self.reward_calibrator is not None):
+            return
+
+        try:
+            oua_ses: List[float] = []
+            var_oracle_map: Dict[str, float] = {}
+            jk_counts: Dict[str, int] = {}
+            base_se = result.standard_errors
+
+            for i, policy in enumerate(self.sampler.target_policies):
+                var_orc = 0.0
+                K = 0
+                jack = self.get_oracle_jackknife(policy)
+                if jack is not None and len(jack) >= 2 and i < len(base_se):
+                    K = len(jack)
+                    psi_bar = float(np.mean(jack))
+                    var_orc = (K - 1) / K * float(np.mean((jack - psi_bar) ** 2))
+                var_oracle_map[policy] = var_orc
+                jk_counts[policy] = K
+                se_main = float(base_se[i]) if i < len(base_se) else float("nan")
+                oua_ses.append(float(np.sqrt(se_main**2 + var_orc)))
+
+            result.robust_standard_errors = np.array(oua_ses)
+            # Attach OUA metadata
+            if isinstance(result.metadata, dict):
+                result.metadata.setdefault("oua", {})
+                result.metadata["oua"].update(
+                    {
+                        "var_oracle_per_policy": var_oracle_map,
+                        "jackknife_counts": jk_counts,
+                    }
+                )
+        except Exception as e:
+            logger.debug(f"OUA jackknife failed: {e}")
+
+    def get_oracle_jackknife(self, policy: str) -> Optional[np.ndarray]:
+        """Compute leave-one-oracle-fold jackknife estimates.
+
+        This method should be overridden by estimators that support OUA.
+        The default implementation returns None (no OUA support).
+
+        Args:
+            policy: Policy name to compute jackknife estimates for
+
+        Returns:
+            Array of K jackknife estimates (one per fold), or None if not supported
+        """
+        return None

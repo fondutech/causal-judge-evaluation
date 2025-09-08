@@ -70,11 +70,13 @@ class CalibratedIPS(BaseCJEEstimator):
         oua_jackknife: bool = True,
         **kwargs: Any,
     ):
-        # Pass oracle_slice_config to base if provided, otherwise use default "auto"
+        # Pass OUA parameters to base class
         super().__init__(
             sampler=sampler,
             run_diagnostics=run_diagnostics,
             diagnostic_config=None,  # Will use defaults
+            reward_calibrator=reward_calibrator,
+            oua_jackknife=oua_jackknife,
             **kwargs,  # Passes oracle_slice_config if provided
         )
         self.calibrate_weights = calibrate_weights
@@ -82,14 +84,9 @@ class CalibratedIPS(BaseCJEEstimator):
         self.clip_weight = clip_weight
         self.ess_floor = ess_floor if calibrate_weights else None
         self.var_cap = var_cap if calibrate_weights else None
-        self.reward_calibrator = (
-            reward_calibrator  # Needed for OUA regardless of weight calibration
-        )
         self.include_baseline = include_baseline if calibrate_weights else True
         self.baseline_shrink = baseline_shrink if calibrate_weights else 0.0
         self.refuse_unreliable = refuse_unreliable
-        # Optional oracle-uncertainty jackknife (disabled by default)
-        self.oua_jackknife = bool(oua_jackknife)
         self._no_overlap_policies: Set[str] = set()
         self._calibration_info: Dict[str, Dict] = {}  # Store calibration details
         self._diagnostics: Optional[IPSDiagnostics] = None
@@ -504,34 +501,8 @@ class CalibratedIPS(BaseCJEEstimator):
             pass
 
         # Optionally add oracle-uncertainty jackknife variance
-        if self.oua_jackknife and self.reward_calibrator is not None:
-            oua_ses: List[float] = []
-            var_oracle_map: Dict[str, float] = {}
-            jk_counts: Dict[str, int] = {}
-            base_se = result.standard_errors
-            for i, policy in enumerate(self.sampler.target_policies):
-                var_orc = 0.0
-                K = 0
-                jack = self.get_oracle_jackknife(policy)
-                if jack is not None and len(jack) >= 2 and i < len(base_se):
-                    K = len(jack)
-                    psi_bar = float(np.mean(jack))
-                    var_orc = (K - 1) / K * float(np.mean((jack - psi_bar) ** 2))
-                var_oracle_map[policy] = var_orc
-                jk_counts[policy] = K
-                se_main = float(base_se[i]) if i < len(base_se) else float("nan")
-                oua_ses.append(float(np.sqrt(se_main**2 + var_orc)))
-
-            result.robust_standard_errors = np.array(oua_ses)
-            # Attach OUA metadata
-            if isinstance(result.metadata, dict):
-                result.metadata.setdefault("oua", {})
-                result.metadata["oua"].update(
-                    {
-                        "var_oracle_per_policy": var_oracle_map,
-                        "jackknife_counts": jk_counts,
-                    }
-                )
+        # Apply OUA jackknife using base class method
+        self._apply_oua_jackknife(result)
 
         # Build and attach diagnostics directly
         diagnostics = self._build_diagnostics(result)

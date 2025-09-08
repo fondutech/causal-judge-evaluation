@@ -154,8 +154,11 @@ class BaseAblation:
 
         estimator_map = {
             "raw-ips": lambda s: CalibratedIPS(
-                s, calibrate_weights=False, oua_jackknife=oua
-            ),  # No calibration
+                s,
+                calibrate_weights=False,
+                reward_calibrator=cal_result.calibrator if cal_result else None,
+                oua_jackknife=oua,
+            ),  # No weight calibration, but still support OUA
             "ips": lambda s: CalibratedIPS(
                 s,
                 calibrate_weights=use_calibration,

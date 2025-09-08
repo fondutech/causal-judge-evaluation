@@ -474,40 +474,8 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
             },
         )
 
-        # Optionally attach OUA jackknife SEs (same logic as DR-CPO base)
-        if getattr(self, "oua_jackknife", False) and self.reward_calibrator is not None:
-            try:
-                oua_ses: List[float] = []
-                var_oracle_map: Dict[str, float] = {}
-                jk_counts: Dict[str, int] = {}
-                for i, policy in enumerate(self.sampler.target_policies):
-                    se_main = (
-                        float(result.standard_errors[i])
-                        if i < len(result.standard_errors)
-                        else float("nan")
-                    )
-                    var_orc = 0.0
-                    K = 0
-                    jack = self.get_oracle_jackknife(policy)
-                    if jack is not None and len(jack) >= 2:
-                        K = len(jack)
-                        psi_bar = float(np.mean(jack))
-                        var_orc = (K - 1) / K * float(np.mean((jack - psi_bar) ** 2))
-                    var_oracle_map[policy] = var_orc
-                    jk_counts[policy] = K
-                    oua_ses.append(float(np.sqrt(se_main**2 + var_orc)))
-
-                result.robust_standard_errors = np.array(oua_ses)
-                if isinstance(result.metadata, dict):
-                    result.metadata.setdefault("oua", {})
-                    result.metadata["oua"].update(
-                        {
-                            "var_oracle_per_policy": var_oracle_map,
-                            "jackknife_counts": jk_counts,
-                        }
-                    )
-            except Exception as e:
-                logger.debug(f"OC-DR-CPO OUA jackknife failed: {e}")
+        # Apply OUA jackknife using base class method
+        self._apply_oua_jackknife(result)
 
         # Store IFs on self for downstream tools
         self._influence_functions = ifs

@@ -68,7 +68,7 @@ class TRCPOEstimator(DREstimator):
         max_pi: float = 1 - 1e-3,
         use_iic: bool = True,
         run_diagnostics: bool = True,
-        oua_jackknife: bool = True,
+        oua_jackknife: bool = False,
         **kwargs: Any,
     ):
         # TR uses raw/Hájek weights; disable SIMCal in parent (but reuse all DR infra)
@@ -88,7 +88,6 @@ class TRCPOEstimator(DREstimator):
         self.min_pi = float(min_pi)
         self.max_pi = float(max_pi)
         self.use_iic = bool(use_iic)
-        self.oua_jackknife = bool(oua_jackknife)  # Store OUA setting
         self._piL_oof_cache: Dict[str, np.ndarray] = {}
         self._m_hat_oof_cache: Dict[str, np.ndarray] = {}  # Cache for m̂(S) = E[W|S]
         self._tr_diagnostics: Dict[str, Dict[str, Any]] = {}
@@ -602,39 +601,8 @@ class TRCPOEstimator(DREstimator):
         )
 
         # Optional OUA (usually tiny for TR; still supported)
-        if getattr(self, "oua_jackknife", False) and self.reward_calibrator is not None:
-            try:
-                oua_ses: List[float] = []
-                var_oracle_map: Dict[str, float] = {}
-                jk_counts: Dict[str, int] = {}
-                for i, policy in enumerate(self.sampler.target_policies):
-                    se_main = (
-                        float(result.standard_errors[i])
-                        if i < len(result.standard_errors)
-                        else float("nan")
-                    )
-                    var_orc = 0.0
-                    K = 0
-                    jack = self.get_oracle_jackknife(policy)
-                    if jack is not None and len(jack) >= 2:
-                        K = len(jack)
-                        psi_bar = float(np.mean(jack))
-                        var_orc = (K - 1) / K * float(np.mean((jack - psi_bar) ** 2))
-                    var_oracle_map[policy] = var_orc
-                    jk_counts[policy] = K
-                    oua_ses.append(float(np.sqrt(se_main**2 + var_orc)))
-
-                result.robust_standard_errors = np.array(oua_ses)
-                if isinstance(result.metadata, dict):
-                    result.metadata.setdefault("oua", {})
-                    result.metadata["oua"].update(
-                        {
-                            "var_oracle_per_policy": var_oracle_map,
-                            "jackknife_counts": jk_counts,
-                        }
-                    )
-            except Exception as e:
-                logger.debug(f"TR-CPO OUA jackknife failed: {e}")
+        # Apply OUA jackknife using base class method
+        self._apply_oua_jackknife(result)
 
         # Keep local copy for stackers
         self._results = result

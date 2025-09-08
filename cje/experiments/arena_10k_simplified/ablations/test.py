@@ -19,13 +19,17 @@ import config
 orig_estimators = config.EXPERIMENTS["estimators"]
 orig_sample_sizes = config.EXPERIMENTS["sample_sizes"]
 orig_oracle_coverages = config.EXPERIMENTS["oracle_coverages"]
-orig_n_seeds = config.EXPERIMENTS["n_seeds"]
+orig_seeds = config.EXPERIMENTS["seeds"]
 
 # Set minimal test values
-config.EXPERIMENTS["estimators"] = ["calibrated-ips", "dr-cpo"]  # One IPS, one DR
+config.EXPERIMENTS["estimators"] = [
+    "raw-ips",
+    "calibrated-ips",
+    "orthogonalized-ips",
+]  # Test IPS variants
 config.EXPERIMENTS["sample_sizes"] = [500, 1000]  # Just 2 sizes
 config.EXPERIMENTS["oracle_coverages"] = [0.10, 0.25]  # Just 2 coverages
-config.EXPERIMENTS["n_seeds"] = 2  # Fewer seeds for speed
+config.EXPERIMENTS["seeds"] = [42, 123]  # Just 2 seeds for speed
 
 # Update paths for test (use absolute paths to avoid issues)
 config.RESULTS_PATH = config.BASE_DIR / "results" / "test_results.jsonl"
@@ -38,15 +42,16 @@ print(f"Testing with:")
 print(f"  Estimators: {config.EXPERIMENTS['estimators']}")
 print(f"  Sample sizes: {config.EXPERIMENTS['sample_sizes']}")
 print(f"  Oracle coverages: {config.EXPERIMENTS['oracle_coverages']}")
-print(f"  Seeds: {config.EXPERIMENTS['n_seeds']}")
+print(f"  Seeds: {len(config.EXPERIMENTS['seeds'])}")
 print("")
 
 # Expected number of experiments:
-# calibrated-ips: 2 sizes × 2 coverages × 1 cal option × 1 iic option = 4
-# dr-cpo: 2 sizes × 2 coverages × 2 cal options × 2 iic options = 16
-# Total: 20 experiments × 2 seeds = 40 individual runs
-print("Expected experiments: ~20 configurations × 2 seeds = 40 runs")
-print("Estimated time: 5-10 minutes")
+# raw-ips: 2 sizes × 2 coverages = 4
+# calibrated-ips: 2 sizes × 2 coverages = 4
+# orthogonalized-ips: 2 sizes × 2 coverages = 4
+# Total: 12 experiments × 2 seeds = 24 individual runs
+print("Expected experiments: ~12 configurations × 2 seeds = 24 runs")
+print("Estimated time: 3-5 minutes")
 print("")
 
 # Import and run
@@ -93,7 +98,7 @@ def main() -> int:
         config.EXPERIMENTS["estimators"] = orig_estimators
         config.EXPERIMENTS["sample_sizes"] = orig_sample_sizes
         config.EXPERIMENTS["oracle_coverages"] = orig_oracle_coverages
-        config.EXPERIMENTS["n_seeds"] = orig_n_seeds
+        config.EXPERIMENTS["seeds"] = orig_seeds
 
         return 0
 

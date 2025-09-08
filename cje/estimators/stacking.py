@@ -81,14 +81,8 @@ class StackedDREstimator(BaseCJEEstimator):
         self.weight_mode = kwargs.pop("weight_mode", "hajek")
         # Extract use_calibrated_weights to control SIMCal
         self.use_calibrated_weights = kwargs.pop("use_calibrated_weights", True)
-        # Extract oracle_slice_config to pass to base class
-        oracle_slice_config = kwargs.pop("oracle_slice_config", True)
-        # If oracle_slice_config is a dict, add oua_jackknife to it
-        if isinstance(oracle_slice_config, dict):
-            oracle_slice_config["oua_jackknife"] = oua_jackknife
-        elif oracle_slice_config:
-            # If it's True/"auto", convert to dict with oua_jackknife
-            oracle_slice_config = {"oua_jackknife": oua_jackknife}
+        # Remove deprecated oracle_slice_config parameter (now using OUA jackknife)
+        kwargs.pop("oracle_slice_config", None)  # Remove if present, ignore if not
 
         # BaseCJEEstimator only accepts specific params, not arbitrary kwargs
         # Oracle slice config removed - OUA jackknife handled per-estimator
@@ -106,7 +100,6 @@ class StackedDREstimator(BaseCJEEstimator):
         self.seed = seed
         self.use_iic = use_iic
         self.oua_jackknife = oua_jackknife  # Store OUA setting
-        self.oracle_slice_config = oracle_slice_config  # Store the extracted value
 
         # Storage for results
         self.component_results: Dict[str, Optional[EstimationResult]] = {}
@@ -365,9 +358,8 @@ class StackedDREstimator(BaseCJEEstimator):
                 reward_calibrator=self.reward_calibrator,
                 use_calibrated_weights=self.use_calibrated_weights,
                 weight_mode=self.weight_mode,
-                oracle_slice_config=self.oracle_slice_config,
+                oua_jackknife=self.oua_jackknife,  # Pass OUA jackknife setting
                 use_iic=self.use_iic,  # Enable IIC for component estimators
-                oua_jackknife=self.oua_jackknife,  # Pass OUA setting directly
             )
 
             # Pass shared fold IDs if the estimator supports it
@@ -384,9 +376,7 @@ class StackedDREstimator(BaseCJEEstimator):
                     )
         else:
             # For non-DR estimators (shouldn't happen with default config)
-            estimator = estimator_class(
-                self.sampler, oracle_slice_config=self.oracle_slice_config
-            )
+            estimator = estimator_class(self.sampler)
 
             # Try to pass fold IDs even for non-DR estimators
             if hasattr(estimator, "set_fold_ids"):

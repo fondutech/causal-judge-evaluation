@@ -78,19 +78,19 @@ class DREstimator(BaseCJEEstimator):
             else:
                 oua_jackknife = True
 
-        # Pass oracle_slice_config to base class (now handles it for all estimators)
+        # Pass OUA parameters to base class
         super().__init__(
             sampler=sampler,
             run_diagnostics=run_diagnostics,
             diagnostic_config=None,  # Will use defaults
+            reward_calibrator=reward_calibrator,
+            oua_jackknife=oua_jackknife,
             **kwargs,  # Passes oracle_slice_config if provided
         )
 
         self.n_folds = n_folds
-        self.reward_calibrator = reward_calibrator
         self.use_calibrated_weights = use_calibrated_weights
         self.random_seed = random_seed
-        self.oua_jackknife = oua_jackknife
 
         # Initialize the IPS estimator with appropriate mode
         self.ips_estimator: CalibratedIPS
@@ -890,40 +890,8 @@ class DREstimator(BaseCJEEstimator):
             robust_confidence_intervals=None,
         )
 
-        # Optionally compute and attach oracle-uncertainty (OUA) adjusted SEs
-        if self.oua_jackknife and self.reward_calibrator is not None:
-            try:
-                oua_ses: List[float] = []
-                var_oracle_map: Dict[str, float] = {}
-                jk_counts: Dict[str, int] = {}
-                for i, policy in enumerate(self.sampler.target_policies):
-                    se_main = (
-                        float(base_result.standard_errors[i])
-                        if i < len(base_result.standard_errors)
-                        else float("nan")
-                    )
-                    var_orc = 0.0
-                    K = 0
-                    jack = self.get_oracle_jackknife(policy)
-                    if jack is not None and len(jack) >= 2:
-                        K = len(jack)
-                        psi_bar = float(np.mean(jack))
-                        var_orc = (K - 1) / K * float(np.mean((jack - psi_bar) ** 2))
-                    var_oracle_map[policy] = var_orc
-                    jk_counts[policy] = K
-                    oua_ses.append(float(np.sqrt(se_main**2 + var_orc)))
-
-                base_result.robust_standard_errors = np.array(oua_ses)
-                if isinstance(base_result.metadata, dict):
-                    base_result.metadata.setdefault("oua", {})
-                    base_result.metadata["oua"].update(
-                        {
-                            "var_oracle_per_policy": var_oracle_map,
-                            "jackknife_counts": jk_counts,
-                        }
-                    )
-            except Exception as e:
-                logger.debug(f"OUA jackknife failed: {e}")
+        # Apply OUA jackknife using base class method
+        self._apply_oua_jackknife(base_result)
 
         return base_result
 

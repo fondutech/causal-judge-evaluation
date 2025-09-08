@@ -410,6 +410,9 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
             },
         )
 
+        # Apply OUA jackknife using base class method (uses our custom get_oracle_jackknife)
+        self._apply_oua_jackknife(result)
+
         # Create diagnostics similar to parent class
         if self.run_diagnostics:
             from ..diagnostics import IPSDiagnostics, Status
@@ -465,3 +468,81 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
 
         self._results = result
         return result
+
+    def get_oracle_jackknife(self, policy: str) -> Optional[np.ndarray]:
+        """Leave-one-oracle-fold jackknife estimates for OC-IPS.
+
+        For each reward_calibrator fold model f^(−k), recompute the OC-IPS estimate using
+        rewards R^(−k) = f^(−k)(S) with the same weights and orthogonalization terms.
+
+        Returns an array of K estimates, or None if not applicable.
+        """
+        try:
+            if self.reward_calibrator is None:
+                return None
+
+            # Use the unified method to get fold models
+            if not hasattr(self.reward_calibrator, "get_fold_models_for_oua"):
+                if self.oua_jackknife:
+                    raise ValueError(
+                        "OUA jackknife is enabled but reward calibrator doesn't support it. "
+                        "Ensure calibrate_dataset() uses enable_cross_fit=True."
+                    )
+                return None
+
+            fold_models = self.reward_calibrator.get_fold_models_for_oua()
+
+            if not fold_models:
+                if self.oua_jackknife:
+                    logger.warning(
+                        "OUA jackknife is enabled but no fold models available. "
+                        "This may happen if calibration mode doesn't support cross-fitting."
+                    )
+                return None
+
+            # Get required data for this policy
+            data = self.sampler.get_data_for_policy(policy)
+            if not data:
+                return None
+
+            # Get weights (raw and SIMCal calibrated)
+            W = self.sampler.compute_importance_weights(
+                policy, clip_weight=self.clip_weight, mode=self.weight_mode
+            )
+            W_tilde = self._weights_cache.get(policy)
+            if W is None or W_tilde is None:
+                return None
+
+            # Get m̂^OOF
+            m_hat_oof = self._m_hat_oof_cache.get(policy, np.ones_like(W))
+
+            judge_scores = np.array([d.get("judge_score") for d in data], dtype=float)
+
+            # Sanity check alignment
+            if len(judge_scores) != len(W) or len(judge_scores) != len(W_tilde):
+                return None
+
+            jack: List[float] = []
+            for fold_id, fold_model in fold_models.items():
+                # Recompute rewards under leave-one-fold reward_calibrator
+                # For FlexibleCalibrator, fold_model is IsotonicRegression
+                rewards_loo = np.clip(fold_model.predict(judge_scores), 0.0, 1.0)
+
+                # OUA jackknife: recompute OC-IPS with different calibrator
+                # Use the same three-term structure as estimate method:
+                # V̂ = P_n[W̃·R^(−k)] + P_n[(W-m̂)(R^(−k)-R^(−k))] + P_n[R^(−k)(W-W̃)]
+                #   = P_n[W̃·R^(−k)] + 0 + P_n[R^(−k)(W-W̃)]
+                #   = P_n[R^(−k)·W]  (since the orthogonalization term cancels)
+
+                # For jackknife, we use the same structure but with leave-one-fold rewards
+                baseline_loo = W_tilde * rewards_loo
+                orthog_loo = (W - m_hat_oof) * (rewards_loo - rewards_loo)  # = 0
+                retarget_loo = rewards_loo * (W - W_tilde)
+
+                contrib_loo = baseline_loo + orthog_loo + retarget_loo
+                jack.append(float(np.mean(contrib_loo)))
+
+            return np.asarray(jack, dtype=float) if jack else None
+        except Exception as e:
+            logger.debug(f"get_oracle_jackknife failed for {policy}: {e}")
+            return None
