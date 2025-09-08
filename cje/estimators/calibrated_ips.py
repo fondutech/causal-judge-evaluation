@@ -82,7 +82,7 @@ class CalibratedIPS(BaseCJEEstimator):
         self.clip_weight = clip_weight
         self.ess_floor = ess_floor if calibrate else None
         self.var_cap = var_cap if calibrate else None
-        self.calibrator = calibrator if calibrate else None
+        self.calibrator = calibrator  # Needed for OUA regardless of weight calibration
         self.include_baseline = include_baseline if calibrate else True
         self.baseline_shrink = baseline_shrink if calibrate else 0.0
         self.refuse_unreliable = refuse_unreliable

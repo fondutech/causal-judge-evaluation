@@ -164,6 +164,7 @@ class BaseAblation:
             "calibrated-ips": lambda s: CalibratedIPS(
                 s,
                 calibrate=True,
+                calibrator=cal_result.calibrator if cal_result else None,
                 oua_jackknife=oua,  # Always use calibration, enable OUA
             ),
             "orthogonalized-ips": lambda s: OrthogonalizedCalibratedIPS(
