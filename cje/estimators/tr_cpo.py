@@ -81,6 +81,7 @@ class TRCPOEstimator(DREstimator):
             reward_calibrator=reward_calibrator,
             random_seed=random_seed,
             run_diagnostics=run_diagnostics,
+            oua_jackknife=oua_jackknife,  # Pass OUA setting to parent
             **kwargs,
         )
         self.weight_mode = weight_mode  # Store weight_mode as instance attribute
