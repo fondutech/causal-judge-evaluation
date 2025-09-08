@@ -92,12 +92,16 @@ def calibrate_dataset(
     if len(oracle_labels_array) == 0:
         raise ValueError(f"No oracle labels found in field '{oracle_field}'")
 
+    # Check if we have 100% oracle coverage
+    oracle_coverage = len(oracle_labels_array) / len(dataset.samples)
+    has_full_coverage = oracle_coverage >= 1.0
+
     # Determine calibration mode
     if calibration_mode is None:
         # Default to auto for cross-fit (better for DR), monotone otherwise
         calibration_mode = "auto" if enable_cross_fit else "monotone"
 
-    # Calibrate judge scores
+    # Calibrate judge scores (even with 100% coverage, we need f̂ for DR models)
     calibrator = JudgeCalibrator(
         calibration_mode=cast(
             Literal["monotone", "two_stage", "auto"], calibration_mode
@@ -133,11 +137,19 @@ def calibrate_dataset(
         # Note: We no longer store cv_fold in metadata
         # Folds are computed on-demand from prompt_id using the unified system
 
+        # Choose reward based on oracle coverage
+        if has_full_coverage and i in oracle_labels_dict:
+            # With 100% coverage, use oracle labels directly
+            reward_value = float(oracle_labels_dict[i])
+        else:
+            # With partial coverage or no oracle for this sample, use calibrated score
+            reward_value = float(result.calibrated_scores[i])
+
         calibrated_sample = Sample(
             prompt_id=sample.prompt_id,
             prompt=sample.prompt,
             response=sample.response,
-            reward=float(result.calibrated_scores[i]),
+            reward=reward_value,
             base_policy_logprob=sample.base_policy_logprob,
             target_policy_logprobs=sample.target_policy_logprobs,
             metadata=new_metadata,
@@ -153,8 +165,12 @@ def calibrate_dataset(
         "coverage": result.coverage_at_01,
         "n_oracle": result.n_oracle,
         "n_total": len(judge_scores),
+        "oracle_coverage": oracle_coverage,
+        "using_direct_oracle": has_full_coverage,
         "method": (
-            "cross_fitted_isotonic" if enable_cross_fit else "isotonic"
+            "direct_oracle"
+            if has_full_coverage
+            else ("cross_fitted_isotonic" if enable_cross_fit else "isotonic")
         ),  # Will be updated below
         "n_folds": n_folds if enable_cross_fit else None,
         "oof_rmse": result.oof_rmse if enable_cross_fit else None,
@@ -232,7 +248,10 @@ def calibrate_dataset(
             dataset_metadata["calibration_info"]["selected_mode"] = selected_mode
 
     # Update method field to reflect actual calibration mode used
-    if selected_mode:
+    if has_full_coverage:
+        # With 100% coverage, we use oracle labels directly
+        dataset_metadata["calibration_info"]["method"] = "direct_oracle"
+    elif selected_mode:
         dataset_metadata["calibration_info"]["method"] = (
             f"cross_fitted_{selected_mode}" if enable_cross_fit else selected_mode
         )
