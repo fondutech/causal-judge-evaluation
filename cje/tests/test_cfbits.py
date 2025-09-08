@@ -25,7 +25,7 @@ from cje.cfbits import (
 class TestIFRComputation:
     """Test Information Fraction Ratio and adjusted ESS."""
 
-    def test_ifr_perfect_efficiency(self):
+    def test_ifr_perfect_efficiency(self) -> None:
         """Test IFR = 1 when IF = EIF."""
         n = 100
         # Create identical IF and EIF
@@ -39,7 +39,7 @@ class TestIFRComputation:
         assert abs(result.aess_main - n) < 1e-10
         assert result.var_phi == result.var_eif
 
-    def test_ifr_half_efficiency(self):
+    def test_ifr_half_efficiency(self) -> None:
         """Test IFR = 0.5 when Var(IF) = 2×Var(EIF)."""
         n = 100
         # Create EIF with half the variance
@@ -53,7 +53,7 @@ class TestIFRComputation:
         assert abs(result.aess_main - 50) < 1
         assert abs(result.var_phi / result.var_eif - 2.0) < 0.1
 
-    def test_ifr_without_eif(self):
+    def test_ifr_without_eif(self) -> None:
         """Test IFR defaults to 1 when EIF not provided (IPS-like)."""
         n = 100
         phi = np.random.randn(n)
@@ -64,7 +64,7 @@ class TestIFRComputation:
         assert result.aess_main == n
         assert result.var_eif == result.var_phi
 
-    def test_ifr_bounds(self):
+    def test_ifr_bounds(self) -> None:
         """Test IFR is bounded in (0, 1]."""
         n = 100
         phi = np.random.randn(n) * 10
@@ -79,24 +79,24 @@ class TestSamplingWidth:
     """Test sampling width computation."""
 
     @pytest.fixture
-    def mock_estimator(self):
+    def mock_estimator(self) -> Any:
         """Create a mock estimator with influence functions."""
 
         class MockEstimator:
-            def __init__(self):
+            def __init__(self) -> None:
                 self._influence_functions = {"test_policy": np.random.randn(100) * 0.5}
                 self.sampler = MockSampler()
 
-            def get_influence_functions(self, policy):
+            def get_influence_functions(self, policy: str) -> Any:
                 return self._influence_functions.get(policy)
 
         class MockSampler:
-            def get_judge_scores(self):
+            def get_judge_scores(self) -> Any:
                 return np.random.uniform(0, 1, 100)
 
         return MockEstimator()
 
-    def test_sampling_width_basic(self, mock_estimator):
+    def test_sampling_width_basic(self, mock_estimator: Any) -> None:
         """Test basic sampling width computation."""
         wvar, var_components = compute_sampling_width(
             mock_estimator, "test_policy", use_iic=False
@@ -108,7 +108,7 @@ class TestSamplingWidth:
         assert var_components.var_main > 0
         assert var_components.var_oracle == 0  # No OUA in Phase 1
 
-    def test_sampling_width_confidence_level(self, mock_estimator):
+    def test_sampling_width_confidence_level(self, mock_estimator: Any) -> None:
         """Test different confidence levels affect width."""
         wvar_95, _ = compute_sampling_width(mock_estimator, "test_policy", alpha=0.05)
         wvar_99, _ = compute_sampling_width(mock_estimator, "test_policy", alpha=0.01)
@@ -116,7 +116,7 @@ class TestSamplingWidth:
         # 99% CI should be wider
         assert wvar_99 > wvar_95
 
-    def test_sampling_width_missing_if(self, mock_estimator):
+    def test_sampling_width_missing_if(self, mock_estimator: Any) -> None:
         """Test error when influence functions not available."""
         with pytest.raises(ValueError, match="No influence functions"):
             compute_sampling_width(mock_estimator, "nonexistent_policy")
@@ -125,7 +125,7 @@ class TestSamplingWidth:
 class TestOverlapFloors:
     """Test overlap metrics on judge marginal."""
 
-    def test_overlap_perfect(self):
+    def test_overlap_perfect(self) -> None:
         """Test perfect overlap (uniform weights)."""
         n = 100
         S = np.random.uniform(0, 1, n)
@@ -138,8 +138,7 @@ class TestOverlapFloors:
         assert abs(result.chi2_s - 0.0) < 0.1  # Should be ~0
         assert 0.9 < result.bc <= 1.0
 
-
-    def test_overlap_theoretical_constraint(self):
+    def test_overlap_theoretical_constraint(self) -> None:
         """Test A-ESSF ≤ BC² theoretical constraint."""
         n = 200
         S = np.random.uniform(0, 1, n)
@@ -150,7 +149,7 @@ class TestOverlapFloors:
         # Allow small numerical tolerance
         assert result.aessf <= result.bc**2 + 0.05
 
-    def test_overlap_confidence_intervals(self):
+    def test_overlap_confidence_intervals(self) -> None:
         """Test bootstrap confidence intervals."""
         n = 100
         S = np.random.uniform(0, 1, n)
@@ -165,7 +164,7 @@ class TestOverlapFloors:
         # CI should have reasonable width
         assert result.ci_aessf[1] - result.ci_aessf[0] < 1.0
 
-    def test_overlap_small_sample(self):
+    def test_overlap_small_sample(self) -> None:
         """Test with small sample size."""
         n = 20
         S = np.random.uniform(0, 1, n)
@@ -179,7 +178,7 @@ class TestOverlapFloors:
 class TestCFBits:
     """Test CF-bits computation."""
 
-    def test_cfbits_no_reduction(self):
+    def test_cfbits_no_reduction(self) -> None:
         """Test bits = 0 when no width reduction."""
         w0 = 1.0
         wid = 0.5
@@ -192,7 +191,7 @@ class TestCFBits:
         assert abs(result.bits_tot) < 0.01  # ~0 bits
         assert result.w_max == 0.5
 
-    def test_cfbits_one_bit(self):
+    def test_cfbits_one_bit(self) -> None:
         """Test bits = 1 when width halved."""
         w0 = 1.0
         wid = 0.2
@@ -203,7 +202,7 @@ class TestCFBits:
         assert result.w_tot == 0.5
         assert abs(result.bits_tot - 1.0) < 0.01  # ~1 bit
 
-    def test_cfbits_with_ifr(self):
+    def test_cfbits_with_ifr(self) -> None:
         """Test variance bits computation from IFR."""
         w0 = 1.0
         wid = 0.3
@@ -216,7 +215,7 @@ class TestCFBits:
         # bits_var = 0.5 * log2(0.25) = 0.5 * (-2) = -1
         assert abs(result.bits_var - (-1.0)) < 0.01
 
-    def test_cfbits_dominant_width(self):
+    def test_cfbits_dominant_width(self) -> None:
         """Test identification of dominant width."""
         # Identification dominant
         result1 = compute_cfbits(1.0, wid=0.6, wvar=0.2)
@@ -230,7 +229,7 @@ class TestCFBits:
 class TestGates:
     """Test reliability gating."""
 
-    def test_gates_all_good(self):
+    def test_gates_all_good(self) -> None:
         """Test GOOD state when all metrics acceptable."""
         decision = apply_gates(aessf=0.8, ifr=0.9, tail_index=3.0, var_oracle_ratio=0.5)
 
@@ -238,7 +237,7 @@ class TestGates:
         assert decision.state == "GOOD"
         assert len(decision.suggestions) == 0
 
-    def test_gates_refuse_catastrophic_overlap(self):
+    def test_gates_refuse_catastrophic_overlap(self) -> None:
         """Test REFUSE when overlap catastrophic."""
         decision = apply_gates(aessf=0.04)  # Below refuse threshold
 
@@ -246,7 +245,7 @@ class TestGates:
         assert "Catastrophic overlap" in decision.reasons[0]
         assert "change_policy" in decision.suggestions
 
-    def test_gates_critical_poor_overlap(self):
+    def test_gates_critical_poor_overlap(self) -> None:
         """Test CRITICAL when overlap poor."""
         decision = apply_gates(aessf=0.15)  # Below critical threshold
 
@@ -254,14 +253,14 @@ class TestGates:
         assert "Poor overlap" in decision.reasons[0]
         assert "use_dr" in decision.suggestions
 
-    def test_gates_warning_inefficient(self):
+    def test_gates_warning_inefficient(self) -> None:
         """Test WARNING when inefficient."""
         decision = apply_gates(ifr=0.4)  # Below warning threshold
 
         assert decision.state == "WARNING"
         assert "Inefficient" in decision.reasons[0]
 
-    def test_gates_critical_tail_risk(self):
+    def test_gates_critical_tail_risk(self) -> None:
         """Test CRITICAL with tail risk."""
         decision = apply_gates(tail_index=1.8)  # Below critical threshold
 
@@ -269,7 +268,7 @@ class TestGates:
         assert "Infinite variance risk" in decision.reasons[0]
         assert "robust_estimator" in decision.suggestions
 
-    def test_gates_custom_thresholds(self):
+    def test_gates_custom_thresholds(self) -> None:
         """Test custom threshold override."""
         decision = apply_gates(
             aessf=0.3, thresholds={"aessf_critical": 0.5}  # Stricter threshold
@@ -281,7 +280,7 @@ class TestGates:
 class TestConsistencyInvariants:
     """Test mathematical consistency requirements."""
 
-    def test_bits_total_consistency(self):
+    def test_bits_total_consistency(self) -> None:
         """Test bits_tot == log2(w0 / (wid + wvar))."""
         w0 = 1.0
         wid = 0.3
@@ -293,7 +292,7 @@ class TestConsistencyInvariants:
         assert abs(result.bits_tot - expected) < 1e-10
         assert result.w_tot == wid + wvar
 
-    def test_ifr_ordering(self):
+    def test_ifr_ordering(self) -> None:
         """Test IFR_OUA ≤ IFR_main ≤ 1."""
         n = 100
         phi = np.random.randn(n)
@@ -305,7 +304,7 @@ class TestConsistencyInvariants:
         assert 0 < result.ifr_oua <= result.ifr_main <= 1.0
         assert result.aess_oua <= result.aess_main <= n
 
-    def test_variance_total_consistency(self):
+    def test_variance_total_consistency(self) -> None:
         """Test var_total == var_main/n + var_oracle."""
         from cje.cfbits.sampling import SamplingVariance
 
@@ -320,7 +319,7 @@ class TestConsistencyInvariants:
 
         assert abs(varc.var_total - (var_main / n + var_oracle)) < 1e-10
 
-    def test_aessf_bc_constraint(self):
+    def test_aessf_bc_constraint(self) -> None:
         """Test theoretical constraint A-ESSF ≤ BC²."""
         n = 200
         S = np.random.uniform(0, 1, n)
@@ -331,7 +330,7 @@ class TestConsistencyInvariants:
         # Allow small tolerance for numerical error
         assert result.aessf <= result.bc**2 + 0.01
 
-    def test_deterministic_overlap_estimation(self):
+    def test_deterministic_overlap_estimation(self) -> None:
         """Test determinism with fixed random_state."""
         n = 100
         S = np.random.uniform(0, 1, n)
@@ -352,7 +351,7 @@ class TestConsistencyInvariants:
 class TestEndToEnd:
     """Integration tests with real CJE components."""
 
-    def test_full_pipeline(self):
+    def test_full_pipeline(self) -> None:
         """Test complete CF-bits pipeline with real data."""
         from cje.data import load_dataset_from_jsonl
         from cje.calibration.dataset import calibrate_dataset
@@ -380,6 +379,7 @@ class TestEndToEnd:
 
         # Test IFR
         if_values = estimator.get_influence_functions(policy)
+        assert if_values is not None, "Influence functions should be available"
         efficiency = compute_ifr_aess(if_values)
         assert 0 < efficiency.ifr_main <= 1.0
         assert efficiency.aess_main > 0
@@ -391,6 +391,7 @@ class TestEndToEnd:
         # Test overlap
         weights = sampler.compute_importance_weights(policy, mode="raw")
         judge_scores = sampler.get_judge_scores()
+        assert judge_scores is not None, "Judge scores should be available"
         overlap = estimate_overlap_floors(judge_scores, weights, n_boot=20)
         assert 0 < overlap.aessf <= 1.0
 
