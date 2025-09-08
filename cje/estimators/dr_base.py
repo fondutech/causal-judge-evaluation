@@ -111,12 +111,14 @@ class DREstimator(BaseCJEEstimator):
 
         # Choose default outcome model based on available reward_calibrator
         if outcome_model is None:
-            if (
-                reward_calibrator is not None
-                and hasattr(reward_calibrator, "_fold_models")
-                and reward_calibrator._fold_models
+            has_fold_models = False
+            if reward_calibrator is not None and hasattr(
+                reward_calibrator, "has_fold_models"
             ):
-                # We have a cross-fitted reward_calibrator with standard isotonic models, use it for outcome model
+                has_fold_models = reward_calibrator.has_fold_models()
+
+            if has_fold_models:
+                # We have a cross-fitted reward_calibrator, use it for outcome model
                 logger.info(
                     "Using CalibratorBackedOutcomeModel (reusing calibration models)"
                 )
@@ -1148,8 +1150,22 @@ class DREstimator(BaseCJEEstimator):
             logger.debug("No reward_calibrator available for oracle jackknife")
             return None
 
-        if not hasattr(self.reward_calibrator, "_fold_models"):
-            logger.debug("Reward_calibrator has no fold models for oracle jackknife")
+        # Use unified interface to get fold models
+        if not hasattr(self.reward_calibrator, "get_fold_models_for_oua"):
+            if self.oua_jackknife:
+                raise ValueError(
+                    "OUA jackknife is enabled but reward calibrator doesn't support it. "
+                    "Ensure calibrate_dataset() uses enable_cross_fit=True."
+                )
+            return None
+
+        fold_models = self.reward_calibrator.get_fold_models_for_oua()
+        if not fold_models:
+            if self.oua_jackknife:
+                logger.warning(
+                    "OUA jackknife is enabled but no fold models available. "
+                    "This may happen if calibration mode doesn't support cross-fitting."
+                )
             return None
 
         if policy not in self._fresh_draws:
@@ -1167,7 +1183,7 @@ class DREstimator(BaseCJEEstimator):
 
         try:
             # Get the number of folds from reward_calibrator
-            n_folds = len(self.reward_calibrator._fold_models)
+            n_folds = len(fold_models)
             jackknife_estimates = []
 
             # Get base components that don't change
@@ -1181,8 +1197,8 @@ class DREstimator(BaseCJEEstimator):
             # For each fold, compute leave-that-fold-out estimate
             for fold_id in range(n_folds):
                 # Use the model that was trained WITHOUT this fold's oracle samples
-                # The reward_calibrator._fold_models[fold_id] was trained on all folds EXCEPT fold_id
-                fold_model = self.reward_calibrator._fold_models.get(fold_id)
+                # The fold_models[fold_id] was trained on all folds EXCEPT fold_id
+                fold_model = fold_models.get(fold_id)
                 if fold_model is None:
                     logger.debug(f"No fold model for fold {fold_id}")
                     continue

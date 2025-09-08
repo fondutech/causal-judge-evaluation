@@ -447,8 +447,8 @@ class CalibratorBackedOutcomeModel(BaseOutcomeModel):
 
         # Verify calibrator has cross-fitted models
         if (
-            not hasattr(reward_calibrator, "_fold_models")
-            or not reward_calibrator._fold_models
+            not hasattr(reward_calibrator, "has_fold_models")
+            or not reward_calibrator.has_fold_models()
         ):
             raise ValueError(
                 "CalibratorBackedOutcomeModel requires a calibrator fitted with "

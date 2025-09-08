@@ -481,7 +481,12 @@ class BaseAblation:
 
             # ALWAYS calibrate rewards (judge → oracle) when oracle labels exist
             # This is NOT controlled by use_calibration flag
-            # Use auto mode for reward calibration
+            # Calibration mode can be configured via spec.extra["reward_calibration_mode"]
+            reward_calibration_mode = (
+                spec.extra.get("reward_calibration_mode", "auto")
+                if spec.extra
+                else "auto"
+            )
 
             calibrated_dataset, cal_result = calibrate_dataset(
                 dataset,
@@ -489,7 +494,7 @@ class BaseAblation:
                 oracle_field="oracle_label",
                 enable_cross_fit=True,
                 n_folds=5 if n_oracle >= 50 else 3,
-                calibration_mode="auto",
+                calibration_mode=reward_calibration_mode,
             )
 
             if cal_result:
@@ -622,16 +627,31 @@ class BaseAblation:
             # Extract results
             for i, policy in enumerate(sampler.target_policies):
                 result["estimates"][policy] = float(estimation_result.estimates[i])
+
+                # Always store base standard errors if available
                 if estimation_result.standard_errors is not None:
-                    result["standard_errors"][policy] = float(
-                        estimation_result.standard_errors[i]
-                    )
+                    base_se = float(estimation_result.standard_errors[i])
+                    result["standard_errors"][policy] = base_se
+
+                    # Also store robust SEs separately if available (includes OUA)
+                    if (
+                        hasattr(estimation_result, "robust_standard_errors")
+                        and estimation_result.robust_standard_errors is not None
+                    ):
+                        robust_se = float(estimation_result.robust_standard_errors[i])
+                        result.setdefault("robust_standard_errors", {})[
+                            policy
+                        ] = robust_se
+                        # Use robust SE for confidence intervals
+                        se_for_ci = robust_se
+                    else:
+                        se_for_ci = base_se
+
                     # Compute confidence interval from SE
                     est = estimation_result.estimates[i]
-                    se = estimation_result.standard_errors[i]
                     result["confidence_intervals"][policy] = (
-                        float(est - 1.96 * se),
-                        float(est + 1.96 * se),
+                        float(est - 1.96 * se_for_ci),
+                        float(est + 1.96 * se_for_ci),
                     )
 
             # Extract DR-specific diagnostics if available

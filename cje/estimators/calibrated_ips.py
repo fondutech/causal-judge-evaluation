@@ -656,12 +656,26 @@ class CalibratedIPS(BaseCJEEstimator):
         Returns an array of K estimates, or None if not applicable.
         """
         try:
-            if self.reward_calibrator is None or not hasattr(
-                self.reward_calibrator, "_fold_models"
-            ):
+            if self.reward_calibrator is None:
                 return None
-            fold_models = getattr(self.reward_calibrator, "_fold_models", {})
+
+            # Use the unified method to get fold models
+            if not hasattr(self.reward_calibrator, "get_fold_models_for_oua"):
+                if self.oua_jackknife:
+                    raise ValueError(
+                        "OUA jackknife is enabled but reward calibrator doesn't support it. "
+                        "Ensure calibrate_dataset() uses enable_cross_fit=True."
+                    )
+                return None
+
+            fold_models = self.reward_calibrator.get_fold_models_for_oua()
+
             if not fold_models:
+                if self.oua_jackknife:
+                    logger.warning(
+                        "OUA jackknife is enabled but no fold models available. "
+                        "This may happen if calibration mode doesn't support cross-fitting."
+                    )
                 return None
 
             # Get required data
@@ -681,6 +695,8 @@ class CalibratedIPS(BaseCJEEstimator):
             jack: List[float] = []
             for fold_id, fold_model in fold_models.items():
                 # Recompute rewards under leave-one-fold reward_calibrator
+                # For FlexibleCalibrator two-stage, fold_model is already IsotonicRegression
+                # For FlexibleCalibrator monotone or standard isotonic, it's IsotonicRegression
                 rewards_loo = np.clip(fold_model.predict(judge_scores), 0.0, 1.0)
 
                 # Recompute augmentation with the updated rewards

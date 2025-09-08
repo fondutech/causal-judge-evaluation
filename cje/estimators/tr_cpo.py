@@ -644,12 +644,24 @@ class TRCPOEstimator(DREstimator):
     def get_oracle_jackknife(self, policy: str) -> Optional[np.ndarray]:
         """Compute delete-one-oracle-fold TR estimates (optional OUA)."""
         try:
-            if self.reward_calibrator is None or not hasattr(
-                self.reward_calibrator, "_fold_models"
-            ):
+            if self.reward_calibrator is None:
                 return None
-            fold_models = getattr(self.reward_calibrator, "_fold_models", {})
+
+            # Use unified interface to get fold models
+            if not hasattr(self.reward_calibrator, "get_fold_models_for_oua"):
+                if self.oua_jackknife:
+                    logger.warning(
+                        "TR-CPO: OUA jackknife enabled but reward calibrator doesn't support it. "
+                        "Ensure calibrate_dataset() uses enable_cross_fit=True."
+                    )
+                return None
+            fold_models = self.reward_calibrator.get_fold_models_for_oua()
+
             if not fold_models:
+                if self.oua_jackknife:
+                    logger.warning(
+                        "TR-CPO: OUA jackknife enabled but no fold models available."
+                    )
                 return None
 
             data = self.sampler.get_data_for_policy(policy)

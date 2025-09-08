@@ -5,7 +5,7 @@ using monotonic regression on a labeled subset.
 """
 
 import numpy as np
-from typing import Optional, Tuple, Dict, List, Literal, TYPE_CHECKING
+from typing import Optional, Tuple, Dict, List, Literal, TYPE_CHECKING, Any
 from sklearn.isotonic import IsotonicRegression
 from sklearn.model_selection import KFold
 from dataclasses import dataclass
@@ -526,6 +526,42 @@ class JudgeCalibrator:
         else:
             # Standard monotone calibration uses judge scores directly
             return judge_scores
+
+    def has_fold_models(self) -> bool:
+        """Check if fold models are available for OUA.
+
+        Returns:
+            True if fold models exist, False otherwise
+        """
+        return len(self.get_fold_models_for_oua()) > 0
+
+    def get_fold_models_for_oua(self) -> Dict[int, Any]:
+        """Get fold models for OUA jackknife, handling both standard and flexible calibration.
+
+        This method provides a unified interface to access fold models regardless of
+        the calibration mode (monotone, two_stage, auto) being used.
+
+        Returns:
+            Dictionary of fold_id -> model suitable for predict() calls
+            Empty dict if no fold models available
+        """
+        # If using FlexibleCalibrator (auto/two_stage modes)
+        if self._flexible_calibrator is not None:
+            # Check which mode was actually selected
+            selected_mode = getattr(self._flexible_calibrator, "selected_mode", None)
+
+            if selected_mode == "two_stage":
+                # For two-stage, the isotonic models are in _iso_models
+                models = getattr(self._flexible_calibrator, "_iso_models", {})
+            else:
+                # For monotone (or as fallback), use _monotone_models
+                models = getattr(self._flexible_calibrator, "_monotone_models", {})
+
+            # Ensure we return a dict even if None
+            return models if models is not None else {}
+
+        # Standard isotonic calibration
+        return self._fold_models if self._fold_models is not None else {}
 
     def predict_oof(self, judge_scores: np.ndarray, fold_ids: np.ndarray) -> np.ndarray:
         """Out-of-fold predictions using cross-fitted models.
