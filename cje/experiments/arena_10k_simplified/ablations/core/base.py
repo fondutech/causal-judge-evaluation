@@ -145,22 +145,31 @@ class BaseAblation:
         use_calibration = (
             spec.extra.get("use_calibration", False) if spec.extra else False
         )
+        # Propagate oracle-calibrator uncertainty into SEs (ON by default unless explicitly disabled)
+        oua = spec.extra.get("oua_jackknife", True) if spec.extra else True
 
         # Log parameter settings if needed
         # logger.info(f"Creating {spec.estimator} with use_iic={use_iic}, "
         #            f"use_calibration(SIMCal)={use_calibration}")
 
         estimator_map = {
-            "raw-ips": lambda s: CalibratedIPS(s, calibrate=False),  # No calibration
+            "raw-ips": lambda s: CalibratedIPS(
+                s, calibrate=False, oua_jackknife=oua
+            ),  # No calibration
             "ips": lambda s: CalibratedIPS(
-                s, calibrate=use_calibration  # IPS doesn't support IIC
+                s,
+                calibrate=use_calibration,
+                oua_jackknife=oua,  # IPS doesn't support IIC
             ),
             "calibrated-ips": lambda s: CalibratedIPS(
-                s, calibrate=True  # Always use calibration
+                s,
+                calibrate=True,
+                oua_jackknife=oua,  # Always use calibration, enable OUA
             ),
             "orthogonalized-ips": lambda s: OrthogonalizedCalibratedIPS(
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
+                oua_jackknife=oua,
             ),
             "dr-cpo": lambda s: DRCPOEstimator(
                 s,
@@ -168,6 +177,7 @@ class BaseAblation:
                 n_folds=5,
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
+                oua_jackknife=oua,
             ),
             "oc-dr-cpo": lambda s: OrthogonalizedCalibratedDRCPO(
                 s,
@@ -175,12 +185,14 @@ class BaseAblation:
                 n_folds=5,
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
+                oua_jackknife=oua,
             ),
             "tr-cpo": lambda s: TRCPOEstimator(
                 s,
                 calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
                 use_iic=use_iic,  # Pass IIC setting
+                oua_jackknife=oua,
             ),
             "calibrated-dr-cpo": lambda s: DRCPOEstimator(
                 s,
@@ -188,6 +200,7 @@ class BaseAblation:
                 n_folds=5,
                 use_calibrated_weights=True,  # Use SIMCal calibrated weights
                 use_iic=use_iic,  # Pass IIC setting
+                oua_jackknife=oua,
             ),
             "mrdr": lambda s: MRDREstimator(
                 s,
@@ -195,6 +208,7 @@ class BaseAblation:
                 n_folds=5,
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
+                oua_jackknife=oua,
             ),
             "tmle": lambda s: TMLEEstimator(
                 s,
@@ -202,6 +216,7 @@ class BaseAblation:
                 n_folds=5,
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
+                oua_jackknife=oua,
             ),
             "stacked-dr": lambda s: StackedDREstimator(
                 s,
@@ -209,6 +224,7 @@ class BaseAblation:
                 V_folds=5,
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
+                oua_jackknife=oua,
             ),
             "cal-stacked-dr": lambda s: StackedDREstimator(
                 s,
@@ -216,6 +232,7 @@ class BaseAblation:
                 V_folds=5,
                 use_calibrated_weights=True,  # Use SIMCal calibrated weights
                 use_iic=use_iic,  # Pass IIC setting
+                oua_jackknife=oua,
             ),
         }
 

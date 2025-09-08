@@ -53,6 +53,7 @@ class TRCPOEstimator(DREstimator):
         max_pi: Upper clip for π̂_L (default 1 - 1e-3)
         use_iic: Residualize IF against S to reduce variance
         run_diagnostics: Build DR-like diagnostics
+        oua_jackknife: Enable oracle uncertainty augmentation via delete-fold jackknife
         **kwargs: passed to base class (e.g., oracle_slice_config)
     """
 
@@ -67,6 +68,7 @@ class TRCPOEstimator(DREstimator):
         max_pi: float = 1 - 1e-3,
         use_iic: bool = True,
         run_diagnostics: bool = True,
+        oua_jackknife: bool = False,
         **kwargs: Any,
     ):
         # TR uses raw/Hájek weights; disable SIMCal in parent (but reuse all DR infra)
@@ -85,6 +87,7 @@ class TRCPOEstimator(DREstimator):
         self.min_pi = float(min_pi)
         self.max_pi = float(max_pi)
         self.use_iic = bool(use_iic)
+        self.oua_jackknife = bool(oua_jackknife)  # Store OUA setting
         self._piL_oof_cache: Dict[str, np.ndarray] = {}
         self._m_hat_oof_cache: Dict[str, np.ndarray] = {}  # Cache for m̂(S) = E[W|S]
         self._tr_diagnostics: Dict[str, Dict[str, Any]] = {}

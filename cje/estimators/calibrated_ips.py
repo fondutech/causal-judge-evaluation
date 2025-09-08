@@ -158,6 +158,7 @@ class CalibratedIPS(BaseCJEEstimator):
 
             # Get rewards for this policy (always needed for influence functions)
             rewards = np.array([d["reward"] for d in data], dtype=float)
+            rewards_oof = None  # Will be populated if calibrator available
 
             # Try to get cross-fitted rewards if calibrator available (for SIMCal ordering)
             # Get OOF predictions for this policy subset
@@ -184,6 +185,9 @@ class CalibratedIPS(BaseCJEEstimator):
                                 logger.debug(
                                     f"Using index-based cross-fitted rewards (g^OOF) as SIMCal ordering for policy '{policy}'"
                                 )
+                                # Also use OOF rewards as IF targets if available
+                                if len(g_oof) == len(rewards):
+                                    rewards_oof = np.asarray(g_oof, dtype=float)
 
                     # Option 2: Use fold-based OOF with policy subset
                     if g_oof is None and hasattr(self.calibrator, "predict_oof"):
@@ -207,6 +211,7 @@ class CalibratedIPS(BaseCJEEstimator):
                             logger.debug(
                                 f"Using fold-based cross-fitted rewards (g^OOF) as SIMCal ordering for policy '{policy}'"
                             )
+                            rewards_oof = np.asarray(g_oof, dtype=float)
                 except Exception as e:
                     logger.debug(f"SIMCal ordering OOF failed for '{policy}': {e}")
                     g_oof = None
@@ -235,9 +240,15 @@ class CalibratedIPS(BaseCJEEstimator):
             calibrated, calib_info = sim.transform(
                 raw_weights,
                 ordering_index,  # Now uses g_oof when available, judge_scores otherwise
-                rewards=rewards,  # Always provide rewards
+                rewards=(
+                    rewards_oof if rewards_oof is not None else rewards
+                ),  # Prefer OOF rewards for SIMCal
                 residuals=residuals,  # None for IPS (DR estimators handle this separately)
-                fold_ids=fold_ids,  # None for IPS (DR estimators handle this separately)
+                fold_ids=(
+                    fold_ids
+                    if fold_ids is not None
+                    else self._build_default_folds(len(rewards), seed=42)
+                ),  # Always provide fold IDs
             )
 
             # Cache results
@@ -358,10 +369,17 @@ class CalibratedIPS(BaseCJEEstimator):
                     # Provide estimate with strong warning
                     logger.warning(f"⚠️ UNRELIABLE ESTIMATE: {warning_msg}")
 
-            # Base IPS contribution
-            base_contrib = weights * rewards
+            # ---------- Point estimate (use in-fold rewards) ----------
+            # Split estimator into Hajek ratio term + sample-mean augmentation
+            # ψ̂_w = (sum w_i R_i) / (sum w_i)  (equal to mean(wR) if weights have mean 1)
+            mean_w = float(np.mean(weights))
+            psi_w = (
+                float(np.sum(weights * rewards) / np.sum(weights))
+                if mean_w > 0
+                else float("nan")
+            )
 
-            # Add oracle slice augmentation for honest CIs
+            # Augmentation for point estimate (in-fold rewards are fine for ψ̂)
             aug, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
                 policy,
                 rewards,
@@ -369,30 +387,72 @@ class CalibratedIPS(BaseCJEEstimator):
                 self.sampler.dataset.samples,
             )
             self._aug_diagnostics[policy] = aug_diagnostics
-
-            # Total contribution with augmentation
-            total_contrib = base_contrib + aug
-            estimate = float(total_contrib.mean())
+            aug_mean = float(np.mean(aug)) if n > 0 else 0.0
+            estimate = psi_w + aug_mean
             estimates.append(estimate)
 
-            # Compute influence functions
-            influence = total_contrib - estimate
-
-            # Get fold assignments if using IIC
-            fold_ids = None
-            if self.use_iic:
-                # Compute fold assignments for cross-fitting
+            # ---------- Influence function (OOF rewards + ratio IF + OOF augmentation) ----------
+            # Build fold IDs deterministically (use dataset folds if present)
+            try:
                 from ..data.folds import get_fold
 
-                prompt_ids = [
-                    d.get("prompt_id", f"sample_{i}") for i, d in enumerate(data)
-                ]
-                # Use n_folds from dataset metadata (default to 5 if not set)
                 n_folds = self.sampler.dataset.metadata.get("n_folds", 5)
                 seed = self.sampler.dataset.metadata.get("fold_seed", 42)
+                pids = [
+                    str(d.get("prompt_id", f"sample_{i}")) for i, d in enumerate(data)
+                ]
                 fold_ids = np.array(
-                    [get_fold(pid, n_folds, seed) for pid in prompt_ids]
+                    [get_fold(pid, n_folds, seed) for pid in pids], dtype=int
                 )
+            except Exception:
+                fold_ids = self._build_default_folds(n, seed=42)
+
+            # OOF rewards for IF path (prefer index-based)
+            R_oof = rewards.copy()
+            if self.calibrator is not None:
+                try:
+                    if hasattr(self.calibrator, "predict_oof_by_index"):
+                        ds_index_by_pid = {
+                            str(s.prompt_id): i
+                            for i, s in enumerate(self.sampler.dataset.samples)
+                        }
+                        ds_idx = np.asarray(
+                            [
+                                ds_index_by_pid.get(str(d.get("prompt_id")), -1)
+                                for d in data
+                            ],
+                            dtype=int,
+                        )
+                        if np.all(ds_idx >= 0):
+                            tmp = self.calibrator.predict_oof_by_index(ds_idx)
+                            if tmp is not None:
+                                R_oof = np.asarray(tmp, dtype=float)
+                    elif hasattr(self.calibrator, "predict_oof"):
+                        S_vec = np.asarray(
+                            [d.get("judge_score", np.nan) for d in data], dtype=float
+                        )
+                        tmp = self.calibrator.predict_oof(S_vec, fold_ids)
+                        if tmp is not None:
+                            R_oof = np.asarray(tmp, dtype=float)
+                except Exception as e:
+                    logger.debug(f"OOF reward prediction failed for IF path: {e}")
+
+            # Ratio IF for Hajek term (use the same weights used in ψ̂_w)
+            # φ^H_i = w_i (R_oof_i - ψ̂_w) - ψ̂_w (w_i - mean_w)
+            ratio_if = weights * (R_oof - psi_w) - psi_w * (weights - mean_w)
+
+            # OOF augmentation IF contribution: aug_oof_i - mean(aug_oof)
+            aug_oof, _ = self.oracle_augmentation.compute_augmentation(
+                policy,
+                R_oof,
+                cast(List[Dict[str, Any]], data),
+                self.sampler.dataset.samples,
+            )
+            aug_if = aug_oof - float(np.mean(aug_oof)) if n > 0 else np.zeros(n)
+
+            influence = ratio_if + aug_if
+
+            # Note: fold_ids already computed above for OOF rewards, reuse for IIC if needed
 
             # Apply IIC for variance reduction (if enabled)
             influence, iic_adjustment = self._apply_iic(
@@ -413,9 +473,13 @@ class CalibratedIPS(BaseCJEEstimator):
 
             # Add slice variance share to diagnostics
             if aug_diagnostics:
+                # Compute variance of base IPS contribution (w*R)
+                base_contrib = weights * rewards
                 var_base = (
                     np.var(base_contrib - base_contrib.mean(), ddof=1) if n > 1 else 0.0
                 )
+                # Compute variance of total contribution (w*R + aug)
+                total_contrib = base_contrib + aug
                 var_total = (
                     np.var(total_contrib - total_contrib.mean(), ddof=1)
                     if n > 1
@@ -557,6 +621,28 @@ class CalibratedIPS(BaseCJEEstimator):
         self._results = result
 
         return result
+
+    def _build_default_folds(self, n: int, seed: int = 42) -> np.ndarray:
+        """Create deterministic K-fold IDs when dataset folds are absent.
+
+        Args:
+            n: Number of samples
+            seed: Random seed for fold assignment
+
+        Returns:
+            Array of fold IDs (0 to K-1)
+        """
+        try:
+            from sklearn.model_selection import KFold
+
+            kf = KFold(n_splits=5, shuffle=True, random_state=seed)
+            fold_ids = np.zeros(n, dtype=int)
+            for i, (_, te) in enumerate(kf.split(np.arange(n))):
+                fold_ids[te] = i
+            return fold_ids
+        except Exception:
+            # Fallback to simple modulo if sklearn not available
+            return np.arange(n) % 5
 
     def get_oracle_jackknife(self, policy: str) -> Optional[np.ndarray]:
         """Leave-one-oracle-fold jackknife estimates for IPS.
