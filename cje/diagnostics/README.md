@@ -111,10 +111,10 @@ The `validate()` method checks for logical inconsistencies:
 
 Returns a list of issue descriptions. Empty list means all checks pass.
 
-### 3. Refusal Gates (Hard Stops)
-Some estimators refuse to provide estimates when diagnostics indicate unreliable results. When triggered, they return `NaN` rather than potentially misleading estimates.
+### 3. Refusal Gates (Optional)
+Estimators can optionally refuse to provide estimates when diagnostics indicate unreliable results. By default, estimators **warn** and still provide estimates. When `refuse_unreliable=True`, they return `NaN` for unreliable policies.
 
-Example: CalibratedIPS may refuse estimation based on combinations of ESS, weight concentration, and coefficient of variation. These thresholds are estimator-specific and more conservative than status levels.
+Gate criteria use combinations of ESS, weight concentration, and coefficient of variation. These thresholds are more conservative than status levels and are estimator-specific.
 
 ## Key Diagnostic Metrics
 
@@ -134,11 +134,14 @@ Measures how many "effective" samples remain after weighting. **Can be improved 
 - **ESS < 10%**: Severe overlap problems
 
 ### Auto-Tuned ESS Thresholds
-Instead of fixed thresholds, compute based on desired CI width:
+Instead of fixed thresholds, compute based on desired CI width using variance bounds for bounded rewards [0,1]:
 ```python
+# For bounded rewards: Var(V_IPS) ≤ 1/(4n·ESS_fraction)  
+# 95% CI halfwidth: ≈ 1.96/(2√(n·ESS_fraction))
+# Solving: ESS_fraction ≥ (1.96/2)²/(n·target²) = 0.9604/(n·target²)
 threshold = 0.9604 / (n * target_ci_halfwidth²)
 ```
-For n=10,000 and ±1% target: threshold = 96%
+For n=10,000 and ±1% target: threshold = 96%  
 For n=100,000 and ±1% target: threshold = 9.6%
 
 ### Hill Tail Index

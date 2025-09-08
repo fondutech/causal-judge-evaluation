@@ -53,8 +53,12 @@ Stabilizes importance weights through score-indexed monotone projection:
 ### 3. Cross-Fitted Models
 For doubly robust methods, provides out-of-fold predictions to maintain orthogonality between nuisance functions.
 
-### 4. Oracle Slice Augmentation
-When we calibrate judge scores using only a subset of oracle labels (e.g., 10% coverage), the calibration function f̂ itself has uncertainty. Standard IPS/DR methods treat f̂ as fixed, leading to overconfident CIs. Oracle slice augmentation corrects this by adding a term that accounts for calibration uncertainty, ensuring CIs properly widen when oracle coverage is low.
+### 4. Oracle Uncertainty Quantification (Two Approaches)
+When we calibrate judge scores using only a subset of oracle labels (e.g., 10% coverage), the calibration function f̂ itself has uncertainty. We handle this through two complementary mechanisms:
+
+**Oracle Uncertainty Augmentation (OUA)**: The default approach that uses fold-jackknife to add a **variance** component to CIs, accounting for calibration-induced uncertainty. Used by all Cal-IPS/DR estimators.
+
+**Oracle Slice Augmentation**: An optional point-estimate **bias correction** term `(L/π_L)m̂(S)(Y-f̂(S))` used **only** in TR-CPO under MAR with fitted π_L(S), or optionally as an MCAR engineering fallback (off by default).
 
 ### 5. Isotonic Influence Control (IIC)
 A variance reduction technique that residualizes influence functions against judge scores. By fitting E[φ|S] using isotonic regression and computing residuals φ̃ = φ - Ê[φ|S], IIC reduces variance without changing the estimand. This is "free" variance reduction that's enabled by default in all estimators.
@@ -116,14 +120,14 @@ Advanced weight calibration through stacking:
 - Configurable via `SimcalConfig` dataclass
 
 ### `oracle_slice.py` - Oracle Slice Augmentation
-Corrects for bias and variance when using calibrated rewards instead of true oracle labels:
-- **Problem**: We use f̂(S) everywhere but only have true Y on oracle subset
-- **Solution**: Add augmentation term `(L/p) * m̂(S) * (Y - f̂(S))` where:
-  - L indicates oracle label presence, p = oracle coverage
+Implements the optional point-estimate bias correction (used primarily in TR-CPO):
+- **Problem**: We use f̂(S) everywhere but only have true Y on oracle subset  
+- **Solution**: Add augmentation term `(L/π_L) * m̂(S) * (Y - f̂(S))` where:
+  - L indicates oracle label presence, π_L = labeling propensity
   - m̂(S) = E[W|S] estimated via isotonic regression
-  - Unbiased for the gap between proxy and truth
-- **Effect**: Wider, honest CIs that reflect calibration uncertainty
-- Auto-enables when 0% < oracle coverage < 100%
+  - Unbiased correction for proxy-truth gap under MAR/MCAR
+- **Usage**: Enabled in TR-CPO for MAR setting; optional MCAR fallback (off by default)
+- **Note**: This is separate from OUA jackknife variance (the default uncertainty method)
 
 ### `iic.py` - Isotonic Influence Control
 Reduces influence function variance through residualization:
@@ -134,7 +138,7 @@ Reduces influence function variance through residualization:
 - **Variance-only**: Point estimates remain unchanged, only standard errors are reduced
 - Enabled by default in all estimators (use_iic=True)
 - Provides diagnostics: R², variance reduction, ESS gain
-- Typical variance reductions: 5-20% (more with higher oracle coverage)
+- Typical reductions: 0-20% depending on R²(φ|S); effect is larger when the EIF is more predictable from S
 - Key insight: Influence functions often correlate with judge scores, so removing the predictable component reduces variance "for free"
 
 ## Key Design Decisions
@@ -146,9 +150,9 @@ Each calibration type is isolated with clear interfaces:
 - Outcome models are separate from both
 
 ### 2. **Mean Preservation**
-All calibrations preserve population means exactly:
-- Isotonic regression preserves E[Y]
-- Weight calibration maintains mean = 1 (for Hájek normalization)
+Calibrations preserve means for unbiased estimation:
+- Isotonic preserves the **slice sample mean** exactly, and the **population mean asymptotically** under J₁ (representative slice)
+- Weight projections preserve the **sample** mean-one exactly (Hájek normalization)
 - Critical for unbiased estimation
 
 ### 3. **Variance Control**
@@ -404,7 +408,7 @@ poetry run pytest cje/tests/ -k calibration
 ### Computational Complexity
 - **Isotonic regression**: O(n log n) via PAV
 - **Exact projection**: ~30-40 PAV calls (still O(n log n))
-- **Stacked SIMCal**: O(n²K) for covariance (K=3 candidates)
+- **Stacked SIMCal**: O(nK²) time, O(K²) memory (K=3 candidates)
 - **Cross-fitting**: K × isotonic regression cost
 
 

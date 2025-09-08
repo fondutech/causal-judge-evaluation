@@ -13,7 +13,7 @@ BaseCJEEstimator (abstract)
 ├── StackedDREstimator         # Optimal stacking of DR estimators
 └── DREstimator                # Doubly robust base (abstract)
     ├── DRCPOEstimator         # Basic DR with CPO
-    ├── OrthogonalizedCalibratedDRCPO  # OC-DR-CPO with triple robustness
+    ├── OrthogonalizedCalibratedDRCPO  # OC-DR-CPO with first-order insensitivity
     ├── MRDREstimator          # Multiple robust DR
     ├── TMLEEstimator          # Targeted maximum likelihood
     └── TRCPOEstimator         # Triply robust CPO
@@ -47,7 +47,7 @@ Forms an optimal convex combination of multiple DR estimators (DR-CPO, TMLE, MRD
 ### 7. Orthogonalized Estimators
 Achieve first-order insensitivity to nuisance estimation errors through cross-fitting:
 - **OC-IPS**: Robust to errors in reward calibration f̂(S) and weight calibration m̂(S)
-- **OC-DR-CPO**: Additionally robust to outcome model errors q̂(X,A), providing triple robustness
+- **OC-DR-CPO**: Additionally robust to outcome model errors q̂(X,A), providing first-order insensitivity to f̂, m̂, q̂ errors
 
 ### 8. Triply Robust Estimation (TR-CPO)
 Achieves robustness to misspecification in three components simultaneously:
@@ -65,7 +65,7 @@ estimators/
 ├── orthogonalized_ips.py  # OC-IPS with robustness to calibration errors
 ├── stacking.py            # Optimal stacking of DR estimators
 ├── dr_base.py             # Doubly robust base class
-├── orthogonalized_calibrated_dr.py  # OC-DR-CPO with triple robustness
+├── orthogonalized_calibrated_dr.py  # OC-DR-CPO with first-order insensitivity
 ├── mrdr.py                # Multiple robust DR
 ├── mrdr_tmle.py           # MRDR with TMLE fluctuation
 ├── tmle.py                # Standard TMLE
@@ -100,10 +100,10 @@ estimators/
 - You want basic doubly robust estimation
 
 ### Use **OrthogonalizedCalibratedDRCPO** when:
-- You need maximum robustness to all nuisance errors
+- You want first-order insensitivity to f̂, m̂, and q̂ errors via orthogonalization + targeting
 - Fresh draws are available (REQUIRED)
 - Oracle coverage is partial (< 100%)
-- You want first-order insensitivity to f̂, m̂, and q̂ errors
+- You need robustness but not the "any-two" guarantee (that's TR-CPO)
 
 ### Use **MRDREstimator** when:
 - You need robustness to both weight and outcome model misspecification
@@ -118,10 +118,10 @@ estimators/
 - You need the most sophisticated estimation
 
 ### Use **TRCPOEstimator** when:
-- You need robustness to errors in weight calibration (ŵ), reward calibration (f̂), AND outcome modeling (q̂)
-- Oracle labels are partially available (for label propensity modeling)
+- You want TRUE triple robustness: consistent if ANY TWO of {weights, outcome, calibration/π_L} are correct
+- Oracle labels are partially available (for label propensity π̂_L modeling)
 - Fresh draws are available (REQUIRED)
-- You want triple robustness without full orthogonalization overhead
+- You need the "any-two" guarantee for maximum robustness
 
 ### Use **StackedDREstimator** when:
 - You want the best of all DR methods combined
