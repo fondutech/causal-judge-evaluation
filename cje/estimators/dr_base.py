@@ -68,6 +68,16 @@ class DREstimator(BaseCJEEstimator):
         run_diagnostics: bool = True,
         **kwargs: Any,
     ):
+        # Extract oua_jackknife BEFORE passing kwargs to parent
+        if "oua_jackknife" in kwargs:
+            oua_jackknife = kwargs.pop("oua_jackknife", True)  # Use pop to remove it
+        else:
+            oracle_config = kwargs.get("oracle_slice_config", {})
+            if isinstance(oracle_config, dict):
+                oua_jackknife = oracle_config.get("oua_jackknife", True)
+            else:
+                oua_jackknife = True
+
         # Pass oracle_slice_config to base class (now handles it for all estimators)
         super().__init__(
             sampler=sampler,
@@ -80,13 +90,7 @@ class DREstimator(BaseCJEEstimator):
         self.reward_calibrator = reward_calibrator
         self.use_calibrated_weights = use_calibrated_weights
         self.random_seed = random_seed
-
-        # Extract oua_jackknife from oracle_slice_config if present
-        oracle_config = kwargs.get("oracle_slice_config", {})
-        if isinstance(oracle_config, dict):
-            self.oua_jackknife = oracle_config.get("oua_jackknife", True)
-        else:
-            self.oua_jackknife = True
+        self.oua_jackknife = oua_jackknife
 
         # Initialize the IPS estimator with appropriate mode
         self.ips_estimator: CalibratedIPS

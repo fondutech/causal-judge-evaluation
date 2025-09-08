@@ -367,6 +367,7 @@ class StackedDREstimator(BaseCJEEstimator):
                 weight_mode=self.weight_mode,
                 oracle_slice_config=self.oracle_slice_config,
                 use_iic=self.use_iic,  # Enable IIC for component estimators
+                oua_jackknife=self.oua_jackknife,  # Pass OUA setting directly
             )
 
             # Pass shared fold IDs if the estimator supports it
