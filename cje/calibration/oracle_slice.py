@@ -34,14 +34,20 @@ logger = logging.getLogger(__name__)
 class OracleSliceConfig:
     """Configuration for oracle slice augmentation.
 
+    By default, CJE uses OUA jackknife for oracle uncertainty (variance addition).
+    This bias correction augmentation is optional and primarily used in TR-CPO
+    under MAR or as an MCAR engineering fallback.
+
     Args:
-        enable_augmentation: Whether to add the augmentation term
+        enable_augmentation: Whether to add the bias correction term (default False)
         enable_cross_fit: Whether to cross-fit m̂(S) and π̂(S)
         min_pi: Minimum value for π̂(S) to avoid division issues
         use_mar: Whether to model MAR labeling (vs assuming MCAR)
     """
 
-    enable_augmentation: bool = True
+    enable_augmentation: bool = (
+        False  # Default to OUA jackknife only; TR-CPO enables explicitly
+    )
     enable_cross_fit: bool = True
     min_pi: float = 0.01
     use_mar: bool = False  # Start with MCAR, add MAR in phase 2

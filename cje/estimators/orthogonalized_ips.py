@@ -330,25 +330,13 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
             # Total contribution before augmentation
             contrib = baseline + orthogonalization + retarget
 
-            # Add oracle slice augmentation (as in parent)
-            aug, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
-                policy,
-                R,  # Keep using R for augmentation (it's designed for that)
-                cast(List[Dict[str, Any]], data),
-                self.sampler.dataset.samples,
-            )
-            self._aug_diagnostics[policy] = aug_diagnostics
-
-            # Total contribution with augmentation
-            total_contrib = contrib + aug
-
-            # Point estimate
-            V_hat = float(total_contrib.mean())
+            # Point estimate (no oracle augmentation)
+            V_hat = float(contrib.mean())
             estimates.append(V_hat)
 
             # Influence function (perfectly aligned with estimator now)
-            # φ = contrib - V̂ = W̃·R^OOF + f̂^OOF(W-W̃) + aug - V̂
-            phi = contrib + aug - V_hat
+            # φ = contrib - V̂ = W̃·R^OOF + f̂^OOF(W-W̃) - V̂
+            phi = contrib - V_hat
 
             # Apply IIC if enabled (variance reduction via residualization)
             if self.use_iic:
@@ -418,7 +406,7 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                 "calibrate": self.calibrate_weights,
                 "use_orthogonalization": self.use_orthogonalization,
                 "orthogonalization_diagnostics": self._orthogonalization_diagnostics,
-                "augmentation_diagnostics": self._aug_diagnostics,
+                # augmentation_diagnostics removed - using OUA jackknife only
             },
         )
 

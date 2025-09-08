@@ -91,8 +91,8 @@ class StackedDREstimator(BaseCJEEstimator):
             oracle_slice_config = {"oua_jackknife": oua_jackknife}
 
         # BaseCJEEstimator only accepts specific params, not arbitrary kwargs
-        # So we don't pass **kwargs
-        super().__init__(sampler, oracle_slice_config=oracle_slice_config)
+        # Oracle slice config removed - OUA jackknife handled per-estimator
+        super().__init__(sampler)
 
         # Configuration
         self.estimators = estimators or ["dr-cpo", "tmle", "mrdr"]

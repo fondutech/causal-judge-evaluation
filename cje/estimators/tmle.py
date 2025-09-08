@@ -202,31 +202,14 @@ class TMLEEstimator(DREstimator):
                 # DO NOT shift the fresh draw predictions
                 g_fresh_star = g_fresh0
 
-            # Fit m̂(S) = E[W|S] for oracle augmentation if not already fitted
-            if policy not in self.oracle_augmentation._m_hat_cache:
-                # Use the existing fold_ids for cross-fitting consistency
-                self.oracle_augmentation.fit_m_hat(
-                    weights, scores, policy, cv_folds=fold_ids
-                )
-
-            # Add oracle slice augmentation for honest CIs
-            aug_vector, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
-                policy,
-                rewards,  # calibrated rewards
-                cast(List[Dict[str, Any]], data),
-                self.sampler.dataset.samples,
-            )
-            self._aug_diagnostics[policy] = aug_diagnostics
-
             # 4) TMLE estimate = DM + IPS correction (using targeted predictions)
             dm_term = float(g_fresh_star.mean())
-            # IPS correction now includes augmentation
-            ips_corr_base = weights * (rewards - g_logged_star)
-            ips_corr_total = ips_corr_base + aug_vector
+            # IPS correction (no oracle augmentation)
+            ips_corr_total = weights * (rewards - g_logged_star)
             ips_corr = float(np.mean(ips_corr_total))
             psi = dm_term + ips_corr
 
-            # 5) Standard error via empirical IF (include augmentation)
+            # 5) Standard error via empirical IF
             if_contrib = g_fresh_star + ips_corr_total - psi
 
             # Apply IIC if enabled (variance-only: residualizes IF but does NOT change point estimate)
@@ -241,7 +224,7 @@ class TMLEEstimator(DREstimator):
 
             # Store components for diagnostics (like parent DR does)
             self._dm_component[policy] = g_fresh0
-            self._ips_correction[policy] = ips_corr_total  # With augmentation
+            self._ips_correction[policy] = ips_corr_total
             self._fresh_rewards[policy] = rewards  # Actually logged rewards
             self._outcome_predictions[policy] = g_logged0
 

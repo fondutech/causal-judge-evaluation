@@ -123,16 +123,7 @@ class CalibratedIPS(BaseCJEEstimator):
                 # Cache raw weights
                 self._weights_cache[policy] = raw_weights
 
-                # Fit m̂(S) for oracle slice augmentation (use policy subset)
-                data = self.sampler.get_data_for_policy(policy)
-                if data:
-                    S_policy = np.asarray(
-                        [d.get("judge_score", np.nan) for d in data], dtype=float
-                    )
-                    if not np.all(np.isnan(S_policy)):
-                        self.oracle_augmentation.fit_m_hat(
-                            raw_weights, S_policy, policy, cv_folds=None
-                        )
+                # Oracle augmentation removed - using OUA jackknife only
 
                 continue  # Skip calibration for this policy
 
@@ -257,11 +248,7 @@ class CalibratedIPS(BaseCJEEstimator):
             self._weights_cache[policy] = calibrated
             self._calibration_info[policy] = calib_info
 
-            # Fit m̂(S) for oracle slice augmentation
-            # Use the calibrated weights we'll actually use in estimation
-            self.oracle_augmentation.fit_m_hat(
-                calibrated, S_policy, policy, cv_folds=fold_ids
-            )
+            # Oracle augmentation removed - using OUA jackknife only
 
         self._fitted = True
 
@@ -381,16 +368,8 @@ class CalibratedIPS(BaseCJEEstimator):
                 else float("nan")
             )
 
-            # Augmentation for point estimate (in-fold rewards are fine for ψ̂)
-            aug, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
-                policy,
-                rewards,
-                cast(List[Dict[str, Any]], data),
-                self.sampler.dataset.samples,
-            )
-            self._aug_diagnostics[policy] = aug_diagnostics
-            aug_mean = float(np.mean(aug)) if n > 0 else 0.0
-            estimate = psi_w + aug_mean
+            # No augmentation - OUA jackknife handles oracle uncertainty via variance
+            estimate = psi_w
             estimates.append(estimate)
 
             # ---------- Influence function (OOF rewards + ratio IF + OOF augmentation) ----------
@@ -443,16 +422,8 @@ class CalibratedIPS(BaseCJEEstimator):
             # φ^H_i = w_i (R_oof_i - ψ̂_w) - ψ̂_w (w_i - mean_w)
             ratio_if = weights * (R_oof - psi_w) - psi_w * (weights - mean_w)
 
-            # OOF augmentation IF contribution: aug_oof_i - mean(aug_oof)
-            aug_oof, _ = self.oracle_augmentation.compute_augmentation(
-                policy,
-                R_oof,
-                cast(List[Dict[str, Any]], data),
-                self.sampler.dataset.samples,
-            )
-            aug_if = aug_oof - float(np.mean(aug_oof)) if n > 0 else np.zeros(n)
-
-            influence = ratio_if + aug_if
+            # No augmentation - OUA jackknife handles oracle uncertainty via variance
+            influence = ratio_if
 
             # Note: fold_ids already computed above for OOF rewards, reuse for IIC if needed
 
@@ -473,25 +444,7 @@ class CalibratedIPS(BaseCJEEstimator):
             se = float(np.std(influence, ddof=1) / np.sqrt(n))
             standard_errors.append(se)
 
-            # Add slice variance share to diagnostics
-            if aug_diagnostics:
-                # Compute variance of base IPS contribution (w*R)
-                base_contrib = weights * rewards
-                var_base = (
-                    np.var(base_contrib - base_contrib.mean(), ddof=1) if n > 1 else 0.0
-                )
-                # Compute variance of total contribution (w*R + aug)
-                total_contrib = base_contrib + aug
-                var_total = (
-                    np.var(total_contrib - total_contrib.mean(), ddof=1)
-                    if n > 1
-                    else 0.0
-                )
-                aug_diagnostics["slice_variance_share"] = (
-                    float(aug_diagnostics.get("aug_var", 0.0) / var_total)
-                    if var_total > 0
-                    else 0.0
-                )
+            # Oracle augmentation removed - diagnostics no longer needed
 
             # Store influence functions (always needed for proper inference)
             influence_functions[policy] = influence
@@ -520,7 +473,6 @@ class CalibratedIPS(BaseCJEEstimator):
                 "ess_floor": self.ess_floor,
                 "var_cap": self.var_cap,
                 "calibration_info": self._calibration_info,  # TODO: Move to diagnostics
-                "slice_augmentation": self._aug_diagnostics,  # Oracle slice augmentation info
             },
         )
 
@@ -699,14 +651,8 @@ class CalibratedIPS(BaseCJEEstimator):
                 # For FlexibleCalibrator monotone or standard isotonic, it's IsotonicRegression
                 rewards_loo = np.clip(fold_model.predict(judge_scores), 0.0, 1.0)
 
-                # Recompute augmentation with the updated rewards
-                aug_vec, _ = self.oracle_augmentation.compute_augmentation(
-                    policy,
-                    rewards_loo,
-                    cast(List[Dict[str, Any]], data),
-                    self.sampler.dataset.samples,
-                )
-                contrib = weights * rewards_loo + aug_vec
+                # OUA jackknife: only recompute with different calibrator, no bias augmentation
+                contrib = weights * rewards_loo
                 jack.append(float(np.mean(contrib)))
 
             return np.asarray(jack, dtype=float) if jack else None

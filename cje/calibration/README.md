@@ -282,24 +282,24 @@ result = calibrator.fit_cv(
 oof_predictions = calibrator.predict_oof(judge_scores, fold_ids)
 ```
 
-### Oracle Slice Augmentation
+### Oracle Uncertainty (Default: OUA Jackknife)
 ```python
-from cje.calibration import OracleSliceConfig
 from cje import CalibratedIPS
 
-# Automatic: Augmentation enables when 0% < oracle coverage < 100%
-estimator = CalibratedIPS(sampler)  # Auto-detects and enables if needed
-result = estimator.fit_and_estimate()
+# Default: OUA jackknife for oracle uncertainty (recommended)
+estimator = CalibratedIPS(sampler, oua_jackknife=True)  # Default
+result = estimator.fit_and_estimate()  
+# Result has both standard_errors and robust_standard_errors
 
-# Or configure explicitly if needed
+# Optional: Enable bias correction augmentation (engineering fallback)
+from cje.calibration import OracleSliceConfig
 oracle_config = OracleSliceConfig(
     enable_augmentation=True,
     enable_cross_fit=True,
-    min_pi=0.01,  # Minimum labeling probability
-    use_mar=False  # MCAR assumption for now
+    min_pi=0.01,
+    use_mar=False  # MCAR assumption
 )
 
-# Use with explicit configuration
 estimator = CalibratedIPS(
     sampler,
     oracle_slice_config=oracle_config

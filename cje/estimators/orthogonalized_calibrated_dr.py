@@ -16,7 +16,7 @@ Properties:
 - Preserves SIMCal’s tail stability by anchoring on W̃.
 
 Implementation notes:
-- Reuses DREstimator’s infrastructure (fresh draws, outcome model, oracle augmentation, IIC).
+- Reuses DREstimator's infrastructure (fresh draws, outcome model, IIC).
 - Cross-fits m̂^OOF(S) locally per-policy subset via isotonic W~S, using per-policy folds.
 - Fetches OOF rewards for the residual corrections by DATASET INDEX if available
   (calibrator.predict_oof_by_index). Falls back to fold-based OOF or plain predict() with a warning.
@@ -52,14 +52,12 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
                 + W_tilde * (R - q_logged)
                 + (W - m_hat_oof) * (R_oof - f_oof)           # orthogonalizer
                 + (R_oof - q_oof) * (W - W_tilde)             # retarget-to-W
-                + aug_vector                                  # oracle augmentation on the IPS-like part
 
     Influence function (OOF path):
         φ_i = g_fresh_i
             + W_tilde_i * (R_oof_i - q_oof_i)
             + (W_i - m_hat_oof_i)*(R_oof_i - f_oof_i)
             + (R_oof_i - q_oof_i)*(W_i - W_tilde_i)
-            + aug_i
             - V̂
 
     Notes
@@ -383,17 +381,8 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
                 orthog = np.zeros_like(W_tilde)
                 retarget = np.zeros_like(W_tilde)
 
-            # Oracle slice augmentation (use R_logged for augmentation as designed)
-            aug_vec, aug_diag = self.oracle_augmentation.compute_augmentation(
-                policy,
-                R_logged,  # Keep using R_logged for augmentation
-                cast(List[Dict[str, Any]], data),
-                self.sampler.dataset.samples,
-            )
-            self._aug_diagnostics[policy] = aug_diag
-
-            # Total per-sample contribution and point estimate
-            contrib = g_fresh + baseline_ips + orthog + retarget + aug_vec
+            # Total per-sample contribution and point estimate (no oracle augmentation)
+            contrib = g_fresh + baseline_ips + orthog + retarget
             V_hat = float(np.mean(contrib))
             estimates.append(V_hat)
 
@@ -481,7 +470,7 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
                 "orthogonality_scores": self._orthogonality_scores,  # Include orthogonality scores
                 "iic_estimate_adjusted": bool(self.use_iic),
                 "iic_diagnostics": getattr(self, "_iic_diagnostics", None),
-                "oracle_augmentation": getattr(self, "_aug_diagnostics", None),
+                # oracle_augmentation removed - using OUA jackknife only
             },
         )
 

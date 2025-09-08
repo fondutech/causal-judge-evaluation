@@ -109,9 +109,7 @@ class DREstimator(BaseCJEEstimator):
             f"Using CalibratedIPS with calibrate_weights={use_calibrated_weights} for importance weights in DR"
         )
 
-        # IMPORTANT: Share the IPS estimator's augmentation object
-        # DR uses IPS weights, so it should use IPS's m(S) fitting
-        self.oracle_augmentation = self.ips_estimator.oracle_augmentation
+        # Oracle augmentation removed - using OUA jackknife only
 
         # Choose default outcome model based on available reward_calibrator
         if outcome_model is None:
@@ -127,7 +125,7 @@ class DREstimator(BaseCJEEstimator):
                     "Using CalibratorBackedOutcomeModel (reusing calibration models)"
                 )
                 outcome_model = CalibratorBackedOutcomeModel(
-                    reward_calibrator, n_folds=n_folds
+                    reward_calibrator, n_folds=n_folds  # type: ignore[arg-type]
                 )
             else:
                 # Check if any samples have cv_fold metadata
@@ -587,34 +585,18 @@ class DREstimator(BaseCJEEstimator):
             dm_term = g_fresh.mean()  # Direct method term
             ips_correction_base = weights * (logged_rewards - g_logged)
 
-            # Add oracle slice augmentation
-            # DR shares the IPS estimator's augmentation (which has m̂(S) fitted)
-            # The augmentation corrects for uncertainty in the calibrated rewards f̂(S)
-            aug_vector, aug_diagnostics = self.oracle_augmentation.compute_augmentation(
-                policy,
-                logged_rewards,  # Always use calibrated rewards
-                cast(
-                    List[Dict[str, Any]], data
-                ),  # PolicyDataDict is structurally compatible
-                self.sampler.dataset.samples,
-            )
-            self._aug_diagnostics[policy] = aug_diagnostics
-
-            # Total IPS correction with augmentation
-            ips_correction = (ips_correction_base + aug_vector).mean()
+            # No augmentation - OUA jackknife handles oracle uncertainty via variance
+            ips_correction = ips_correction_base.mean()
             dr_estimate = dm_term + ips_correction
 
             # Store components for diagnostics (avoid recomputation later)
             self._dm_component[policy] = g_fresh
-            self._ips_correction[policy] = (
-                ips_correction_base + aug_vector
-            )  # Include augmentation
+            self._ips_correction[policy] = ips_correction_base  # No augmentation
             self._fresh_rewards[policy] = logged_rewards  # Actually logged rewards
             self._outcome_predictions[policy] = g_logged
 
             # Compute standard error using influence function
-            # Include augmentation in the influence function
-            if_contributions = g_fresh + ips_correction_base + aug_vector - dr_estimate
+            if_contributions = g_fresh + ips_correction_base - dr_estimate
 
             # Get fold assignments if using IIC
             fold_ids = None
@@ -768,19 +750,11 @@ class DREstimator(BaseCJEEstimator):
                 policy, estimates[idx]
             )
 
-        # Collect oracle augmentation diagnostics if available
-        oracle_aug_diagnostics: Dict[str, Any] = {}
-        if self.use_calibrated_weights and hasattr(
-            self.ips_estimator, "_aug_diagnostics"
-        ):
-            oracle_aug_diagnostics = self.ips_estimator._aug_diagnostics.copy()
-
         # Add DR-specific metadata
         dr_metadata = {
             "fresh_draws_policies": list(self._fresh_draws.keys()),
             "cross_fitted": True,
             "n_folds": self.n_folds,
-            "oracle_slice_augmentation": oracle_aug_diagnostics,  # Add augmentation info
         }
 
         # Add MC variance diagnostics if available
