@@ -84,9 +84,9 @@ class DREstimator(BaseCJEEstimator):
         # Extract oua_jackknife from oracle_slice_config if present
         oracle_config = kwargs.get("oracle_slice_config", {})
         if isinstance(oracle_config, dict):
-            self.oua_jackknife = oracle_config.get("oua_jackknife", False)
+            self.oua_jackknife = oracle_config.get("oua_jackknife", True)
         else:
-            self.oua_jackknife = False
+            self.oua_jackknife = True
 
         # Initialize the IPS estimator with appropriate mode
         self.ips_estimator: CalibratedIPS

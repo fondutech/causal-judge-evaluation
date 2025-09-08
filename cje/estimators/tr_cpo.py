@@ -68,7 +68,7 @@ class TRCPOEstimator(DREstimator):
         max_pi: float = 1 - 1e-3,
         use_iic: bool = True,
         run_diagnostics: bool = True,
-        oua_jackknife: bool = False,
+        oua_jackknife: bool = True,
         **kwargs: Any,
     ):
         # TR uses raw/Hájek weights; disable SIMCal in parent (but reuse all DR infra)

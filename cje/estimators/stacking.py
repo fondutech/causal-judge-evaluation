@@ -53,6 +53,7 @@ class StackedDREstimator(BaseCJEEstimator):
         fallback_on_failure: bool = True,
         seed: int = 42,
         use_iic: bool = False,  # Whether component estimators should use IIC
+        oua_jackknife: bool = True,  # Oracle uncertainty augmentation for components
         **kwargs: Any,
     ):
         """Initialize the stacked estimator.
@@ -71,6 +72,7 @@ class StackedDREstimator(BaseCJEEstimator):
             fallback_on_failure: If True, fall back to best single estimator on failure
             seed: Random seed for reproducibility
             use_iic: If True, component estimators use IIC for variance reduction
+            oua_jackknife: If True, enable Oracle Uncertainty Augmentation for component estimators
             **kwargs: Additional arguments passed to base class
         """
         # Extract calibrator before passing to base class (base doesn't accept it)
@@ -81,6 +83,12 @@ class StackedDREstimator(BaseCJEEstimator):
         self.use_calibrated_weights = kwargs.pop("use_calibrated_weights", True)
         # Extract oracle_slice_config to pass to base class
         oracle_slice_config = kwargs.pop("oracle_slice_config", True)
+        # If oracle_slice_config is a dict, add oua_jackknife to it
+        if isinstance(oracle_slice_config, dict):
+            oracle_slice_config["oua_jackknife"] = oua_jackknife
+        elif oracle_slice_config:
+            # If it's True/"auto", convert to dict with oua_jackknife
+            oracle_slice_config = {"oua_jackknife": oua_jackknife}
 
         # BaseCJEEstimator only accepts specific params, not arbitrary kwargs
         # So we don't pass **kwargs
@@ -97,6 +105,7 @@ class StackedDREstimator(BaseCJEEstimator):
         self.fallback_on_failure = fallback_on_failure
         self.seed = seed
         self.use_iic = use_iic
+        self.oua_jackknife = oua_jackknife  # Store OUA setting
         self.oracle_slice_config = oracle_slice_config  # Store the extracted value
 
         # Storage for results

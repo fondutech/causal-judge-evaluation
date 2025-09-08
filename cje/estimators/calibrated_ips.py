@@ -67,7 +67,7 @@ class CalibratedIPS(BaseCJEEstimator):
         baseline_shrink: float = 0.0,
         run_diagnostics: bool = True,
         refuse_unreliable: bool = False,
-        oua_jackknife: bool = False,
+        oua_jackknife: bool = True,
         **kwargs: Any,
     ):
         # Pass oracle_slice_config to base if provided, otherwise use default "auto"
