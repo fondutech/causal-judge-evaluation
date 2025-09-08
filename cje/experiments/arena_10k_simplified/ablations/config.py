@@ -18,7 +18,10 @@ EXPERIMENTS = {
     "sample_sizes": [500, 1000, 2500, 5000],
     "oracle_coverages": [0.05, 0.10, 0.25, 0.5, 1.00],
     # Key ablation: calibration on/off
-    "use_calibration": [True, False],  # Test with and without calibration
+    "use_weight_calibration": [
+        True,
+        False,
+    ],  # Test with and without weight calibration (SIMCal)
     # IIC for DR methods
     "use_iic": [True, False],
     # Reward calibration modes
@@ -52,7 +55,7 @@ REQUIRES_CALIBRATION = {
 CALIBRATION_OPTIONAL = {
     "raw-ips",  # Never uses calibration
     "dr-cpo",  # Can use raw or calibrated weights
-    "tr-cpo",  # Uses raw/Hajek weights, but can have calibrated rewards
+    "tr-cpo",  # Uses raw/Hajek weights (no weight calibration), but can have calibrated rewards
     "stacked-dr",  # Can use either
 }
 

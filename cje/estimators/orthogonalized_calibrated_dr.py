@@ -295,6 +295,9 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
                 prompts, responses, S_logged, fold_ids
             )
 
+            # Store outcome predictions for oracle jackknife (OUA compatibility)
+            self._outcome_predictions[policy] = q_logged_oof
+
             # Fresh-draw DM vector (per-prompt averages, same fold as the prompt)
             fresh = self._fresh_draws[policy]
             g_fresh_list: List[float] = []

@@ -49,7 +49,7 @@ The unified system (`run.py`) tests all combinations of:
 - **Estimators**: raw-ips, calibrated-ips, orthogonalized-ips, dr-cpo, oc-dr-cpo, tr-cpo, stacked-dr
 - **Sample sizes**: 500, 1000, 2500, 5000
 - **Oracle coverage**: 5%, 10%, 25%, 50%, 100%
-- **Calibration**: On/off (controlled by `use_calibration`, with constraints)
+- **Weight Calibration (SIMCal)**: On/off (controlled by `use_weight_calibration`, with constraints)
 - **IIC (Isotonic Influence Control)**: On/off for all methods (controlled by `use_iic`)
 - **Seed**: Single seed (42) for reproducibility
 
@@ -95,7 +95,7 @@ EXPERIMENTS = {
     'estimators': ['calibrated-ips', 'dr-cpo'],  # Just two
     'sample_sizes': [1000],                       # Single size
     'oracle_coverages': [0.10],                   # Single coverage
-    'use_calibration': [True],                    # Just with calibration
+    'use_weight_calibration': [True],             # Just with weight calibration
     'use_iic': [False],                          # No IIC
     'n_seeds': 2,                                 # Fewer seeds
 }

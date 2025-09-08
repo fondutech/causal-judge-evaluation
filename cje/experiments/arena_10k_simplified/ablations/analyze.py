@@ -117,8 +117,10 @@ def create_diagnostic_summary(results: List[Dict[str, Any]]) -> pd.DataFrame:
 
         # Extract parameters from spec.extra if present
         extra = spec.get("extra", {})
+        # Handle both old and new parameter names for backward compatibility
         use_calibration = extra.get(
-            "use_calibration", spec.get("use_calibration", False)
+            "use_weight_calibration",
+            extra.get("use_calibration", spec.get("use_calibration", False)),
         )
         use_iic = extra.get("use_iic", spec.get("use_iic", False))
         weight_mode = extra.get("weight_mode", "hajek")
@@ -129,7 +131,7 @@ def create_diagnostic_summary(results: List[Dict[str, Any]]) -> pd.DataFrame:
                 "Estimator": spec["estimator"],
                 "Sample Size": spec.get("sample_size", "N/A"),
                 "Oracle Coverage": spec.get("oracle_coverage", "N/A"),
-                "Use Calibration": use_calibration,
+                "Use Weight Calibration": use_calibration,
                 "Use IIC": use_iic,
                 "Weight Mode": weight_mode,
                 "Reward Calib Mode": reward_calibration_mode,

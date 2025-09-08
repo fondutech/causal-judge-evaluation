@@ -86,7 +86,10 @@ def analyze_by_scenario(results: List[Dict]) -> Dict[str, List[Dict]]:
 
         # Get estimator configuration
         estimator = spec["estimator"]
-        use_cal = extra.get("use_calibration", False)
+        # Handle both old and new parameter names for backward compatibility
+        use_cal = extra.get(
+            "use_weight_calibration", extra.get("use_calibration", False)
+        )
         use_iic = extra.get("use_iic", False)
         weight_mode = extra.get("weight_mode", "hajek")
 

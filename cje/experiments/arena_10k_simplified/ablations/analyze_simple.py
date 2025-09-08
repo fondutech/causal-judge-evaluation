@@ -28,7 +28,11 @@ def main() -> None:
         spec = r["spec"]
         # Extract parameters from extra or directly from spec
         extra = spec.get("extra", {})
-        use_cal = extra.get("use_calibration", spec.get("use_calibration", False))
+        # Handle both old and new parameter names for backward compatibility
+        use_cal = extra.get(
+            "use_weight_calibration",
+            extra.get("use_calibration", spec.get("use_calibration", False)),
+        )
         use_iic = extra.get("use_iic", spec.get("use_iic", False))
         weight_mode = extra.get("weight_mode", "hajek")
         reward_calib_mode = extra.get("reward_calibration_mode", "auto")

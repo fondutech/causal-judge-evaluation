@@ -34,7 +34,7 @@ def load_results(path: str = "results/all_experiments.jsonl") -> List[Dict]:
 def analyze_interaction(
     results: List[Dict],
     estimator: str = "stacked-dr",
-    use_calibration: Optional[bool] = True,
+    use_weight_calibration: Optional[bool] = True,
     use_iic: Optional[bool] = True,
     weight_mode: str = "hajek",
 ) -> Dict[str, Any]:
@@ -44,7 +44,7 @@ def analyze_interaction(
     Args:
         results: List of experiment results
         estimator: Which estimator to analyze
-        use_calibration: Filter to calibration on/off (None = both)
+        use_weight_calibration: Filter to weight calibration on/off (None = both)
         use_iic: Filter to IIC on/off (None = both)
         weight_mode: Which weight mode to use
 
@@ -63,8 +63,12 @@ def analyze_interaction(
             continue
 
         # Check parameter filters
-        if use_calibration is not None:
-            if extra.get("use_calibration", False) != use_calibration:
+        if use_weight_calibration is not None:
+            # Handle both old and new parameter names for backward compatibility
+            param_value = extra.get(
+                "use_weight_calibration", extra.get("use_calibration", False)
+            )
+            if param_value != use_weight_calibration:
                 continue
 
         if use_iic is not None:
@@ -346,7 +350,7 @@ def main() -> None:
             analysis = analyze_interaction(
                 results,
                 estimator=estimator,
-                use_calibration=True,
+                use_weight_calibration=True,
                 use_iic=False,  # IIC doesn't apply to IPS
                 weight_mode="hajek",
             )
@@ -355,7 +359,7 @@ def main() -> None:
             analysis = analyze_interaction(
                 results,
                 estimator=estimator,
-                use_calibration=True,
+                use_weight_calibration=True,
                 use_iic=True,
                 weight_mode="hajek",
             )
@@ -403,7 +407,7 @@ def main() -> None:
         analysis = analyze_interaction(
             results,
             estimator="stacked-dr",
-            use_calibration=use_cal,
+            use_weight_calibration=use_cal,
             use_iic=use_iic,
             weight_mode="hajek",
         )

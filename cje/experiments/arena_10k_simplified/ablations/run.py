@@ -98,7 +98,7 @@ class UnifiedAblation(BaseAblation):
             spec.get("estimator", ""),
             str(spec.get("sample_size", "")),
             str(spec.get("oracle_coverage", "")),
-            str(spec.get("extra", {}).get("use_calibration", False)),
+            str(spec.get("extra", {}).get("use_weight_calibration", False)),
             str(spec.get("extra", {}).get("use_iic", False)),
             str(spec.get("seed_base", 42)),
         ]
@@ -126,7 +126,7 @@ class UnifiedAblation(BaseAblation):
         This extends the base class method to handle our new parameters.
         """
         estimator_name = spec.estimator
-        use_calibration = spec.extra.get("use_calibration", False)
+        use_weight_calibration = spec.extra.get("use_weight_calibration", False)
         use_iic = spec.extra.get("use_iic", False)
 
         # Handle IPS with calibration
@@ -135,10 +135,12 @@ class UnifiedAblation(BaseAblation):
 
             return CalibratedIPS(
                 sampler,
-                calibrate_weights=use_calibration,  # Now controlled by ablation parameter
+                calibrate_weights=use_weight_calibration,  # Controlled by use_weight_calibration parameter
                 use_iic=use_iic,
                 reward_calibrator=(
-                    cal_result.calibrator if use_calibration and cal_result else None
+                    cal_result.calibrator
+                    if use_weight_calibration and cal_result
+                    else None
                 ),
             )
 
@@ -158,13 +160,13 @@ class UnifiedAblation(BaseAblation):
                 "sampler": sampler,
                 "n_folds": DR_CONFIG["n_folds"],
                 "use_iic": use_iic,
-                "use_calibrated_weights": use_calibration,  # Controls SIMCal for weights
+                "use_calibrated_weights": use_weight_calibration,  # Controls SIMCal for weights
             }
 
-            # Always pass calibrator for outcome model (if available)
+            # Always pass reward calibrator for outcome model (if available)
             # This is independent of weight calibration
             if cal_result and cal_result.calibrator:
-                kwargs["calibrator"] = cal_result.calibrator
+                kwargs["reward_calibrator"] = cal_result.calibrator
 
             return estimator_class(**kwargs)
 
@@ -177,13 +179,13 @@ class UnifiedAblation(BaseAblation):
                 "V_folds": 5,
                 "parallel": False,
                 "use_iic": use_iic,
-                "use_calibrated_weights": use_calibration,  # Controls SIMCal for weights
+                "use_calibrated_weights": use_weight_calibration,  # Controls SIMCal for weights
             }
 
-            # Always pass calibrator for outcome model (if available)
+            # Always pass reward calibrator for outcome model (if available)
             # This is independent of weight calibration
             if cal_result and cal_result.calibrator:
-                kwargs["calibrator"] = cal_result.calibrator
+                kwargs["reward_calibrator"] = cal_result.calibrator
 
             return StackedDREstimator(**kwargs)
 
@@ -206,15 +208,15 @@ class UnifiedAblation(BaseAblation):
                 for oracle_coverage in EXPERIMENTS["oracle_coverages"]:
 
                     # All estimators now test both calibration modes
-                    for use_calibration in EXPERIMENTS["use_calibration"]:
+                    for use_weight_calibration in EXPERIMENTS["use_weight_calibration"]:
                         # Skip invalid combinations based on constraints
                         if estimator in CONSTRAINTS.get("requires_calibration", set()):
                             # These estimators MUST have calibration
-                            if not use_calibration:
+                            if not use_weight_calibration:
                                 continue  # Skip this combination
                         elif estimator == "raw-ips":
                             # raw-ips never uses calibration
-                            if use_calibration:
+                            if use_weight_calibration:
                                 continue  # Skip this combination
 
                         # IIC works for all estimators (IPS and DR)
@@ -234,7 +236,7 @@ class UnifiedAblation(BaseAblation):
                                     n_seeds=1,  # Single seed per experiment
                                     seed_base=seed,  # Use current seed from iteration
                                     extra={
-                                        "use_calibration": use_calibration,
+                                        "use_weight_calibration": use_weight_calibration,
                                         "use_iic": use_iic,
                                     },
                                 )
@@ -253,7 +255,7 @@ class UnifiedAblation(BaseAblation):
                                     f"\n[{completed + failed + 1}/{total_experiments}] "
                                     f"Running: {estimator} n={sample_size} "
                                     f"oracle={oracle_coverage:.0%} "
-                                    f"cal={use_calibration} iic={use_iic} seed={seed}"
+                                    f"weight_cal={use_weight_calibration} iic={use_iic} seed={seed}"
                                 )
 
                                 try:

@@ -21,15 +21,19 @@ orig_sample_sizes = config.EXPERIMENTS["sample_sizes"]
 orig_oracle_coverages = config.EXPERIMENTS["oracle_coverages"]
 orig_seeds = config.EXPERIMENTS["seeds"]
 
-# Set minimal test values
+# Set minimal test values - include ALL estimators
 config.EXPERIMENTS["estimators"] = [
     "raw-ips",
     "calibrated-ips",
     "orthogonalized-ips",
-]  # Test IPS variants
-config.EXPERIMENTS["sample_sizes"] = [500, 1000]  # Just 2 sizes
-config.EXPERIMENTS["oracle_coverages"] = [0.10, 0.25]  # Just 2 coverages
-config.EXPERIMENTS["seeds"] = [42, 123]  # Just 2 seeds for speed
+    "dr-cpo",
+    "oc-dr-cpo",
+    "tr-cpo",
+    "stacked-dr",
+]  # Test all estimators
+config.EXPERIMENTS["sample_sizes"] = [500]  # Just 1 small size
+config.EXPERIMENTS["oracle_coverages"] = [0.10]  # Just 1 coverage
+config.EXPERIMENTS["seeds"] = [42]  # Single seed for speed
 
 # Update paths for test (use absolute paths to avoid issues)
 config.RESULTS_PATH = config.BASE_DIR / "results" / "test_results.jsonl"
@@ -46,12 +50,17 @@ print(f"  Seeds: {len(config.EXPERIMENTS['seeds'])}")
 print("")
 
 # Expected number of experiments:
-# raw-ips: 2 sizes × 2 coverages = 4
-# calibrated-ips: 2 sizes × 2 coverages = 4
-# orthogonalized-ips: 2 sizes × 2 coverages = 4
-# Total: 12 experiments × 2 seeds = 24 individual runs
-print("Expected experiments: ~12 configurations × 2 seeds = 24 runs")
-print("Estimated time: 3-5 minutes")
+# With calibration constraints applied:
+# - raw-ips: 1 size × 1 coverage × 1 config = 1
+# - calibrated-ips: 1 size × 1 coverage × 1 config = 1
+# - orthogonalized-ips: 1 size × 1 coverage × 1 config = 1
+# - dr-cpo: 1 size × 1 coverage × 2 configs = 2
+# - oc-dr-cpo: 1 size × 1 coverage × 1 config = 1
+# - tr-cpo: 1 size × 1 coverage × 2 configs = 2
+# - stacked-dr: 1 size × 1 coverage × 2 configs = 2
+# Total: 10 experiments × 1 seed = 10 runs
+print("Expected experiments: 10 configurations × 1 seed = 10 runs")
+print("Estimated time: 1-2 minutes")
 print("")
 
 # Import and run

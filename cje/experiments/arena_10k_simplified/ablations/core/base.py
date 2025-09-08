@@ -142,15 +142,15 @@ class BaseAblation:
         """
         # Extract settings from spec.extra
         use_iic = spec.extra.get("use_iic", False) if spec.extra else False
-        use_calibration = (
-            spec.extra.get("use_calibration", False) if spec.extra else False
+        use_weight_calibration = (
+            spec.extra.get("use_weight_calibration", False) if spec.extra else False
         )
         # Propagate oracle-calibrator uncertainty into SEs (ON by default unless explicitly disabled)
         oua = spec.extra.get("oua_jackknife", True) if spec.extra else True
 
         # Log parameter settings if needed
         # logger.info(f"Creating {spec.estimator} with use_iic={use_iic}, "
-        #            f"use_calibration(SIMCal)={use_calibration}")
+        #            f"use_weight_calibration(SIMCal)={use_weight_calibration}")
 
         estimator_map = {
             "raw-ips": lambda s: CalibratedIPS(
@@ -161,7 +161,7 @@ class BaseAblation:
             ),  # No weight calibration, but still support OUA
             "ips": lambda s: CalibratedIPS(
                 s,
-                calibrate_weights=use_calibration,
+                calibrate_weights=use_weight_calibration,
                 oua_jackknife=oua,  # IPS doesn't support IIC
             ),
             "calibrated-ips": lambda s: CalibratedIPS(
@@ -179,7 +179,7 @@ class BaseAblation:
                 s,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
-                use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
+                use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
             ),
@@ -187,7 +187,7 @@ class BaseAblation:
                 s,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
-                use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
+                use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
             ),
@@ -210,7 +210,7 @@ class BaseAblation:
                 s,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
-                use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
+                use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
             ),
@@ -218,7 +218,7 @@ class BaseAblation:
                 s,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
-                use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
+                use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
             ),
@@ -226,7 +226,7 @@ class BaseAblation:
                 s,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
                 V_folds=5,
-                use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
+                use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
             ),
@@ -483,7 +483,7 @@ class BaseAblation:
             result["n_oracle"] = n_oracle
 
             # ALWAYS calibrate rewards (judge → oracle) when oracle labels exist
-            # This is NOT controlled by use_calibration flag
+            # This is NOT controlled by use_weight_calibration flag
             # Calibration mode can be configured via spec.extra["reward_calibration_mode"]
             reward_calibration_mode = (
                 spec.extra.get("reward_calibration_mode", "auto")

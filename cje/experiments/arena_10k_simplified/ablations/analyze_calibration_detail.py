@@ -56,7 +56,11 @@ def main() -> None:
     for r in results:
         spec = r["spec"]
         extra = spec.get("extra", {})
-        use_cal = extra.get("use_calibration", spec.get("use_calibration", False))
+        # Handle both old and new parameter names for backward compatibility
+        use_cal = extra.get(
+            "use_weight_calibration",
+            extra.get("use_calibration", spec.get("use_calibration", False)),
+        )
         use_iic = extra.get("use_iic", spec.get("use_iic", False))
 
         row = {
