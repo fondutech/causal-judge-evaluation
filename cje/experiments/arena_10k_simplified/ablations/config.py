@@ -53,15 +53,20 @@ REQUIRES_CALIBRATION = {
 
 # These estimators can work with or without calibration
 CALIBRATION_OPTIONAL = {
-    "raw-ips",  # Never uses calibration
     "dr-cpo",  # Can use raw or calibrated weights
-    "tr-cpo",  # Uses raw/Hajek weights (no weight calibration), but can have calibrated rewards
     "stacked-dr",  # Can use either
+}
+
+# These estimators never use weight calibration
+NEVER_CALIBRATED = {
+    "raw-ips",  # Never uses calibration by design
+    "tr-cpo",  # Always uses raw/Hajek weights (no SIMCal) for theoretical correctness
 }
 
 CONSTRAINTS = {
     "requires_calibration": REQUIRES_CALIBRATION,
     "calibration_optional": CALIBRATION_OPTIONAL,
+    "never_calibrated": NEVER_CALIBRATED,
 }
 
 # Fixed parameters for DR methods

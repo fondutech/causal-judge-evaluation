@@ -56,10 +56,10 @@ The unified system (`run.py`) tests all combinations of:
 ### Estimator Constraints
 Some estimators have calibration requirements:
 - **Always calibrated**: calibrated-ips, orthogonalized-ips, oc-dr-cpo
-- **Never calibrated**: raw-ips  
-- **Optional calibration**: dr-cpo, tr-cpo, stacked-dr
+- **Never calibrated**: raw-ips, tr-cpo (TR-CPO uses raw/Hájek weights for theoretical correctness)
+- **Optional calibration**: dr-cpo, stacked-dr
 
-This reduces the total experiments from 560 to 400 valid combinations.
+This reduces the total experiments to 3,600 valid combinations (10 seeds × 360 unique configs).
 
 ### Expected Results
 - **SIMCal weight calibration**: Should improve DR methods (reduces weight variance)

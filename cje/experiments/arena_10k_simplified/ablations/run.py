@@ -207,17 +207,18 @@ class UnifiedAblation(BaseAblation):
             for sample_size in EXPERIMENTS["sample_sizes"]:
                 for oracle_coverage in EXPERIMENTS["oracle_coverages"]:
 
-                    # All estimators now test both calibration modes
-                    for use_weight_calibration in EXPERIMENTS["use_weight_calibration"]:
-                        # Skip invalid combinations based on constraints
-                        if estimator in CONSTRAINTS.get("requires_calibration", set()):
-                            # These estimators MUST have calibration
-                            if not use_weight_calibration:
-                                continue  # Skip this combination
-                        elif estimator == "raw-ips":
-                            # raw-ips never uses calibration
-                            if use_weight_calibration:
-                                continue  # Skip this combination
+                    # Apply calibration constraints
+                    if estimator in CONSTRAINTS.get("requires_calibration", set()):
+                        # These estimators MUST have calibration
+                        calibration_options = [True]
+                    elif estimator in CONSTRAINTS.get("never_calibrated", set()):
+                        # These estimators NEVER use calibration
+                        calibration_options = [False]
+                    else:
+                        # These estimators can use either
+                        calibration_options = EXPERIMENTS["use_weight_calibration"]
+
+                    for use_weight_calibration in calibration_options:
 
                         # IIC works for all estimators (IPS and DR)
                         # It's a general variance reduction technique for any asymptotically linear estimator
