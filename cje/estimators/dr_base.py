@@ -49,11 +49,11 @@ class DREstimator(BaseCJEEstimator):
         n_folds: Number of cross-fitting folds (default 5)
         use_calibrated_weights: If True, use SIMCal calibration; if False, use raw weights (default True)
         weight_mode: "hajek" for mean-one normalized weights, "raw" for unnormalized (default "hajek")
-        calibrator: Optional reward calibrator for CalibratorBackedOutcomeModel (always use if available)
+        reward_calibrator: Optional reward calibrator for CalibratorBackedOutcomeModel (always use if available)
         **kwargs: Additional arguments passed to the base class (e.g., oracle_slice_config)
 
-    Note: The calibrator (for reward calibration) is independent of use_calibrated_weights (for weight
-    calibration). DR estimators should receive the calibrator whenever oracle coverage < 100%.
+    Note: The reward_calibrator (for reward calibration) is independent of use_calibrated_weights (for weight
+    calibration). DR estimators should receive the reward_calibrator whenever oracle coverage < 100%.
     """
 
     def __init__(
@@ -63,7 +63,7 @@ class DREstimator(BaseCJEEstimator):
         n_folds: int = 5,
         use_calibrated_weights: bool = True,
         weight_mode: str = "hajek",
-        calibrator: Optional[Any] = None,
+        reward_calibrator: Optional[Any] = None,
         random_seed: int = 42,
         run_diagnostics: bool = True,
         **kwargs: Any,
@@ -77,7 +77,7 @@ class DREstimator(BaseCJEEstimator):
         )
 
         self.n_folds = n_folds
-        self.calibrator = calibrator
+        self.reward_calibrator = reward_calibrator
         self.use_calibrated_weights = use_calibrated_weights
         self.random_seed = random_seed
 
@@ -90,38 +90,38 @@ class DREstimator(BaseCJEEstimator):
 
         # Initialize the IPS estimator with appropriate mode
         self.ips_estimator: CalibratedIPS
-        # Pass calibrator to CalibratedIPS for DR-aware direction selection if calibrating
+        # Pass reward_calibrator to CalibratedIPS for DR-aware direction selection if calibrating
         ips_kwargs: Dict[str, Any] = {
-            "calibrate": use_calibrated_weights,
+            "calibrate_weights": use_calibrated_weights,
             "weight_mode": weight_mode,
             "run_diagnostics": run_diagnostics,
         }
-        if use_calibrated_weights and calibrator is not None:
-            ips_kwargs["calibrator"] = calibrator
+        if use_calibrated_weights and reward_calibrator is not None:
+            ips_kwargs["reward_calibrator"] = reward_calibrator
 
         self.ips_estimator = CalibratedIPS(sampler, **ips_kwargs)
 
         logger.info(
-            f"Using CalibratedIPS with calibrate={use_calibrated_weights} for importance weights in DR"
+            f"Using CalibratedIPS with calibrate_weights={use_calibrated_weights} for importance weights in DR"
         )
 
         # IMPORTANT: Share the IPS estimator's augmentation object
         # DR uses IPS weights, so it should use IPS's m(S) fitting
         self.oracle_augmentation = self.ips_estimator.oracle_augmentation
 
-        # Choose default outcome model based on available calibrator
+        # Choose default outcome model based on available reward_calibrator
         if outcome_model is None:
             if (
-                calibrator is not None
-                and hasattr(calibrator, "_fold_models")
-                and calibrator._fold_models
+                reward_calibrator is not None
+                and hasattr(reward_calibrator, "_fold_models")
+                and reward_calibrator._fold_models
             ):
-                # We have a cross-fitted calibrator with standard isotonic models, use it for outcome model
+                # We have a cross-fitted reward_calibrator with standard isotonic models, use it for outcome model
                 logger.info(
                     "Using CalibratorBackedOutcomeModel (reusing calibration models)"
                 )
                 outcome_model = CalibratorBackedOutcomeModel(
-                    calibrator, n_folds=n_folds
+                    reward_calibrator, n_folds=n_folds
                 )
             else:
                 # Check if any samples have cv_fold metadata
@@ -134,14 +134,15 @@ class DREstimator(BaseCJEEstimator):
 
                 if has_cv_fold:
                     logger.warning(
-                        "Samples have cv_fold metadata but no calibrator provided. "
-                        "Consider passing calibrator from calibrate_dataset() for optimal DR."
+                        "Samples have cv_fold metadata but no reward_calibrator provided. "
+                        "Consider passing reward_calibrator from calibrate_dataset() for optimal DR."
                     )
 
                 # Fall back to standard isotonic outcome model
-                # Pass calibrator if available for proper index transformation
+                # Pass reward_calibrator if available for proper index transformation
                 outcome_model = IsotonicOutcomeModel(
-                    n_folds=n_folds, calibrator=calibrator
+                    n_folds=n_folds,
+                    calibrator=reward_calibrator,  # Note: IsotonicOutcomeModel still uses 'calibrator' param name
                 )
         self.outcome_model = outcome_model
 
@@ -697,10 +698,10 @@ class DREstimator(BaseCJEEstimator):
                     if np.isfinite(f_min)
                     else float("nan")
                 )
-                # Fresh floor mass (use global calibrator on fresh scores)
+                # Fresh floor mass (use global reward_calibrator on fresh scores)
                 floor_mass_fresh = float("nan")
                 if (
-                    self.calibrator is not None
+                    self.reward_calibrator is not None
                     and policy in self._fresh_draws
                     and np.isfinite(f_min)
                 ):
@@ -713,7 +714,7 @@ class DREstimator(BaseCJEEstimator):
                     if fresh_scores_all:
                         fresh_scores_arr = np.asarray(fresh_scores_all, dtype=float)
                         fresh_pred = np.clip(
-                            self.calibrator.predict(fresh_scores_arr), 0.0, 1.0
+                            self.reward_calibrator.predict(fresh_scores_arr), 0.0, 1.0
                         )
                         floor_mass_fresh = float(
                             np.mean(np.abs(fresh_pred - f_min) <= eps)
@@ -910,7 +911,7 @@ class DREstimator(BaseCJEEstimator):
         )
 
         # Optionally compute and attach oracle-uncertainty (OUA) adjusted SEs
-        if self.oua_jackknife and self.calibrator is not None:
+        if self.oua_jackknife and self.reward_calibrator is not None:
             try:
                 oua_ses: List[float] = []
                 var_oracle_map: Dict[str, float] = {}
@@ -1143,12 +1144,12 @@ class DREstimator(BaseCJEEstimator):
             logger.warning("Estimator not fitted, cannot compute oracle jackknife")
             return None
 
-        if self.calibrator is None:
-            logger.debug("No calibrator available for oracle jackknife")
+        if self.reward_calibrator is None:
+            logger.debug("No reward_calibrator available for oracle jackknife")
             return None
 
-        if not hasattr(self.calibrator, "_fold_models"):
-            logger.debug("Calibrator has no fold models for oracle jackknife")
+        if not hasattr(self.reward_calibrator, "_fold_models"):
+            logger.debug("Reward_calibrator has no fold models for oracle jackknife")
             return None
 
         if policy not in self._fresh_draws:
@@ -1165,8 +1166,8 @@ class DREstimator(BaseCJEEstimator):
             return self._oracle_jackknife_cache[policy]
 
         try:
-            # Get the number of folds from calibrator
-            n_folds = len(self.calibrator._fold_models)
+            # Get the number of folds from reward_calibrator
+            n_folds = len(self.reward_calibrator._fold_models)
             jackknife_estimates = []
 
             # Get base components that don't change
@@ -1180,8 +1181,8 @@ class DREstimator(BaseCJEEstimator):
             # For each fold, compute leave-that-fold-out estimate
             for fold_id in range(n_folds):
                 # Use the model that was trained WITHOUT this fold's oracle samples
-                # The calibrator._fold_models[fold_id] was trained on all folds EXCEPT fold_id
-                fold_model = self.calibrator._fold_models.get(fold_id)
+                # The reward_calibrator._fold_models[fold_id] was trained on all folds EXCEPT fold_id
+                fold_model = self.reward_calibrator._fold_models.get(fold_id)
                 if fold_model is None:
                     logger.debug(f"No fold model for fold {fold_id}")
                     continue
@@ -1226,7 +1227,7 @@ class DREstimator(BaseCJEEstimator):
 
                 # Note: We're not recomputing augmentation for each fold
                 # This is a simplification - proper implementation would recompute
-                # augmentation with the leave-one-out calibrator
+                # augmentation with the leave-one-out reward_calibrator
                 # For now, we ignore augmentation in jackknife to focus on main effect
 
                 dr_estimate_loo = dm_term + ips_correction
@@ -1277,7 +1278,7 @@ class DRCPOEstimator(DREstimator):
         n_folds: int = 5,
         use_calibrated_weights: bool = True,
         weight_mode: str = "hajek",
-        calibrator: Optional[Any] = None,
+        reward_calibrator: Optional[Any] = None,
         random_seed: int = 42,
         **kwargs: Any,
     ):
@@ -1288,7 +1289,7 @@ class DRCPOEstimator(DREstimator):
             n_folds=n_folds,
             use_calibrated_weights=use_calibrated_weights,
             weight_mode=weight_mode,
-            calibrator=calibrator,
+            reward_calibrator=reward_calibrator,
             random_seed=random_seed,
             **kwargs,
         )

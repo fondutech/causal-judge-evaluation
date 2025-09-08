@@ -30,7 +30,7 @@ class WeightedIsotonicOutcomeModel(BaseOutcomeModel):
     def __init__(self, n_folds: int = 5, calibrator: Optional[Any] = None):
         super().__init__(n_folds)
         self.sample_weights: Optional[np.ndarray] = None
-        self.calibrator = calibrator
+        self.calibrator = calibrator  # Note: kept as 'calibrator' since this is internal to WeightedIsotonicOutcomeModel
         self._promptid_to_fold: Dict[str, int] = {}  # Store for MRDR to access
 
     def set_weights(self, weights: np.ndarray) -> None:
@@ -202,7 +202,7 @@ class MRDREstimator(DREstimator):
         use_calibrated_weights: bool = True,
         weight_mode: str = "hajek",
         use_policy_specific_models: bool = True,
-        calibrator: Optional[Any] = None,
+        reward_calibrator: Optional[Any] = None,
         **kwargs: Any,
     ):
         if omega_mode not in {"snips", "w2", "w"}:
@@ -213,8 +213,10 @@ class MRDREstimator(DREstimator):
         # Use standard isotonic as default (will be overridden if policy-specific)
         from .outcome_models import IsotonicOutcomeModel
 
-        # Pass calibrator for proper index transformation with two-stage calibration
-        outcome_model = IsotonicOutcomeModel(n_folds=n_folds, calibrator=calibrator)
+        # Pass reward_calibrator for proper index transformation with two-stage calibration
+        outcome_model = IsotonicOutcomeModel(
+            n_folds=n_folds, calibrator=reward_calibrator
+        )
 
         # Initialize DR base (which will pass calibrator to CalibratedIPS)
         super().__init__(
@@ -223,7 +225,7 @@ class MRDREstimator(DREstimator):
             n_folds=n_folds,
             use_calibrated_weights=use_calibrated_weights,
             weight_mode=weight_mode,
-            calibrator=calibrator,
+            reward_calibrator=reward_calibrator,
             **kwargs,
         )
 
@@ -327,7 +329,7 @@ class MRDREstimator(DREstimator):
             # Create and fit weighted model for this policy
             # Pass calibrator for proper index transformation with two-stage calibration
             model = WeightedIsotonicOutcomeModel(
-                n_folds=self.n_folds, calibrator=self.calibrator
+                n_folds=self.n_folds, calibrator=self.reward_calibrator
             )
             model.set_weights(omega)
 

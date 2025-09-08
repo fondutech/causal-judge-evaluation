@@ -61,7 +61,7 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
         # Run parent fit (handles weight calibration, OUA, etc.)
         super().fit()
 
-        if not self.use_orthogonalization or not self.calibrate:
+        if not self.use_orthogonalization or not self.calibrate_weights:
             return
 
         # For each policy, fit m̂^OOF(S) for orthogonalization
@@ -191,7 +191,7 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
 
     def estimate(self) -> EstimationResult:
         """Compute OC-IPS estimates with orthogonalization."""
-        if not self.use_orthogonalization or not self.calibrate:
+        if not self.use_orthogonalization or not self.calibrate_weights:
             # Fall back to standard CalibratedIPS
             return super().estimate()
 
@@ -236,10 +236,10 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
             f_oof = R.copy()
 
             # Try to get OOF rewards using dataset indices (best), else fold-based OOF
-            if self.calibrator is not None:
+            if self.reward_calibrator is not None:
                 try:
                     # 1) Prefer dataset-index OOF if available
-                    if hasattr(self.calibrator, "predict_oof_by_index"):
+                    if hasattr(self.reward_calibrator, "predict_oof_by_index"):
                         # Build mapping from prompt_id to dataset index
                         ds_index_by_pid = {
                             str(s.prompt_id): i
@@ -255,7 +255,7 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
 
                         # Only proceed if all indices are valid
                         if np.all(ds_idx >= 0):
-                            R_pred = self.calibrator.predict_oof_by_index(ds_idx)
+                            R_pred = self.reward_calibrator.predict_oof_by_index(ds_idx)
                             if R_pred is not None:
                                 R_oof = np.asarray(R_pred, dtype=float)
                                 f_oof = R_oof
@@ -264,7 +264,7 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                                 )
 
                     # 2) Else try fold-based OOF using per-prompt folds
-                    elif hasattr(self.calibrator, "predict_oof"):
+                    elif hasattr(self.reward_calibrator, "predict_oof"):
                         from ..data.folds import get_fold
 
                         n_folds = self.sampler.dataset.metadata.get("n_folds", 5)
@@ -284,7 +284,9 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                         # Check if we have valid judge scores
                         valid_scores = np.isfinite(judge_scores)
                         if valid_scores.sum() > 0:
-                            R_pred = self.calibrator.predict_oof(judge_scores, fold_cal)
+                            R_pred = self.reward_calibrator.predict_oof(
+                                judge_scores, fold_cal
+                            )
                             if R_pred is not None:
                                 R_oof = np.asarray(R_pred, dtype=float)
                                 f_oof = R_oof
@@ -293,13 +295,13 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                                 )
 
                     # 3) Fallback: in-fold predict with a warning
-                    elif hasattr(self.calibrator, "predict"):
+                    elif hasattr(self.reward_calibrator, "predict"):
                         judge_scores = np.array(
                             [d.get("judge_score", np.nan) for d in data], dtype=float
                         )
                         valid_scores = np.isfinite(judge_scores)
                         if valid_scores.sum() > 0:
-                            R_pred = self.calibrator.predict(judge_scores)
+                            R_pred = self.reward_calibrator.predict(judge_scores)
                             if R_pred is not None:
                                 R_oof = np.asarray(R_pred, dtype=float)
                                 f_oof = R_oof
@@ -413,7 +415,7 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
             robust_confidence_intervals=None,
             metadata={
                 "target_policies": list(self.sampler.target_policies),
-                "calibrate": self.calibrate,
+                "calibrate": self.calibrate_weights,
                 "use_orthogonalization": self.use_orthogonalization,
                 "orthogonalization_diagnostics": self._orthogonalization_diagnostics,
                 "augmentation_diagnostics": self._aug_diagnostics,

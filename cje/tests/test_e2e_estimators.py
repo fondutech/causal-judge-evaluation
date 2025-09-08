@@ -114,9 +114,9 @@ class TestE2EEstimators:
         # 3. Run OC-IPS estimation
         oc_estimator = OrthogonalizedCalibratedIPS(
             sampler,
-            calibrate=True,
+            calibrate_weights=True,
             use_orthogonalization=True,
-            calibrator=cal_result.calibrator,  # Pass calibrator for rewards
+            reward_calibrator=cal_result.calibrator,  # Pass calibrator for rewards
         )
         oc_results = oc_estimator.fit_and_estimate()
 
@@ -142,8 +142,8 @@ class TestE2EEstimators:
         # 6. Compare with standard CalibratedIPS
         std_estimator = CalibratedIPS(
             sampler,
-            calibrate=True,
-            calibrator=cal_result.calibrator,
+            calibrate_weights=True,
+            reward_calibrator=cal_result.calibrator,
         )
         std_results = std_estimator.fit_and_estimate()
 
@@ -187,7 +187,7 @@ class TestE2EEstimators:
         # 3. Create OC-DR-CPO estimator
         odr_estimator = OrthogonalizedCalibratedDRCPO(
             sampler,
-            calibrator=cal_result.calibrator,
+            reward_calibrator=cal_result.calibrator,
             use_calibrated_weights=True,
             use_orthogonalization=True,
             use_iic=True,
@@ -227,7 +227,7 @@ class TestE2EEstimators:
         # 7. Compare with standard DR-CPO
         std_dr = DRCPOEstimator(
             sampler,
-            calibrator=cal_result.calibrator,
+            reward_calibrator=cal_result.calibrator,
             n_folds=5,
         )
         for policy, fresh_dataset in arena_fresh_draws.items():
@@ -269,7 +269,9 @@ class TestE2EEstimators:
         sampler = PrecomputedSampler(calibrated)
 
         # 3. Create DR estimator and add fresh draws
-        estimator = DRCPOEstimator(sampler, calibrator=cal_result.calibrator, n_folds=5)
+        estimator = DRCPOEstimator(
+            sampler, reward_calibrator=cal_result.calibrator, n_folds=5
+        )
 
         # 4. Add fresh draws manually for each policy
         for policy, fresh_dataset in arena_fresh_draws.items():
@@ -319,7 +321,7 @@ class TestE2EEstimators:
         # 3. Create MRDR estimator and add fresh draws
         estimator = MRDREstimator(
             sampler,
-            calibrator=cal_result.calibrator,
+            reward_calibrator=cal_result.calibrator,
             n_folds=5,
             omega_mode="w2",  # Test specific MRDR mode
         )
@@ -366,7 +368,9 @@ class TestE2EEstimators:
         sampler = PrecomputedSampler(calibrated)
 
         # 3. Create TMLE estimator and add fresh draws
-        estimator = TMLEEstimator(sampler, calibrator=cal_result.calibrator, n_folds=5)
+        estimator = TMLEEstimator(
+            sampler, reward_calibrator=cal_result.calibrator, n_folds=5
+        )
 
         # 4. Add fresh draws
         for policy, fresh_dataset in arena_fresh_draws.items():
@@ -418,7 +422,7 @@ class TestE2EEstimators:
         # 3. Create TR-CPO estimator
         estimator = TRCPOEstimator(
             sampler,
-            calibrator=cal_result.calibrator,
+            reward_calibrator=cal_result.calibrator,
             n_folds=5,
             weight_mode="hajek",  # Test Hájek normalization
             use_iic=True,  # Test influence-based correction
@@ -460,7 +464,7 @@ class TestE2EEstimators:
         # 9. Compare with standard DR-CPO
         std_dr = DRCPOEstimator(
             sampler,
-            calibrator=cal_result.calibrator,
+            reward_calibrator=cal_result.calibrator,
             n_folds=5,
         )
         for policy, fresh_dataset in arena_fresh_draws.items():
@@ -506,7 +510,7 @@ class TestE2EEstimators:
         # 3. Create Stacked DR estimator and add fresh draws
         estimator = StackedDREstimator(
             sampler,
-            calibrator=cal_result.calibrator,
+            reward_calibrator=cal_result.calibrator,
             n_folds=5,
             run_in_parallel=False,  # For testing, avoid parallelism
         )
@@ -573,8 +577,10 @@ class TestEstimatorConsistency:
 
         # Run all estimators
         ips = CalibratedIPS(sampler)
-        dr = DRCPOEstimator(sampler, calibrator=cal_result.calibrator, n_folds=5)
-        tmle = TMLEEstimator(sampler, calibrator=cal_result.calibrator, n_folds=5)
+        dr = DRCPOEstimator(sampler, reward_calibrator=cal_result.calibrator, n_folds=5)
+        tmle = TMLEEstimator(
+            sampler, reward_calibrator=cal_result.calibrator, n_folds=5
+        )
 
         # Add fresh draws to DR estimators
         for policy, fresh_dataset in arena_fresh_draws.items():

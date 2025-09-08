@@ -42,9 +42,11 @@ def _build_calibrated_ips(
     # Pass calibrator for DR-aware direction selection if available
     cfg = dict(config)
     if calibration_result and getattr(calibration_result, "calibrator", None):
-        cfg.setdefault("calibrator", calibration_result.calibrator)
+        cfg.setdefault("reward_calibrator", calibration_result.calibrator)
         if verbose:
-            logger.info("Using calibrator for DR-aware SIMCal direction selection")
+            logger.info(
+                "Using reward_calibrator for DR-aware SIMCal direction selection"
+            )
     return CalibratedIPS(sampler, **cfg)
 
 
@@ -55,7 +57,7 @@ def _build_raw_ips(
     verbose: bool,
 ) -> CalibratedIPS:
     clip_weight = config.get("clip_weight", 100.0)
-    return CalibratedIPS(sampler, calibrate=False, clip_weight=clip_weight)
+    return CalibratedIPS(sampler, calibrate_weights=False, clip_weight=clip_weight)
 
 
 def _build_orthogonalized_ips(
@@ -68,9 +70,9 @@ def _build_orthogonalized_ips(
     # Remove n_folds if present (not used by IPS estimators)
     cfg.pop("n_folds", None)
     if calibration_result and getattr(calibration_result, "calibrator", None):
-        cfg.setdefault("calibrator", calibration_result.calibrator)
+        cfg.setdefault("reward_calibrator", calibration_result.calibrator)
         if verbose:
-            logger.info("Using calibrator for OC-IPS orthogonalization")
+            logger.info("Using reward_calibrator for OC-IPS orthogonalization")
     return OrthogonalizedCalibratedIPS(sampler, **cfg)
 
 
@@ -85,7 +87,7 @@ def _build_dr_cpo(
         if verbose:
             logger.info("Using calibration models for DR outcome model")
         return DRCPOEstimator(
-            sampler, n_folds=n_folds, calibrator=calibration_result.calibrator
+            sampler, n_folds=n_folds, reward_calibrator=calibration_result.calibrator
         )
     return DRCPOEstimator(sampler, n_folds=n_folds)
 
@@ -101,7 +103,7 @@ def _build_oc_dr_cpo(
         if verbose:
             logger.info("Using calibration models for OC-DR-CPO")
         return OrthogonalizedCalibratedDRCPO(
-            sampler, n_folds=n_folds, calibrator=calibration_result.calibrator
+            sampler, n_folds=n_folds, reward_calibrator=calibration_result.calibrator
         )
     return OrthogonalizedCalibratedDRCPO(sampler, n_folds=n_folds)
 
@@ -121,7 +123,7 @@ def _build_mrdr(
             sampler,
             n_folds=n_folds,
             omega_mode=omega_mode,
-            calibrator=calibration_result.calibrator,
+            reward_calibrator=calibration_result.calibrator,
         )
     return MRDREstimator(sampler, n_folds=n_folds, omega_mode=omega_mode)
 
@@ -141,7 +143,7 @@ def _build_tmle(
             sampler,
             n_folds=n_folds,
             link=link,
-            calibrator=calibration_result.calibrator,
+            reward_calibrator=calibration_result.calibrator,
         )
     return TMLEEstimator(sampler, n_folds=n_folds, link=link)
 
@@ -165,7 +167,7 @@ def _build_tr_cpo(
             n_folds=n_folds,
             weight_mode=weight_mode,
             use_iic=use_iic,
-            calibrator=calibration_result.calibrator,
+            reward_calibrator=calibration_result.calibrator,
         )
     return TRCPOEstimator(
         sampler, n_folds=n_folds, weight_mode=weight_mode, use_iic=use_iic

@@ -57,13 +57,15 @@ class TMLEEstimator(DREstimator):
         tol: float = 1e-8,
         use_calibrated_weights: bool = True,
         weight_mode: str = "hajek",
-        calibrator: Optional[Any] = None,
+        reward_calibrator: Optional[Any] = None,
         use_iic: bool = True,  # Enable IIC for variance reduction
         **kwargs: Any,
     ):
         # Initialize DR base with standard isotonic outcome model
-        # Pass calibrator for proper index transformation with two-stage calibration
-        outcome_model = IsotonicOutcomeModel(n_folds=n_folds, calibrator=calibrator)
+        # Pass reward_calibrator for proper index transformation with two-stage calibration
+        outcome_model = IsotonicOutcomeModel(
+            n_folds=n_folds, calibrator=reward_calibrator
+        )
 
         super().__init__(
             sampler=sampler,
@@ -71,7 +73,7 @@ class TMLEEstimator(DREstimator):
             n_folds=n_folds,
             use_calibrated_weights=use_calibrated_weights,
             weight_mode=weight_mode,
-            calibrator=calibrator,
+            reward_calibrator=reward_calibrator,
             **kwargs,
         )
 
@@ -432,7 +434,7 @@ class TMLEEstimator(DREstimator):
         # Optionally compute and attach oracle-uncertainty (OUA) adjusted SEs
         if (
             getattr(self, "oua_jackknife", False)
-            and getattr(self, "calibrator", None) is not None
+            and getattr(self, "reward_calibrator", None) is not None
         ):
             try:
                 oua_ses: List[float] = []

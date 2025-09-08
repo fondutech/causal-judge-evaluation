@@ -66,8 +66,10 @@ class TestIICFeature:
 
         # Check average improvement across all policies
         avg_ratio = np.mean(se_ratios)
-        assert avg_ratio <= 1.01, f"IIC increased average SE by {(avg_ratio-1)*100:.1f}%"
-        
+        assert (
+            avg_ratio <= 1.01
+        ), f"IIC increased average SE by {(avg_ratio-1)*100:.1f}%"
+
         # Should improve at least one policy
         assert improvements > 0, "IIC didn't improve any policies"
 
@@ -110,10 +112,10 @@ class TestIICFeature:
 
         # Test with DR-CPO
         dr_no_iic = DRCPOEstimator(
-            sampler, calibrator=cal_result.calibrator, n_folds=5, use_iic=False
+            sampler, reward_calibrator=cal_result.calibrator, n_folds=5, use_iic=False
         )
         dr_iic = DRCPOEstimator(
-            sampler, calibrator=cal_result.calibrator, n_folds=5, use_iic=True
+            sampler, reward_calibrator=cal_result.calibrator, n_folds=5, use_iic=True
         )
 
         # Add fresh draws to both
@@ -129,15 +131,19 @@ class TestIICFeature:
         # With only 100 samples and fresh draws, IIC can be unstable
         se_ratios = []
         for i in range(len(results_iic.standard_errors)):
-            se_ratios.append(results_iic.standard_errors[i] / results_no_iic.standard_errors[i])
+            se_ratios.append(
+                results_iic.standard_errors[i] / results_no_iic.standard_errors[i]
+            )
             assert (
                 results_iic.standard_errors[i]
                 <= results_no_iic.standard_errors[i] * 1.10
             ), f"Policy {i}: IIC increased SE by >10%"
-        
+
         # Check average improvement
         avg_ratio = np.mean(se_ratios)
-        assert avg_ratio <= 1.02, f"IIC increased average SE by {(avg_ratio-1)*100:.1f}%"
+        assert (
+            avg_ratio <= 1.02
+        ), f"IIC increased average SE by {(avg_ratio-1)*100:.1f}%"
 
         # Check IIC diagnostics present for DR
         assert "iic_diagnostics" in results_iic.metadata
@@ -279,7 +285,7 @@ class TestCrossFitting:
             np.random.seed(seed)
 
             estimator = DRCPOEstimator(
-                sampler, calibrator=cal_result.calibrator, n_folds=5
+                sampler, reward_calibrator=cal_result.calibrator, n_folds=5
             )
 
             # Add fresh draws for each policy
@@ -367,7 +373,7 @@ class TestIntegrationScenarios:
         # Run DR with all features enabled
         estimator = DRCPOEstimator(
             sampler,
-            calibrator=cal_result.calibrator,
+            reward_calibrator=cal_result.calibrator,
             n_folds=5,
             use_iic=True,  # IIC enabled
             # variance_cap removed as it's not supported by DRCPOEstimator

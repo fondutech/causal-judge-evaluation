@@ -134,17 +134,17 @@ class EstimatorComparison(BaseAblation):
 
         if config.estimator_class == "ips":
             # Raw or self-normalized IPS
-            return CalibratedIPS(sampler, calibrate=False)
+            return CalibratedIPS(sampler, calibrate_weights=False)
 
         elif config.estimator_class == "calibrated-ips":
             # Calibrated IPS (always uses SIMCal)
-            return CalibratedIPS(sampler, calibrate=True)
+            return CalibratedIPS(sampler, calibrate_weights=True)
 
         elif config.estimator_class == "dr-cpo":
             # DR-CPO with or without calibrated weights
             return DRCPOEstimator(
                 sampler,
-                calibrator=cal_result.calibrator if cal_result else None,
+                reward_calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
                 use_calibrated_weights=config.use_calibration,
             )
@@ -160,7 +160,7 @@ class EstimatorComparison(BaseAblation):
                     estimators=["dr-cpo", "tmle", "mrdr"],
                     V_folds=5,
                     parallel=True,
-                    calibrator=cal_result.calibrator,
+                    reward_calibrator=cal_result.calibrator,
                 )
             else:
                 # Stacked-DR: no calibrator, components will use raw weights

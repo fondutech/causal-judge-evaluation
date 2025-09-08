@@ -49,8 +49,8 @@ def create_estimator(
 
     elif args.estimator == "raw-ips":
         clip_weight = estimator_config.get("clip_weight", 1e10)
-        # Use CalibratedIPS with calibrate=False for raw IPS
-        return CalibratedIPS(sampler, calibrate=False, clip_weight=clip_weight)
+        # Use CalibratedIPS with calibrate_weights=False for raw IPS
+        return CalibratedIPS(sampler, calibrate_weights=False, clip_weight=clip_weight)
 
     elif args.estimator == "dr-cpo":
         return _create_dr_cpo(args, sampler, cal_result, estimator_config)
@@ -87,7 +87,7 @@ def _create_dr_cpo(
         dr_estimator = DRCPOEstimator(
             sampler,
             n_folds=n_folds,
-            calibrator=cal_result.calibrator,
+            reward_calibrator=cal_result.calibrator,
         )
         print("   Using CalibratorBackedOutcomeModel (reusing calibration models)")
     else:
@@ -211,7 +211,7 @@ def _create_stacked_dr(
     if cal_result and cal_result.calibrator:
         stacked_estimator = StackedDREstimator(
             sampler,
-            calibrator=cal_result.calibrator,
+            reward_calibrator=cal_result.calibrator,
             estimators=estimators,
             n_folds=n_folds,
             use_outer_split=use_outer_split,

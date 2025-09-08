@@ -154,27 +154,27 @@ class BaseAblation:
 
         estimator_map = {
             "raw-ips": lambda s: CalibratedIPS(
-                s, calibrate=False, oua_jackknife=oua
+                s, calibrate_weights=False, oua_jackknife=oua
             ),  # No calibration
             "ips": lambda s: CalibratedIPS(
                 s,
-                calibrate=use_calibration,
+                calibrate_weights=use_calibration,
                 oua_jackknife=oua,  # IPS doesn't support IIC
             ),
             "calibrated-ips": lambda s: CalibratedIPS(
                 s,
-                calibrate=True,
-                calibrator=cal_result.calibrator if cal_result else None,
+                calibrate_weights=True,
+                reward_calibrator=cal_result.calibrator if cal_result else None,
                 oua_jackknife=oua,  # Always use calibration, enable OUA
             ),
             "orthogonalized-ips": lambda s: OrthogonalizedCalibratedIPS(
                 s,
-                calibrator=cal_result.calibrator if cal_result else None,
+                reward_calibrator=cal_result.calibrator if cal_result else None,
                 oua_jackknife=oua,
             ),
             "dr-cpo": lambda s: DRCPOEstimator(
                 s,
-                calibrator=cal_result.calibrator if cal_result else None,
+                reward_calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
@@ -182,7 +182,7 @@ class BaseAblation:
             ),
             "oc-dr-cpo": lambda s: OrthogonalizedCalibratedDRCPO(
                 s,
-                calibrator=cal_result.calibrator if cal_result else None,
+                reward_calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
@@ -190,14 +190,14 @@ class BaseAblation:
             ),
             "tr-cpo": lambda s: TRCPOEstimator(
                 s,
-                calibrator=cal_result.calibrator if cal_result else None,
+                reward_calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
             ),
             "calibrated-dr-cpo": lambda s: DRCPOEstimator(
                 s,
-                calibrator=cal_result.calibrator if cal_result else None,
+                reward_calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
                 use_calibrated_weights=True,  # Use SIMCal calibrated weights
                 use_iic=use_iic,  # Pass IIC setting
@@ -205,7 +205,7 @@ class BaseAblation:
             ),
             "mrdr": lambda s: MRDREstimator(
                 s,
-                calibrator=cal_result.calibrator if cal_result else None,
+                reward_calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
@@ -213,7 +213,7 @@ class BaseAblation:
             ),
             "tmle": lambda s: TMLEEstimator(
                 s,
-                calibrator=cal_result.calibrator if cal_result else None,
+                reward_calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=5,
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
@@ -221,7 +221,7 @@ class BaseAblation:
             ),
             "stacked-dr": lambda s: StackedDREstimator(
                 s,
-                calibrator=cal_result.calibrator if cal_result else None,
+                reward_calibrator=cal_result.calibrator if cal_result else None,
                 V_folds=5,
                 use_calibrated_weights=use_calibration,  # Controlled by use_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
@@ -229,7 +229,7 @@ class BaseAblation:
             ),
             "cal-stacked-dr": lambda s: StackedDREstimator(
                 s,
-                calibrator=cal_result.calibrator if cal_result else None,
+                reward_calibrator=cal_result.calibrator if cal_result else None,
                 V_folds=5,
                 use_calibrated_weights=True,  # Use SIMCal calibrated weights
                 use_iic=use_iic,  # Pass IIC setting

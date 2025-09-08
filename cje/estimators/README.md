@@ -76,7 +76,7 @@ estimators/
 
 ## Estimator Selection Guide
 
-### Use **CalibratedIPS with calibrate=False** (raw mode) when:
+### Use **CalibratedIPS with calibrate_weights=False** (raw mode) when:
 - You have excellent overlap (ESS > 50%)
 - You want the simplest baseline
 - You don't have judge scores for calibration
@@ -184,8 +184,8 @@ calibrated_dataset, cal_result = calibrate_dataset(
 sampler = PrecomputedSampler(calibrated_dataset)
 
 # 3. Initialize estimator
-# DR estimators accept optional calibrator for proper index transformation
-estimator = DRCPOEstimator(sampler, calibrator=cal_result.calibrator)
+# DR estimators accept optional reward_calibrator for proper index transformation
+estimator = DRCPOEstimator(sampler, reward_calibrator=cal_result.calibrator)
 # or for IPS:
 estimator = CalibratedIPS(sampler)
 

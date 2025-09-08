@@ -47,7 +47,7 @@ class TRCPOEstimator(DREstimator):
         sampler: PrecomputedSampler
         n_folds: Cross-fitting folds (for outcome and π̂_L)
         weight_mode: 'hajek' (recommended) or 'raw' for w^{m1}
-        calibrator: Reward calibrator f̂ for R and OOF predictions
+        reward_calibrator: Reward calibrator f̂ for R and OOF predictions
         random_seed: Seed for fold hashing
         min_pi: Lower clip for π̂_L (default 1e-3)
         max_pi: Upper clip for π̂_L (default 1 - 1e-3)
@@ -62,7 +62,7 @@ class TRCPOEstimator(DREstimator):
         sampler: PrecomputedSampler,
         n_folds: int = 5,
         weight_mode: str = "hajek",
-        calibrator: Optional[Any] = None,
+        reward_calibrator: Optional[Any] = None,
         random_seed: int = 42,
         min_pi: float = 1e-3,
         max_pi: float = 1 - 1e-3,
@@ -74,11 +74,11 @@ class TRCPOEstimator(DREstimator):
         # TR uses raw/Hájek weights; disable SIMCal in parent (but reuse all DR infra)
         super().__init__(
             sampler=sampler,
-            outcome_model=None,  # parent will choose (isotonic or calibrator-backed)
+            outcome_model=None,  # parent will choose (isotonic or reward_calibrator-backed)
             n_folds=n_folds,
             use_calibrated_weights=False,  # IMPORTANT: w^{m1} only for TR
             weight_mode=weight_mode,
-            calibrator=calibrator,
+            reward_calibrator=reward_calibrator,
             random_seed=random_seed,
             run_diagnostics=run_diagnostics,
             **kwargs,
@@ -371,10 +371,10 @@ class TRCPOEstimator(DREstimator):
             # R^{OOF} for IF (out-of-fold calibrated rewards)
             # Prefer index-based OOF for best alignment
             R_oof = R.copy()
-            if self.calibrator is not None:
+            if self.reward_calibrator is not None:
                 try:
                     # First try index-based OOF (most reliable)
-                    if hasattr(self.calibrator, "predict_oof_by_index"):
+                    if hasattr(self.reward_calibrator, "predict_oof_by_index"):
                         ds_index_by_pid = {
                             str(s.prompt_id): i
                             for i, s in enumerate(self.sampler.dataset.samples)
@@ -383,20 +383,22 @@ class TRCPOEstimator(DREstimator):
                             [ds_index_by_pid.get(pid, -1) for pid in pids], dtype=int
                         )
                         if np.all(ds_idx >= 0):
-                            ro = self.calibrator.predict_oof_by_index(ds_idx)
+                            ro = self.reward_calibrator.predict_oof_by_index(ds_idx)
                             if ro is not None:
                                 R_oof = np.asarray(ro, dtype=float)
                     # Fallback to fold-based OOF
-                    elif hasattr(self.calibrator, "predict_oof"):
+                    elif hasattr(self.reward_calibrator, "predict_oof"):
                         R_oof = np.asarray(
-                            self.calibrator.predict_oof(S, fold_ids), dtype=float
+                            self.reward_calibrator.predict_oof(S, fold_ids), dtype=float
                         )
                     # Last resort: in-fold prediction
-                    elif hasattr(self.calibrator, "predict"):
+                    elif hasattr(self.reward_calibrator, "predict"):
                         logger.warning(
-                            "TR: using in-fold calibrator.predict(); IF may be slightly optimistic."
+                            "TR: using in-fold reward_calibrator.predict(); IF may be slightly optimistic."
                         )
-                        R_oof = np.asarray(self.calibrator.predict(S), dtype=float)
+                        R_oof = np.asarray(
+                            self.reward_calibrator.predict(S), dtype=float
+                        )
                 except Exception as e:
                     logger.debug(f"TR: OOF reward prediction failed: {e}")
 
@@ -599,7 +601,7 @@ class TRCPOEstimator(DREstimator):
         )
 
         # Optional OUA (usually tiny for TR; still supported)
-        if getattr(self, "oua_jackknife", False) and self.calibrator is not None:
+        if getattr(self, "oua_jackknife", False) and self.reward_calibrator is not None:
             try:
                 oua_ses: List[float] = []
                 var_oracle_map: Dict[str, float] = {}
@@ -637,14 +639,16 @@ class TRCPOEstimator(DREstimator):
         self._results = result
         return result
 
-    # ---------- OUA jackknife (leave-one-calibrator-fold) ----------
+    # ---------- OUA jackknife (leave-one-reward_calibrator-fold) ----------
 
     def get_oracle_jackknife(self, policy: str) -> Optional[np.ndarray]:
         """Compute delete-one-oracle-fold TR estimates (optional OUA)."""
         try:
-            if self.calibrator is None or not hasattr(self.calibrator, "_fold_models"):
+            if self.reward_calibrator is None or not hasattr(
+                self.reward_calibrator, "_fold_models"
+            ):
                 return None
-            fold_models = getattr(self.calibrator, "_fold_models", {})
+            fold_models = getattr(self.reward_calibrator, "_fold_models", {})
             if not fold_models:
                 return None
 
@@ -690,7 +694,7 @@ class TRCPOEstimator(DREstimator):
             if fresh is None:
                 return None
 
-            # π̂_L OOF (fixed across oracle jackknife; OK because π̂_L uses logged labels, not oracle calibrator)
+            # π̂_L OOF (fixed across oracle jackknife; OK because π̂_L uses logged labels, not oracle reward_calibrator)
             if policy in self._piL_oof_cache and self._piL_oof_cache[policy].shape[
                 0
             ] == len(data):

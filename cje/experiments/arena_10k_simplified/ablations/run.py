@@ -135,9 +135,9 @@ class UnifiedAblation(BaseAblation):
 
             return CalibratedIPS(
                 sampler,
-                calibrate=use_calibration,  # Now controlled by ablation parameter
+                calibrate_weights=use_calibration,  # Now controlled by ablation parameter
                 use_iic=use_iic,
-                calibrator=(
+                reward_calibrator=(
                     cal_result.calibrator if use_calibration and cal_result else None
                 ),
             )

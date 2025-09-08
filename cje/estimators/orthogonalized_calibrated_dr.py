@@ -77,7 +77,7 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
         n_folds: int = 5,
         use_calibrated_weights: bool = True,  # MUST be True to anchor on SIMCal (recommended)
         weight_mode: str = "hajek",
-        calibrator: Optional[Any] = None,
+        reward_calibrator: Optional[Any] = None,
         random_seed: int = 42,
         run_diagnostics: bool = True,
         use_iic: bool = True,
@@ -90,7 +90,7 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
             n_folds: Outcome-model cross-fitting folds (reused by DREstimator)
             use_calibrated_weights: True => SIMCal anchor (recommended)
             weight_mode: 'hajek' (mean-one) or 'raw' for W (recommended: 'hajek')
-            calibrator: Reward calibrator f̂; used for R and OOF predictions
+            reward_calibrator: Reward calibrator f̂; used for R and OOF predictions
             random_seed: Seed for deterministic fold assignment
             run_diagnostics: Whether to compute diagnostics
             use_iic: Apply IIC residualization to IF for SE tightening
@@ -103,7 +103,7 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
             n_folds=n_folds,
             use_calibrated_weights=use_calibrated_weights,
             weight_mode=weight_mode,
-            calibrator=calibrator,
+            reward_calibrator=reward_calibrator,
             random_seed=random_seed,
             run_diagnostics=run_diagnostics,
             **kwargs,
@@ -329,33 +329,33 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
             f_oof = R_logged.copy()
             used_true_oof = False
 
-            if self.calibrator is not None:
+            if self.reward_calibrator is not None:
                 try:
                     # 1) Try dataset-index OOF
-                    if hasattr(self.calibrator, "predict_oof_by_index"):
+                    if hasattr(self.reward_calibrator, "predict_oof_by_index"):
                         ds_idx = np.array(
                             [ds_index_by_pid[pid] for pid in pids], dtype=int
                         )
-                        R_pred = self.calibrator.predict_oof_by_index(ds_idx)
+                        R_pred = self.reward_calibrator.predict_oof_by_index(ds_idx)
                         if R_pred is not None:
                             R_oof = np.asarray(R_pred, dtype=float)
                             f_oof = R_oof
                             used_true_oof = True
                     # 2) Else try fold-based OOF with prompt-based folds
-                    elif hasattr(self.calibrator, "predict_oof"):
+                    elif hasattr(self.reward_calibrator, "predict_oof"):
                         n_folds = self.sampler.dataset.metadata.get("n_folds", 5)
                         seed = self.sampler.dataset.metadata.get("fold_seed", 42)
                         fold_cal = np.array(
                             [get_fold(pid, n_folds, seed) for pid in pids], dtype=int
                         )
-                        R_pred = self.calibrator.predict_oof(S_logged, fold_cal)
+                        R_pred = self.reward_calibrator.predict_oof(S_logged, fold_cal)
                         if R_pred is not None:
                             R_oof = np.asarray(R_pred, dtype=float)
                             f_oof = R_oof
                             used_true_oof = True
                     # 3) Fallback to in-fold predict (warn)
-                    elif hasattr(self.calibrator, "predict"):
-                        R_pred = self.calibrator.predict(S_logged)
+                    elif hasattr(self.reward_calibrator, "predict"):
+                        R_pred = self.reward_calibrator.predict(S_logged)
                         if R_pred is not None:
                             R_oof = np.asarray(R_pred, dtype=float)
                             f_oof = R_oof
@@ -486,7 +486,7 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
         )
 
         # Optionally attach OUA jackknife SEs (same logic as DR-CPO base)
-        if getattr(self, "oua_jackknife", False) and self.calibrator is not None:
+        if getattr(self, "oua_jackknife", False) and self.reward_calibrator is not None:
             try:
                 oua_ses: List[float] = []
                 var_oracle_map: Dict[str, float] = {}

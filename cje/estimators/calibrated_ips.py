@@ -24,16 +24,16 @@ class CalibratedIPS(BaseCJEEstimator):
     """IPS estimator with optional SIMCal weight calibration.
 
     Can operate in two modes:
-    1. calibrate=True (default): Uses stacked Score-Indexed Monotone Calibration (SIMCal)
+    1. calibrate_weights=True (default): Uses stacked Score-Indexed Monotone Calibration (SIMCal)
        to reduce variance and heavy-tail pathologies in importance weights
-    2. calibrate=False: Uses raw importance weights directly (equivalent to traditional IPS)
+    2. calibrate_weights=False: Uses raw importance weights directly (equivalent to traditional IPS)
 
     Features when calibrated:
     - Stacked calibration combining multiple candidates optimally
     - OOF influence function variance minimization
     - ESS floor and variance cap constraints
     - Judge score-indexed calibration for better alignment
-    - Automatic DR-aware calibration when calibrator available
+    - Automatic DR-aware calibration when reward_calibrator available
 
     Features in both modes:
     - Oracle slice augmentation for honest confidence intervals
@@ -42,14 +42,14 @@ class CalibratedIPS(BaseCJEEstimator):
 
     Args:
         sampler: PrecomputedSampler with data
-        calibrate: Whether to apply SIMCal calibration (default True)
+        calibrate_weights: Whether to apply SIMCal weight calibration (default True)
         weight_mode: "hajek" for mean-one normalized weights, "raw" for unnormalized (default "hajek")
         clip_weight: Maximum weight value before calibration (default None = no clipping)
-        ess_floor: Minimum ESS as fraction of n (default 0.2 = 20% ESS) [only used if calibrate=True]
-        var_cap: Maximum allowed variance of calibrated weights (default None = no cap) [only used if calibrate=True]
-        calibrator: Optional JudgeCalibrator for DR influence functions [only used if calibrate=True]
-        include_baseline: Whether to include raw weights in the stack (default False) [only used if calibrate=True]
-        baseline_shrink: Shrinkage toward baseline for stability (default 0.0) [only used if calibrate=True]
+        ess_floor: Minimum ESS as fraction of n (default 0.2 = 20% ESS) [only used if calibrate_weights=True]
+        var_cap: Maximum allowed variance of calibrated weights (default None = no cap) [only used if calibrate_weights=True]
+        reward_calibrator: Optional JudgeCalibrator for OUA in variance estimation
+        include_baseline: Whether to include raw weights in the stack (default False) [only used if calibrate_weights=True]
+        baseline_shrink: Shrinkage toward baseline for stability (default 0.0) [only used if calibrate_weights=True]
         refuse_unreliable: Whether to refuse (return NaN) for unreliable estimates (default False)
         **kwargs: Additional arguments passed to BaseCJEEstimator (e.g., oracle_slice_config)
     """
@@ -57,12 +57,12 @@ class CalibratedIPS(BaseCJEEstimator):
     def __init__(
         self,
         sampler: PrecomputedSampler,
-        calibrate: bool = True,
+        calibrate_weights: bool = True,
         weight_mode: str = "hajek",
         clip_weight: Optional[float] = None,
         ess_floor: Optional[float] = 0.2,
         var_cap: Optional[float] = None,
-        calibrator: Optional[Any] = None,
+        reward_calibrator: Optional[Any] = None,
         include_baseline: bool = False,
         baseline_shrink: float = 0.0,
         run_diagnostics: bool = True,
@@ -77,14 +77,16 @@ class CalibratedIPS(BaseCJEEstimator):
             diagnostic_config=None,  # Will use defaults
             **kwargs,  # Passes oracle_slice_config if provided
         )
-        self.calibrate = calibrate
+        self.calibrate_weights = calibrate_weights
         self.weight_mode = weight_mode
         self.clip_weight = clip_weight
-        self.ess_floor = ess_floor if calibrate else None
-        self.var_cap = var_cap if calibrate else None
-        self.calibrator = calibrator  # Needed for OUA regardless of weight calibration
-        self.include_baseline = include_baseline if calibrate else True
-        self.baseline_shrink = baseline_shrink if calibrate else 0.0
+        self.ess_floor = ess_floor if calibrate_weights else None
+        self.var_cap = var_cap if calibrate_weights else None
+        self.reward_calibrator = (
+            reward_calibrator  # Needed for OUA regardless of weight calibration
+        )
+        self.include_baseline = include_baseline if calibrate_weights else True
+        self.baseline_shrink = baseline_shrink if calibrate_weights else 0.0
         self.refuse_unreliable = refuse_unreliable
         # Optional oracle-uncertainty jackknife (disabled by default)
         self.oua_jackknife = bool(oua_jackknife)
@@ -111,7 +113,7 @@ class CalibratedIPS(BaseCJEEstimator):
                 continue
 
             # If not calibrating, just use raw weights
-            if not self.calibrate:
+            if not self.calibrate_weights:
                 logger.debug(
                     f"Raw IPS weights for policy '{policy}': "
                     f"mean={raw_weights.mean():.3f}, std={raw_weights.std():.3f}, "
@@ -158,19 +160,19 @@ class CalibratedIPS(BaseCJEEstimator):
 
             # Get rewards for this policy (always needed for influence functions)
             rewards = np.array([d["reward"] for d in data], dtype=float)
-            rewards_oof = None  # Will be populated if calibrator available
+            rewards_oof = None  # Will be populated if reward_calibrator available
 
-            # Try to get cross-fitted rewards if calibrator available (for SIMCal ordering)
+            # Try to get cross-fitted rewards if reward_calibrator available (for SIMCal ordering)
             # Get OOF predictions for this policy subset
             g_oof = None
             fold_ids: Optional[np.ndarray] = (
                 None  # Initialize before conditional blocks
             )
 
-            if self.calibrator is not None:
+            if self.reward_calibrator is not None:
                 try:
                     # Option 1: Use index-based OOF for policy subset
-                    if hasattr(self.calibrator, "predict_oof_by_index"):
+                    if hasattr(self.reward_calibrator, "predict_oof_by_index"):
                         ds_index_by_pid = {
                             str(s.prompt_id): i
                             for i, s in enumerate(self.sampler.dataset.samples)
@@ -180,7 +182,7 @@ class CalibratedIPS(BaseCJEEstimator):
                             [ds_index_by_pid.get(pid, -1) for pid in pids], dtype=int
                         )
                         if np.all(ds_idx >= 0):
-                            g_oof = self.calibrator.predict_oof_by_index(ds_idx)
+                            g_oof = self.reward_calibrator.predict_oof_by_index(ds_idx)
                             if g_oof is not None:
                                 logger.debug(
                                     f"Using index-based cross-fitted rewards (g^OOF) as SIMCal ordering for policy '{policy}'"
@@ -190,7 +192,7 @@ class CalibratedIPS(BaseCJEEstimator):
                                     rewards_oof = np.asarray(g_oof, dtype=float)
 
                     # Option 2: Use fold-based OOF with policy subset
-                    if g_oof is None and hasattr(self.calibrator, "predict_oof"):
+                    if g_oof is None and hasattr(self.reward_calibrator, "predict_oof"):
                         from ..data.folds import get_fold
 
                         n_folds = self.sampler.dataset.metadata.get("n_folds", 5)
@@ -206,7 +208,7 @@ class CalibratedIPS(BaseCJEEstimator):
                             ],
                             dtype=int,
                         )
-                        g_oof = self.calibrator.predict_oof(S_policy, fold_ids)
+                        g_oof = self.reward_calibrator.predict_oof(S_policy, fold_ids)
                         if g_oof is not None:
                             logger.debug(
                                 f"Using fold-based cross-fitted rewards (g^OOF) as SIMCal ordering for policy '{policy}'"
@@ -409,9 +411,9 @@ class CalibratedIPS(BaseCJEEstimator):
 
             # OOF rewards for IF path (prefer index-based)
             R_oof = rewards.copy()
-            if self.calibrator is not None:
+            if self.reward_calibrator is not None:
                 try:
-                    if hasattr(self.calibrator, "predict_oof_by_index"):
+                    if hasattr(self.reward_calibrator, "predict_oof_by_index"):
                         ds_index_by_pid = {
                             str(s.prompt_id): i
                             for i, s in enumerate(self.sampler.dataset.samples)
@@ -424,14 +426,14 @@ class CalibratedIPS(BaseCJEEstimator):
                             dtype=int,
                         )
                         if np.all(ds_idx >= 0):
-                            tmp = self.calibrator.predict_oof_by_index(ds_idx)
+                            tmp = self.reward_calibrator.predict_oof_by_index(ds_idx)
                             if tmp is not None:
                                 R_oof = np.asarray(tmp, dtype=float)
-                    elif hasattr(self.calibrator, "predict_oof"):
+                    elif hasattr(self.reward_calibrator, "predict_oof"):
                         S_vec = np.asarray(
                             [d.get("judge_score", np.nan) for d in data], dtype=float
                         )
-                        tmp = self.calibrator.predict_oof(S_vec, fold_ids)
+                        tmp = self.reward_calibrator.predict_oof(S_vec, fold_ids)
                         if tmp is not None:
                             R_oof = np.asarray(tmp, dtype=float)
                 except Exception as e:
@@ -502,7 +504,7 @@ class CalibratedIPS(BaseCJEEstimator):
             estimates=np.array(estimates),
             standard_errors=np.array(standard_errors),
             n_samples_used=n_samples_used,
-            method="calibrated_ips" if self.calibrate else "raw_ips",
+            method="calibrated_ips" if self.calibrate_weights else "raw_ips",
             influence_functions=influence_functions,
             diagnostics=None,  # Will be set below
             robust_standard_errors=None,
@@ -514,7 +516,7 @@ class CalibratedIPS(BaseCJEEstimator):
                     self, "_iic_adjustments", {}
                 ),  # IIC adjustments applied
                 "iic_estimate_adjusted": self.use_iic,  # Flag: estimates already adjusted
-                "calibration_method": "simcal" if self.calibrate else None,
+                "calibration_method": "simcal" if self.calibrate_weights else None,
                 "ess_floor": self.ess_floor,
                 "var_cap": self.var_cap,
                 "calibration_info": self._calibration_info,  # TODO: Move to diagnostics
@@ -550,7 +552,7 @@ class CalibratedIPS(BaseCJEEstimator):
             pass
 
         # Optionally add oracle-uncertainty jackknife variance
-        if self.oua_jackknife and self.calibrator is not None:
+        if self.oua_jackknife and self.reward_calibrator is not None:
             oua_ses: List[float] = []
             var_oracle_map: Dict[str, float] = {}
             jk_counts: Dict[str, int] = {}
@@ -647,16 +649,18 @@ class CalibratedIPS(BaseCJEEstimator):
     def get_oracle_jackknife(self, policy: str) -> Optional[np.ndarray]:
         """Leave-one-oracle-fold jackknife estimates for IPS.
 
-        For each calibrator fold model f^(−k), recompute the IPS estimate using
+        For each reward_calibrator fold model f^(−k), recompute the IPS estimate using
         rewards R^(−k) = f^(−k)(S) and the same calibrated weights, and include
         oracle augmentation with the updated residuals.
 
         Returns an array of K estimates, or None if not applicable.
         """
         try:
-            if self.calibrator is None or not hasattr(self.calibrator, "_fold_models"):
+            if self.reward_calibrator is None or not hasattr(
+                self.reward_calibrator, "_fold_models"
+            ):
                 return None
-            fold_models = getattr(self.calibrator, "_fold_models", {})
+            fold_models = getattr(self.reward_calibrator, "_fold_models", {})
             if not fold_models:
                 return None
 
@@ -676,7 +680,7 @@ class CalibratedIPS(BaseCJEEstimator):
 
             jack: List[float] = []
             for fold_id, fold_model in fold_models.items():
-                # Recompute rewards under leave-one-fold calibrator
+                # Recompute rewards under leave-one-fold reward_calibrator
                 rewards_loo = np.clip(fold_model.predict(judge_scores), 0.0, 1.0)
 
                 # Recompute augmentation with the updated rewards
@@ -825,7 +829,7 @@ class CalibratedIPS(BaseCJEEstimator):
         # Create IPSDiagnostics with new overlap metrics
         diagnostics = IPSDiagnostics(
             estimator_type="CalibratedIPS",
-            method="calibrated_ips" if self.calibrate else "raw_ips",
+            method="calibrated_ips" if self.calibrate_weights else "raw_ips",
             n_samples_total=n_total,
             n_samples_valid=self.sampler.n_valid_samples,
             n_policies=len(policies),

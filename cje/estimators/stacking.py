@@ -76,7 +76,7 @@ class StackedDREstimator(BaseCJEEstimator):
             **kwargs: Additional arguments passed to base class
         """
         # Extract calibrator before passing to base class (base doesn't accept it)
-        self.calibrator = kwargs.pop("calibrator", None)
+        self.reward_calibrator = kwargs.pop("reward_calibrator", None)
         # Extract weight_mode for DR estimators
         self.weight_mode = kwargs.pop("weight_mode", "hajek")
         # Extract use_calibrated_weights to control SIMCal
@@ -356,13 +356,13 @@ class StackedDREstimator(BaseCJEEstimator):
         # Create estimator with shared fold assignments and calibrator
         # Note: We can't directly pass fold_ids to most estimators,
         # but they will use the same seed which helps
-        # Pass calibrator as a named parameter for DR estimators
+        # Pass reward_calibrator as a named parameter for DR estimators
         if name in ["dr-cpo", "tmle", "mrdr", "oc-dr-cpo", "tr-cpo"]:
-            # Always pass calibrator for outcome model (if available)
-            # use_calibrated_weights controls SIMCal, independent of calibrator
+            # Always pass reward_calibrator for outcome model (if available)
+            # use_calibrated_weights controls SIMCal, independent of reward_calibrator
             estimator = estimator_class(
                 self.sampler,
-                calibrator=self.calibrator,
+                reward_calibrator=self.reward_calibrator,
                 use_calibrated_weights=self.use_calibrated_weights,
                 weight_mode=self.weight_mode,
                 oracle_slice_config=self.oracle_slice_config,
