@@ -416,8 +416,10 @@ class CalibratedIPS(BaseCJEEstimator):
                     logger.debug(f"OOF reward prediction failed for IF path: {e}")
 
             # Ratio IF for Hajek term (use the same weights used in ψ̂_w)
-            # φ^H_i = w_i (R_oof_i - ψ̂_w) - ψ̂_w (w_i - mean_w)
-            ratio_if = weights * (R_oof - psi_w) - psi_w * (weights - mean_w)
+            # φ^H_i = [w_i (R_oof_i - ψ̂_w) - ψ̂_w (w_i - mean_w)] / mean_w
+            # Normalization by mean_w is critical for raw weights; harmless for Hájek (mean≈1)
+            denom = mean_w if mean_w > 0 else 1.0
+            ratio_if = (weights * (R_oof - psi_w) - psi_w * (weights - mean_w)) / denom
 
             # No augmentation - OUA jackknife handles oracle uncertainty via variance
             influence = ratio_if
