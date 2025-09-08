@@ -263,6 +263,7 @@ class PrecomputedSampler:
                 "response": str,                    # From sample.response
                 "prompt_id": str,                   # From sample.prompt_id
                 "judge_score": Optional[float],     # From sample.metadata["judge_score"]
+                "oracle_label": Optional[float],    # From sample.metadata["oracle_label"]
                 "cv_fold": int,                     # Computed from prompt_id
             }
 
@@ -297,6 +298,7 @@ class PrecomputedSampler:
                         "response": record["response"],
                         "prompt_id": sample.prompt_id,
                         "judge_score": sample.metadata.get("judge_score"),
+                        "oracle_label": sample.metadata.get("oracle_label"),
                         # Compute cv_fold on-demand from prompt_id
                         # Use metadata if available, else defaults
                         "cv_fold": get_fold(
@@ -478,9 +480,19 @@ class PrecomputedSampler:
             if n_clipped > 0:
                 max_weight = np.max(weights_array)
                 weights_array = np.minimum(weights_array, clip_weight)
+                # Restore mean-one after clipping to keep Hájek unbiasedness
+                if mode == "hajek":
+                    s = weights_array.sum()
+                    if s > 0:
+                        weights_array *= len(weights_array) / s
                 logger.info(
                     f"Clipped {n_clipped}/{len(weights_array)} weights for {target_policy} "
                     f"to {clip_weight} (max was {max_weight:.2f})"
+                    + (
+                        f", re-normalized to restore mean-one"
+                        if mode == "hajek"
+                        else ""
+                    )
                 )
 
         # Log statistics

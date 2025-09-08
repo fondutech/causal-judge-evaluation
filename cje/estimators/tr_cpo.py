@@ -415,8 +415,8 @@ class TRCPOEstimator(DREstimator):
             # DM mean
             dm_term = float(np.mean(g_fresh))
 
-            # DR correction with raw/Hájek weights
-            dr_corr = float(np.mean(w * (R - q_oof)))
+            # DR correction with raw/Hájek weights (use OOF reward)
+            dr_corr = float(np.mean(w * (R_oof - q_oof)))
 
             # Get m̂(S) = E[W|S] for efficient label correction
             if (
@@ -436,20 +436,19 @@ class TRCPOEstimator(DREstimator):
             # Define clipped pi_oof once
             pi_clipped = np.clip(pi_oof, self.min_pi, self.max_pi)
 
-            # Two-phase correction using m̂(S) instead of W for efficiency
-            tr_vec = (L / pi_clipped) * m_hat * (Y - R)
+            # Label-propensity correction with W (triply robust by construction)
+            tr_vec = (L / pi_clipped) * w * (Y - R_oof)
             tr_corr = float(np.mean(tr_vec))
 
             V_hat = dm_term + dr_corr + tr_corr
             estimates.append(V_hat)
 
             # ----- Influence function (OOF path) -----
-            # φ = g_fresh + w*(R_oof - q_oof) + (L/pi_oof)*m̂*(Y - R_oof) - V_hat
-            # Use m̂(S) in label term for consistency with point estimate
+            # φ = g_fresh + w*(R_oof - q_oof) + (L/pi_oof)*w*(Y - R_oof) - V_hat
             phi = (
                 g_fresh
                 + w * (R_oof - q_oof)
-                + (L / pi_clipped) * m_hat * (Y - R_oof)
+                + (L / pi_clipped) * w * (Y - R_oof)
                 - V_hat
             )
 
@@ -483,11 +482,12 @@ class TRCPOEstimator(DREstimator):
             # ----- Diagnostics -----
             label_frac = float(np.mean(L)) if n > 0 else 0.0
 
-            # Compute R²(W~S) to show variance reduction from using m̂(S)
+            # Note: Now using W in label term for true triple robustness
+            # (m̂(S) was previously used for efficiency but compromised theoretical guarantees)
             r2_w_s = 0.0
             uses_efficient_correction = False
-            if policy in self._m_hat_oof_cache and not np.allclose(m_hat, w):
-                uses_efficient_correction = True
+            # Keep diagnostic for informational purposes about W~S relationship quality
+            if policy in self._m_hat_oof_cache:
                 valid = np.isfinite(S)
                 if valid.sum() > 1:
                     ss_tot = np.var(w[valid], ddof=1)
@@ -715,13 +715,11 @@ class TRCPOEstimator(DREstimator):
                     g_loo.append(float(np.mean(f_pred)))
                 g_loo_array = np.asarray(g_loo, dtype=float)
 
-                # TR estimate with R_loo (use m̂ for efficiency)
+                # TR estimate with R_loo
                 pi_clipped = np.clip(pi_oof, self.min_pi, self.max_pi)
                 dm = float(np.mean(g_loo_array))
-                dr = float(
-                    np.mean(w * (R - q_oof))
-                )  # keep R (logged) for the DR term (small diff)
-                tr = float(np.mean((L / pi_clipped) * m_hat * (Y - R_loo)))
+                dr = float(np.mean(w * (R_loo - q_oof)))
+                tr = float(np.mean((L / pi_clipped) * w * (Y - R_loo)))
                 jack.append(dm + dr + tr)
 
             return np.asarray(jack, dtype=float) if jack else None
