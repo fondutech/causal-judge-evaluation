@@ -87,7 +87,7 @@ sampler = PrecomputedSampler.from_jsonl("calibrated_data.jsonl")
 n_samples = sampler.n_valid_samples
 policies = sampler.target_policies
 
-# Check oracle coverage (triggers automatic augmentation when < 1.0)
+# Check oracle coverage (affects OUA jackknife when < 1.0)
 oracle_coverage = sampler.oracle_coverage  # Float in [0, 1]: fraction with oracle labels
 ```
 
@@ -169,8 +169,8 @@ Non-core fields go into metadata automatically, allowing:
 
 ### 5. **Oracle Coverage Detection**
 PrecomputedSampler.oracle_coverage property enables:
-- Automatic oracle slice augmentation when coverage < 100%
-- No configuration needed for honest confidence intervals
+- Automatic OUA jackknife activation when coverage < 100%
+- Honest confidence intervals via robust_standard_errors
 - Graceful handling of partial oracle labels
 - Backward compatibility
 

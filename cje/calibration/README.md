@@ -30,7 +30,7 @@ calibration/
 ├── flexible_calibrator.py # Flexible calibration for non-monotone relationships
 ├── isotonic.py          # Core isotonic regression and variance control
 ├── judge.py             # Judge score calibration to oracle labels
-├── oracle_slice.py      # Oracle slice uncertainty augmentation
+├── oracle_slice.py      # Oracle slice configuration (deprecated)
 ├── simcal.py            # Stacked SIMCal implementation
 └── iic.py               # Isotonic Influence Control for variance reduction
 ```
@@ -309,10 +309,12 @@ estimator = CalibratedIPS(
 # to account for calibration uncertainty
 result = estimator.fit_and_estimate()
 
-# Check slice contribution to variance (if augmentation was applied)
-if "slice_augmentation" in result.metadata:
-    aug_diag = result.metadata["slice_augmentation"]["policy_a"]
-    print(f"Oracle slice variance share: {aug_diag['slice_variance_share']:.1%}")
+# Check oracle uncertainty via OUA jackknife (if enabled)
+if result.robust_standard_errors is not None:
+    print(f"Standard SE: {result.standard_errors[0]:.4f}")
+    print(f"OUA-adjusted SE: {result.robust_standard_errors[0]:.4f}")
+    oracle_var = result.robust_standard_errors[0]**2 - result.standard_errors[0]**2
+    print(f"Oracle uncertainty contribution: {oracle_var:.6f}")
 ```
 
 ## Configuration Options

@@ -52,9 +52,9 @@ Achieve first-order insensitivity to nuisance estimation errors through cross-fi
 ### 8. Triply Robust Estimation (TR-CPO)
 Achieves robustness to misspecification in three components simultaneously:
 - Weight calibration errors (via raw/Hájek weights)
-- Reward calibration errors (via label propensity correction)
+- Reward calibration errors (via label propensity correction: (L/π̂_L)×m̂(S)×(Y-R))
 - Outcome model errors (via DR formulation)
-Uses cross-fitted label propensity π̂_L to correct for oracle label selection bias.
+Uses cross-fitted label propensity π̂_L to correct for oracle label selection bias under MAR assumptions.
 
 ## File Structure
 
@@ -86,7 +86,7 @@ estimators/
 - Judge scores are available
 - You want variance-stabilized weights
 - Fresh draws are not available
-- Oracle slice augmentation is automatically enabled when partial oracle labels detected
+- Oracle uncertainty handled via optional OUA jackknife in robust_standard_errors
 
 ### Use **OrthogonalizedCalibratedIPS** when:
 - You need robustness to calibration errors
@@ -354,28 +354,28 @@ Each estimator has comprehensive tests in `cje/tests/`:
 
 ## Advanced Topics
 
-### Oracle Slice Augmentation (Automatic)
-CalibratedIPS and DR estimators automatically detect and apply oracle slice augmentation for honest confidence intervals when partial oracle labels are available (0% < coverage < 100%). This corrects for uncertainty in the judge→oracle calibration map.
+### Oracle Uncertainty Augmentation (OUA Jackknife)
+All estimators support optional Oracle Uncertainty Augmentation via delete-one-fold jackknife recomputation. This accounts for finite-sample uncertainty in the learned calibrator f̂(S) by providing oracle-uncertainty-adjusted standard errors in `robust_standard_errors`.
 
 ```python
-# Automatic detection (default behavior)
-estimator = CalibratedIPS(sampler)  # Auto-enables if oracle coverage < 100%
+# Enable OUA jackknife (requires cross-fitted calibrator)
+estimator = CalibratedIPS(sampler, oua_jackknife=True)  # Default: True
 
-# Explicit control if needed
-from cje.calibration import OracleSliceConfig
+# Disable OUA jackknife  
+estimator = CalibratedIPS(sampler, oua_jackknife=False)
 
-# Force enable
-estimator = CalibratedIPS(sampler, oracle_slice_config=True)
-
-# Force disable
-estimator = CalibratedIPS(sampler, oracle_slice_config=False)
-
-# Custom configuration
-config = OracleSliceConfig(enable_augmentation=True, enable_cross_fit=True)
-estimator = CalibratedIPS(sampler, oracle_slice_config=config)
+# Access OUA-adjusted standard errors
+result = estimator.fit_and_estimate()
+standard_ses = result.standard_errors        # Standard influence function SEs
+robust_ses = result.robust_standard_errors   # Standard + oracle uncertainty
 ```
 
-Note: DR estimators inherit this behavior through their internal CalibratedIPS usage.
+**Key Properties:**
+- Does NOT modify point estimates (only widens confidence intervals)
+- Requires cross-fitted calibrator (enable_cross_fit=True)
+- Delete-one-fold recomputation: SE_robust = √(SE_main² + Var_oracle)
+- Available for all estimators (IPS, DR, MRDR, TMLE, TR-CPO)
+- Provides honest inference accounting for calibrator uncertainty
 
 ### Custom Estimators
 Inherit from `BaseCJEEstimator` or `DREstimator` and implement `fit()` and `estimate()`. Always compute and store influence functions in `_influence_functions`.
