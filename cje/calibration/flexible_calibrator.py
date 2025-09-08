@@ -117,22 +117,16 @@ class FlexibleCalibrator:
             rmse_mid = np.sqrt(np.mean((Y[mid_mask] - pred_mono[mid_mask]) ** 2))
             rmse_high = np.sqrt(np.mean((Y[high_mask] - pred_mono[high_mask]) ** 2))
 
-            # Only fit two-stage if there's evidence of non-monotonicity
-            # (significant regional performance differences)
+            # Always fit two-stage and use _select_best_mode for auto mode
+            # (ensures consistent application of 1-SE rule)
             max_regional_diff = max(rmse_low, rmse_mid, rmse_high) - min(
                 rmse_low, rmse_mid, rmse_high
             )
-            if max_regional_diff > 0.05 * rmse_mono:  # 5% threshold
-                logger.debug(
-                    f"Regional RMSE differences detected ({max_regional_diff:.3f}), fitting two-stage"
-                )
-                self._fit_two_stage(S, Y, folds)
-                self.selected_mode = self._select_best_mode(S, Y, folds)
-            else:
-                logger.debug(
-                    f"Monotone fit sufficient (regional diff {max_regional_diff:.3f} < threshold)"
-                )
-                self.selected_mode = "monotone"
+            logger.debug(
+                f"Regional RMSE differences: {max_regional_diff:.3f}, fitting two-stage for comparison"
+            )
+            self._fit_two_stage(S, Y, folds)
+            self.selected_mode = self._select_best_mode(S, Y, folds)
         elif self.mode == "monotone":
             logger.debug("Fitting monotone calibration only")
             self._fit_monotone(S, Y, folds)
@@ -416,9 +410,11 @@ class FlexibleCalibrator:
             better_count += 1
 
         # Apply 1-SE rule: prefer simpler model unless complex is significantly better
-        # Standard error of RMSE estimate (not of mean)
+        # Standard error of RMSE estimate using delta method
         residuals_mono = Y - pred_mono
-        se_mono = np.std(residuals_mono**2) / np.sqrt(len(S))
+        n = len(S)
+        se_mse = np.std(residuals_mono**2, ddof=1) / np.sqrt(n) if n > 1 else 0.0
+        se_rmse = se_mse / (2.0 * max(rmse_mono, 1e-12))
 
         logger.info(f"Calibration mode selection:")
         logger.info(
@@ -436,7 +432,7 @@ class FlexibleCalibrator:
         # Select two-stage if:
         # 1. It's significantly better overall (1-SE rule), OR
         # 2. It's better in at least 2/3 regions (indicates non-monotonicity)
-        if rmse_two_stage < rmse_mono - se_mono or better_count >= 2:
+        if rmse_two_stage < rmse_mono - se_rmse or better_count >= 2:
             logger.info(f"  → Selected: two_stage (better in {better_count}/3 regions)")
             return "two_stage"
         else:
