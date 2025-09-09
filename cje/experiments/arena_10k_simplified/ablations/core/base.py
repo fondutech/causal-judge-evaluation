@@ -239,14 +239,6 @@ class BaseAblation:
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
             ),
-            "cal-stacked-dr": lambda s: StackedDREstimator(
-                s,
-                reward_calibrator=cal_result.calibrator if cal_result else None,
-                V_folds=5,
-                use_calibrated_weights=True,  # Use SIMCal calibrated weights
-                use_iic=use_iic,  # Pass IIC setting
-                oua_jackknife=oua,
-            ),
         }
 
         if spec.estimator not in estimator_map:
@@ -561,7 +553,6 @@ class BaseAblation:
                 "tr-cpo",
                 "tr-cpo-e",
                 "stacked-dr",
-                "cal-stacked-dr",
             ]:
                 data_dir = Path(spec.dataset_path).parent
 
