@@ -197,6 +197,15 @@ class BaseAblation:
                 n_folds=5,
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
+                use_efficient_tr=False,  # Vanilla TR-CPO uses raw W
+            ),
+            "tr-cpo-e": lambda s: TRCPOEstimator(
+                s,
+                reward_calibrator=cal_result.calibrator if cal_result else None,
+                n_folds=5,
+                use_iic=use_iic,  # Pass IIC setting
+                oua_jackknife=oua,
+                use_efficient_tr=True,  # Efficient TR-CPO uses m̂(S)
             ),
             "calibrated-dr-cpo": lambda s: DRCPOEstimator(
                 s,
@@ -549,6 +558,8 @@ class BaseAblation:
                 "calibrated-dr-cpo",
                 "mrdr",
                 "tmle",
+                "tr-cpo",
+                "tr-cpo-e",
                 "stacked-dr",
                 "cal-stacked-dr",
             ]:

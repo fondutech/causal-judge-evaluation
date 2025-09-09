@@ -90,7 +90,15 @@ class StackedDREstimator(BaseCJEEstimator):
         super().__init__(sampler)
 
         # Configuration
-        self.estimators = estimators or ["dr-cpo", "tmle", "mrdr"]
+        # Default to a diverse set of estimators for robustness
+        self.estimators = estimators or [
+            "dr-cpo",
+            "tmle",
+            "mrdr",
+            "oc-dr-cpo",
+            "tr-cpo",
+            "tr-cpo-e",
+        ]
         self.use_outer_split = use_outer_split
         self.V_folds = V_folds
         self.robust_cov = robust_cov
