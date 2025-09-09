@@ -12,8 +12,13 @@ from typing import Dict, List, Any
 
 def load_results(path: str = "results/all_experiments.jsonl") -> List[Dict]:
     """Load experiment results."""
+    results = []
     with open(path, "r") as f:
-        return [json.loads(line) for line in f if json.loads(line).get("success")]
+        for line in f:
+            data = json.loads(line)
+            if data.get("success"):
+                results.append(data)
+    return results
 
 
 def main() -> None:
@@ -50,7 +55,7 @@ def main() -> None:
             "runtime": r.get("runtime_s", 0),
         }
 
-        # Add policy-specific errors (including unhelpful for individual analysis)
+        # Add policy-specific errors and robust SEs
         if "estimates" in r and "oracle_truths" in r:
             for policy in ["clone", "parallel_universe_prompt", "premium", "unhelpful"]:
                 if policy in r["estimates"] and policy in r["oracle_truths"]:
@@ -58,9 +63,24 @@ def main() -> None:
                         r["estimates"][policy] - r["oracle_truths"][policy]
                     )
 
+        # Add robust standard errors (if available)
+        if "robust_standard_errors" in r:
+            for policy in ["clone", "parallel_universe_prompt", "premium", "unhelpful"]:
+                if policy in r["robust_standard_errors"]:
+                    row[f"robust_se_{policy}"] = r["robust_standard_errors"][policy]
+        elif "standard_errors" in r:
+            # Fallback to standard errors if robust not available
+            for policy in ["clone", "parallel_universe_prompt", "premium", "unhelpful"]:
+                if policy in r["standard_errors"]:
+                    row[f"robust_se_{policy}"] = r["standard_errors"][policy]
+
         rows.append(row)
 
     df = pd.DataFrame(rows)
+
+    # Debug: Show what estimators are in the data
+    print("\nEstimators found in data:")
+    print(df["estimator"].value_counts())
 
     # 1. Main comparison table
     print("\n" + "=" * 80)
@@ -69,7 +89,7 @@ def main() -> None:
 
     summary = (
         df.groupby("estimator")
-        .agg({"rmse": ["mean", "std", "min", "max"], "runtime": "mean"})
+        .agg({"rmse": ["mean", "std", "min", "max", "count"], "runtime": "mean"})
         .round(4)
     )
     print(summary)
@@ -79,16 +99,26 @@ def main() -> None:
     print("CALIBRATION IMPACT")
     print("=" * 80)
 
-    # Compare all methods with/without calibration
-    all_methods = ["ips", "dr-cpo", "stacked-dr"]  # removed tmle, mrdr from config
-    for method in all_methods:
+    # Get all estimators that have both calibration on/off in the data
+    estimators_with_cal_choice = []
+    for estimator in df["estimator"].unique():
+        est_df = df[df["estimator"] == estimator]
+        has_cal_on = any(est_df["use_cal"] == True)
+        has_cal_off = any(est_df["use_cal"] == False)
+        if has_cal_on and has_cal_off:
+            estimators_with_cal_choice.append(estimator)
+
+    for method in sorted(estimators_with_cal_choice):
         method_df = df[df["estimator"] == method]
-        if not method_df.empty:
-            cal_on = method_df[method_df["use_cal"] == True]["rmse"].mean()
-            cal_off = method_df[method_df["use_cal"] == False]["rmse"].mean()
-            improvement = (cal_off - cal_on) / cal_off * 100
+        cal_on_df = method_df[method_df["use_cal"] == True]["rmse"].dropna()
+        cal_off_df = method_df[method_df["use_cal"] == False]["rmse"].dropna()
+
+        if len(cal_on_df) > 0 and len(cal_off_df) > 0:
+            cal_on = cal_on_df.mean()
+            cal_off = cal_off_df.mean()
+            improvement = (cal_off - cal_on) / cal_off * 100 if cal_off > 0 else 0
             print(
-                f"{method:15s}: Without cal={cal_off:.4f}, With cal={cal_on:.4f}, Improvement={improvement:.1f}%"
+                f"{method:20s}: Without cal={cal_off:.4f}, With cal={cal_on:.4f}, Improvement={improvement:.1f}%"
             )
 
     # 3. IIC impact
@@ -96,15 +126,26 @@ def main() -> None:
     print("IIC IMPACT (all methods)")
     print("=" * 80)
 
-    for method in all_methods:
+    # Check all estimators - IIC should have identical results if properly implemented
+    all_estimators = sorted(df["estimator"].unique())
+
+    for method in all_estimators:
         method_df = df[df["estimator"] == method]
-        if not method_df.empty:
-            iic_on = method_df[method_df["use_iic"] == True]["rmse"].mean()
-            iic_off = method_df[method_df["use_iic"] == False]["rmse"].mean()
-            improvement = (iic_off - iic_on) / iic_off * 100 if iic_off > 0 else 0
+        iic_on_df = method_df[method_df["use_iic"] == True]["rmse"].dropna()
+        iic_off_df = method_df[method_df["use_iic"] == False]["rmse"].dropna()
+
+        if len(iic_on_df) > 0 and len(iic_off_df) > 0:
+            iic_on = iic_on_df.mean()
+            iic_off = iic_off_df.mean()
+            # IIC should NOT affect RMSE (only SEs), so difference should be ~0
+            diff = iic_on - iic_off
             print(
-                f"{method:15s}: Without IIC={iic_off:.4f}, With IIC={iic_on:.4f}, Improvement={improvement:.1f}%"
+                f"{method:20s}: Without IIC={iic_off:.4f}, With IIC={iic_on:.4f}, Diff={diff:+.4f}"
             )
+        elif len(iic_on_df) > 0:
+            print(f"{method:20s}: Only IIC=True data, RMSE={iic_on_df.mean():.4f}")
+        elif len(iic_off_df) > 0:
+            print(f"{method:20s}: Only IIC=False data, RMSE={iic_off_df.mean():.4f}")
 
     # 4. Sample size scaling
     print("\n" + "=" * 80)
@@ -165,6 +206,59 @@ def main() -> None:
             c.replace("error_", "") for c in policy_summary.columns
         ]
         print(policy_summary.round(4))
+
+    # 9. Robust Standard Errors Summary
+    print("\n" + "=" * 80)
+    print("ROBUST STANDARD ERRORS (mean across experiments)")
+    print("=" * 80)
+
+    se_cols = [c for c in df.columns if c.startswith("robust_se_")]
+    if se_cols:
+        se_summary = df.groupby("estimator")[se_cols].mean()
+        se_summary.columns = [c.replace("robust_se_", "") for c in se_summary.columns]
+        print(se_summary.round(4))
+
+        # Show SE comparison for IIC on/off with actual IIC diagnostics
+        print("\n" + "-" * 40)
+        print("IIC Impact on Robust SEs (mean SEs)")
+        print("-" * 40)
+
+        # First show SE impact
+        for estimator in sorted(df["estimator"].unique()):
+            est_df = df[df["estimator"] == estimator]
+            iic_on = est_df[est_df["use_iic"] == True][se_cols].mean().mean()
+            iic_off = est_df[est_df["use_iic"] == False][se_cols].mean().mean()
+            if not pd.isna(iic_on) and not pd.isna(iic_off):
+                reduction = (iic_off - iic_on) / iic_off * 100 if iic_off > 0 else 0
+                print(
+                    f"{estimator:20s}: Without IIC={iic_off:.4f}, With IIC={iic_on:.4f}, Reduction={reduction:.1f}%"
+                )
+
+        # Extract and show IIC effectiveness from diagnostics
+        print("\n" + "-" * 40)
+        print("IIC Effectiveness (from diagnostics)")
+        print("-" * 40)
+        iic_effectiveness: Dict[str, Any] = {}
+        for r in results:
+            if r.get("success") and "iic_diagnostics" in r:
+                est = r["spec"]["estimator"]
+                if est not in iic_effectiveness:
+                    iic_effectiveness[est] = {"r_squared": [], "var_reduction": []}
+
+                # Average across policies
+                for policy, diag in r["iic_diagnostics"].items():
+                    if isinstance(diag, dict):
+                        iic_effectiveness[est]["r_squared"].append(
+                            diag.get("r_squared", 0)
+                        )
+                        iic_effectiveness[est]["var_reduction"].append(
+                            diag.get("var_reduction", 0)
+                        )
+
+        for est in sorted(iic_effectiveness.keys()):
+            r2_mean = np.mean(iic_effectiveness[est]["r_squared"])
+            var_red_mean = np.mean(iic_effectiveness[est]["var_reduction"])
+            print(f"{est:20s}: R²={r2_mean:.3f}, Var reduction={var_red_mean:.1%}")
 
     # 7. Best configurations
     print("\n" + "=" * 80)

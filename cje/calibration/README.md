@@ -118,6 +118,10 @@ Advanced weight calibration through stacking:
 - Quadratic program on simplex for optimal mixture
 - Uniform blending for ESS/variance constraints
 - Configurable via `SimcalConfig` dataclass
+- **New**: Supports fit/predict separation for honest inference
+  - `fit()`: Learn isotonic models and mixture weights on training data
+  - `predict()`: Apply learned calibration to new data with score clipping
+  - `fit_transform()`: Backward-compatible single-pass method
 
 ### `oracle_slice.py` - Oracle Slice Augmentation
 Implements the optional point-estimate bias correction (used primarily in TR-CPO):

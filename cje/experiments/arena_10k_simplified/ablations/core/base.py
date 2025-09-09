@@ -157,22 +157,26 @@ class BaseAblation:
                 s,
                 calibrate_weights=False,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
+                use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
             ),  # No weight calibration, but still support OUA
             "ips": lambda s: CalibratedIPS(
                 s,
                 calibrate_weights=use_weight_calibration,
-                oua_jackknife=oua,  # IPS doesn't support IIC
+                use_iic=use_iic,  # Pass IIC setting
+                oua_jackknife=oua,
             ),
             "calibrated-ips": lambda s: CalibratedIPS(
                 s,
                 calibrate_weights=True,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
+                use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,  # Always use calibration, enable OUA
             ),
             "orthogonalized-ips": lambda s: OrthogonalizedCalibratedIPS(
                 s,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
+                use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
             ),
             "dr-cpo": lambda s: DRCPOEstimator(

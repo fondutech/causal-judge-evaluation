@@ -84,6 +84,14 @@ class SIMCalibrator:
         """
         self.cfg = config
 
+        # Learned state for fit/predict
+        self._fitted = False
+        self._isotonic_models: Dict[str, Any] = {}  # Stores learned isotonic models
+        self._mixture_weights: Optional[np.ndarray] = None
+        self._score_range: Optional[Tuple[float, float]] = None
+        self._gamma: float = 0.0
+        self._training_info: Dict[str, Any] = {}
+
     @staticmethod
     def implied_var_cap(ess_floor: float) -> float:
         """Compute the implied variance cap from an ESS floor constraint.
@@ -101,6 +109,61 @@ class SIMCalibrator:
             raise ValueError(f"ess_floor must be in (0, 1], got {ess_floor}")
         return (1.0 / ess_floor) - 1.0
 
+    def fit_transform(
+        self,
+        w: np.ndarray,
+        s: np.ndarray,
+        *,
+        rewards: Optional[np.ndarray] = None,
+        residuals: Optional[np.ndarray] = None,
+        fold_ids: Optional[np.ndarray] = None,
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """Fit and transform in one step (original behavior).
+
+        This is more efficient than fit() + predict() when you don't need
+        to apply the calibration to new data.
+
+        Args:
+            w: Raw importance weights
+            s: Score index for ordering
+            rewards: Optional rewards for IPS IF
+            residuals: Optional residuals for DR IF
+            fold_ids: Optional fold assignments
+
+        Returns:
+            Tuple of (calibrated weights, info dict)
+        """
+        # Fit the model
+        self.fit(w, s, rewards=rewards, residuals=residuals, fold_ids=fold_ids)
+
+        # Apply to same data
+        w_final = self.predict(w, s)
+
+        # Build info dict (for backward compatibility)
+        # Check for kinks
+        boundary_alpha = any(alpha < 1e-6 for alpha in self._mixture_weights)
+        cap_active = self._gamma > 0
+
+        info = {
+            "mixture_weights": self._mixture_weights.tolist(),
+            "candidates": self._training_info["candidates"],
+            "gamma": self._gamma,
+            "var_before": float(np.var(w / w.mean())),
+            "var_after": float(np.var(w_final)),
+            "ess_before": len(w) / (1 + np.var(w / w.mean())),
+            "ess_after": len(w) / (1 + np.var(w_final)),
+            "oof_variance_reduction": float(1.0),  # Placeholder
+            "if_type": self._training_info["if_type"],
+            "n_folds": self.cfg.n_folds,
+            "baseline_shrink": self.cfg.baseline_shrink,
+            # Kink diagnostics
+            "boundary_alpha": boundary_alpha,
+            "cap_active": cap_active,
+            "kinky": boundary_alpha or cap_active,
+        }
+
+        return w_final, info
+
     def transform(
         self,
         w: np.ndarray,
@@ -111,6 +174,10 @@ class SIMCalibrator:
         fold_ids: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Calibrate weights using stacked score-indexed monotone projection.
+
+        This method maintains backward compatibility by delegating to fit_transform().
+        For new code, consider using fit() and predict() separately if you need to
+        apply the calibration to multiple datasets.
 
         Algorithm:
         1. Build candidate weight vectors: {increasing, decreasing, baseline?}
@@ -140,152 +207,10 @@ class SIMCalibrator:
         Raises:
             ValueError: If weights contain non-positive, NaN, or infinite values
         """
-        # Input validation
-        w = np.asarray(w, dtype=float)
-        s = np.asarray(s, dtype=float)
-
-        if len(w) != len(s):
-            raise ValueError(f"Length mismatch: weights={len(w)}, scores={len(s)}")
-
-        if not np.all(np.isfinite(w)) or not np.all(np.isfinite(s)):
-            raise ValueError("SIMCal: NaNs or infinities in inputs")
-
-        if np.any(w <= 0):
-            raise ValueError("SIMCal: weights must be positive")
-
-        # Ensure mean-one normalization
-        w = w / w.mean()
-        n = len(w)
-
-        # Build candidate weight vectors
-        candidates = []
-        candidate_names = []
-
-        # 1. Baseline (raw weights)
-        if self.cfg.include_baseline:
-            candidates.append(w.copy())
-            candidate_names.append("baseline")
-
-        # 2. Isotonic increasing
-        iso_inc = IsotonicRegression(increasing=True, out_of_bounds="clip")
-        w_inc = iso_inc.fit(s, w).predict(s)
-        w_inc = np.maximum(w_inc, self.cfg.epsilon)
-        w_inc = w_inc / w_inc.mean()
-        candidates.append(w_inc)
-        candidate_names.append("increasing")
-
-        # 3. Isotonic decreasing
-        iso_dec = IsotonicRegression(increasing=False, out_of_bounds="clip")
-        w_dec = iso_dec.fit(s, w).predict(s)
-        w_dec = np.maximum(w_dec, self.cfg.epsilon)
-        w_dec = w_dec / w_dec.mean()
-        candidates.append(w_dec)
-        candidate_names.append("decreasing")
-
-        K = len(candidates)
-
-        # Determine what to use for influence functions
-        if residuals is not None:
-            # DR influence functions: w * (R - g_oof(S))
-            if_targets = residuals
-            if_type = "dr"
-        elif rewards is not None:
-            # IPS influence functions: w * R
-            if_targets = rewards
-            if_type = "ips"
-        else:
-            # Weight-only influence functions: w itself
-            if_targets = np.ones(n)  # Makes IF = w - 1
-            if_type = "weight"
-
-        # Compute OOF influence functions
-        if fold_ids is not None:
-            # Use provided fold assignments
-            unique_folds = np.unique(fold_ids)
-            n_folds = len(unique_folds)
-        else:
-            # Generate fold assignments
-            kf = KFold(n_splits=self.cfg.n_folds, shuffle=True, random_state=42)
-            fold_ids = np.zeros(n, dtype=int)
-            for fold_idx, (_, test_idx) in enumerate(kf.split(np.arange(n))):
-                fold_ids[test_idx] = fold_idx
-            n_folds = self.cfg.n_folds
-
-        # Compute OOF influence matrix (n x K)
-        IF_matrix = np.zeros((n, K))
-
-        for k, w_cand in enumerate(candidates):
-            # For each fold, compute influence relative to training mean
-            for fold_id in range(n_folds):
-                test_mask = fold_ids == fold_id
-                train_mask = ~test_mask
-
-                if np.sum(train_mask) == 0:
-                    continue
-
-                # Compute mean on training folds
-                train_mean = np.mean(w_cand[train_mask] * if_targets[train_mask])
-
-                # OOF influence for test fold
-                IF_matrix[test_mask, k] = (
-                    w_cand[test_mask] * if_targets[test_mask] - train_mean
-                )
-
-        # Compute empirical covariance matrix
-        Sigma = np.cov(IF_matrix.T)  # K x K
-
-        # Add ridge regularization for stability
-        if self.cfg.ridge_lambda > 0:
-            reg_amount = self.cfg.ridge_lambda * np.trace(Sigma) / K
-            Sigma = Sigma + reg_amount * np.eye(K)
-
-        # Solve quadratic program on simplex: min_π π^T Σ π s.t. π ≥ 0, 1^T π = 1
-        mixture_weights = self._solve_simplex_qp(Sigma)
-
-        # Compute stacked weights
-        w_stacked = np.zeros(n)
-        for k, pi_k in enumerate(mixture_weights):
-            w_stacked += pi_k * candidates[k]
-
-        # Apply constraints via uniform blending
-        w_final, gamma = self._apply_constraints(w_stacked)
-
-        # Optional: Apply baseline shrinkage for stability
-        if self.cfg.baseline_shrink > 0:
-            w_final = (
-                1 - self.cfg.baseline_shrink
-            ) * w_final + self.cfg.baseline_shrink * w
-            w_final = w_final / w_final.mean()
-
-        # Compute diagnostics
-        var_before = float(np.var(w))
-        var_after = float(np.var(w_final))
-        ess_before = n / (1 + var_before)
-        ess_after = n / (1 + var_after)
-
-        # Compute variance reduction vs best single candidate
-        single_variances = [np.var(IF_matrix[:, k]) for k in range(K)]
-        best_single_var = min(single_variances)
-        stacked_var = np.var(IF_matrix @ mixture_weights)
-        variance_reduction = (
-            stacked_var / best_single_var if best_single_var > 0 else 1.0
+        # Delegate to fit_transform for backward compatibility
+        return self.fit_transform(
+            w, s, rewards=rewards, residuals=residuals, fold_ids=fold_ids
         )
-
-        info = {
-            "mixture_weights": mixture_weights.tolist(),
-            "candidates": candidate_names,
-            "gamma": gamma,
-            "var_before": var_before,
-            "var_after": var_after,
-            "ess_before": ess_before,
-            "ess_after": ess_after,
-            "oof_variance_reduction": float(variance_reduction),
-            "if_type": if_type,
-            "n_folds": n_folds,
-            "baseline_shrink": self.cfg.baseline_shrink,
-        }
-
-        return w_final, info
 
     def _solve_simplex_qp(self, Sigma: np.ndarray) -> np.ndarray:
         """Solve quadratic program on simplex using active set method.
@@ -380,3 +305,220 @@ class SIMCalibrator:
         w_constrained = w_constrained / w_constrained.mean()
 
         return w_constrained, gamma
+
+    def fit(
+        self,
+        w: np.ndarray,
+        s: np.ndarray,
+        *,
+        rewards: Optional[np.ndarray] = None,
+        residuals: Optional[np.ndarray] = None,
+        fold_ids: Optional[np.ndarray] = None,
+    ) -> "SIMCalibrator":
+        """Fit SIMCal on training data.
+
+        Learns isotonic regression models and mixture weights.
+
+        Args:
+            w: Raw importance weights (will be normalized to mean 1)
+            s: Score index for ordering
+            rewards: Rewards for IPS influence functions
+            residuals: DR residuals for DR influence functions
+            fold_ids: Fold assignments for cross-fitting
+
+        Returns:
+            self (for chaining)
+        """
+        # Input validation
+        w = np.asarray(w, dtype=float)
+        s = np.asarray(s, dtype=float)
+
+        if len(w) != len(s):
+            raise ValueError(f"Length mismatch: weights={len(w)}, scores={len(s)}")
+
+        if not np.all(np.isfinite(w)) or not np.all(np.isfinite(s)):
+            raise ValueError("NaNs or infinities in inputs")
+
+        if np.any(w <= 0):
+            raise ValueError("Weights must be positive")
+
+        # Normalize weights
+        w = w / w.mean()
+        n = len(w)
+
+        # Store score range for extrapolation handling
+        self._score_range = (float(np.min(s)), float(np.max(s)))
+
+        # Build candidates and store isotonic models
+        self._isotonic_models = {}
+        candidates = []
+        candidate_names = []
+
+        # 1. Baseline (if enabled)
+        if self.cfg.include_baseline:
+            candidates.append(w.copy())
+            candidate_names.append("baseline")
+            self._isotonic_models["baseline"] = None  # No model, just raw weights
+
+        # 2. Isotonic increasing
+        iso_inc = IsotonicRegression(increasing=True, out_of_bounds="clip")
+        iso_inc.fit(s, w)
+        w_inc = iso_inc.predict(s)
+        w_inc = np.maximum(w_inc, self.cfg.epsilon)
+        w_inc = w_inc / w_inc.mean()
+        candidates.append(w_inc)
+        candidate_names.append("increasing")
+        self._isotonic_models["increasing"] = iso_inc
+
+        # 3. Isotonic decreasing
+        iso_dec = IsotonicRegression(increasing=False, out_of_bounds="clip")
+        iso_dec.fit(s, w)
+        w_dec = iso_dec.predict(s)
+        w_dec = np.maximum(w_dec, self.cfg.epsilon)
+        w_dec = w_dec / w_dec.mean()
+        candidates.append(w_dec)
+        candidate_names.append("decreasing")
+        self._isotonic_models["decreasing"] = iso_dec
+
+        K = len(candidates)
+
+        # Determine influence function targets
+        if residuals is not None:
+            if_targets = residuals
+            if_type = "dr"
+        elif rewards is not None:
+            if_targets = rewards
+            if_type = "ips"
+        else:
+            if_targets = np.ones(n)
+            if_type = "weight"
+
+        # Generate fold IDs if not provided
+        if fold_ids is None:
+            from sklearn.model_selection import KFold
+
+            kf = KFold(n_splits=self.cfg.n_folds, shuffle=True, random_state=42)
+            fold_ids = np.zeros(n, dtype=int)
+            for fold_idx, (_, test_idx) in enumerate(kf.split(np.arange(n))):
+                fold_ids[test_idx] = fold_idx
+
+        # Compute OOF influence matrix
+        IF_matrix = np.zeros((n, K))
+        for k, w_cand in enumerate(candidates):
+            for fold_id in range(self.cfg.n_folds):
+                test_mask = fold_ids == fold_id
+                train_mask = ~test_mask
+
+                if np.sum(train_mask) == 0:
+                    continue
+
+                train_mean = np.mean(w_cand[train_mask] * if_targets[train_mask])
+                IF_matrix[test_mask, k] = (
+                    w_cand[test_mask] * if_targets[test_mask] - train_mean
+                )
+
+        # Compute covariance and solve QP
+        Sigma = np.cov(IF_matrix.T)
+
+        if self.cfg.ridge_lambda > 0:
+            reg_amount = self.cfg.ridge_lambda * np.trace(Sigma) / K
+            Sigma = Sigma + reg_amount * np.eye(K)
+
+        self._mixture_weights = self._solve_simplex_qp(Sigma)
+
+        # Compute stacked weights for constraint checking
+        w_stacked = np.zeros(n)
+        for k, pi_k in enumerate(self._mixture_weights):
+            w_stacked += pi_k * candidates[k]
+
+        # Determine gamma for constraints
+        _, self._gamma = self._apply_constraints(w_stacked)
+
+        # Store training info
+        self._training_info = {
+            "candidates": candidate_names,
+            "n_train": n,
+            "if_type": if_type,
+            "score_mean": float(np.mean(s)),
+            "score_std": float(np.std(s)),
+        }
+
+        self._fitted = True
+        return self
+
+    def predict(
+        self,
+        w: np.ndarray,
+        s: np.ndarray,
+    ) -> np.ndarray:
+        """Apply learned calibration to new data.
+
+        Args:
+            w: Raw importance weights to calibrate
+            s: Score index for ordering
+
+        Returns:
+            Calibrated weights (mean-one normalized)
+        """
+        if not self._fitted:
+            raise ValueError("Must call fit() before predict()")
+
+        # Input validation
+        w = np.asarray(w, dtype=float)
+        s = np.asarray(s, dtype=float)
+
+        if len(w) != len(s):
+            raise ValueError(f"Length mismatch: weights={len(w)}, scores={len(s)}")
+
+        # Normalize input weights
+        w = w / w.mean()
+        n = len(w)
+
+        # Clip scores to training range and track clip rate
+        s_original = s.copy()
+        s_clipped = np.clip(s, self._score_range[0], self._score_range[1])
+        clip_rate = float(np.mean(s != s_clipped))
+
+        # Store diagnostic info
+        self._last_predict_info = {
+            "clip_rate": clip_rate,
+            "n_clipped_low": int(np.sum(s < self._score_range[0])),
+            "n_clipped_high": int(np.sum(s > self._score_range[1])),
+        }
+
+        # Build candidates using learned models
+        candidates = []
+
+        for name in self._training_info["candidates"]:
+            if name == "baseline":
+                # Raw weights
+                candidates.append(w.copy())
+            elif name in self._isotonic_models:
+                # Apply isotonic model
+                iso_model = self._isotonic_models[name]
+                w_cand = iso_model.predict(s_clipped)
+                w_cand = np.maximum(w_cand, self.cfg.epsilon)
+                w_cand = w_cand / w_cand.mean()
+                candidates.append(w_cand)
+
+        # Apply learned mixture weights
+        w_stacked = np.zeros(n)
+        for k, pi_k in enumerate(self._mixture_weights):
+            w_stacked += pi_k * candidates[k]
+
+        # Apply constraints using learned gamma
+        if self._gamma > 0:
+            w_final = 1.0 + (1.0 - self._gamma) * (w_stacked - 1.0)
+            w_final = np.maximum(w_final, self.cfg.epsilon)
+            w_final = w_final / w_final.mean()
+        else:
+            w_final = w_stacked
+
+        # Optional baseline shrinkage
+        if self.cfg.baseline_shrink > 0:
+            w_final = (
+                1 - self.cfg.baseline_shrink
+            ) * w_final + self.cfg.baseline_shrink * w
+            w_final = w_final / w_final.mean()
+
+        return w_final

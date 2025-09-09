@@ -27,6 +27,8 @@ The foundation of off-policy evaluation. Reweights logged data to estimate perfo
 ### 2. Weight Calibration (SIMCal)
 Stabilizes importance weights through monotone projection with variance control.
 **Important**: Weight calibration is independent of reward calibration - DR estimators always use calibrated rewards when oracle coverage < 100%, but weight calibration is optional.
+
+**Outer CV for Honest Inference**: CalibratedIPS now supports outer cross-validation (`use_outer_cv=True`) to account for weight learning uncertainty. This provides honest standard errors by learning weights on V-1 folds and applying to the held-out fold.
 See `cje/calibration/README.md` for algorithm details.
 
 ### 3. Doubly Robust (DR) Estimation
@@ -354,12 +356,43 @@ TMLE uses iterative targeted updates with clever covariate (importance weights) 
 - **TMLE**: van der Laan & Rubin (2006)
 - **MRDR**: Multiple robustness framework (2024)
 
+## Advanced Features
+
+### Honest Inference with Outer CV
+CalibratedIPS now supports outer cross-validation for honest standard errors:
+
+```python
+# Enable outer CV for honest inference
+estimator = CalibratedIPS(
+    sampler,
+    use_outer_cv=True,      # Learn weights on V-1 folds, apply to 1
+    n_outer_folds=5,        # Number of outer folds (default: 5)
+    honest_iic=False        # Honest IIC not yet recommended with outer CV
+)
+```
+
+This addresses systematic underestimation of standard errors by accounting for weight learning uncertainty.
+
+### Honest IIC (Experimental)
+When using outer CV, honest isotonic influence control can be enabled:
+
+```python
+estimator = CalibratedIPS(
+    sampler,
+    use_outer_cv=True,
+    honest_iic=True         # Fit IIC on train folds, apply to test
+)
+```
+
+This provides additional variance reduction while maintaining honesty. The IIC model is learned on training folds and applied to test folds, with automatic R² gating (skips if R² < 0.02).
+
 ## Common Issues
 
 - **Estimates are NaN**: Check ESS in diagnostics. Likely poor overlap - try CalibratedIPS or DR methods.
 - **ESS always too low**: Policies may be too different. Consider collecting more diverse base data.
 - **DR fails without fresh draws**: All DR methods REQUIRE fresh draws. Generate them first.
 - **Different results between runs**: Set random seeds for reproducibility in cross-fitting.
+- **Underestimated SEs**: Enable `use_outer_cv=True` for honest inference that accounts for weight learning.
 
 ## Summary
 

@@ -7,7 +7,7 @@ variance, then blends toward uniform to meet variance/ESS constraints.
 """
 
 import numpy as np
-from typing import Dict, Optional, Set, Any, List, cast
+from typing import Dict, Optional, Set, Any, List, cast, Tuple
 import logging
 
 from .base_estimator import BaseCJEEstimator
@@ -68,6 +68,9 @@ class CalibratedIPS(BaseCJEEstimator):
         run_diagnostics: bool = True,
         refuse_unreliable: bool = False,
         oua_jackknife: bool = True,
+        use_outer_cv: bool = False,
+        n_outer_folds: int = 5,
+        honest_iic: bool = False,
         **kwargs: Any,
     ):
         # Pass OUA parameters to base class
@@ -87,6 +90,9 @@ class CalibratedIPS(BaseCJEEstimator):
         self.include_baseline = include_baseline if calibrate_weights else True
         self.baseline_shrink = baseline_shrink if calibrate_weights else 0.0
         self.refuse_unreliable = refuse_unreliable
+        self.use_outer_cv = use_outer_cv
+        self.n_outer_folds = n_outer_folds
+        self.honest_iic = honest_iic
         self._no_overlap_policies: Set[str] = set()
         self._calibration_info: Dict[str, Dict] = {}  # Store calibration details
         self._diagnostics: Optional[IPSDiagnostics] = None
@@ -226,20 +232,34 @@ class CalibratedIPS(BaseCJEEstimator):
                 include_baseline=self.include_baseline,
                 baseline_shrink=self.baseline_shrink,
             )
-            sim = SIMCalibrator(cfg)
-            calibrated, calib_info = sim.transform(
-                raw_weights,
-                ordering_index,  # Now uses g_oof when available, judge_scores otherwise
-                rewards=(
-                    rewards_oof if rewards_oof is not None else rewards
-                ),  # Prefer OOF rewards for SIMCal
-                residuals=residuals,  # None for IPS (DR estimators handle this separately)
-                fold_ids=(
-                    fold_ids
-                    if fold_ids is not None
-                    else self._build_default_folds(len(rewards), seed=42)
-                ),  # Always provide fold IDs
-            )
+
+            if self.use_outer_cv:
+                # Use outer CV for honest inference
+                calibrated, calib_info = self._calibrate_with_outer_cv(
+                    raw_weights=raw_weights,
+                    ordering_index=ordering_index,
+                    rewards=rewards,
+                    rewards_oof=rewards_oof,
+                    fold_ids=fold_ids,
+                    cfg=cfg,
+                    policy=policy,
+                )
+            else:
+                # Standard single-pass calibration
+                sim = SIMCalibrator(cfg)
+                calibrated, calib_info = sim.transform(
+                    raw_weights,
+                    ordering_index,  # Now uses g_oof when available, judge_scores otherwise
+                    rewards=(
+                        rewards_oof if rewards_oof is not None else rewards
+                    ),  # Prefer OOF rewards for SIMCal
+                    residuals=residuals,  # None for IPS (DR estimators handle this separately)
+                    fold_ids=(
+                        fold_ids
+                        if fold_ids is not None
+                        else self._build_default_folds(len(rewards), seed=42)
+                    ),  # Always provide fold IDs
+                )
 
             # Cache results
             self._weights_cache[policy] = calibrated
@@ -248,6 +268,225 @@ class CalibratedIPS(BaseCJEEstimator):
             # Oracle augmentation removed - using OUA jackknife only
 
         self._fitted = True
+
+    def _calibrate_with_outer_cv(
+        self,
+        raw_weights: np.ndarray,
+        ordering_index: np.ndarray,
+        rewards: np.ndarray,
+        rewards_oof: Optional[np.ndarray],
+        fold_ids: Optional[np.ndarray],
+        cfg: SimcalConfig,
+        policy: str,
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """Calibrate weights using outer cross-validation for honest inference.
+
+        Args:
+            raw_weights: Raw importance weights
+            ordering_index: Score index for ordering (judge scores or g_oof)
+            rewards: In-sample rewards
+            rewards_oof: Out-of-fold rewards (if available)
+            fold_ids: Inner fold IDs for SIMCal's internal CV
+            cfg: SIMCal configuration
+            policy: Policy name (for deterministic folds)
+
+        Returns:
+            Tuple of (calibrated weights, info dict)
+        """
+        n = len(raw_weights)
+
+        # Create deterministic outer folds based on prompt_ids
+        # Use different seed offset to avoid collision with inner folds
+        data = self.sampler.get_data_for_policy(policy)
+        if data and len(data) == n:
+            from ..data.folds import get_fold
+
+            prompt_ids = [
+                str(d.get("prompt_id", f"sample_{i}")) for i, d in enumerate(data)
+            ]
+            outer_fold_ids = np.array(
+                [
+                    get_fold(
+                        pid, self.n_outer_folds, seed=1042
+                    )  # Different seed from inner folds
+                    for pid in prompt_ids
+                ],
+                dtype=int,
+            )
+        else:
+            # Fallback to sklearn if prompt_ids not available
+            from sklearn.model_selection import KFold
+
+            outer_kf = KFold(n_splits=self.n_outer_folds, shuffle=True, random_state=42)
+            outer_fold_ids = np.zeros(n, dtype=int)
+            for fold_idx, (_, test_idx) in enumerate(outer_kf.split(np.arange(n))):
+                outer_fold_ids[test_idx] = fold_idx
+
+        # Initialize arrays for results
+        calibrated_weights = np.zeros(n)
+        mixture_weights_list = []
+        gamma_list = []
+        per_fold_train_estimates = {}
+        per_fold_test_weights = {}
+
+        # Process each outer fold
+        for v in range(self.n_outer_folds):
+            test_mask = outer_fold_ids == v
+            train_mask = ~test_mask
+
+            if np.sum(train_mask) < 10 or np.sum(test_mask) < 2:
+                # Skip if fold is too small
+                logger.warning(f"Outer fold {v} too small, using raw weights")
+                calibrated_weights[test_mask] = raw_weights[test_mask]
+                # Use train subset estimate for tiny folds (not global)
+                sw = float(np.sum(raw_weights[train_mask]))
+                if sw > 0:
+                    psi_train = float(
+                        np.sum(raw_weights[train_mask] * rewards[train_mask]) / sw
+                    )
+                else:
+                    psi_train = (
+                        float(np.mean(rewards[train_mask]))
+                        if np.any(train_mask)
+                        else 0.0
+                    )
+                per_fold_train_estimates[v] = {
+                    "psi": psi_train,
+                    "mean_w": (
+                        float(np.mean(raw_weights[train_mask]))
+                        if np.any(train_mask)
+                        else 1.0
+                    ),
+                }
+                continue
+
+            # Extract training data
+            w_train = raw_weights[train_mask]
+            s_train = ordering_index[train_mask]
+            r_train = (
+                rewards_oof[train_mask]
+                if rewards_oof is not None
+                else rewards[train_mask]
+            )
+
+            # Compute and store training estimate and mean weight for honest IFs
+            sw = float(np.sum(w_train))
+            psi_train = (
+                float(np.sum(w_train * r_train) / sw)
+                if sw > 0
+                else float(np.mean(r_train))
+            )
+            per_fold_train_estimates[v] = {
+                "psi": psi_train,
+                "mean_w": float(np.mean(w_train)) if w_train.size else 1.0,
+            }
+
+            # Inner fold IDs for SIMCal's internal CV (subset of original fold_ids)
+            if fold_ids is not None:
+                inner_folds_train = fold_ids[train_mask]
+                # Renumber to be contiguous
+                unique_inner = np.unique(inner_folds_train)
+                fold_map = {old: new for new, old in enumerate(unique_inner)}
+                inner_folds_train = np.array([fold_map[f] for f in inner_folds_train])
+            else:
+                inner_folds_train = None
+
+            # Fit SIMCal on training folds
+            sim = SIMCalibrator(cfg)
+            try:
+                sim.fit(w_train, s_train, rewards=r_train, fold_ids=inner_folds_train)
+
+                # Apply to test fold
+                w_test = raw_weights[test_mask]
+                s_test = ordering_index[test_mask]
+                w_test_cal = sim.predict(w_test, s_test)
+
+                # Store calibrated weights for this fold
+                calibrated_weights[test_mask] = w_test_cal
+                per_fold_test_weights[v] = w_test_cal
+
+                # Collect diagnostics
+                mixture_weights_list.append(sim._mixture_weights)
+                gamma_list.append(sim._gamma)
+
+            except Exception as e:
+                logger.warning(
+                    f"Outer fold {v} calibration failed: {e}, using raw weights"
+                )
+                calibrated_weights[test_mask] = raw_weights[test_mask]
+                per_fold_test_weights[v] = raw_weights[test_mask]
+
+        # Ensure mean-one normalization
+        calibrated_weights = calibrated_weights / calibrated_weights.mean()
+
+        # Build aggregated info dict (JSON-safe)
+        info = {
+            "mixture_weights": (
+                np.mean(mixture_weights_list, axis=0).tolist()
+                if mixture_weights_list
+                else [1.0]
+            ),
+            "candidates": (
+                ["increasing", "decreasing"]
+                if not self.include_baseline
+                else ["baseline", "increasing", "decreasing"]
+            ),
+            "gamma": float(np.mean(gamma_list)) if gamma_list else 0.0,
+            "var_before": float(np.var(raw_weights)),
+            "var_after": float(np.var(calibrated_weights)),
+            "ess_before": n / (1 + np.var(raw_weights)),
+            "ess_after": n / (1 + np.var(calibrated_weights)),
+            "n_outer_folds": self.n_outer_folds,
+            "outer_cv": True,
+            "baseline_shrink": self.baseline_shrink,
+            # Cache for honest IF computation (convert to lists for JSON safety)
+            "outer_fold_ids": outer_fold_ids.tolist(),
+            "per_fold_train_estimates": per_fold_train_estimates,
+            "per_fold_test_weights": {
+                v: w.tolist() for v, w in per_fold_test_weights.items()
+            },
+        }
+
+        return calibrated_weights, info
+
+    def _build_honest_train_IF(
+        self,
+        w_train: np.ndarray,
+        R_train: np.ndarray,
+        psi_train: float,
+        mean_w_train: float,
+    ) -> np.ndarray:
+        """Build training influence functions using training estimates.
+
+        Args:
+            w_train: Training weights
+            R_train: Training rewards (OOF if available)
+            psi_train: Training fold estimate
+            mean_w_train: Training fold mean weight
+
+        Returns:
+            Training influence functions
+        """
+        denom = mean_w_train if mean_w_train > 0 else 1.0
+        return (
+            w_train * (R_train - psi_train) - psi_train * (w_train - mean_w_train)
+        ) / denom
+
+    def _compute_quick_rsq(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
+        """Quick in-sample R² computation (no CV needed).
+
+        Args:
+            y_true: True values
+            y_pred: Predicted values
+
+        Returns:
+            R-squared value between 0 and 1
+        """
+        var_y = np.var(y_true, ddof=1)
+        if var_y <= 0:
+            return 0.0
+        var_resid = np.var(y_true - y_pred, ddof=1)
+        return float(max(0, 1 - var_resid / var_y))
 
     def estimate(self) -> EstimationResult:
         """Compute estimates for all target policies with diagnostics."""
@@ -415,21 +654,157 @@ class CalibratedIPS(BaseCJEEstimator):
                 except Exception as e:
                     logger.debug(f"OOF reward prediction failed for IF path: {e}")
 
-            # Ratio IF for Hajek term (use the same weights used in ψ̂_w)
-            # φ^H_i = [w_i (R_oof_i - ψ̂_w) - ψ̂_w (w_i - mean_w)] / mean_w
-            # Normalization by mean_w is critical for raw weights; harmless for Hájek (mean≈1)
-            denom = mean_w if mean_w > 0 else 1.0
-            ratio_if = (weights * (R_oof - psi_w) - psi_w * (weights - mean_w)) / denom
+            # Check if we should use honest IFs with outer CV
+            calib_info = self._calibration_info.get(policy, {})
+            if self.use_outer_cv and "outer_fold_ids" in calib_info:
+                # Honest influence functions using outer CV structure
+                influence = np.zeros(n)
+                outer_fold_ids = np.array(
+                    calib_info["outer_fold_ids"]
+                )  # Convert back from list
+                per_fold_train_estimates = calib_info["per_fold_train_estimates"]
 
-            # No augmentation - OUA jackknife handles oracle uncertainty via variance
-            influence = ratio_if
+                for v in range(self.n_outer_folds):
+                    test_mask = outer_fold_ids == v
+                    if not np.any(test_mask):
+                        continue
 
-            # Note: fold_ids already computed above for OOF rewards, reuse for IIC if needed
+                    # Use training estimate and mean weight for this fold
+                    train_estimate_dict = per_fold_train_estimates.get(v, {})
+                    train_estimate = float(
+                        train_estimate_dict.get("psi", psi_w)
+                    )  # Fallback to global
+                    mean_w_train = float(
+                        train_estimate_dict.get("mean_w", mean_w)
+                    )  # Use training mean weight
 
-            # Apply IIC for variance reduction (if enabled)
-            influence, iic_adjustment = self._apply_iic(
-                influence, policy, fold_ids=fold_ids
-            )
+                    # Compute IF for test fold using training estimate and training mean weight
+                    w_test = weights[test_mask]
+                    r_oof_test = R_oof[test_mask]
+
+                    # Hajek ratio IF with training mean weight (not test mean)
+                    denom_train = mean_w_train if mean_w_train > 0 else 1.0
+
+                    influence[test_mask] = (
+                        w_test * (r_oof_test - train_estimate)
+                        - train_estimate
+                        * (w_test - mean_w_train)  # Use train mean weight
+                    ) / denom_train
+
+                # Apply honest IIC if requested (fit on train, apply to test)
+                if self.honest_iic:
+                    # Get judge scores for IIC
+                    S_vec = np.array(
+                        [d.get("judge_score", np.nan) for d in data], dtype=float
+                    )
+
+                    # Track diagnostics
+                    rsq_by_fold = {}
+                    iic_applied = np.zeros(n, dtype=bool)
+                    n_folds_applied = 0
+
+                    # Process each fold for honest IIC
+                    for v in range(self.n_outer_folds):
+                        test_mask = outer_fold_ids == v
+                        train_mask = ~test_mask
+
+                        # Quick guards (very cheap)
+                        n_train = np.sum(train_mask)
+                        n_test = np.sum(test_mask)
+                        if n_train < 30 or n_test < 5:
+                            rsq_by_fold[v] = 0.0
+                            continue
+
+                        # Check unique S values in training
+                        S_train = S_vec[train_mask]
+                        valid_S_train = S_train[~np.isnan(S_train)]
+                        n_unique_S = len(np.unique(valid_S_train))
+                        if n_unique_S < 8:
+                            rsq_by_fold[v] = 0.0
+                            continue
+
+                        # Build training IFs using training estimates
+                        train_estimate_dict = per_fold_train_estimates.get(v, {})
+                        psi_train = float(train_estimate_dict.get("psi", psi_w))
+                        mean_w_train = float(train_estimate_dict.get("mean_w", mean_w))
+
+                        w_train = weights[train_mask]
+                        R_train = R_oof[train_mask]
+                        phi_train = self._build_honest_train_IF(
+                            w_train, R_train, psi_train, mean_w_train
+                        )
+
+                        # Fit isotonic regression on training data
+                        try:
+                            from sklearn.isotonic import IsotonicRegression
+
+                            iso = IsotonicRegression(out_of_bounds="clip")
+                            iso.fit(S_train, phi_train)
+                            h_train = iso.predict(S_train)
+
+                            # Compute quick R² (in-sample, no CV)
+                            rsq = self._compute_quick_rsq(phi_train, h_train)
+                            rsq_by_fold[v] = rsq
+
+                            # Gate: only apply if R² is non-trivial
+                            if rsq < 0.02:
+                                continue
+
+                            # Apply to test fold (residualize test IFs)
+                            S_test = S_vec[test_mask]
+                            valid_test = ~np.isnan(S_test)
+                            if np.any(valid_test):
+                                h_test = iso.predict(S_test[valid_test])
+                                # Only residualize samples with valid scores
+                                test_indices = np.where(test_mask)[0]
+                                valid_test_indices = test_indices[valid_test]
+                                influence[valid_test_indices] -= h_test
+                                iic_applied[valid_test_indices] = True
+                                n_folds_applied += 1
+
+                        except Exception as e:
+                            logger.debug(f"Honest IIC failed for fold {v}: {e}")
+                            rsq_by_fold[v] = 0.0
+
+                    # Store honest IIC diagnostics
+                    if not hasattr(self, "_iic_diagnostics"):
+                        self._iic_diagnostics = {}
+                    self._iic_diagnostics[policy] = {
+                        "honest_iic": True,
+                        "rsq_by_fold": rsq_by_fold,
+                        "folds_applied": n_folds_applied,
+                        "samples_residualized": float(np.mean(iic_applied)),
+                        "mean_rsq": float(np.mean(list(rsq_by_fold.values()))),
+                    }
+
+                    logger.debug(
+                        f"Honest IIC for {policy}: applied to {n_folds_applied}/{self.n_outer_folds} folds, "
+                        f"mean R²={np.mean(list(rsq_by_fold.values())):.3f}"
+                    )
+                elif self.use_iic:
+                    logger.debug(
+                        f"IIC disabled for policy {policy} when using outer CV"
+                    )
+                iic_adjustment = 0.0
+            else:
+                # Standard single-pass influence functions
+                # Ratio IF for Hajek term (use the same weights used in ψ̂_w)
+                # φ^H_i = [w_i (R_oof_i - ψ̂_w) - ψ̂_w (w_i - mean_w)] / mean_w
+                # Normalization by mean_w is critical for raw weights; harmless for Hájek (mean≈1)
+                denom = mean_w if mean_w > 0 else 1.0
+                ratio_if = (
+                    weights * (R_oof - psi_w) - psi_w * (weights - mean_w)
+                ) / denom
+
+                # No augmentation - OUA jackknife handles oracle uncertainty via variance
+                influence = ratio_if
+
+                # Note: fold_ids already computed above for OOF rewards, reuse for IIC if needed
+
+                # Apply IIC for variance reduction (if enabled)
+                influence, iic_adjustment = self._apply_iic(
+                    influence, policy, fold_ids=fold_ids
+                )
 
             # Store IIC adjustment for transparency
             if not hasattr(self, "_iic_adjustments"):
@@ -438,6 +813,9 @@ class CalibratedIPS(BaseCJEEstimator):
 
             # IIC is variance-only: it residualizes the IF but does NOT change the point estimate
             # The point estimate remains unchanged
+
+            # Optional: Center influence functions for numerical stability
+            influence = influence - np.mean(influence)
 
             # Compute standard error from the (possibly residualized) influence functions
             se = float(np.std(influence, ddof=1) / np.sqrt(n))
@@ -463,11 +841,16 @@ class CalibratedIPS(BaseCJEEstimator):
             robust_confidence_intervals=None,
             metadata={
                 "target_policies": list(self.sampler.target_policies),
-                "iic_diagnostics": self._iic_diagnostics if self.use_iic else None,
+                "iic_diagnostics": (
+                    self._iic_diagnostics if (self.use_iic or self.honest_iic) else None
+                ),
                 "iic_adjustments": getattr(
                     self, "_iic_adjustments", {}
                 ),  # IIC adjustments applied
-                "iic_estimate_adjusted": self.use_iic,  # Flag: estimates already adjusted
+                "iic_estimate_adjusted": self.use_iic
+                and not self.use_outer_cv,  # IIC disabled with outer CV
+                "honest_iic": self.honest_iic
+                and self.use_outer_cv,  # Honest IIC only with outer CV
                 "calibration_method": "simcal" if self.calibrate_weights else None,
                 "ess_floor": self.ess_floor,
                 "var_cap": self.var_cap,
