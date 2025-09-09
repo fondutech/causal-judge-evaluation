@@ -42,7 +42,7 @@ Achieves robustness to:
 Optimally combines outcome models and importance weights through targeted fluctuation to achieve optimal asymptotic efficiency.
 
 ### 6. Estimator Stacking
-Forms an optimal convex combination of multiple DR estimators (DR-CPO, TMLE, MRDR, OC-DR-CPO, TR-CPO) by minimizing the variance of the combined influence function. Uses outer split for honest inference.
+Forms an optimal convex combination of multiple DR estimators (DR-CPO, TMLE, MRDR, OC-DR-CPO, TR-CPO, TR-CPO-E) by minimizing the variance of the combined influence function. Uses outer split for honest inference. Includes both TR-CPO variants: vanilla (raw W) and efficient (m̂(S)).
 
 ### 7. Orthogonalized Estimators
 Achieve first-order insensitivity to nuisance estimation errors through cross-fitting:
@@ -52,8 +52,14 @@ Achieve first-order insensitivity to nuisance estimation errors through cross-fi
 ### 8. Triply Robust Estimation (TR-CPO)
 Achieves robustness to misspecification in three components simultaneously:
 - Weight calibration errors (via raw/Hájek weights)
-- Reward calibration errors (via label propensity correction: (L/π̂_L)×m̂(S)×(Y-R))
+- Reward calibration errors (via label propensity correction)
 - Outcome model errors (via DR formulation)
+
+Two variants available:
+- **TR-CPO**: Uses raw weights W in correction term (theoretical form, high variance)
+- **TR-CPO-E**: Uses m̂(S)=E[W|S] in correction term (efficient, variance-reduced, recommended)
+
+The correction term is: (L/π̂_L) × [weights] × (Y-R), where weights is either W or m̂(S).
 Uses cross-fitted label propensity π̂_L to correct for oracle label selection bias under MAR assumptions.
 
 ## File Structure
@@ -74,61 +80,11 @@ estimators/
 └── MRDR_OMEGA_WEIGHTS.md  # Documentation on MRDR weighting schemes
 ```
 
-## Estimator Selection Guide
+## Default Recommendation
 
-### Use **CalibratedIPS with calibrate_weights=False** (raw mode) when:
-- You have excellent overlap (ESS > 50%)
-- You want the simplest baseline
-- You don't have judge scores for calibration
+**Use StackedDREstimator** - This is the recommended default for all estimation tasks. It automatically combines multiple DR methods (DR-CPO, TMLE, MRDR, OC-DR-CPO, TR-CPO, TR-CPO-E) via optimal weighting to minimize variance. Requires fresh draws.
 
-### Use **CalibratedIPS** when:
-- You have moderate overlap (ESS 20-50%)
-- Judge scores are available
-- You want variance-stabilized weights
-- Fresh draws are not available
-- Oracle uncertainty handled via optional OUA jackknife in robust_standard_errors
-
-### Use **OrthogonalizedCalibratedIPS** when:
-- You need robustness to calibration errors
-- Oracle coverage is partial (< 100%)
-- You want first-order insensitivity to f̂ and m̂ errors
-- Fresh draws are not available
-
-### Use **DRCPOEstimator** when:
-- You have poor overlap (ESS < 20%)
-- Fresh draws are available (REQUIRED)
-- You want basic doubly robust estimation
-
-### Use **OrthogonalizedCalibratedDRCPO** when:
-- You want first-order insensitivity to f̂, m̂, and q̂ errors via orthogonalization + targeting
-- Fresh draws are available (REQUIRED)
-- Oracle coverage is partial (< 100%)
-- You need robustness but not the "any-two" guarantee (that's TR-CPO)
-
-### Use **MRDREstimator** when:
-- You need robustness to both weight and outcome model misspecification
-- Fresh draws are available (REQUIRED for all DR methods)
-- You have sufficient data for cross-fitting
-- You want policy-specific outcome models
-
-### Use **TMLEEstimator** when:
-- You want optimal asymptotic efficiency
-- Fresh draws are available (REQUIRED for all DR methods)
-- You have well-specified models
-- You need the most sophisticated estimation
-
-### Use **TRCPOEstimator** when:
-- You want TRUE triple robustness: consistent if ANY TWO of {weights, outcome, calibration/π_L} are correct
-- Oracle labels are partially available (for label propensity π̂_L modeling)
-- Fresh draws are available (REQUIRED)
-- You need the "any-two" guarantee for maximum robustness
-
-### Use **StackedDREstimator** when:
-- You want the best of all DR methods combined
-- Fresh draws are available (REQUIRED)
-- You want automatic selection of optimal weights
-- You need robust performance without choosing a specific DR method
-- **This is the recommended default for DR estimation**
+For specific requirements or debugging, individual estimators are available but StackedDR typically outperforms any single method.
 
 ## Refusal Gates in CalibratedIPS
 

@@ -54,6 +54,11 @@ class TRCPOEstimator(DREstimator):
         use_iic: Residualize IF against S to reduce variance
         run_diagnostics: Build DR-like diagnostics
         oua_jackknife: Enable oracle uncertainty augmentation via delete-fold jackknife
+        use_efficient_tr: If True (default), use m̂(S)=E[W|S] in TR correction for
+                          variance reduction. If False, use raw weights W directly
+                          (higher variance but "pure" theoretical form).
+                          Recommended: True for practical use, False only for
+                          theoretical experiments.
         **kwargs: passed to base class (e.g., oracle_slice_config)
     """
 
@@ -69,6 +74,7 @@ class TRCPOEstimator(DREstimator):
         use_iic: bool = True,
         run_diagnostics: bool = True,
         oua_jackknife: bool = False,
+        use_efficient_tr: bool = True,  # Default to variance-reduced version
         **kwargs: Any,
     ):
         # TR uses raw/Hájek weights; disable SIMCal in parent (but reuse all DR infra)
@@ -88,6 +94,7 @@ class TRCPOEstimator(DREstimator):
         self.min_pi = float(min_pi)
         self.max_pi = float(max_pi)
         self.use_iic = bool(use_iic)
+        self.use_efficient_tr = bool(use_efficient_tr)
         self._piL_oof_cache: Dict[str, np.ndarray] = {}
         self._m_hat_oof_cache: Dict[str, np.ndarray] = {}  # Cache for m̂(S) = E[W|S]
         self._tr_diagnostics: Dict[str, Dict[str, Any]] = {}
@@ -418,37 +425,58 @@ class TRCPOEstimator(DREstimator):
             # DR correction with raw/Hájek weights (use OOF reward)
             dr_corr = float(np.mean(w * (R_oof - q_oof)))
 
-            # Get m̂(S) = E[W|S] for efficient label correction
+            # Choose weights for TR correction based on use_efficient_tr flag
+            if self.use_efficient_tr:
+                # Use m̂(S) = E[W|S] for variance reduction (recommended)
+                if (
+                    policy in self._m_hat_oof_cache
+                    and self._m_hat_oof_cache[policy].shape[0] == n
+                ):
+                    tr_weights = self._m_hat_oof_cache[policy]
+                    uses_efficient_correction = True
+                else:
+                    # Fallback to raw weights with warning
+                    logger.warning(
+                        f"TR-CPO: m̂(S) not found in cache for policy '{policy}'. "
+                        f"Falling back to raw weights W (less efficient)."
+                    )
+                    tr_weights = w
+                    uses_efficient_correction = False
+            else:
+                # Use raw weights W directly (higher variance, "pure" form)
+                tr_weights = w
+                uses_efficient_correction = False
+                logger.debug(
+                    f"TR-CPO: Using raw weights for TR correction (use_efficient_tr=False). "
+                    f"This may lead to high variance."
+                )
+
+            # Get m̂(S) for diagnostics even if not used in correction
             if (
                 policy in self._m_hat_oof_cache
                 and self._m_hat_oof_cache[policy].shape[0] == n
             ):
                 m_hat = self._m_hat_oof_cache[policy]
             else:
-                # This should not happen in normal operation - log warning and fallback
-                logger.warning(
-                    f"TR-CPO: m̂(S) not found in cache for policy '{policy}'. "
-                    f"Falling back to raw weights W (less efficient). "
-                    f"This may indicate a bug - m̂ should have been fitted during fit()."
-                )
                 m_hat = w
 
             # Define clipped pi_oof once
             pi_clipped = np.clip(pi_oof, self.min_pi, self.max_pi)
 
-            # Label-propensity correction with W (triply robust by construction)
-            tr_vec = (L / pi_clipped) * w * (Y - R_oof)
+            # Label-propensity correction (triply robust)
+            # Use either m̂(S) or W based on use_efficient_tr flag
+            tr_vec = (L / pi_clipped) * tr_weights * (Y - R_oof)
             tr_corr = float(np.mean(tr_vec))
 
             V_hat = dm_term + dr_corr + tr_corr
             estimates.append(V_hat)
 
             # ----- Influence function (OOF path) -----
-            # φ = g_fresh + w*(R_oof - q_oof) + (L/pi_oof)*w*(Y - R_oof) - V_hat
+            # φ = g_fresh + w*(R_oof - q_oof) + (L/pi_oof)*tr_weights*(Y - R_oof) - V_hat
             phi = (
                 g_fresh
                 + w * (R_oof - q_oof)
-                + (L / pi_clipped) * w * (Y - R_oof)
+                + (L / pi_clipped) * tr_weights * (Y - R_oof)
                 - V_hat
             )
 
@@ -482,10 +510,10 @@ class TRCPOEstimator(DREstimator):
             # ----- Diagnostics -----
             label_frac = float(np.mean(L)) if n > 0 else 0.0
 
-            # Note: Now using W in label term for true triple robustness
-            # (m̂(S) was previously used for efficiency but compromised theoretical guarantees)
+            # Note on TR correction weights:
+            # - use_efficient_tr=True: Uses m̂(S)=E[W|S] for variance reduction (recommended)
+            # - use_efficient_tr=False: Uses raw W for "pure" theoretical form (high variance)
             r2_w_s = 0.0
-            uses_efficient_correction = False
             # Keep diagnostic for informational purposes about W~S relationship quality
             if policy in self._m_hat_oof_cache:
                 valid = np.isfinite(S)
@@ -506,6 +534,7 @@ class TRCPOEstimator(DREstimator):
                 "uses_oof_rewards": bool(not np.allclose(R, R_oof)),
                 "iic_applied": bool(self.use_iic),
                 "uses_efficient_correction": uses_efficient_correction,
+                "use_efficient_tr": self.use_efficient_tr,
                 "r2_w_given_s": r2_w_s,  # R²(W|S) - higher means more variance reduction
             }
 

@@ -62,7 +62,8 @@ class StackedDREstimator(BaseCJEEstimator):
             sampler: PrecomputedSampler with calibrated data
             estimators: List of estimator names to stack.
                 Default: ["dr-cpo", "tmle", "mrdr"]
-                Available: "dr-cpo", "tmle", "mrdr", "oc-dr-cpo", "tr-cpo"
+                Available: "dr-cpo", "tmle", "mrdr", "oc-dr-cpo", "tr-cpo", "tr-cpo-e"
+                Note: "tr-cpo" uses raw W (vanilla), "tr-cpo-e" uses m̂(S) (efficient)
             use_outer_split: If True, use V-fold outer split for honest inference
             V_folds: Number of outer folds for honest stacking
             robust_cov: If True, use Ledoit-Wolf optimal shrinkage for covariance
@@ -338,7 +339,8 @@ class StackedDREstimator(BaseCJEEstimator):
             "tmle": TMLEEstimator,
             "mrdr": MRDREstimator,
             "oc-dr-cpo": OrthogonalizedCalibratedDRCPO,
-            "tr-cpo": TRCPOEstimator,
+            "tr-cpo": TRCPOEstimator,  # Raw weights version (vanilla)
+            "tr-cpo-e": TRCPOEstimator,  # Efficient version with m̂(S)
         }
 
         if name not in estimator_classes:
@@ -350,17 +352,28 @@ class StackedDREstimator(BaseCJEEstimator):
         # Note: We can't directly pass fold_ids to most estimators,
         # but they will use the same seed which helps
         # Pass reward_calibrator as a named parameter for DR estimators
-        if name in ["dr-cpo", "tmle", "mrdr", "oc-dr-cpo", "tr-cpo"]:
+        if name in ["dr-cpo", "tmle", "mrdr", "oc-dr-cpo", "tr-cpo", "tr-cpo-e"]:
             # Always pass reward_calibrator for outcome model (if available)
             # use_calibrated_weights controls SIMCal, independent of reward_calibrator
-            estimator = estimator_class(
-                self.sampler,
-                reward_calibrator=self.reward_calibrator,
-                use_calibrated_weights=self.use_calibrated_weights,
-                weight_mode=self.weight_mode,
-                oua_jackknife=self.oua_jackknife,  # Pass OUA jackknife setting
-                use_iic=self.use_iic,  # Enable IIC for component estimators
-            )
+
+            # Build kwargs for estimator
+            estimator_kwargs = {
+                "reward_calibrator": self.reward_calibrator,
+                "use_calibrated_weights": self.use_calibrated_weights,
+                "weight_mode": self.weight_mode,
+                "oua_jackknife": self.oua_jackknife,  # Pass OUA jackknife setting
+                "use_iic": self.use_iic,  # Enable IIC for component estimators
+            }
+
+            # Configure TR-CPO variants
+            if name == "tr-cpo":
+                # Vanilla TR-CPO uses raw W (theoretical form, high variance)
+                estimator_kwargs["use_efficient_tr"] = False
+            elif name == "tr-cpo-e":
+                # Efficient TR-CPO uses m̂(S) for stability
+                estimator_kwargs["use_efficient_tr"] = True
+
+            estimator = estimator_class(self.sampler, **estimator_kwargs)
 
             # Pass shared fold IDs if the estimator supports it
             if hasattr(estimator, "set_fold_ids"):
@@ -748,7 +761,7 @@ class StackedDREstimator(BaseCJEEstimator):
         """
         # Try to get weights from first successful component estimator
         # (all DR estimators use the same IPS weights)
-        for name in ["dr-cpo", "tmle", "mrdr", "tr-cpo", "oc-dr-cpo"]:
+        for name in ["dr-cpo", "tmle", "mrdr", "tr-cpo", "tr-cpo-e", "oc-dr-cpo"]:
             if name in self.component_estimators:
                 estimator = self.component_estimators[name]
                 if estimator:
@@ -773,7 +786,7 @@ class StackedDREstimator(BaseCJEEstimator):
             Diagnostics object or None
         """
         # Try to get diagnostics from the first successful DR component
-        for name in ["dr-cpo", "tmle", "mrdr", "tr-cpo", "oc-dr-cpo"]:
+        for name in ["dr-cpo", "tmle", "mrdr", "tr-cpo", "tr-cpo-e", "oc-dr-cpo"]:
             if name in self.component_estimators:
                 estimator = self.component_estimators[name]
                 if estimator and hasattr(estimator, "get_diagnostics"):
