@@ -12,8 +12,9 @@ EXPERIMENTS = {
         "orthogonalized-ips",  # Orthogonalized Calibrated IPS
         "dr-cpo",  # DR-CPO
         "oc-dr-cpo",  # Orthogonalized Calibrated DR
-        "tr-cpo",  # Triply-Robust CPO
-        "stacked-dr",  # Ensemble
+        "tr-cpo",  # Triply-Robust CPO (vanilla, raw W)
+        "tr-cpo-e",  # Triply-Robust CPO (efficient, m̂(S))
+        "stacked-dr",  # Ensemble (always with calibration)
     ],
     "sample_sizes": [500, 1000, 2500, 5000],
     "oracle_coverages": [0.05, 0.10, 0.25, 0.5, 1.00],
@@ -49,18 +50,19 @@ REQUIRES_CALIBRATION = {
     "calibrated-ips",  # By definition
     "orthogonalized-ips",  # Requires calibrated weights for orthogonalization
     "oc-dr-cpo",  # Orthogonalized Calibrated DR requires calibration
+    "stacked-dr",  # Production default - always uses calibration
 }
 
 # These estimators can work with or without calibration
 CALIBRATION_OPTIONAL = {
     "dr-cpo",  # Can use raw or calibrated weights
-    "stacked-dr",  # Can use either
 }
 
 # These estimators never use weight calibration
 NEVER_CALIBRATED = {
     "raw-ips",  # Never uses calibration by design
     "tr-cpo",  # Always uses raw/Hajek weights (no SIMCal) for theoretical correctness
+    "tr-cpo-e",  # Also uses raw/Hajek weights, but with m̂(S) in TR term for efficiency
 }
 
 CONSTRAINTS = {

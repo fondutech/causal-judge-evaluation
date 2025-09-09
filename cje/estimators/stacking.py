@@ -367,11 +367,15 @@ class StackedDREstimator(BaseCJEEstimator):
             # Build kwargs for estimator
             estimator_kwargs = {
                 "reward_calibrator": self.reward_calibrator,
-                "use_calibrated_weights": self.use_calibrated_weights,
                 "weight_mode": self.weight_mode,
                 "oua_jackknife": self.oua_jackknife,  # Pass OUA jackknife setting
                 "use_iic": self.use_iic,  # Enable IIC for component estimators
             }
+
+            # Only pass use_calibrated_weights to estimators that support it
+            # TR-CPO variants ignore this parameter (always use raw weights)
+            if name not in ["tr-cpo", "tr-cpo-e"]:
+                estimator_kwargs["use_calibrated_weights"] = self.use_calibrated_weights
 
             # Configure TR-CPO variants
             if name == "tr-cpo":
