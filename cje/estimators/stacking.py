@@ -300,6 +300,11 @@ class StackedDREstimator(BaseCJEEstimator):
         # Add diagnostics to metadata
         result.metadata["stacking_diagnostics"] = diagnostics
 
+        # Collect IIC diagnostics from components
+        iic_diagnostics = self._collect_iic_diagnostics(valid_estimators)
+        if iic_diagnostics:
+            result.metadata["iic_diagnostics"] = iic_diagnostics
+
         # Step 5: Build proper DRDiagnostics for the stacked result
         dr_diagnostics = self._build_stacked_dr_diagnostics(valid_estimators, result)
         if dr_diagnostics:
@@ -948,13 +953,15 @@ class StackedDREstimator(BaseCJEEstimator):
             # DR-specific fields
             dr_cross_fitted=True,
             dr_n_folds=n_folds,
-            # Stacked estimator doesn't have single outcome model stats
-            outcome_r2_range=(0.0, 0.0),
-            outcome_rmse_mean=0.0,
-            worst_if_tail_ratio=0.0,
-            dr_diagnostics_per_policy={},
-            dm_ips_decompositions={},
-            orthogonality_scores={},
+            # Aggregate outcome model stats from components
+            outcome_r2_range=self._aggregate_outcome_r2_range(valid_estimators),
+            outcome_rmse_mean=self._aggregate_outcome_rmse(valid_estimators),
+            worst_if_tail_ratio=self._aggregate_worst_if_tail(valid_estimators),
+            dr_diagnostics_per_policy=self._aggregate_dr_diagnostics(valid_estimators),
+            dm_ips_decompositions=self._aggregate_dm_ips_decompositions(
+                valid_estimators
+            ),
+            orthogonality_scores=self._aggregate_orthogonality_scores(valid_estimators),
             influence_functions=self._influence_functions,
         )
 
@@ -1087,3 +1094,141 @@ class StackedDREstimator(BaseCJEEstimator):
         except Exception as e:
             logger.error(f"Stacked OUA jackknife failed: {e}", exc_info=True)
             # On failure, leave robust_standard_errors as None
+
+    def _aggregate_outcome_r2_range(
+        self, valid_estimators: List[str]
+    ) -> Tuple[float, float]:
+        """Aggregate outcome R² range from component estimators."""
+        r2_values = []
+        for name in valid_estimators:
+            result = self.component_results.get(name)
+            if result and result.diagnostics:
+                diag = result.diagnostics
+                if hasattr(diag, "outcome_r2_range"):
+                    r2_min, r2_max = diag.outcome_r2_range
+                    if r2_min is not None and r2_max is not None:
+                        r2_values.extend([r2_min, r2_max])
+                # Also check dr_diagnostics_per_policy for per-policy R²
+                if (
+                    hasattr(diag, "dr_diagnostics_per_policy")
+                    and diag.dr_diagnostics_per_policy
+                ):
+                    for policy_diag in diag.dr_diagnostics_per_policy.values():
+                        if isinstance(policy_diag, dict) and "r2_oof" in policy_diag:
+                            r2_values.append(policy_diag["r2_oof"])
+
+        if r2_values:
+            return (min(r2_values), max(r2_values))
+        return (0.0, 0.0)
+
+    def _aggregate_outcome_rmse(self, valid_estimators: List[str]) -> float:
+        """Aggregate mean outcome RMSE from component estimators."""
+        rmse_values = []
+        for name in valid_estimators:
+            result = self.component_results.get(name)
+            if result and result.diagnostics:
+                diag = result.diagnostics
+                if hasattr(diag, "outcome_rmse_mean") and diag.outcome_rmse_mean > 0:
+                    rmse_values.append(diag.outcome_rmse_mean)
+
+        if rmse_values:
+            return float(np.mean(rmse_values))
+        return 0.0
+
+    def _aggregate_worst_if_tail(self, valid_estimators: List[str]) -> float:
+        """Aggregate worst influence function tail ratio from components."""
+        tail_ratios = []
+        for name in valid_estimators:
+            result = self.component_results.get(name)
+            if result and result.diagnostics:
+                diag = result.diagnostics
+                if (
+                    hasattr(diag, "worst_if_tail_ratio")
+                    and diag.worst_if_tail_ratio > 0
+                ):
+                    tail_ratios.append(diag.worst_if_tail_ratio)
+
+        if tail_ratios:
+            return float(max(tail_ratios))
+        return 0.0
+
+    def _aggregate_dr_diagnostics(self, valid_estimators: List[str]) -> Dict[str, Any]:
+        """Aggregate DR diagnostics from component estimators."""
+        aggregated = {}
+        for name in valid_estimators:
+            result = self.component_results.get(name)
+            if result and result.diagnostics:
+                diag = result.diagnostics
+                if (
+                    hasattr(diag, "dr_diagnostics_per_policy")
+                    and diag.dr_diagnostics_per_policy
+                ):
+                    # Store component diagnostics under component name
+                    aggregated[name] = diag.dr_diagnostics_per_policy
+        return aggregated
+
+    def _aggregate_dm_ips_decompositions(
+        self, valid_estimators: List[str]
+    ) -> Dict[str, Any]:
+        """Aggregate DM-IPS decompositions from component estimators."""
+        aggregated = {}
+        for name in valid_estimators:
+            result = self.component_results.get(name)
+            if result and result.diagnostics:
+                diag = result.diagnostics
+                if (
+                    hasattr(diag, "dm_ips_decompositions")
+                    and diag.dm_ips_decompositions
+                ):
+                    aggregated[name] = diag.dm_ips_decompositions
+        return aggregated
+
+    def _aggregate_orthogonality_scores(
+        self, valid_estimators: List[str]
+    ) -> Dict[str, Any]:
+        """Aggregate orthogonality scores from component estimators."""
+        aggregated = {}
+        for name in valid_estimators:
+            result = self.component_results.get(name)
+            if result and result.diagnostics:
+                diag = result.diagnostics
+                if hasattr(diag, "orthogonality_scores") and diag.orthogonality_scores:
+                    aggregated[name] = diag.orthogonality_scores
+        return aggregated
+
+    def _collect_iic_diagnostics(self, valid_estimators: List[str]) -> Dict[str, Any]:
+        """Collect IIC diagnostics from component estimators."""
+        # IIC diagnostics are typically stored per-policy, so we need to aggregate differently
+        aggregated = {}
+
+        for name in valid_estimators:
+            result = self.component_results.get(name)
+            if result and result.metadata:
+                # Check if IIC diagnostics are in metadata
+                if "iic_diagnostics" in result.metadata:
+                    iic_diag = result.metadata["iic_diagnostics"]
+                    if iic_diag:
+                        # Store by component name
+                        aggregated[name] = iic_diag
+
+        # If we have IIC diagnostics from multiple components, also create a summary
+        if aggregated:
+            # Create a summary across all components
+            summary = {}
+            all_policies: set = set()
+            for comp_diag in aggregated.values():
+                if isinstance(comp_diag, dict):
+                    all_policies.update(comp_diag.keys())
+
+            for policy in all_policies:
+                policy_summary = {}
+                for comp_name, comp_diag in aggregated.items():
+                    if isinstance(comp_diag, dict) and policy in comp_diag:
+                        policy_summary[comp_name] = comp_diag[policy]
+                if policy_summary:
+                    summary[policy] = policy_summary
+
+            if summary:
+                aggregated["_summary"] = summary
+
+        return aggregated
