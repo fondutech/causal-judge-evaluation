@@ -358,16 +358,24 @@ TMLE uses iterative targeted updates with clever covariate (importance weights) 
 
 ## Advanced Features
 
-### Honest Inference with Outer CV
-CalibratedIPS now supports outer cross-validation for honest standard errors:
+### Honest Inference with Outer CV (Default Enabled)
+CalibratedIPS now uses outer cross-validation by default for honest standard errors:
 
 ```python
-# Enable outer CV for honest inference
+# Outer CV is now enabled by default
+estimator = CalibratedIPS(sampler)  # use_outer_cv=True by default
+
+# To disable outer CV (not recommended):
 estimator = CalibratedIPS(
     sampler,
-    use_outer_cv=True,      # Learn weights on V-1 folds, apply to 1
-    n_outer_folds=5,        # Number of outer folds (default: 5)
-    honest_iic=False        # Honest IIC not yet recommended with outer CV
+    use_outer_cv=False      # Reverts to single-pass calibration
+)
+
+# To customize outer CV settings:
+estimator = CalibratedIPS(
+    sampler,
+    n_outer_folds=10,       # Increase folds for more stable estimates
+    honest_iic=True         # Enable honest IIC for additional variance reduction
 )
 ```
 

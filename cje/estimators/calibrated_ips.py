@@ -39,6 +39,7 @@ class CalibratedIPS(BaseCJEEstimator):
     - Oracle slice augmentation for honest confidence intervals
     - Comprehensive diagnostics
     - Optional weight clipping
+    - Outer cross-validation for honest inference (default enabled)
 
     Args:
         sampler: PrecomputedSampler with data
@@ -51,6 +52,9 @@ class CalibratedIPS(BaseCJEEstimator):
         include_baseline: Whether to include raw weights in the stack (default False) [only used if calibrate_weights=True]
         baseline_shrink: Shrinkage toward baseline for stability (default 0.0) [only used if calibrate_weights=True]
         refuse_unreliable: Whether to refuse (return NaN) for unreliable estimates (default False)
+        use_outer_cv: Whether to use outer CV for honest weight learning (default True)
+        n_outer_folds: Number of outer folds for honest inference (default 5)
+        honest_iic: Whether to apply honest IIC with outer CV (default False)
         **kwargs: Additional arguments passed to BaseCJEEstimator (e.g., oracle_slice_config)
     """
 
@@ -68,7 +72,7 @@ class CalibratedIPS(BaseCJEEstimator):
         run_diagnostics: bool = True,
         refuse_unreliable: bool = False,
         oua_jackknife: bool = True,
-        use_outer_cv: bool = False,
+        use_outer_cv: bool = True,
         n_outer_folds: int = 5,
         honest_iic: bool = False,
         **kwargs: Any,
