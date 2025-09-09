@@ -21,7 +21,7 @@ orig_sample_sizes = config.EXPERIMENTS["sample_sizes"]
 orig_oracle_coverages = config.EXPERIMENTS["oracle_coverages"]
 orig_seeds = config.EXPERIMENTS["seeds"]
 
-# Set minimal test values - include ALL estimators
+# Set minimal test values - include ALL estimators from current config
 config.EXPERIMENTS["estimators"] = [
     "raw-ips",
     "calibrated-ips",
@@ -29,6 +29,7 @@ config.EXPERIMENTS["estimators"] = [
     "dr-cpo",
     "oc-dr-cpo",
     "tr-cpo",
+    "tr-cpo-e",  # Added: efficient TR-CPO
     "stacked-dr",
 ]  # Test all estimators
 config.EXPERIMENTS["sample_sizes"] = [500]  # Just 1 small size
@@ -49,17 +50,18 @@ print(f"  Oracle coverages: {config.EXPERIMENTS['oracle_coverages']}")
 print(f"  Seeds: {len(config.EXPERIMENTS['seeds'])}")
 print("")
 
-# Expected number of experiments:
-# With calibration constraints applied:
-# - raw-ips: 1 size × 1 coverage × 1 config = 1
-# - calibrated-ips: 1 size × 1 coverage × 1 config = 1
-# - orthogonalized-ips: 1 size × 1 coverage × 1 config = 1
-# - dr-cpo: 1 size × 1 coverage × 2 configs = 2
-# - oc-dr-cpo: 1 size × 1 coverage × 1 config = 1
-# - tr-cpo: 1 size × 1 coverage × 2 configs = 2
-# - stacked-dr: 1 size × 1 coverage × 2 configs = 2
-# Total: 10 experiments × 1 seed = 10 runs
-print("Expected experiments: 10 configurations × 1 seed = 10 runs")
+# Expected number of experiments with IIC and calibration constraints:
+# Each estimator runs with IIC=True and IIC=False
+# - raw-ips: 1 size × 1 coverage × 1 cal(False) × 2 IIC = 2
+# - calibrated-ips: 1 size × 1 coverage × 1 cal(True) × 2 IIC = 2
+# - orthogonalized-ips: 1 size × 1 coverage × 1 cal(True) × 2 IIC = 2
+# - dr-cpo: 1 size × 1 coverage × 2 cal × 2 IIC = 4
+# - oc-dr-cpo: 1 size × 1 coverage × 1 cal(True) × 2 IIC = 2
+# - tr-cpo: 1 size × 1 coverage × 1 cal(False) × 2 IIC = 2
+# - tr-cpo-e: 1 size × 1 coverage × 1 cal(False) × 2 IIC = 2
+# - stacked-dr: 1 size × 1 coverage × 1 cal(True) × 2 IIC = 2
+# Total: 18 experiments × 1 seed = 18 runs
+print("Expected experiments: 18 configurations × 1 seed = 18 runs")
 print("Estimated time: 1-2 minutes")
 print("")
 
