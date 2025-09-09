@@ -200,9 +200,14 @@ class StackedDREstimator(BaseCJEEstimator):
         stacked_ses = []
         stacked_ifs = {}
 
+        # Track which components contributed to each policy's stack
+        self._weights_names_per_policy: Dict[str, List[str]] = {}
+
         for policy_idx, policy in enumerate(self.sampler.target_policies):
-            # Collect influence functions from valid estimators
-            IF_matrix = self._collect_influence_functions(policy, valid_estimators)
+            # Collect influence functions and track which estimators provided them
+            IF_matrix, used_names = self._collect_influence_functions_with_names(
+                policy, valid_estimators
+            )
 
             if IF_matrix is None or IF_matrix.shape[1] == 0:
                 # No valid IFs for this policy
@@ -221,6 +226,7 @@ class StackedDREstimator(BaseCJEEstimator):
             # Use the same weights for both IF and point estimate (critical for alignment)
             stacked_if = IF_matrix @ weights
             self.weights_per_policy[policy] = weights
+            self._weights_names_per_policy[policy] = used_names
 
             # Note: IIC is applied at the component level, not at the stacked level
             # This avoids double residualization and maintains proper alignment
@@ -229,9 +235,9 @@ class StackedDREstimator(BaseCJEEstimator):
             stacked_ifs[policy] = stacked_if
             self._influence_functions[policy] = stacked_if
 
-            # Compute stacked estimate as weighted average of component estimates
+            # Compute stacked estimate using ONLY components that provided IFs
             component_estimates = []
-            for est_name in valid_estimators:
+            for est_name in used_names:  # Use same components as IF_matrix
                 result = self.component_results[est_name]
                 if result:
                     component_estimates.append(result.estimates[policy_idx])
@@ -293,6 +299,14 @@ class StackedDREstimator(BaseCJEEstimator):
 
         # Add diagnostics to metadata
         result.metadata["stacking_diagnostics"] = diagnostics
+
+        # Step 5: Build proper DRDiagnostics for the stacked result
+        dr_diagnostics = self._build_stacked_dr_diagnostics(valid_estimators, result)
+        if dr_diagnostics:
+            result.diagnostics = dr_diagnostics
+
+        # Step 6: Apply stacked OUA (Oracle Uncertainty Augmentation)
+        self._apply_stacked_oua(result, valid_estimators)
 
         return result
 
@@ -437,7 +451,25 @@ class StackedDREstimator(BaseCJEEstimator):
         Returns:
             IF_matrix: n x K matrix where K is the number of valid estimators
         """
-        ifs = []
+        IF_matrix, _ = self._collect_influence_functions_with_names(
+            policy, valid_estimators
+        )
+        return IF_matrix
+
+    def _collect_influence_functions_with_names(
+        self, policy: str, valid_estimators: List[str]
+    ) -> Tuple[Optional[np.ndarray], List[str]]:
+        """Collect influence functions and track which estimators provided them.
+
+        This ensures alignment between weights and estimates by tracking exactly
+        which components contributed IFs.
+
+        Returns:
+            IF_matrix: n x K matrix where K is the number of estimators with IFs
+            used_names: List of estimator names that provided IFs (length K)
+        """
+        ifs: List[np.ndarray] = []
+        used_names: List[str] = []
 
         for name in valid_estimators:
             result = self.component_results[name]
@@ -445,12 +477,13 @@ class StackedDREstimator(BaseCJEEstimator):
                 if_for_policy = result.influence_functions.get(policy)
                 if if_for_policy is not None:
                     ifs.append(if_for_policy)
+                    used_names.append(name)
 
         if not ifs:
-            return None
+            return (None, [])
 
         # Stack into matrix (each column is one estimator's IF)
-        return np.column_stack(ifs)
+        return (np.column_stack(ifs), used_names)
 
     def _compute_optimal_weights(self, IF_matrix: np.ndarray) -> np.ndarray:
         """Compute optimal stacking weights by minimizing IF variance.
@@ -792,12 +825,16 @@ class StackedDREstimator(BaseCJEEstimator):
     def get_diagnostics(self) -> Optional[Any]:
         """Get diagnostics from the stacked estimator.
 
-        Returns diagnostics from the first successful component.
+        Returns the stacked diagnostics if available, otherwise from first component.
 
         Returns:
             Diagnostics object or None
         """
-        # Try to get diagnostics from the first successful DR component
+        # Return stacked diagnostics if we have them
+        if hasattr(self, "_results") and self._results and self._results.diagnostics:
+            return self._results.diagnostics
+
+        # Otherwise try to get diagnostics from the first successful DR component
         for name in ["dr-cpo", "tmle", "mrdr", "tr-cpo", "tr-cpo-e", "oc-dr-cpo"]:
             if name in self.component_estimators:
                 estimator = self.component_estimators[name]
@@ -808,3 +845,245 @@ class StackedDREstimator(BaseCJEEstimator):
 
         # If no component has diagnostics, return None
         return None
+
+    def _build_stacked_dr_diagnostics(
+        self, valid_estimators: List[str], result: EstimationResult
+    ) -> Optional[Any]:
+        """Build proper DR diagnostics using shared weight information.
+
+        Priority: Get weight diagnostics from components that respect use_calibrated_weights.
+        TR-CPO variants always use raw weights, so only use them as fallback.
+
+        Args:
+            valid_estimators: List of successfully run estimator names
+            result: The stacked estimation result
+
+        Returns:
+            DRDiagnostics object or None if unable to build
+        """
+        from ..diagnostics import DRDiagnostics, Status
+
+        # Priority order for weight diagnostics based on alignment with stack settings
+        # TR-CPO variants always use raw weights regardless of settings
+        non_tr_estimators = ["dr-cpo", "oc-dr-cpo", "mrdr", "tmle"]
+        tr_estimators = ["tr-cpo", "tr-cpo-e"]
+
+        weight_diag = None
+        source_estimator = None
+
+        # First try non-TR estimators (they respect use_calibrated_weights)
+        for name in non_tr_estimators:
+            if name in valid_estimators and name in self.component_estimators:
+                comp = self.component_estimators[name]
+                if hasattr(comp, "get_weight_diagnostics"):
+                    weight_diag = comp.get_weight_diagnostics()
+                    if weight_diag:
+                        source_estimator = name
+                        logger.debug(f"Using weight diagnostics from {name}")
+                        break
+
+        # Fall back to TR-CPO if needed (but warn if settings mismatch)
+        if not weight_diag:
+            for name in tr_estimators:
+                if name in valid_estimators and name in self.component_estimators:
+                    comp = self.component_estimators[name]
+                    if hasattr(comp, "get_weight_diagnostics"):
+                        weight_diag = comp.get_weight_diagnostics()
+                        if weight_diag:
+                            source_estimator = name
+                            if self.use_calibrated_weights:
+                                logger.warning(
+                                    f"Using weight diagnostics from {name} which uses raw weights, "
+                                    f"but stack requested calibrated weights"
+                                )
+                            break
+
+        if not weight_diag:
+            logger.debug("No weight diagnostics available from components")
+            return None
+
+        # Build DRDiagnostics with stacked estimates but weight fields from appropriate component
+        policies = list(self.sampler.target_policies)
+        estimates_dict = {
+            p: float(e) for p, e in zip(policies, result.estimates) if not np.isnan(e)
+        }
+        se_dict = {
+            p: float(se)
+            for p, se in zip(policies, result.standard_errors)
+            if not np.isnan(se)
+        }
+
+        # Get n_folds from a component (they should all be the same)
+        n_folds = 5  # default
+        for name in valid_estimators:
+            if name in self.component_estimators:
+                comp = self.component_estimators[name]
+                if hasattr(comp, "n_folds"):
+                    n_folds = comp.n_folds
+                    break
+
+        return DRDiagnostics(
+            estimator_type="StackedDR",
+            method=f"StackedDR({', '.join(valid_estimators)})",
+            n_samples_total=weight_diag.n_samples_total,
+            n_samples_valid=weight_diag.n_samples_valid,
+            n_policies=len(policies),
+            policies=policies,
+            estimates=estimates_dict,
+            standard_errors=se_dict,
+            n_samples_used=result.n_samples_used,
+            # Weight fields from the appropriate component
+            weight_ess=weight_diag.weight_ess,
+            weight_status=weight_diag.weight_status,
+            ess_per_policy=weight_diag.ess_per_policy,
+            max_weight_per_policy=weight_diag.max_weight_per_policy,
+            weight_tail_ratio_per_policy=getattr(
+                weight_diag, "weight_tail_ratio_per_policy", {}
+            ),
+            # Calibration fields if available
+            calibration_rmse=weight_diag.calibration_rmse,
+            calibration_r2=weight_diag.calibration_r2,
+            calibration_coverage=getattr(weight_diag, "calibration_coverage", None),
+            n_oracle_labels=weight_diag.n_oracle_labels,
+            # DR-specific fields
+            dr_cross_fitted=True,
+            dr_n_folds=n_folds,
+            # Stacked estimator doesn't have single outcome model stats
+            outcome_r2_range=(0.0, 0.0),
+            outcome_rmse_mean=0.0,
+            worst_if_tail_ratio=0.0,
+            dr_diagnostics_per_policy={},
+            dm_ips_decompositions={},
+            orthogonality_scores={},
+            influence_functions=self._influence_functions,
+        )
+
+    def _apply_stacked_oua(
+        self, result: EstimationResult, valid_estimators: List[str]
+    ) -> None:
+        """Apply OUA by linearly combining component jackknife estimates.
+
+        For stacked estimator ψ_stack = Σ α_k ψ_k with fixed weights α_k,
+        the jackknife estimates combine linearly: ψ_stack^(-f) = Σ α_k ψ_k^(-f)
+
+        Oracle variance is then: var_oracle = (K-1)/K * Var_f(ψ_stack^(-f))
+
+        Args:
+            result: EstimationResult to augment with robust standard errors
+            valid_estimators: List of successfully run estimator names
+        """
+        if not self.oua_jackknife:
+            logger.debug("OUA jackknife disabled for stacked estimator")
+            return
+
+        try:
+            oua_ses = []
+            var_oracle_map = {}
+            jk_counts = {}
+            jk_contributors: Dict[str, List[str]] = {}
+
+            policies = list(self.sampler.target_policies)
+
+            for policy_idx, policy in enumerate(policies):
+                weights = self.weights_per_policy.get(policy)
+                # Get the names of components that contributed to this policy
+                used_names = self._weights_names_per_policy.get(policy, [])
+
+                if weights is None or not used_names or len(weights) != len(used_names):
+                    # No weights for this policy, keep base SE
+                    oua_ses.append(float(result.standard_errors[policy_idx]))
+                    var_oracle_map[policy] = 0.0
+                    jk_counts[policy] = 0
+                    continue
+
+                # Collect component jackknife arrays (aligned by fold)
+                component_jacks = []
+                contributors = []
+
+                # Use the same component names that were used for stacking
+                for est_idx, name in enumerate(used_names):
+                    weight = weights[est_idx]
+                    if weight <= 0:
+                        continue  # Skip zero-weight components
+
+                    comp = self.component_estimators.get(name)
+                    if not comp:
+                        continue
+
+                    # Try to get jackknife estimates from component
+                    if hasattr(comp, "get_oracle_jackknife"):
+                        jack_array = comp.get_oracle_jackknife(policy)
+                        if jack_array is not None and len(jack_array) > 0:
+                            component_jacks.append((weight, jack_array))
+                            contributors.append(name)
+
+                if not component_jacks:
+                    # No OUA available from components, keep base SE
+                    oua_ses.append(float(result.standard_errors[policy_idx]))
+                    var_oracle_map[policy] = 0.0
+                    jk_counts[policy] = 0
+                    jk_contributors[policy] = []
+                    logger.debug(f"No OUA jackknife available for {policy}")
+                    continue
+
+                # Check fold alignment (all should have same K)
+                K_values = [len(jack) for _, jack in component_jacks]
+                if len(set(K_values)) > 1:
+                    logger.warning(
+                        f"Components have misaligned folds for {policy}: {K_values}, using min"
+                    )
+                K = min(K_values)
+
+                if K < 2:
+                    # Not enough folds for jackknife
+                    oua_ses.append(float(result.standard_errors[policy_idx]))
+                    var_oracle_map[policy] = 0.0
+                    jk_counts[policy] = K
+                    jk_contributors[policy] = contributors
+                    continue
+
+                # Form stacked jackknife by linear combination
+                stacked_jack = np.zeros(K, dtype=float)
+                for weight, jack_array in component_jacks:
+                    # Truncate to minimum K if needed
+                    stacked_jack += weight * jack_array[:K]
+
+                # Compute oracle variance: (K-1)/K * Var(jackknife estimates)
+                psi_bar = float(np.mean(stacked_jack))
+                var_oracle = (K - 1) / K * float(np.mean((stacked_jack - psi_bar) ** 2))
+
+                # Combine with base SE
+                base_se = float(result.standard_errors[policy_idx])
+                robust_se = float(np.sqrt(base_se**2 + var_oracle))
+
+                oua_ses.append(robust_se)
+                var_oracle_map[policy] = var_oracle
+                jk_counts[policy] = K
+                jk_contributors[policy] = contributors
+
+                logger.debug(
+                    f"Stacked OUA for {policy}: base_se={base_se:.4f}, "
+                    f"var_oracle={var_oracle:.4f}, robust_se={robust_se:.4f}, "
+                    f"K={K}, contributors={contributors}"
+                )
+
+            # Store robust standard errors
+            result.robust_standard_errors = np.array(oua_ses, dtype=float)
+
+            # Add OUA metadata
+            if not hasattr(result, "metadata") or result.metadata is None:
+                result.metadata = {}
+
+            result.metadata.setdefault("oua", {})
+            result.metadata["oua"].update(
+                {
+                    "source": "stacked-linear-combo",
+                    "var_oracle_per_policy": var_oracle_map,
+                    "jackknife_counts": jk_counts,
+                    "contributors_per_policy": jk_contributors,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Stacked OUA jackknife failed: {e}", exc_info=True)
+            # On failure, leave robust_standard_errors as None

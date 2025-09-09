@@ -748,7 +748,15 @@ class TRCPOEstimator(DREstimator):
                 pi_clipped = np.clip(pi_oof, self.min_pi, self.max_pi)
                 dm = float(np.mean(g_loo_array))
                 dr = float(np.mean(w * (R_loo - q_oof)))
-                tr = float(np.mean((L / pi_clipped) * w * (Y - R_loo)))
+
+                # Use the same TR weights as in estimate(): m̂(S) if efficient, else W
+                # Note: m_hat was already loaded above (lines 716-726)
+                if self.use_efficient_tr:
+                    tr_weights = m_hat  # Will be m̂(S) if available, else fallback to w
+                else:
+                    tr_weights = w  # Use raw weights for vanilla TR-CPO
+
+                tr = float(np.mean((L / pi_clipped) * tr_weights * (Y - R_loo)))
                 jack.append(dm + dr + tr)
 
             return np.asarray(jack, dtype=float) if jack else None
