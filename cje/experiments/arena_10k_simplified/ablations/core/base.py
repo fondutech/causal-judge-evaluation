@@ -248,6 +248,9 @@ class BaseAblation:
                 use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
+                covariance_regularization=1e-4,  # Add regularization for numerical stability
+                use_oracle_ic=True,  # Use simple oracle IC approach (theoretically justified)
+                use_outer_split=False,  # Disable complex CV when using oracle IC
             ),
         }
 
@@ -690,6 +693,10 @@ class BaseAblation:
                             float(est - 1.96 * se_for_ci),
                             float(est + 1.96 * se_for_ci),
                         )
+
+            # Extract metadata if available
+            if hasattr(estimation_result, "metadata") and estimation_result.metadata:
+                result["metadata"] = estimation_result.metadata
 
             # Extract DR-specific diagnostics if available
             if (

@@ -231,6 +231,9 @@ class TMLEEstimator(DREstimator):
             # Store influence functions (always needed for proper inference)
             self._influence_functions[policy] = if_contrib
 
+            # Store sample indices for IF alignment in stacking (using parent's helper)
+            self._store_sample_indices(policy, data)
+
             estimates.append(psi)
             standard_errors.append(se)
             n_samples_used[policy] = len(rewards)
@@ -270,6 +273,10 @@ class TMLEEstimator(DREstimator):
                 "targeting": self._tmle_info,
             }
         )
+
+        # Add sample indices for IF alignment in stacking
+        if hasattr(self, "_if_sample_indices"):
+            base_result.metadata["if_sample_indices"] = self._if_sample_indices
 
         return base_result
 

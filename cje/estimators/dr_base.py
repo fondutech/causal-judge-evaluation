@@ -568,11 +568,14 @@ class DREstimator(BaseCJEEstimator):
                 "n_prompts": len(fresh_draw_var_per_prompt),
             }
 
-            # Sanity check: weights should have mean approximately 1.0
+            # Sanity check: weights should have mean approximately 1.0 (only for Hajek/calibrated weights)
             weights_mean = weights.mean()
-            # With mean-one calibration, weights should be very close to 1.0
-            # Allow small tolerance for numerical precision
-            if not (0.99 <= weights_mean <= 1.01):
+            # Only check mean ~ 1.0 when using Hajek/mean-one weights
+            if (
+                self.use_calibrated_weights
+                and getattr(self.ips_estimator, "weight_mode", "hajek") == "hajek"
+                and not (0.99 <= weights_mean <= 1.01)
+            ):
                 weights_min = weights.min()
                 weights_max = weights.max()
                 weights_std = weights.std()
@@ -703,9 +706,9 @@ class DREstimator(BaseCJEEstimator):
 
             # Store influence functions (always needed for proper inference)
             self._influence_functions[policy] = if_contributions
-            logger.debug(
-                f"Stored {len(if_contributions)} influence values for {policy}"
-            )
+
+            # Store sample indices for IF alignment in stacking
+            self._store_sample_indices(policy, data)
 
             estimates.append(dr_estimate)
             standard_errors.append(se)
@@ -862,6 +865,14 @@ class DREstimator(BaseCJEEstimator):
         if calibration_floor_meta:
             metadata["calibration_floor"] = calibration_floor_meta
 
+        # Add dr_metadata to surface MC variance diagnostics
+        metadata["dr_metadata"] = dr_metadata
+
+        # Also expose MC variance at top-level for stacker convenience
+        if hasattr(self, "_mc_diagnostics"):
+            metadata["mc_variance_diagnostics"] = self._mc_diagnostics
+            metadata["mc_variance_included"] = True
+
         # Attach compact core summary for empirical analysis (no UX change)
         try:
             core_summary: Dict[str, Dict[str, Any]] = {}
@@ -921,6 +932,10 @@ class DREstimator(BaseCJEEstimator):
 
         # Mark that oracle variance is already included in standard_errors
         metadata["se_components"] = {"includes_oua": True}
+
+        # Add sample indices for IF alignment in stacking
+        if hasattr(self, "_if_sample_indices"):
+            metadata["if_sample_indices"] = self._if_sample_indices
 
         base_result = EstimationResult(
             estimates=np.array(estimates),
@@ -1060,6 +1075,45 @@ class DREstimator(BaseCJEEstimator):
 
         return diagnostics
 
+    def _store_sample_indices(self, policy: str, data: Any) -> None:
+        """Store sample indices for IF alignment in stacking.
+
+        This method extracts stable identifiers (prompt_ids) from the data
+        and stores them for later use in aligning influence functions across
+        ensemble components.
+
+        Args:
+            policy: Target policy name
+            data: Data from get_data_for_policy (list of dicts with flattened metadata)
+        """
+        if not hasattr(self, "_if_sample_indices"):
+            self._if_sample_indices = {}
+
+        sample_indices = []
+        for d in data:
+            if isinstance(d, dict):
+                if "prompt_id" in d:
+                    # Best: use the stable prompt_id (already flattened from metadata)
+                    sample_indices.append(d["prompt_id"])
+                elif "prompt" in d and "response" in d:
+                    # Fallback: use content hash (also stable)
+                    content_hash = hash((d["prompt"], d["response"]))
+                    sample_indices.append(f"hash_{content_hash}")
+                else:
+                    # Last resort: use index
+                    sample_indices.append(f"idx_{len(sample_indices)}")
+            else:
+                # Handle if it's an object (shouldn't happen with get_data_for_policy)
+                if hasattr(d, "metadata") and d.metadata and "prompt_id" in d.metadata:
+                    sample_indices.append(d.metadata["prompt_id"])
+                else:
+                    content_hash = hash((d.prompt, d.response))
+                    sample_indices.append(f"hash_{content_hash}")
+
+        self._if_sample_indices[policy] = np.array(sample_indices, dtype=object)
+
+        logger.debug(f"Stored {len(sample_indices)} sample indices for {policy}")
+
     def get_weights(self, policy: str) -> Optional[np.ndarray]:
         """Get importance weights for a policy.
 
@@ -1195,8 +1249,9 @@ class DREstimator(BaseCJEEstimator):
 
                 # Get judge scores for logged data
                 # Note: get_data_for_policy flattens judge_score to top level
+                # Don't filter - we need to maintain alignment with weights and g_logged
                 judge_scores_logged = np.array(
-                    [d["judge_score"] for d in data if d.get("judge_score") is not None]
+                    [d["judge_score"] for d in data], dtype=float
                 )
 
                 if len(judge_scores_logged) == 0:

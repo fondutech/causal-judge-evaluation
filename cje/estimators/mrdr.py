@@ -516,6 +516,9 @@ class MRDREstimator(DREstimator):
             # Store influence functions (always needed for proper inference)
             self._influence_functions[policy] = if_contrib
 
+            # Store sample indices for IF alignment in stacking (using parent's helper)
+            self._store_sample_indices(policy, data)
+
             estimates.append(psi)
             standard_errors.append(se)
             n_samples_used[policy] = len(rewards)
@@ -567,6 +570,10 @@ class MRDREstimator(DREstimator):
         metadata["iic_estimate_adjusted"] = False  # Point estimates unchanged by IIC
         if self.use_iic and self._iic_diagnostics:
             metadata["iic_diagnostics"] = self._iic_diagnostics
+
+        # Add sample indices for IF alignment in stacking
+        if hasattr(self, "_if_sample_indices"):
+            metadata["if_sample_indices"] = self._if_sample_indices
 
         result = EstimationResult(
             estimates=np.array(estimates, dtype=float),

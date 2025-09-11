@@ -176,10 +176,17 @@ class UnifiedAblation(BaseAblation):
             kwargs = {
                 "sampler": sampler,
                 "estimators": ["dr-cpo", "tmle", "mrdr"],
-                "V_folds": 5,
+                "n_folds": DR_CONFIG["n_folds"],  # Inner folds for component estimators
+                "V_folds": DR_CONFIG.get(
+                    "v_folds_stacking", 20
+                ),  # Use config value, default 20
                 "parallel": False,
                 "use_iic": use_iic,
+                "covariance_regularization": 1e-4,  # Add regularization for numerical stability
+                "use_oracle_ic": True,  # Use simple oracle IC approach (theoretically justified)
+                "use_outer_split": False,  # Disable complex CV when using oracle IC
                 "use_calibrated_weights": use_weight_calibration,  # Controls SIMCal for weights
+                "weight_shrinkage": 0.0,  # Back to optimal weights
             }
 
             # Always pass reward calibrator for outcome model (if available)

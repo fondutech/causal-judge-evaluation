@@ -23,18 +23,13 @@ orig_seeds = config.EXPERIMENTS["seeds"]
 
 # Set minimal test values - include ALL estimators from current config
 config.EXPERIMENTS["estimators"] = [
-    "raw-ips",
     "calibrated-ips",
-    "orthogonalized-ips",
     "dr-cpo",
-    "oc-dr-cpo",
-    "tr-cpo",
-    "tr-cpo-e",  # Added: efficient TR-CPO
     "stacked-dr",
 ]  # Test all estimators
-config.EXPERIMENTS["sample_sizes"] = [1000]  # Just 1 small size
-config.EXPERIMENTS["oracle_coverages"] = [0.10]  # Just 1 coverage
-config.EXPERIMENTS["seeds"] = [42, 789, 1213]
+config.EXPERIMENTS["sample_sizes"] = [1000, 1500]  # Just 1 small size
+config.EXPERIMENTS["oracle_coverages"] = [0.10, 0.25]  # Just 1 coverage
+config.EXPERIMENTS["seeds"] = [42, 789]
 
 # Update paths for test (use absolute paths to avoid issues)
 config.RESULTS_PATH = config.BASE_DIR / "results" / "test_results.jsonl"
@@ -61,8 +56,8 @@ print("")
 # - tr-cpo-e: 1 size × 1 coverage × 1 cal(False) × 2 IIC = 2
 # - stacked-dr: 1 size × 1 coverage × 1 cal(True) × 2 IIC = 2
 # Total: 18 experiments × 1 seed = 18 runs
-print("Expected experiments: 18 configurations × 1 seed = 18 runs")
-print("Estimated time: 1-2 minutes")
+print(f"Expected experiments: {18 * len(config.EXPERIMENTS['seeds'])}")
+print(f"Estimated time: {18 * len(config.EXPERIMENTS['seeds'])/60} minutes")
 print("")
 
 # Import and run

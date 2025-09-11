@@ -74,7 +74,8 @@ CONSTRAINTS = {
 # Fixed parameters for DR methods
 DR_CONFIG = {
     "fresh_draws_k": 1,
-    "n_folds": 5,
+    "n_folds": 20,  # Increased from 5 to enable reliable cluster-robust inference
+    "v_folds_stacking": 20,  # Outer folds for stacked-dr (also increased)
 }
 
 # Paths (absolute to avoid confusion)

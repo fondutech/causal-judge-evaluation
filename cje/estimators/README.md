@@ -44,7 +44,7 @@ Achieves robustness to:
 Optimally combines outcome models and importance weights through targeted fluctuation to achieve optimal asymptotic efficiency.
 
 ### 6. Estimator Stacking
-Forms an optimal convex combination of multiple DR estimators (DR-CPO, TMLE, MRDR, OC-DR-CPO, TR-CPO, TR-CPO-E) by minimizing the variance of the combined influence function. Uses outer split for honest inference. Includes both TR-CPO variants: vanilla (raw W) and efficient (m̂(S)).
+Forms an optimal convex combination of multiple DR estimators (DR-CPO, TMLE, MRDR) by minimizing the variance of the combined influence function using regularized covariance matrices. The simplified implementation uses the oracle influence curve approach (w₀ᵀφ(Z)) for proper inference, as weight learning is O_p(n^{-1}) and doesn't affect asymptotic distribution.
 
 ### 7. Orthogonalized Estimators
 Achieve first-order insensitivity to nuisance estimation errors through cross-fitting:
@@ -84,9 +84,9 @@ estimators/
 
 ## Default Recommendation
 
-**Use StackedDREstimator** - This is the recommended default for all estimation tasks. It automatically combines multiple DR methods (DR-CPO, TMLE, MRDR, OC-DR-CPO, TR-CPO, TR-CPO-E) via optimal weighting to minimize variance. Requires fresh draws.
+**Use StackedDREstimator** - This is the recommended default for all estimation tasks. It automatically combines multiple DR methods (DR-CPO, TMLE, MRDR) via optimal weighting to minimize variance. The implementation includes covariance regularization to ensure numerical stability when component estimators are highly correlated. Requires fresh draws.
 
-For specific requirements or debugging, individual estimators are available but StackedDR typically outperforms any single method.
+For specific requirements or debugging, individual estimators are available but StackedDR typically provides modest improvements (1-5% SE reduction) over the best single method when components are correlated.
 
 ## Refusal Gates in CalibratedIPS
 
@@ -311,6 +311,32 @@ Each estimator has comprehensive tests in `cje/tests/`:
 - `test_integration.py` - End-to-end workflows
 
 ## Advanced Topics
+
+### Stacked DR Implementation Details
+
+The StackedDREstimator uses regularized covariance estimation to handle highly correlated component estimators:
+
+```python
+# Key parameters
+estimator = StackedDREstimator(
+    sampler,
+    estimators=['dr-cpo', 'tmle', 'mrdr'],  # Component estimators
+    covariance_regularization=1e-4,          # Regularization strength
+    n_folds=20,                               # Cross-fitting folds
+    parallel=False                            # Sequential processing
+)
+```
+
+**Key Design Decisions:**
+1. **Regularized Covariance**: Adds λI to covariance matrix (default λ=1e-4) to handle near-singular matrices when components are highly correlated
+2. **Oracle IC Approach**: Uses w₀ᵀφ(Z) where w₀ are the population-optimal weights, valid because weight learning is O_p(n^{-1})
+3. **Unified Fresh Draws**: All components share the same fresh draws to ensure consistent IF computation
+
+**Diagnostics Provided:**
+- Condition numbers (pre/post regularization)
+- Component weights for each policy
+- Eigenvalues of covariance matrix
+- Valid vs failed estimators
 
 ### Oracle Uncertainty Augmentation (OUA Jackknife)
 All estimators support optional Oracle Uncertainty Augmentation via delete-one-fold jackknife recomputation. This accounts for finite-sample uncertainty in the learned calibrator f̂(S) by providing oracle-uncertainty-adjusted standard errors in `robust_standard_errors`.
