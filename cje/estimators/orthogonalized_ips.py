@@ -406,6 +406,11 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                 "calibrate": self.calibrate_weights,
                 "use_orthogonalization": self.use_orthogonalization,
                 "orthogonalization_diagnostics": self._orthogonalization_diagnostics,
+                "iic_applied_to_if": bool(
+                    self.use_iic
+                ),  # IIC applied to influence functions
+                "iic_estimate_adjusted": False,  # Point estimates unchanged by IIC
+                "iic_adjustments": getattr(self, "_iic_adjustments", {}),
                 # augmentation_diagnostics removed - using OUA jackknife only
             },
         )

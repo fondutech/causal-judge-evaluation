@@ -141,11 +141,19 @@ class SIMCalibrator:
 
         # Build info dict (for backward compatibility)
         # Check for kinks
-        boundary_alpha = any(alpha < 1e-6 for alpha in self._mixture_weights)
+        boundary_alpha = (
+            any(alpha < 1e-6 for alpha in self._mixture_weights)
+            if self._mixture_weights is not None
+            else False
+        )
         cap_active = self._gamma > 0
 
         info = {
-            "mixture_weights": self._mixture_weights.tolist(),
+            "mixture_weights": (
+                self._mixture_weights.tolist()
+                if self._mixture_weights is not None
+                else []
+            ),
             "candidates": self._training_info["candidates"],
             "gamma": self._gamma,
             "var_before": float(np.var(w / w.mean())),
@@ -402,20 +410,36 @@ class SIMCalibrator:
             for fold_idx, (_, test_idx) in enumerate(kf.split(np.arange(n))):
                 fold_ids[test_idx] = fold_idx
 
-        # Compute OOF influence matrix
+        # Compute OOF influence matrix using Hájek ratio form
         IF_matrix = np.zeros((n, K))
         for k, w_cand in enumerate(candidates):
             for fold_id in range(self.cfg.n_folds):
                 test_mask = fold_ids == fold_id
                 train_mask = ~test_mask
 
-                if np.sum(train_mask) == 0:
+                if np.sum(train_mask) < 2 or not np.any(test_mask):
                     continue
 
-                train_mean = np.mean(w_cand[train_mask] * if_targets[train_mask])
-                IF_matrix[test_mask, k] = (
-                    w_cand[test_mask] * if_targets[test_mask] - train_mean
-                )
+                if residuals is not None:
+                    # DR path: residuals should be computed honestly; psi_tr ~ 0
+                    psi_tr = 0.0
+                    mean_w_tr = np.mean(w_cand[train_mask])
+                    denom = max(mean_w_tr, 1e-12)
+                    IF_matrix[test_mask, k] = (
+                        w_cand[test_mask] * residuals[test_mask]
+                        - psi_tr * (w_cand[test_mask] - mean_w_tr)
+                    ) / denom
+                else:
+                    # IPS Hájek path
+                    mean_w_tr = np.mean(w_cand[train_mask])
+                    psi_tr = np.sum(w_cand[train_mask] * if_targets[train_mask]) / max(
+                        np.sum(w_cand[train_mask]), 1e-12
+                    )
+                    denom = max(mean_w_tr, 1e-12)
+                    IF_matrix[test_mask, k] = (
+                        w_cand[test_mask] * (if_targets[test_mask] - psi_tr)
+                        - psi_tr * (w_cand[test_mask] - mean_w_tr)
+                    ) / denom
 
         # Compute covariance and solve QP
         Sigma = np.cov(IF_matrix.T)
@@ -476,14 +500,22 @@ class SIMCalibrator:
 
         # Clip scores to training range and track clip rate
         s_original = s.copy()
-        s_clipped = np.clip(s, self._score_range[0], self._score_range[1])
-        clip_rate = float(np.mean(s != s_clipped))
+        if self._score_range is not None:
+            s_clipped = np.clip(s, self._score_range[0], self._score_range[1])
+            clip_rate = float(np.mean(s != s_clipped))
+            n_clipped_low = int(np.sum(s < self._score_range[0]))
+            n_clipped_high = int(np.sum(s > self._score_range[1]))
+        else:
+            s_clipped = s
+            clip_rate = 0.0
+            n_clipped_low = 0
+            n_clipped_high = 0
 
         # Store diagnostic info
         self._last_predict_info = {
             "clip_rate": clip_rate,
-            "n_clipped_low": int(np.sum(s < self._score_range[0])),
-            "n_clipped_high": int(np.sum(s > self._score_range[1])),
+            "n_clipped_low": n_clipped_low,
+            "n_clipped_high": n_clipped_high,
         }
 
         # Build candidates using learned models
@@ -503,8 +535,12 @@ class SIMCalibrator:
 
         # Apply learned mixture weights
         w_stacked = np.zeros(n)
-        for k, pi_k in enumerate(self._mixture_weights):
-            w_stacked += pi_k * candidates[k]
+        if self._mixture_weights is not None:
+            for k, pi_k in enumerate(self._mixture_weights):
+                w_stacked += pi_k * candidates[k]
+        else:
+            # Fallback to uniform if no weights learned
+            w_stacked = w.copy()
 
         # Apply constraints using learned gamma
         if self._gamma > 0:

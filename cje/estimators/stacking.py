@@ -216,26 +216,111 @@ class StackedDREstimator(BaseCJEEstimator):
                 stacked_ses.append(np.nan)
                 continue
 
-            # Compute stacked influence function
-            if self.use_outer_split:
-                # Learn fold-specific weights but use averaged weights for consistency
-                _, weights = self._stack_with_outer_split(IF_matrix, policy)
-            else:
-                weights = self._compute_optimal_weights(IF_matrix)
+            # Clean IF matrix: remove rows with any NaN/Inf for consistency
+            valid_rows = np.all(np.isfinite(IF_matrix), axis=1)
+            if not np.all(valid_rows):
+                n_dropped = (~valid_rows).sum()
+                logger.debug(
+                    f"Dropping {n_dropped} rows with NaN/Inf from IF matrix for {policy}"
+                )
+                IF_matrix = IF_matrix[valid_rows]
+                if IF_matrix.shape[0] < 2:
+                    logger.warning(f"Too few valid rows after cleaning for {policy}")
+                    stacked_estimates.append(np.nan)
+                    stacked_ses.append(np.nan)
+                    continue
 
-            # Use the same weights for both IF and point estimate (critical for alignment)
-            stacked_if = IF_matrix @ weights
+            # Compute stacked influence function and SE
+            if self.use_outer_split:
+                # Get both per-fold info (for honest SE) and averaged weights (for point estimate)
+                per_fold, avg_weights = self._stack_with_outer_split(IF_matrix, policy)
+
+                # Build honest stacked IF: apply fold-specific weights to held-out test folds
+                honest_stacked_if = np.zeros(IF_matrix.shape[0])
+                used_any = False
+
+                for test_idx, fold_weights in per_fold:
+                    # Apply weights learned on train to the held-out test IF
+                    # Note: test_idx are relative to the cleaned IF_matrix
+                    honest_stacked_if[test_idx] = IF_matrix[test_idx] @ fold_weights
+                    used_any = True
+
+                if used_any:
+                    # Compute honest SE from the honest IF
+                    se = np.std(honest_stacked_if, ddof=1) / np.sqrt(
+                        len(honest_stacked_if)
+                    )
+                    stacked_if = honest_stacked_if  # Use honest IF for storage
+
+                    # Compute naive SE for comparison/debugging
+                    naive_stacked_if = IF_matrix @ avg_weights
+                    naive_se = np.std(naive_stacked_if, ddof=1) / np.sqrt(
+                        len(naive_stacked_if)
+                    )
+                    se_inflation = float(se / max(naive_se, 1e-12))
+
+                    # Store SE diagnostics in metadata
+                    if not hasattr(self, "_se_diagnostics"):
+                        self._se_diagnostics = {}
+                    self._se_diagnostics[policy] = {
+                        "se_mode": "honest",
+                        "se_honest": float(se),
+                        "se_naive": float(naive_se),
+                        "se_inflation": se_inflation,
+                        "V_folds": self.V_folds,
+                        "n_valid_folds": len(per_fold),
+                    }
+                else:
+                    # Fallback if no valid folds
+                    logger.warning(
+                        f"No valid outer folds for {policy}, using non-honest SE"
+                    )
+                    stacked_if = IF_matrix @ avg_weights
+                    se = np.std(stacked_if, ddof=1) / np.sqrt(len(stacked_if))
+
+                    # Store fallback diagnostics
+                    if not hasattr(self, "_se_diagnostics"):
+                        self._se_diagnostics = {}
+                    self._se_diagnostics[policy] = {
+                        "se_mode": "fallback",
+                        "se_honest": float(se),
+                        "se_naive": float(se),
+                        "se_inflation": 1.0,
+                        "V_folds": self.V_folds,
+                        "n_valid_folds": 0,
+                    }
+
+                # Store averaged weights for point estimate computation
+                weights = avg_weights
+            else:
+                # Non-outer-split path (unchanged)
+                weights = self._compute_optimal_weights(IF_matrix)
+                stacked_if = IF_matrix @ weights
+                se = np.std(stacked_if, ddof=1) / np.sqrt(len(stacked_if))
+
+                # Store non-split diagnostics
+                if not hasattr(self, "_se_diagnostics"):
+                    self._se_diagnostics = {}
+                self._se_diagnostics[policy] = {
+                    "se_mode": "naive",
+                    "se_honest": float(se),
+                    "se_naive": float(se),
+                    "se_inflation": 1.0,
+                    "V_folds": None,
+                    "n_valid_folds": None,
+                }
+
             self.weights_per_policy[policy] = weights
             self._weights_names_per_policy[policy] = used_names
 
             # Note: IIC is applied at the component level, not at the stacked level
             # This avoids double residualization and maintains proper alignment
 
-            # Store influence function
+            # Store influence function (honest if outer split used)
             stacked_ifs[policy] = stacked_if
             self._influence_functions[policy] = stacked_if
 
-            # Compute stacked estimate using ONLY components that provided IFs
+            # Compute stacked estimate using averaged weights and ONLY components that provided IFs
             component_estimates = []
             for est_name in used_names:  # Use same components as IF_matrix
                 result = self.component_results[est_name]
@@ -243,15 +328,14 @@ class StackedDREstimator(BaseCJEEstimator):
                     component_estimates.append(result.estimates[policy_idx])
 
             if component_estimates:
-                # Compute weighted average of component estimates
+                # Compute weighted average of component estimates using averaged weights
                 # Note: Components already adjust their estimates if IIC is used,
                 # so we don't need to subtract offsets here (avoids double adjustment)
                 estimate = np.dot(weights, component_estimates)
             else:
                 estimate = np.nan
 
-            # Compute SE from the stacked influence function
-            se = np.std(stacked_if, ddof=1) / np.sqrt(len(stacked_if))
+            # SE already computed above (honest if outer split used)
 
             stacked_estimates.append(estimate)
             stacked_ses.append(se)
@@ -299,6 +383,10 @@ class StackedDREstimator(BaseCJEEstimator):
 
         # Add diagnostics to metadata
         result.metadata["stacking_diagnostics"] = diagnostics
+
+        # Add SE diagnostics if available
+        if hasattr(self, "_se_diagnostics"):
+            result.metadata["stacking_outer_split"] = self._se_diagnostics
 
         # Collect IIC diagnostics from components
         iic_diagnostics = self._collect_iic_diagnostics(valid_estimators)
@@ -662,18 +750,28 @@ class StackedDREstimator(BaseCJEEstimator):
 
     def _stack_with_outer_split(
         self, IF_matrix: np.ndarray, policy: str
-    ) -> Tuple[None, np.ndarray]:
+    ) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], np.ndarray]:
         """Stack with V-fold outer split for honest weight learning.
 
-        Uses outer split to learn weights honestly (avoiding overfitting),
-        then returns averaged weights for consistent estimator/IF.
+        Uses outer split to learn weights honestly (avoiding overfitting).
+        Returns both per-fold info (for honest SE) and averaged weights (for point estimate).
 
         Returns:
-            None: Placeholder for compatibility
-            avg_weights: Average weights across folds
+            per_fold: List of (test_indices, weights) tuples for honest SE
+            avg_weights: Average weights across folds for point estimate
         """
         n = IF_matrix.shape[0]
+
+        # Guard against degenerate small-n cases
+        if n < max(4, self.V_folds):
+            logger.debug(
+                f"Too few samples ({n}) for outer split with {self.V_folds} folds"
+            )
+            weights = self._compute_optimal_weights(IF_matrix)
+            return [], weights
+
         fold_weights = []
+        per_fold = []  # Store (test_idx, weights) for honest SE
 
         # Create V folds deterministically using seed
         indices = np.arange(n)
@@ -685,22 +783,24 @@ class StackedDREstimator(BaseCJEEstimator):
             # Training indices are all except test fold
             train_idx = np.setdiff1d(indices, test_idx)
 
-            if len(train_idx) < 2:
+            # Skip if train or test fold is too small
+            if train_idx.size < 2 or test_idx.size == 0:
                 continue
 
             # Learn weights on training folds
             train_IF = IF_matrix[train_idx]
             weights = self._compute_optimal_weights(train_IF)
             fold_weights.append(weights)
+            per_fold.append((test_idx, weights))  # Store for honest SE
 
-        # Average weights across folds
+        # Average weights across folds (for point estimate)
         avg_weights = (
             np.mean(fold_weights, axis=0)
             if fold_weights
             else np.ones(IF_matrix.shape[1]) / IF_matrix.shape[1]
         )
 
-        return None, avg_weights
+        return per_fold, avg_weights
 
     def _create_passthrough_result(self, estimator_name: str) -> EstimationResult:
         """Create a result that passes through a single estimator's results."""

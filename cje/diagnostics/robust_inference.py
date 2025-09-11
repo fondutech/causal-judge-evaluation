@@ -60,46 +60,51 @@ def stationary_bootstrap_se(
         # Use first-order autocorrelation to tune block length
         # Rule of thumb: block_length ≈ n^(1/3) * (ρ/(1-ρ))^(2/3)
         if data.ndim == 1:
-            acf_1 = np.corrcoef(data[:-1], data[1:])[0, 1] if n > 1 else 0
+            acf_1 = np.corrcoef(data[:-1], data[1:])[0, 1] if n > 1 else 0.0
         else:
             # For multi-dimensional, use first column
-            acf_1 = np.corrcoef(data[:-1, 0], data[1:, 0])[0, 1] if n > 1 else 0
+            acf_1 = np.corrcoef(data[:-1, 0], data[1:, 0])[0, 1] if n > 1 else 0.0
+
+        # Guard against NaN from constant series
+        if not np.isfinite(acf_1):
+            acf_1 = 0.0
 
         # Ensure reasonable bounds
-        acf_1 = np.clip(acf_1, -0.99, 0.99)
+        acf_1 = float(np.clip(acf_1, -0.99, 0.99))
 
+        base = max(1, int(round(n ** (1.0 / 3.0))))
         if abs(acf_1) < 0.1:
             # Weak dependence, use smaller blocks
-            mean_block_length = max(1, int(n**0.33))
+            mean_block_length = base
         else:
             # Stronger dependence, use larger blocks
             mean_block_length = max(
-                1, int(n**0.33 * (abs(acf_1) / (1 - abs(acf_1))) ** 0.67)
+                1, int(round(base * (abs(acf_1) / (1 - abs(acf_1))) ** 0.67))
             )
 
-        # Cap at n/4 to ensure variety
-        mean_block_length = min(mean_block_length, n // 4)
+        # Cap but never drop below 1
+        cap = max(1, n // 4)
+        mean_block_length = min(mean_block_length, cap)
 
-    # Probability of continuing block (geometric distribution)
-    p = 1.0 / mean_block_length
+    # Probability of starting a new block
+    p = 1.0 / float(mean_block_length)
 
     # Bootstrap iterations
     bootstrap_estimates: List[float] = []
 
     for _ in range(n_bootstrap):
-        # Generate bootstrap sample using stationary bootstrap
+        # Proper stationary bootstrap: start at random position,
+        # then with prob p jump to a new random start; otherwise continue.
         bootstrap_indices: List[int] = []
-        i = 0
+        i = np.random.randint(0, n)
 
         while len(bootstrap_indices) < n:
-            # Start new block at random position
-            if i == 0 or np.random.random() < p:
+            # With probability p, jump to a new random start
+            if np.random.random() < p:
                 i = np.random.randint(0, n)
-
             bootstrap_indices.append(i)
             i = (i + 1) % n  # Wrap around
 
-        bootstrap_indices = bootstrap_indices[:n]
         bootstrap_sample = data[bootstrap_indices]
 
         # Compute statistic on bootstrap sample
@@ -112,6 +117,18 @@ def stationary_bootstrap_se(
             continue
 
     bootstrap_estimates_array = np.array(bootstrap_estimates)
+
+    if bootstrap_estimates_array.size < 2:
+        # Safe fallback for very small n or if too many failures
+        return {
+            "estimate": float(estimate),
+            "se": float("nan"),
+            "ci_lower": float("nan"),
+            "ci_upper": float("nan"),
+            "mean_block_length": float(mean_block_length),
+            "n_bootstrap": int(bootstrap_estimates_array.size),
+            "effective_samples": int(bootstrap_estimates_array.size),
+        }
 
     # Compute standard error
     se = np.std(bootstrap_estimates_array, ddof=1)
@@ -224,10 +241,10 @@ def cluster_robust_se(
     influence_fn: Optional[Callable[[np.ndarray], np.ndarray]] = None,
     alpha: float = 0.05,
 ) -> Dict[str, Any]:
-    """Compute cluster-robust (sandwich) standard errors.
+    """Compute cluster-robust (sandwich) standard errors with CRV1 correction.
 
     For data with cluster structure (e.g., multiple obs per user),
-    accounts for within-cluster correlation.
+    accounts for within-cluster correlation using the CRV1 variance estimator.
 
     Args:
         data: Input data array
@@ -237,47 +254,159 @@ def cluster_robust_se(
         alpha: Significance level for CI
 
     Returns:
-        Dictionary with robust standard errors
+        Dictionary with robust standard errors and t-based confidence intervals
     """
     n = len(data)
+    if n == 0:
+        return {
+            "estimate": float("nan"),
+            "se": float("nan"),
+            "ci_lower": float("nan"),
+            "ci_upper": float("nan"),
+            "n_clusters": 0,
+            "df": 0,
+        }
+
     estimate = statistic_fn(data)
 
-    # Get unique clusters
-    unique_clusters = np.unique(cluster_ids)
-    n_clusters = len(unique_clusters)
-
+    # Build influence contributions
     if influence_fn is None:
-        # For the mean, the influence function is just (x_i - mean)
-        # This is the standard influence function for the sample mean
-        influences = data - estimate if data.ndim == 1 else data[:, 0] - estimate
+        # Default: sample-mean statistic -> IF is (x_i - mean)
+        if data.ndim != 1:
+            raise ValueError(
+                "For multi-dimensional data, provide influence_fn. "
+                "Default influence function only works for 1-D data."
+            )
+        influences = (data - estimate).astype(float, copy=False)
     else:
         # Use provided influence function
-        influences = influence_fn(data)
+        influences = influence_fn(data).astype(float, copy=False)
 
-    # Aggregate influences by cluster
-    cluster_sums = np.zeros(n_clusters)
-    for i, cluster_id in enumerate(unique_clusters):
-        mask = cluster_ids == cluster_id
-        cluster_sums[i] = np.sum(influences[mask])
+    # Center defensively for numerical stability
+    influences = influences - np.mean(influences)
 
-    # Cluster-robust variance
-    # Variance of cluster sums, scaled by n^2
-    var_cluster = np.sum((cluster_sums - np.mean(cluster_sums)) ** 2) / (n_clusters - 1)
-    se_cluster = np.sqrt(var_cluster) / n
+    # Get unique clusters
+    clusters = np.asarray(cluster_ids, dtype=int)
+    unique_clusters = np.unique(clusters)
+    G = len(unique_clusters)
+    df = max(G - 1, 1)
 
-    # Confidence interval using t-distribution with n_clusters - 1 df
-    t_crit = stats.t.ppf(1 - alpha / 2, n_clusters - 1)
-    ci_lower = estimate - t_crit * se_cluster
-    ci_upper = estimate + t_crit * se_cluster
+    if G < 2:
+        # Fallback to naive SE if we don't have clustering
+        se_naive = float(np.std(influences, ddof=1) / np.sqrt(n))
+        t_crit = stats.t.ppf(1 - alpha / 2, df=max(n - 1, 1))
+        return {
+            "estimate": float(estimate),
+            "se": se_naive,
+            "ci_lower": float(estimate - t_crit * se_naive),
+            "ci_upper": float(estimate + t_crit * se_naive),
+            "n_clusters": int(G),
+            "df": int(max(n - 1, 1)),
+        }
+
+    # Cluster totals of IF
+    T = np.array(
+        [np.sum(influences[clusters == g]) for g in unique_clusters], dtype=float
+    )
+    T = T - T.mean()  # Center across clusters
+
+    # CRV1 variance for a mean-type estimator (with G/(G-1) factor):
+    var_hat = (G / (G - 1)) * np.sum(T**2) / (n**2)
+    se = float(np.sqrt(max(var_hat, 0.0)))
+
+    # Confidence interval using t-distribution with G - 1 df
+    t_crit = stats.t.ppf(1 - alpha / 2, df)
+    ci_lower = estimate - t_crit * se
+    ci_upper = estimate + t_crit * se
 
     return {
         "estimate": float(estimate),
-        "se": float(se_cluster),
+        "se": se,
         "ci_lower": float(ci_lower),
         "ci_upper": float(ci_upper),
-        "n_clusters": int(n_clusters),
-        "df": int(n_clusters - 1),
+        "n_clusters": int(G),
+        "df": int(df),
     }
+
+
+def two_way_cluster_se(
+    influences: np.ndarray,
+    clusters_a: np.ndarray,
+    clusters_b: np.ndarray,
+    alpha: float = 0.05,
+) -> Dict[str, Any]:
+    """Two-way cluster-robust SE via Cameron-Gelbach-Miller inclusion-exclusion.
+
+    For cases where two clustering dimensions exist (e.g., weight folds and outcome folds),
+    computes: Var_AB = Var_A + Var_B - Var_{A∩B}.
+
+    Args:
+        influences: Influence functions (already centered)
+        clusters_a: First clustering dimension (e.g., weight folds)
+        clusters_b: Second clustering dimension (e.g., outcome folds)
+        alpha: Significance level for CI
+
+    Returns:
+        Dictionary with two-way cluster-robust SE and t-based CI
+    """
+
+    def _crv1(phi: np.ndarray, c: np.ndarray) -> Tuple[float, Dict[str, Any]]:
+        """Helper to get variance from cluster_robust_se."""
+        res = cluster_robust_se(
+            data=phi,
+            cluster_ids=c,
+            statistic_fn=lambda x: np.mean(x),
+            influence_fn=lambda x: x,  # IF already provided
+            alpha=alpha,
+        )
+        return res["se"] ** 2, res
+
+    # Create intersection clusters deterministically (avoid hash collisions)
+    ca = np.asarray(clusters_a, dtype=np.int64)
+    cb = np.asarray(clusters_b, dtype=np.int64)
+    pairs = np.column_stack([ca, cb])
+    _, ab = np.unique(pairs, axis=0, return_inverse=True)
+    ab = ab.astype(np.int64)
+
+    # Compute variance components
+    v_a, res_a = _crv1(influences, clusters_a)
+    v_b, res_b = _crv1(influences, clusters_b)
+    v_ab, _ = _crv1(influences, ab)
+
+    # Inclusion-exclusion principle
+    var_hat = max(v_a + v_b - v_ab, 0.0)
+    se = float(np.sqrt(var_hat))
+
+    # Use the larger df for conservative inference
+    df = max(res_a.get("df", 1), res_b.get("df", 1))
+    t_crit = stats.t.ppf(1 - alpha / 2, df)
+
+    # Note: mean of centered IF is ~0; caller should form CI around the actual estimate
+    est = 0.0
+    return {
+        "se": se,
+        "ci_lower": float(est - t_crit * se),
+        "ci_upper": float(est + t_crit * se),
+        "df": int(df),
+        "n_clusters_a": int(res_a.get("n_clusters", 0)),
+        "n_clusters_b": int(res_b.get("n_clusters", 0)),
+    }
+
+
+def compose_se_components(
+    se_if: float, se_oracle: float = 0.0, mc_var: float = 0.0
+) -> float:
+    """Combine independent SE sources in quadrature.
+
+    Args:
+        se_if: Standard error from influence functions (possibly cluster-robust)
+        se_oracle: Standard error from oracle uncertainty (e.g., jackknife)
+        mc_var: Monte Carlo variance from fresh draws (already variance, not SE)
+
+    Returns:
+        Combined standard error
+    """
+    return float(np.sqrt(max(se_if**2 + se_oracle**2 + mc_var, 0.0)))
 
 
 # ========== Multiple Testing Correction ==========
@@ -516,14 +645,53 @@ def compute_robust_inference(
             else:
                 raise ValueError("Need either influence_functions or data")
 
-        elif method == "cluster" and cluster_ids is not None:
+        elif method == "moving_block":
+            # Moving block bootstrap for time series data
             if influence_functions is not None:
-                result = cluster_robust_se(
-                    influence_functions[:, i],
-                    cluster_ids,
+                result = moving_block_bootstrap_se(
+                    (
+                        influence_functions[:, i]
+                        if influence_functions.ndim > 1
+                        else influence_functions
+                    ),
                     lambda x: np.mean(x),
+                    n_bootstrap=n_bootstrap,
                     alpha=alpha,
                 )
+            elif data is not None:
+                result = moving_block_bootstrap_se(
+                    data,
+                    lambda x: estimates[i],  # Use the estimate
+                    n_bootstrap=n_bootstrap,
+                    alpha=alpha,
+                )
+            else:
+                raise ValueError("Need either influence_functions or data")
+
+        elif method == "cluster" and cluster_ids is not None:
+            if influence_functions is not None:
+                # Use cluster-robust SE with proper t-based inference
+                if_data = (
+                    influence_functions[:, i]
+                    if influence_functions.ndim > 1
+                    else influence_functions
+                )
+                result = cluster_robust_se(
+                    data=if_data,
+                    cluster_ids=cluster_ids,
+                    statistic_fn=lambda x: np.mean(x),
+                    influence_fn=lambda x: x,  # IF already provided
+                    alpha=alpha,
+                )
+                robust_ses.append(result["se"])
+                robust_cis.append((result["ci_lower"], result["ci_upper"]))
+
+                # t-based p-value (not normal!)
+                df = max(result.get("df", 1), 1)
+                t_stat = estimates[i] / result["se"] if result["se"] > 0 else 0.0
+                p_val = 2 * (1 - stats.t.cdf(abs(t_stat), df))
+                p_values.append(float(p_val))
+                continue
             else:
                 raise ValueError("Need influence_functions for cluster method")
         else:

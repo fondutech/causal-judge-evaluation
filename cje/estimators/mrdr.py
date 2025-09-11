@@ -560,7 +560,11 @@ class MRDREstimator(DREstimator):
             "n_folds": self.n_folds,
         }
 
-        # Add IIC diagnostics if available
+        # Add IIC metadata
+        metadata["iic_applied_to_if"] = bool(
+            self.use_iic
+        )  # IIC applied to influence functions
+        metadata["iic_estimate_adjusted"] = False  # Point estimates unchanged by IIC
         if self.use_iic and self._iic_diagnostics:
             metadata["iic_diagnostics"] = self._iic_diagnostics
 

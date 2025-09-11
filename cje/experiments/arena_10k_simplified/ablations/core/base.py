@@ -172,12 +172,18 @@ class BaseAblation:
                 reward_calibrator=cal_result.calibrator if cal_result else None,
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,  # Always use calibration, enable OUA
+                use_outer_cv=True,  # Enable outer CV for robust inference
+                n_outer_folds=5,  # Use 5 folds for clustering
+                outer_cv_seed=42,  # Consistent fold generation
             ),
             "orthogonalized-ips": lambda s: OrthogonalizedCalibratedIPS(
                 s,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
+                use_outer_cv=True,  # Enable outer CV for robust inference
+                n_outer_folds=5,  # Use 5 folds for clustering
+                outer_cv_seed=42,  # Consistent fold generation
             ),
             "dr-cpo": lambda s: DRCPOEstimator(
                 s,
@@ -656,12 +662,34 @@ class BaseAblation:
                     else:
                         se_for_ci = base_se
 
-                    # Compute confidence interval from SE
-                    est = estimation_result.estimates[i]
-                    result["confidence_intervals"][policy] = (
-                        float(est - 1.96 * se_for_ci),
-                        float(est + 1.96 * se_for_ci),
-                    )
+                    # Check if robust CIs are already computed (with t-critical values)
+                    if (
+                        hasattr(estimation_result, "robust_confidence_intervals")
+                        and estimation_result.robust_confidence_intervals is not None
+                        and i < len(estimation_result.robust_confidence_intervals)
+                        and estimation_result.robust_confidence_intervals[i] is not None
+                    ):
+                        # Use pre-computed robust CI (has t-critical values)
+                        ci = estimation_result.robust_confidence_intervals[i]
+                        if isinstance(ci, (list, tuple)) and len(ci) == 2:
+                            result["confidence_intervals"][policy] = (
+                                float(ci[0]),
+                                float(ci[1]),
+                            )
+                        else:
+                            # Fallback to z-based CI
+                            est = estimation_result.estimates[i]
+                            result["confidence_intervals"][policy] = (
+                                float(est - 1.96 * se_for_ci),
+                                float(est + 1.96 * se_for_ci),
+                            )
+                    else:
+                        # Compute confidence interval from SE (using z=1.96)
+                        est = estimation_result.estimates[i]
+                        result["confidence_intervals"][policy] = (
+                            float(est - 1.96 * se_for_ci),
+                            float(est + 1.96 * se_for_ci),
+                        )
 
             # Extract DR-specific diagnostics if available
             if (

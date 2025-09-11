@@ -54,6 +54,7 @@ class CalibratedIPS(BaseCJEEstimator):
         refuse_unreliable: Whether to refuse (return NaN) for unreliable estimates (default False)
         use_outer_cv: Whether to use outer CV for honest weight learning (default True)
         n_outer_folds: Number of outer folds for honest inference (default 5)
+        outer_cv_seed: Random seed for outer CV folds (default 1042, set to match DR folds for alignment)
         honest_iic: Whether to apply honest IIC with outer CV (default False)
         **kwargs: Additional arguments passed to BaseCJEEstimator (e.g., oracle_slice_config)
     """
@@ -74,6 +75,7 @@ class CalibratedIPS(BaseCJEEstimator):
         oua_jackknife: bool = True,
         use_outer_cv: bool = True,
         n_outer_folds: int = 5,
+        outer_cv_seed: int = 1042,
         honest_iic: bool = False,
         **kwargs: Any,
     ):
@@ -96,6 +98,7 @@ class CalibratedIPS(BaseCJEEstimator):
         self.refuse_unreliable = refuse_unreliable
         self.use_outer_cv = use_outer_cv
         self.n_outer_folds = n_outer_folds
+        self.outer_cv_seed = outer_cv_seed
         self.honest_iic = honest_iic
         self._no_overlap_policies: Set[str] = set()
         self._calibration_info: Dict[str, Dict] = {}  # Store calibration details
@@ -171,15 +174,29 @@ class CalibratedIPS(BaseCJEEstimator):
                 try:
                     # Option 1: Use index-based OOF for policy subset
                     if hasattr(self.reward_calibrator, "predict_oof_by_index"):
-                        ds_index_by_pid = {
-                            str(s.prompt_id): i
-                            for i, s in enumerate(self.sampler.dataset.samples)
-                        }
+                        # Build mapping checking for duplicates
+                        ds_index_by_pid = {}
+                        dups = set()
+                        for i, s in enumerate(self.sampler.dataset.samples):
+                            pid = str(s.prompt_id)
+                            if pid in ds_index_by_pid:
+                                dups.add(pid)
+                            ds_index_by_pid[pid] = i
+
                         pids = [str(d.get("prompt_id")) for d in data]
-                        ds_idx = np.asarray(
-                            [ds_index_by_pid.get(pid, -1) for pid in pids], dtype=int
-                        )
-                        if np.all(ds_idx >= 0):
+
+                        # Check if any duplicates affect our data
+                        if dups.intersection(pids):
+                            logger.debug(
+                                f"Duplicate prompt_ids detected for policy '{policy}'; falling back to fold-based OOF"
+                            )
+                            g_oof = None
+                        else:
+                            ds_idx = np.asarray(
+                                [ds_index_by_pid.get(pid, -1) for pid in pids],
+                                dtype=int,
+                            )
+                        if g_oof is None and np.all(ds_idx >= 0):
                             g_oof = self.reward_calibrator.predict_oof_by_index(ds_idx)
                             if g_oof is not None:
                                 logger.debug(
@@ -311,8 +328,8 @@ class CalibratedIPS(BaseCJEEstimator):
             outer_fold_ids = np.array(
                 [
                     get_fold(
-                        pid, self.n_outer_folds, seed=1042
-                    )  # Different seed from inner folds
+                        pid, self.n_outer_folds, seed=self.outer_cv_seed
+                    )  # Can be aligned with DR folds via outer_cv_seed param
                     for pid in prompt_ids
                 ],
                 dtype=int,
@@ -424,11 +441,11 @@ class CalibratedIPS(BaseCJEEstimator):
         calibrated_weights = calibrated_weights / calibrated_weights.mean()
 
         # Build aggregated info dict (JSON-safe)
+        # Filter out None values from mixture_weights_list
+        valid_weights = [w for w in mixture_weights_list if w is not None]
         info = {
             "mixture_weights": (
-                np.mean(mixture_weights_list, axis=0).tolist()
-                if mixture_weights_list
-                else [1.0]
+                np.mean(valid_weights, axis=0).tolist() if valid_weights else [1.0]
             ),
             "candidates": (
                 ["increasing", "decreasing"]
@@ -438,8 +455,22 @@ class CalibratedIPS(BaseCJEEstimator):
             "gamma": float(np.mean(gamma_list)) if gamma_list else 0.0,
             "var_before": float(np.var(raw_weights)),
             "var_after": float(np.var(calibrated_weights)),
-            "ess_before": n / (1 + np.var(raw_weights)),
-            "ess_after": n / (1 + np.var(calibrated_weights)),
+            # ESS as fraction (0-1) - normalize to mean-one first for correct formula
+            "ess_before_frac": float(
+                1.0 / (1.0 + np.var(raw_weights / max(raw_weights.mean(), 1e-12)))
+            ),
+            "ess_after_frac": float(
+                1.0
+                / (
+                    1.0
+                    + np.var(calibrated_weights / max(calibrated_weights.mean(), 1e-12))
+                )
+            ),
+            # ESS as count - actual effective sample size
+            "ess_before": float((np.sum(raw_weights) ** 2) / np.sum(raw_weights**2)),
+            "ess_after": float(
+                (np.sum(calibrated_weights) ** 2) / np.sum(calibrated_weights**2)
+            ),
             "n_outer_folds": self.n_outer_folds,
             "outer_cv": True,
             "baseline_shrink": self.baseline_shrink,
@@ -472,9 +503,10 @@ class CalibratedIPS(BaseCJEEstimator):
             Training influence functions
         """
         denom = mean_w_train if mean_w_train > 0 else 1.0
-        return (
+        result = (
             w_train * (R_train - psi_train) - psi_train * (w_train - mean_w_train)
         ) / denom
+        return np.asarray(result)
 
     def _compute_quick_rsq(self, y_true: np.ndarray, y_pred: np.ndarray) -> float:
         """Quick in-sample R² computation (no CV needed).
@@ -633,17 +665,26 @@ class CalibratedIPS(BaseCJEEstimator):
             if self.reward_calibrator is not None:
                 try:
                     if hasattr(self.reward_calibrator, "predict_oof_by_index"):
-                        ds_index_by_pid = {
-                            str(s.prompt_id): i
-                            for i, s in enumerate(self.sampler.dataset.samples)
-                        }
-                        ds_idx = np.asarray(
-                            [
-                                ds_index_by_pid.get(str(d.get("prompt_id")), -1)
-                                for d in data
-                            ],
-                            dtype=int,
-                        )
+                        # Build mapping checking for duplicates
+                        ds_index_by_pid = {}
+                        dups = set()
+                        for i, s in enumerate(self.sampler.dataset.samples):
+                            pid = str(s.prompt_id)
+                            if pid in ds_index_by_pid:
+                                dups.add(pid)
+                            ds_index_by_pid[pid] = i
+
+                        pids = [str(d.get("prompt_id")) for d in data]
+
+                        # Skip index-based if duplicates present
+                        if not dups.intersection(pids):
+                            ds_idx = np.asarray(
+                                [ds_index_by_pid.get(pid, -1) for pid in pids],
+                                dtype=int,
+                            )
+                        else:
+                            ds_idx = np.array([-1])  # Force fallback
+
                         if np.all(ds_idx >= 0):
                             tmp = self.reward_calibrator.predict_oof_by_index(ds_idx)
                             if tmp is not None:
@@ -822,7 +863,47 @@ class CalibratedIPS(BaseCJEEstimator):
             influence = influence - np.mean(influence)
 
             # Compute standard error from the (possibly residualized) influence functions
-            se = float(np.std(influence, ddof=1) / np.sqrt(n))
+            # Use cluster-robust SE when outer CV is used
+            se = float(np.std(influence, ddof=1) / np.sqrt(n))  # fallback
+
+            try:
+                calib_info = self._calibration_info.get(policy, {})
+                if self.use_outer_cv and "outer_fold_ids" in calib_info:
+                    from ..diagnostics.robust_inference import cluster_robust_se
+
+                    outer_fold_ids = np.asarray(calib_info["outer_fold_ids"], dtype=int)
+
+                    # Use cluster-robust SE with t-based CI
+                    res = cluster_robust_se(
+                        data=influence,
+                        cluster_ids=outer_fold_ids,
+                        statistic_fn=lambda x: np.mean(x),
+                        influence_fn=lambda x: x,  # IF already provided and centered
+                        alpha=0.05,
+                    )
+                    se = res["se"]
+
+                    # Cache policy-level robust CI for later use
+                    if not hasattr(self, "_robust_ci"):
+                        self._robust_ci = {}
+                    # Compute CI directly using t-critical value and SE
+                    from scipy import stats
+
+                    t_crit = stats.t.ppf(1 - 0.05 / 2, max(res.get("df", 1), 1))
+                    self._robust_ci[policy] = (
+                        float(estimate - t_crit * se),
+                        float(estimate + t_crit * se),
+                    )
+
+                    logger.debug(
+                        f"Using cluster-robust SE for {policy}: "
+                        f"naive={np.std(influence, ddof=1) / np.sqrt(n):.6f}, "
+                        f"robust={se:.6f}, "
+                        f"n_clusters={res['n_clusters']}, df={res['df']}"
+                    )
+            except Exception as e:
+                logger.debug(f"Cluster-robust SE failed for {policy}: {e}")
+
             standard_errors.append(se)
 
             # Oracle augmentation removed - diagnostics no longer needed
@@ -841,8 +922,17 @@ class CalibratedIPS(BaseCJEEstimator):
             method="calibrated_ips" if self.calibrate_weights else "raw_ips",
             influence_functions=influence_functions,
             diagnostics=None,  # Will be set below
-            robust_standard_errors=None,
-            robust_confidence_intervals=None,
+            robust_standard_errors=(
+                np.array(standard_errors) if self.use_outer_cv else None
+            ),
+            robust_confidence_intervals=(
+                [
+                    self._robust_ci.get(p, (np.nan, np.nan))
+                    for p in self.sampler.target_policies
+                ]
+                if self.use_outer_cv and hasattr(self, "_robust_ci")
+                else None
+            ),
             metadata={
                 "target_policies": list(self.sampler.target_policies),
                 "iic_diagnostics": (
@@ -851,8 +941,10 @@ class CalibratedIPS(BaseCJEEstimator):
                 "iic_adjustments": getattr(
                     self, "_iic_adjustments", {}
                 ),  # IIC adjustments applied
-                "iic_estimate_adjusted": self.use_iic
-                and not self.use_outer_cv,  # IIC disabled with outer CV
+                "iic_applied_to_if": bool(
+                    self.use_iic or self.honest_iic
+                ),  # IIC applied to influence functions
+                "iic_estimate_adjusted": False,  # Point estimates unchanged by IIC
                 "honest_iic": self.honest_iic
                 and self.use_outer_cv,  # Honest IIC only with outer CV
                 "calibration_method": "simcal" if self.calibrate_weights else None,

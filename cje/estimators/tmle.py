@@ -400,6 +400,11 @@ class TMLEEstimator(DREstimator):
             "dr_diagnostics": dr_diagnostics_per_policy,  # Keep for backward compatibility
             "dr_overview": dr_overview,
             "dr_calibration_data": dr_calibration_data,
+            "iic_applied_to_if": bool(
+                self.use_iic
+            ),  # IIC applied to influence functions
+            "iic_estimate_adjusted": False,  # Point estimates unchanged by IIC
+            "iic_diagnostics": getattr(self, "_iic_diagnostics", None),
         }
 
         result = EstimationResult(

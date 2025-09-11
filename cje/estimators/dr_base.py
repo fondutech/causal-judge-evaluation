@@ -99,6 +99,8 @@ class DREstimator(BaseCJEEstimator):
             "calibrate_weights": use_calibrated_weights,
             "weight_mode": weight_mode,
             "run_diagnostics": run_diagnostics,
+            "n_outer_folds": n_folds,  # Align with DR outcome folds
+            "outer_cv_seed": random_seed,  # Align fold seeds for one-way clustering
         }
         if use_calibrated_weights and reward_calibrator is not None:
             ips_kwargs["reward_calibrator"] = reward_calibrator
@@ -622,8 +624,33 @@ class DREstimator(BaseCJEEstimator):
             # IIC is variance-only: it residualizes the IF but does NOT change the point estimate
             # The point estimate dr_estimate remains unchanged
 
-            # Base SE from influence functions (across-prompt variance)
-            base_se = np.std(if_contributions, ddof=1) / np.sqrt(len(if_contributions))
+            # Base SE from influence functions (using cluster-robust SE on outcome folds)
+            from ..diagnostics.robust_inference import (
+                cluster_robust_se,
+                compose_se_components,
+            )
+
+            se_if = np.std(if_contributions, ddof=1) / np.sqrt(
+                len(if_contributions)
+            )  # fallback
+            try:
+                res_if = cluster_robust_se(
+                    data=if_contributions,
+                    cluster_ids=valid_fold_ids,  # outcome folds (one per prompt)
+                    statistic_fn=lambda x: np.mean(x),
+                    influence_fn=lambda x: x,  # IF already provided
+                    alpha=0.05,
+                )
+                se_if = res_if["se"]
+                logger.debug(
+                    f"Using cluster-robust SE for {policy}: "
+                    f"naive={np.std(if_contributions, ddof=1) / np.sqrt(len(if_contributions)):.6f}, "
+                    f"robust={se_if:.6f}, n_clusters={res_if['n_clusters']}, df={res_if['df']}"
+                )
+            except Exception as e:
+                logger.debug(f"cluster_robust_se failed for {policy}: {e}")
+
+            base_se = se_if  # For backward compatibility with diagnostics below
 
             # Add Monte Carlo variance component from finite fresh draws
             mc_var = 0.0
@@ -653,9 +680,20 @@ class DREstimator(BaseCJEEstimator):
                     "max_draws_per_prompt": int(M.max()),
                 }
 
-            # Total SE including MC component
-            total_var = base_se**2 + mc_var
-            se = np.sqrt(total_var)
+            # Add oracle uncertainty from finite-oracle jackknife
+            se_oracle = 0.0
+            jack = self.get_oracle_jackknife(policy)
+            if jack is not None and len(jack) >= 2:
+                K = len(jack)
+                mu = float(np.mean(jack))
+                se_oracle = float(np.sqrt((K - 1) / K * np.sum((jack - mu) ** 2)))
+                logger.debug(f"Oracle SE for {policy}: {se_oracle:.6f} from {K} folds")
+
+            # Total SE combining all sources: IF (cluster-robust), oracle, and fresh-draw MC
+            se = compose_se_components(se_if, se_oracle, mc_var)
+
+            # For backward compatibility, keep total_var
+            total_var = se**2
 
             if mc_var > 0:
                 logger.debug(
@@ -796,7 +834,10 @@ class DREstimator(BaseCJEEstimator):
             "iic_adjustments": getattr(
                 self, "_iic_adjustments", {}
             ),  # IIC adjustments applied
-            "iic_estimate_adjusted": self.use_iic,  # Flag: estimates already adjusted
+            "iic_applied_to_if": bool(
+                self.use_iic
+            ),  # IIC applied to influence functions
+            "iic_estimate_adjusted": False,  # Point estimates unchanged by IIC
         }
 
         # Get IPS diagnostics if available
@@ -877,6 +918,9 @@ class DREstimator(BaseCJEEstimator):
             metadata["core_summary"] = core_summary
         except Exception:
             pass
+
+        # Mark that oracle variance is already included in standard_errors
+        metadata["se_components"] = {"includes_oua": True}
 
         base_result = EstimationResult(
             estimates=np.array(estimates),

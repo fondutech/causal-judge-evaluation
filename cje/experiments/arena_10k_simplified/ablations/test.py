@@ -32,9 +32,9 @@ config.EXPERIMENTS["estimators"] = [
     "tr-cpo-e",  # Added: efficient TR-CPO
     "stacked-dr",
 ]  # Test all estimators
-config.EXPERIMENTS["sample_sizes"] = [500]  # Just 1 small size
+config.EXPERIMENTS["sample_sizes"] = [1000]  # Just 1 small size
 config.EXPERIMENTS["oracle_coverages"] = [0.10]  # Just 1 coverage
-config.EXPERIMENTS["seeds"] = [42]  # Single seed for speed
+config.EXPERIMENTS["seeds"] = [42, 789, 1213]
 
 # Update paths for test (use absolute paths to avoid issues)
 config.RESULTS_PATH = config.BASE_DIR / "results" / "test_results.jsonl"

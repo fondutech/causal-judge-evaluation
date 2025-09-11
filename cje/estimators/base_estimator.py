@@ -247,6 +247,14 @@ class BaseCJEEstimator(ABC):
         if not (self.oua_jackknife and self.reward_calibrator is not None):
             return
 
+        # Check if oracle variance is already included (e.g., by DR estimators)
+        if isinstance(result.metadata, dict) and result.metadata.get(
+            "se_components", {}
+        ).get("includes_oua"):
+            # Oracle variance already included in standard_errors; just copy them
+            result.robust_standard_errors = result.standard_errors
+            return
+
         try:
             oua_ses: List[float] = []
             var_oracle_map: Dict[str, float] = {}

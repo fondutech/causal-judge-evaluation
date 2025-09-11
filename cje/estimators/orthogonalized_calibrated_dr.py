@@ -471,7 +471,8 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
                 "target_policies": list(self.sampler.target_policies),
                 "orthogonalization_diagnostics": self._orthogonalization_diagnostics,
                 "orthogonality_scores": self._orthogonality_scores,  # Include orthogonality scores
-                "iic_estimate_adjusted": bool(self.use_iic),
+                "iic_applied_to_if": bool(self.use_iic),
+                "iic_estimate_adjusted": False,  # Point estimates unchanged by IIC
                 "iic_diagnostics": getattr(self, "_iic_diagnostics", None),
                 # oracle_augmentation removed - using OUA jackknife only
             },

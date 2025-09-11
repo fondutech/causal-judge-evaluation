@@ -622,7 +622,8 @@ class TRCPOEstimator(DREstimator):
             metadata={
                 "target_policies": list(self.sampler.target_policies),
                 "tr_diagnostics": self._tr_diagnostics,
-                "iic_estimate_adjusted": bool(self.use_iic),
+                "iic_applied_to_if": bool(self.use_iic),
+                "iic_estimate_adjusted": False,  # Point estimates unchanged by IIC
                 "weight_mode": self.weight_mode,
                 "mc_variance_diagnostics": getattr(self, "_mc_diagnostics", None),
                 "iic_diagnostics": getattr(self, "_iic_diagnostics", None),
