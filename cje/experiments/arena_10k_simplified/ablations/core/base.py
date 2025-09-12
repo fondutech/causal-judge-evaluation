@@ -593,11 +593,10 @@ class BaseAblation:
                         result.setdefault("robust_standard_errors", {})[
                             policy
                         ] = robust_se
-                        # Use robust SE for confidence intervals
-                        se_for_ci = robust_se
                         has_robust_se = True
-                    else:
-                        se_for_ci = base_se
+
+                    # Regular CIs always use base SE
+                    se_for_ci = base_se
 
                     # Check if robust CIs are already computed (with t-critical values)
                     if (
