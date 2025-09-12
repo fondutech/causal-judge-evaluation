@@ -1,0 +1,29 @@
+\begin{table}[htbp]
+\centering
+\caption{Calibration Boundary Analysis}
+\label{tab:A5}
+\begin{tabular}{l|ccccccc}
+\toprule
+Estimator & Mean Dist Boundary & Min Dist Boundary & Pct Near Boundary & Unhelpful Mean Dist & Unhelpful Min Dist & Outlier Rate & Support \\
+\midrule
+orthogonalized-ips (iic=True) & 0.152 & 0.034 & 40.0 & 0.215 & 0.117 & 10.0 & Weak \\
+orthogonalized-ips (iic=False) & 0.152 & 0.034 & 40.0 & 0.215 & 0.117 & 10.0 & Weak \\
+raw-ips (iic=True) & 0.151 & -0.0396 & 36.7 & 0.223 & 0.116 & 10.0 & Weak \\
+raw-ips (iic=False) & 0.151 & -0.0396 & 36.7 & 0.223 & 0.116 & 10.0 & Weak \\
+tr-cpo (iic=False) & -0.0475 & -5.4116 & 15.0 & 0.058 & -0.0679 & 90.0 & Weak \\
+tr-cpo (iic=True) & -0.0475 & -5.4116 & 15.0 & 0.058 & -0.0679 & 90.0 & Weak \\
+tr-cpo-e (iic=False) & 0.174 & -0.3770 & 8.3 & 0.062 & -0.2273 & 80.0 & Weak \\
+tr-cpo-e (iic=True) & 0.174 & -0.3770 & 8.3 & 0.062 & -0.2273 & 80.0 & Weak \\
+oc-dr-cpo (iic=True) & 0.193 & 0.042 & 1.7 & 0.095 & 0.024 & 90.0 & Weak \\
+oc-dr-cpo (iic=False) & 0.193 & 0.042 & 1.7 & 0.095 & 0.024 & 90.0 & Weak \\
+dr-cpo (calib=False, iic=False) & 0.203 & 0.041 & 1.7 & 0.086 & -0.0435 & 90.0 & Weak \\
+dr-cpo (calib=False, iic=True) & 0.203 & 0.041 & 1.7 & 0.086 & -0.0435 & 90.0 & Weak \\
+dr-cpo (calib=True, iic=False) & 0.193 & 0.143 & 0.0000 & 0.093 & 0.026 & 90.0 & Weak \\
+dr-cpo (calib=True, iic=True) & 0.193 & 0.143 & 0.0000 & 0.093 & 0.026 & 90.0 & Weak \\
+calibrated-ips (iic=False) & 0.197 & 0.138 & 0.0000 & 0.197 & 0.160 & 0.0000 & Weak \\
+calibrated-ips (iic=True) & 0.197 & 0.138 & 0.0000 & 0.197 & 0.160 & 0.0000 & Weak \\
+stacked-dr (iic=True) & 0.193 & 0.143 & 0.0000 & 0.098 & 0.029 & 85.0 & Weak \\
+stacked-dr (iic=False) & 0.193 & 0.143 & 0.0000 & 0.096 & 0.029 & 85.0 & Weak \\
+\bottomrule
+\end{tabular}
+\end{table}

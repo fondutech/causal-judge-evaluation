@@ -1,0 +1,29 @@
+\begin{table}[htbp]
+\centering
+\caption{Runtime & Complexity}
+\label{tab:A6}
+\begin{tabular}{l|cccccc}
+\toprule
+Estimator & Runtime Median & Runtime P90 & Complexity & N Folds & Runtime per 1k & M Components \\
+\midrule
+raw-ips (iic=False) & 0.244 & 0.367 & O(n) & 0 & 0.109 & -- \\
+calibrated-ips (iic=False) & 0.314 & 0.517 & O(n) & 0 & 0.140 & -- \\
+calibrated-ips (iic=True) & 0.331 & 0.518 & O(n) & 0 & 0.147 & -- \\
+raw-ips (iic=True) & 0.345 & 0.527 & O(n) & 0 & 0.153 & -- \\
+orthogonalized-ips (iic=False) & 0.359 & 0.606 & O(n) & 0 & 0.160 & -- \\
+orthogonalized-ips (iic=True) & 0.455 & 0.785 & O(n) & 0 & 0.202 & -- \\
+tr-cpo-e (iic=False) & 20.0 & 105 & O(K*n) & 20 & 8.9 & -- \\
+tr-cpo (iic=False) & 20.0 & 104 & O(K*n) & 20 & 8.9 & -- \\
+tr-cpo (iic=True) & 20.1 & 103 & O(K*n) & 20 & 8.9 & -- \\
+tr-cpo-e (iic=True) & 20.1 & 105 & O(K*n) & 20 & 8.9 & -- \\
+oc-dr-cpo (iic=False) & 20.8 & 104 & O(K*n) & 20 & 9.3 & -- \\
+oc-dr-cpo (iic=True) & 21.0 & 103 & O(K*n) & 20 & 9.3 & -- \\
+dr-cpo (calib=False, iic=False) & 21.9 & 108 & O(K*n) & 20 & 9.7 & -- \\
+dr-cpo (calib=False, iic=True) & 22.1 & 108 & O(K*n) & 20 & 9.8 & -- \\
+dr-cpo (calib=True, iic=False) & 22.1 & 108 & O(K*n) & 20 & 9.8 & -- \\
+dr-cpo (calib=True, iic=True) & 22.4 & 108 & O(K*n) & 20 & 9.9 & -- \\
+stacked-dr (iic=True) & 62.8 & 310 & O(M*K*n) & 20 & 27.9 & 5.0 \\
+stacked-dr (iic=False) & 62.8 & 310 & O(M*K*n) & 20 & 27.9 & 5.0 \\
+\bottomrule
+\end{tabular}
+\end{table}

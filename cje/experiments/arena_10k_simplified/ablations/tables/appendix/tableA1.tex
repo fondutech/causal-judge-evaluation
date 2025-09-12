@@ -1,0 +1,29 @@
+\begin{table}[htbp]
+\centering
+\caption{Quadrant Leaderboard}
+\label{tab:A1}
+\begin{tabular}{l|cccccccc}
+\toprule
+Estimator & SL RMSE & SL Calib & SH RMSE & SH Calib & LL RMSE & LL Calib & LH RMSE & LH Calib \\
+\midrule
+calibrated-ips (iic=False) & 0.011 & 5.0 & 0.015 & 5.0 & 0.025 & 3.3 & 0.015 & 5.0 \\
+calibrated-ips (iic=True) & 0.011 & 5.0 & 0.015 & 5.0 & 0.025 & 3.3 & 0.015 & 5.0 \\
+dr-cpo (calib=False, iic=False) & 0.040 & 5.0 & 0.064 & 5.0 & 0.018 & 5.0 & 0.021 & 5.0 \\
+dr-cpo (calib=False, iic=True) & 0.040 & 5.0 & 0.064 & 5.0 & 0.018 & 5.0 & 0.021 & 5.0 \\
+dr-cpo (calib=True, iic=False) & 0.0083 & 5.0 & 0.0094 & 5.0 & 0.018 & 5.0 & 0.0030 & 5.0 \\
+dr-cpo (calib=True, iic=True) & 0.0083 & 5.0 & 0.0094 & 5.0 & 0.018 & 5.0 & 0.0030 & 5.0 \\
+oc-dr-cpo (iic=False) & 0.040 & 5.0 & 0.0094 & 17.2 & 0.018 & 86.7 & 0.0028 & 5.0 \\
+oc-dr-cpo (iic=True) & 0.040 & 5.0 & 0.0094 & 33.9 & 0.018 & 86.7 & 0.0028 & 0.556 \\
+orthogonalized-ips (iic=False) & 0.127 & 5.0 & 0.103 & 5.0 & 0.251 & 11.7 & 0.195 & 5.0 \\
+orthogonalized-ips (iic=True) & 0.127 & 5.0 & 0.103 & 5.0 & 0.251 & 11.7 & 0.195 & 5.0 \\
+raw-ips (iic=False) & 0.126 & 5.0 & 0.135 & 0.556 & 0.252 & 3.3 & 0.213 & 5.0 \\
+raw-ips (iic=True) & 0.126 & 5.0 & 0.135 & 0.556 & 0.252 & 3.3 & 0.213 & 5.0 \\
+stacked-dr (iic=False) & 0.0080 & 36.7 & 0.0097 & 33.9 & 0.018 & 95.0 & 0.0027 & 17.2 \\
+stacked-dr (iic=True) & 0.0081 & 36.7 & 0.010 & 33.9 & 0.018 & 95.0 & 0.0028 & 17.2 \\
+tr-cpo (iic=False) & 1.8 & 11.7 & 0.448 & 6.1 & 0.041 & 3.3 & 0.050 & 5.0 \\
+tr-cpo (iic=True) & 1.8 & 11.7 & 0.448 & 6.1 & 0.041 & 3.3 & 0.050 & 5.0 \\
+tr-cpo-e (iic=False) & 0.207 & 5.0 & 0.025 & 5.0 & 0.048 & 5.0 & 0.0034 & 5.0 \\
+tr-cpo-e (iic=True) & 0.207 & 5.0 & 0.025 & 5.0 & 0.048 & 5.0 & 0.0034 & 5.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
