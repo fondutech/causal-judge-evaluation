@@ -392,15 +392,25 @@ class StackedDREstimator(BaseCJEEstimator):
         EstimatorClass = estimator_map[est_name]
 
         # Create estimator with shared configuration
-        estimator = EstimatorClass(
-            sampler=self.sampler,
-            reward_calibrator=self.reward_calibrator,
-            n_folds=self.n_folds,
-            use_calibrated_weights=self.use_calibrated_weights,
-            weight_mode=self.weight_mode,
-            use_iic=self.use_iic,
-            oua_jackknife=self.oua_jackknife,
-        )
+        # TR-CPO has different constructor
+        if est_name == "tr-cpo-e":
+            estimator = EstimatorClass(
+                sampler=self.sampler,
+                reward_calibrator=self.reward_calibrator,
+                n_folds=self.n_folds,
+                use_iic=self.use_iic,
+                oua_jackknife=self.oua_jackknife,
+            )
+        else:
+            estimator = EstimatorClass(
+                sampler=self.sampler,
+                reward_calibrator=self.reward_calibrator,
+                n_folds=self.n_folds,
+                use_calibrated_weights=self.use_calibrated_weights,
+                weight_mode=self.weight_mode,
+                use_iic=self.use_iic,
+                oua_jackknife=self.oua_jackknife,
+            )
 
         # Pass fresh draws if available
         if hasattr(self, "_fresh_draws_per_policy"):
