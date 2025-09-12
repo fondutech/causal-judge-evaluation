@@ -628,11 +628,15 @@ class BaseAblation:
                                 float(est + 1.96 * se_for_ci),
                             )
                             if has_robust_se:
+                                # Use robust SE for robust CI
+                                robust_se_val = (
+                                    estimation_result.robust_standard_errors[i]
+                                )
                                 result.setdefault("robust_confidence_intervals", {})[
                                     policy
                                 ] = (
-                                    float(est - 1.96 * se_for_ci),
-                                    float(est + 1.96 * se_for_ci),
+                                    float(est - 1.96 * robust_se_val),
+                                    float(est + 1.96 * robust_se_val),
                                 )
                     else:
                         # Compute confidence interval from SE
@@ -670,11 +674,13 @@ class BaseAblation:
                         )
                         # Also store as robust CI if we have robust SE
                         if has_robust_se:
+                            # Use robust SE for robust CI
+                            robust_se_val = estimation_result.robust_standard_errors[i]
                             result.setdefault("robust_confidence_intervals", {})[
                                 policy
                             ] = (
-                                float(est - tcrit * se_for_ci),
-                                float(est + tcrit * se_for_ci),
+                                float(est - tcrit * robust_se_val),
+                                float(est + tcrit * robust_se_val),
                             )
 
             # Extract metadata if available
