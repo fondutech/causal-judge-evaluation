@@ -189,7 +189,104 @@ class StackedDREstimator(BaseCJEEstimator):
         # Add any diagnostics from components
         result.diagnostics = self._build_diagnostics(valid_estimators, result)
 
+        # Apply stacked-level oracle jackknife by linear combination of component jackknifes
+        self._apply_stacked_oua(result)
+
         return result
+
+    def _apply_stacked_oua(self, result: EstimationResult) -> None:
+        """Augment stacked SEs with oracle jackknife (OUA) via linear combination.
+
+        For fixed stacking weights w, the stacked jackknife path is ψ_stack^(−f) = Σ w_k ψ_k^(−f).
+        We compute var_oracle_stack = (K-1)/K * Var_f(ψ_stack^(−f)) and set
+        robust_standard_errors = sqrt(standard_errors^2 + var_oracle_stack).
+        If no component provides jackknife or K<2, we leave robust_standard_errors as None.
+        """
+        try:
+            policies = list(self.sampler.target_policies)
+        except Exception:
+            policies = (
+                list(result.influence_functions.keys())
+                if result.influence_functions
+                else []
+            )
+
+        if not policies:
+            return
+
+        robust_ses: List[float] = []
+        var_oracle_per_policy: Dict[str, float] = {}
+        jackknife_counts: Dict[str, int] = {}
+        contributors_map: Dict[str, List[str]] = {}
+
+        for idx, policy in enumerate(policies):
+            # Retrieve weights and component names used for this policy
+            weights = self.weights_per_policy.get(policy)
+            diag = self.diagnostics_per_policy.get(policy, {})
+            used_names = diag.get("components", []) if isinstance(diag, dict) else []
+
+            base_se = (
+                float(result.standard_errors[idx])
+                if idx < len(result.standard_errors)
+                else float("nan")
+            )
+            var_oracle = 0.0
+            K = 0
+            contributors: List[str] = []
+
+            if weights is not None and used_names:
+                # Collect component jackknife arrays
+                jack_list: List[Tuple[float, np.ndarray]] = []
+                for w, name in zip(weights, used_names):
+                    comp = self.component_estimators.get(name)
+                    if not comp or not hasattr(comp, "get_oracle_jackknife"):
+                        continue
+                    try:
+                        jarr = comp.get_oracle_jackknife(policy)
+                    except Exception:
+                        jarr = None
+                    if jarr is None or len(jarr) == 0:
+                        continue
+                    jack_list.append((float(w), np.asarray(jarr, dtype=float)))
+                    contributors.append(name)
+
+                if jack_list:
+                    # Align lengths by truncating to minimum K
+                    K = min(arr.shape[0] for _, arr in jack_list)
+                    if K >= 2:
+                        stacked_jack = np.zeros(K, dtype=float)
+                        for w, arr in jack_list:
+                            stacked_jack += w * arr[:K]
+                        mu = float(np.mean(stacked_jack))
+                        var_oracle = ((K - 1) / K) * float(
+                            np.mean((stacked_jack - mu) ** 2)
+                        )
+
+            # Combine with base SE if we have a valid var_oracle
+            if np.isfinite(base_se) and var_oracle >= 0.0:
+                robust_ses.append(float(np.sqrt(base_se**2 + var_oracle)))
+            else:
+                robust_ses.append(base_se)
+
+            var_oracle_per_policy[policy] = var_oracle
+            jackknife_counts[policy] = int(K)
+            contributors_map[policy] = contributors
+
+        # If we computed anything meaningful, attach to result
+        if any(k >= 2 for k in jackknife_counts.values()):
+            result.robust_standard_errors = np.asarray(robust_ses, dtype=float)
+            # Merge into metadata
+            if result.metadata is None:
+                result.metadata = {}
+            result.metadata.setdefault("oua", {})
+            result.metadata["oua"].update(
+                {
+                    "source": "stacked-linear-combo",
+                    "var_oracle_per_policy": var_oracle_per_policy,
+                    "jackknife_counts": jackknife_counts,
+                    "contributors": contributors_map,
+                }
+            )
 
     def _stack_policy(
         self, policy: str, policy_idx: int, valid_estimators: List[str]

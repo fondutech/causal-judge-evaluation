@@ -7,13 +7,14 @@ import time
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 import numpy as np
+from scipy import stats
 
 from .schemas import ExperimentSpec, create_result
+from ..config import DR_CONFIG
 
 # No local diagnostics file needed!
 # Import standard diagnostics from CJE
 from cje.diagnostics.weights import effective_sample_size, hill_tail_index
-from cje.diagnostics.stability import compute_stability_diagnostics
 
 
 # Local function for weight CV (not in CJE)
@@ -38,7 +39,8 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 from cje import load_dataset_from_jsonl
 from cje.calibration import calibrate_dataset
 from cje.data.precomputed_sampler import PrecomputedSampler
-from cje.estimators import CalibratedIPS, StackedDREstimator
+from cje.estimators import CalibratedIPS
+from cje.estimators.stacking import StackedDREstimator
 from cje.estimators.dr_base import DRCPOEstimator
 from cje.estimators.orthogonalized_calibrated_dr import OrthogonalizedCalibratedDRCPO
 from cje.estimators.orthogonalized_ips import OrthogonalizedCalibratedIPS
@@ -160,12 +162,6 @@ class BaseAblation:
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
             ),  # No weight calibration, but still support OUA
-            "ips": lambda s: CalibratedIPS(
-                s,
-                calibrate_weights=use_weight_calibration,
-                use_iic=use_iic,  # Pass IIC setting
-                oua_jackknife=oua,
-            ),
             "calibrated-ips": lambda s: CalibratedIPS(
                 s,
                 calibrate_weights=True,
@@ -188,7 +184,7 @@ class BaseAblation:
             "dr-cpo": lambda s: DRCPOEstimator(
                 s,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
-                n_folds=5,
+                n_folds=DR_CONFIG["n_folds"],
                 use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
@@ -196,7 +192,7 @@ class BaseAblation:
             "oc-dr-cpo": lambda s: OrthogonalizedCalibratedDRCPO(
                 s,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
-                n_folds=5,
+                n_folds=DR_CONFIG["n_folds"],
                 use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
@@ -204,7 +200,7 @@ class BaseAblation:
             "tr-cpo": lambda s: TRCPOEstimator(
                 s,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
-                n_folds=5,
+                n_folds=DR_CONFIG["n_folds"],
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
                 use_efficient_tr=False,  # Vanilla TR-CPO uses raw W
@@ -212,7 +208,7 @@ class BaseAblation:
             "tr-cpo-e": lambda s: TRCPOEstimator(
                 s,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
-                n_folds=5,
+                n_folds=DR_CONFIG["n_folds"],
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
                 use_efficient_tr=True,  # Efficient TR-CPO uses m̂(S)
@@ -220,7 +216,7 @@ class BaseAblation:
             "calibrated-dr-cpo": lambda s: DRCPOEstimator(
                 s,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
-                n_folds=5,
+                n_folds=DR_CONFIG["n_folds"],
                 use_calibrated_weights=True,  # Use SIMCal calibrated weights
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
@@ -228,7 +224,7 @@ class BaseAblation:
             "mrdr": lambda s: MRDREstimator(
                 s,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
-                n_folds=5,
+                n_folds=DR_CONFIG["n_folds"],
                 use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
@@ -236,7 +232,7 @@ class BaseAblation:
             "tmle": lambda s: TMLEEstimator(
                 s,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
-                n_folds=5,
+                n_folds=DR_CONFIG["n_folds"],
                 use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
@@ -249,8 +245,7 @@ class BaseAblation:
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
                 covariance_regularization=1e-4,  # Add regularization for numerical stability
-                use_oracle_ic=True,  # Use simple oracle IC approach (theoretically justified)
-                use_outer_split=False,  # Disable complex CV when using oracle IC
+                use_outer_split=False,  # Disable complex CV (using simple oracle IC approach)
             ),
         }
 
@@ -339,69 +334,6 @@ class BaseAblation:
                     oracle_means[policy] = float(np.mean(oracle_values))
 
         return oracle_means
-
-    def _compute_cfbits_metrics(self, estimator: Any, result: Dict[str, Any]) -> None:
-        """Compute CF-bits efficiency metrics (minimal version).
-
-        Args:
-            estimator: Fitted estimator with influence functions
-            result: Result dictionary to update
-        """
-        try:
-            # Check if estimator has influence functions
-            if not hasattr(estimator, "get_influence_functions"):
-                return
-
-            policies = result.get("estimates", {}).keys()
-
-            for policy in policies:
-                try:
-                    # Get influence function
-                    phi = estimator.get_influence_functions(policy)
-                    if phi is None or len(phi) == 0:
-                        continue
-
-                    # Compute variance
-                    var_phi = np.var(phi, ddof=1)
-                    if var_phi <= 0:
-                        continue
-
-                    n = len(phi)
-
-                    # Estimate efficient IF variance
-                    # Conservative heuristic: assume 25% efficiency for IPS, 50% for DR
-                    estimator_type = estimator.__class__.__name__.lower()
-                    if "dr" in estimator_type or "tmle" in estimator_type:
-                        efficiency_factor = 0.5  # DR estimators are more efficient
-                    else:
-                        efficiency_factor = 0.25  # IPS estimators less efficient
-
-                    var_eif_approx = var_phi * efficiency_factor
-
-                    # Compute IFR (Information Fraction Ratio)
-                    ifr = var_eif_approx / var_phi
-
-                    # Compute adjusted ESS
-                    aess = n * ifr
-
-                    # Determine dominant source of uncertainty
-                    # Use ESS as proxy: high ESS -> identification dominates, low ESS -> sampling dominates
-                    ess_rel = result.get("ess_relative", {}).get(policy, 50)
-                    cf_dominant = "identification" if ess_rel > 30 else "sampling"
-
-                    # Store results
-                    result["ifr_main"][policy] = float(ifr)
-                    result["aess_adjusted"][policy] = float(aess)
-                    result["cf_dominant"][policy] = cf_dominant
-
-                except Exception as e:
-                    logger.debug(f"Failed to compute CF-bits for {policy}: {e}")
-                    continue
-
-        except Exception as e:
-            logger.debug(f"CF-bits computation failed: {e}")
-            # Don't fail the whole experiment for optional metrics
-            pass
 
     def compute_diagnostics(
         self, estimator: Any, result: Dict[str, Any], n_total: int
@@ -500,9 +432,9 @@ class BaseAblation:
             # This is NOT controlled by use_weight_calibration flag
             # Calibration mode can be configured via spec.extra["reward_calibration_mode"]
             reward_calibration_mode = (
-                spec.extra.get("reward_calibration_mode", "auto")
+                spec.extra.get("reward_calibration_mode", "monotone")
                 if spec.extra
-                else "auto"
+                else "monotone"
             )
 
             calibrated_dataset, cal_result = calibrate_dataset(
@@ -510,7 +442,7 @@ class BaseAblation:
                 judge_field="judge_score",
                 oracle_field="oracle_label",
                 enable_cross_fit=True,
-                n_folds=5 if n_oracle >= 50 else 3,
+                n_folds=DR_CONFIG["n_folds"] if n_oracle >= 50 else 3,
                 calibration_mode=reward_calibration_mode,
             )
 
@@ -542,7 +474,7 @@ class BaseAblation:
                                 f"Calibrated reward range [{f_min:.3f}, {f_max:.3f}] "
                                 f"does not cover full [0,1] oracle range - estimates may be biased"
                             )
-                # Track which calibration mode was actually used (auto may select one)
+                # Track which calibration mode was actually used
                 if cal_result.calibrator and hasattr(
                     cal_result.calibrator, "selected_mode"
                 ):
@@ -550,7 +482,7 @@ class BaseAblation:
                         cal_result.calibrator.selected_mode
                     )
                 else:
-                    result["reward_calibration_used"] = "auto"
+                    result["reward_calibration_used"] = reward_calibration_mode
 
             # Create sampler and estimator
             sampler = PrecomputedSampler(calibrated_dataset)
@@ -652,6 +584,7 @@ class BaseAblation:
                     result["standard_errors"][policy] = base_se
 
                     # Also store robust SEs separately if available (includes OUA)
+                    has_robust_se = False
                     if (
                         hasattr(estimation_result, "robust_standard_errors")
                         and estimation_result.robust_standard_errors is not None
@@ -662,6 +595,7 @@ class BaseAblation:
                         ] = robust_se
                         # Use robust SE for confidence intervals
                         se_for_ci = robust_se
+                        has_robust_se = True
                     else:
                         se_for_ci = base_se
 
@@ -679,6 +613,13 @@ class BaseAblation:
                                 float(ci[0]),
                                 float(ci[1]),
                             )
+                            # Also store as robust CI
+                            result.setdefault("robust_confidence_intervals", {})[
+                                policy
+                            ] = (
+                                float(ci[0]),
+                                float(ci[1]),
+                            )
                         else:
                             # Fallback to z-based CI
                             est = estimation_result.estimates[i]
@@ -686,13 +627,55 @@ class BaseAblation:
                                 float(est - 1.96 * se_for_ci),
                                 float(est + 1.96 * se_for_ci),
                             )
+                            if has_robust_se:
+                                result.setdefault("robust_confidence_intervals", {})[
+                                    policy
+                                ] = (
+                                    float(est - 1.96 * se_for_ci),
+                                    float(est + 1.96 * se_for_ci),
+                                )
                     else:
-                        # Compute confidence interval from SE (using z=1.96)
+                        # Compute confidence interval from SE
+                        # Use t-critical value if cluster DF is available
+                        tcrit = 1.96  # Default to z-critical
+
+                        # Try to extract cluster DF from metadata
+                        md = getattr(estimation_result, "metadata", {}) or {}
+                        seinfo = md.get("_se_diagnostics", {})
+                        df = None
+
+                        if isinstance(seinfo, dict) and policy in seinfo:
+                            # Look for cluster counts in cluster_robust_detail
+                            det = seinfo[policy].get("cluster_robust_detail", {})
+                            G_out = det.get("G_outer")
+                            G_in = det.get("G_inner")
+
+                            # Use max(G_inner-1, G_outer-1) as degrees of freedom
+                            cands = [
+                                g - 1
+                                for g in [G_out, G_in]
+                                if isinstance(g, int) and g and g > 1
+                            ]
+                            if cands:
+                                df = max(cands)
+
+                        # Use t-distribution if we have valid DF
+                        if df and df > 1:
+                            tcrit = float(stats.t.ppf(0.975, df))
+
                         est = estimation_result.estimates[i]
                         result["confidence_intervals"][policy] = (
-                            float(est - 1.96 * se_for_ci),
-                            float(est + 1.96 * se_for_ci),
+                            float(est - tcrit * se_for_ci),
+                            float(est + tcrit * se_for_ci),
                         )
+                        # Also store as robust CI if we have robust SE
+                        if has_robust_se:
+                            result.setdefault("robust_confidence_intervals", {})[
+                                policy
+                            ] = (
+                                float(est - tcrit * se_for_ci),
+                                float(est + tcrit * se_for_ci),
+                            )
 
             # Extract metadata if available
             if hasattr(estimation_result, "metadata") and estimation_result.metadata:
@@ -789,9 +772,6 @@ class BaseAblation:
                     ci[1] - ci[0] for ci in result["confidence_intervals"].values()
                 ]
                 result["mean_ci_width"] = float(np.mean(widths))
-
-            # Compute CF-bits efficiency metrics (minimal integration)
-            self._compute_cfbits_metrics(estimator, result)
 
             result["success"] = True
 

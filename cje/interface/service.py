@@ -58,7 +58,15 @@ class AnalysisService:
         )
 
         # DR estimators require explicit fresh draws directory
-        if chosen_estimator in ("dr-cpo", "mrdr", "tmle", "stacked-dr"):
+        if chosen_estimator in (
+            "dr-cpo",
+            "oc-dr-cpo",
+            "mrdr",
+            "tmle",
+            "tr-cpo",
+            "tr-cpo-e",
+            "stacked-dr",
+        ):
             from ..data.fresh_draws import load_fresh_draws_auto
 
             if not config.fresh_draws_dir:

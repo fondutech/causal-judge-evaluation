@@ -159,6 +159,7 @@ def _build_tr_cpo(
     n_folds = config.get("n_folds", 5)
     weight_mode = config.get("weight_mode", "hajek")
     use_iic = config.get("use_iic", True)
+    use_efficient_tr = config.get("use_efficient_tr", True)
     if calibration_result and getattr(calibration_result, "calibrator", None):
         if verbose:
             logger.info("Using calibration models for TR-CPO")
@@ -167,10 +168,15 @@ def _build_tr_cpo(
             n_folds=n_folds,
             weight_mode=weight_mode,
             use_iic=use_iic,
+            use_efficient_tr=use_efficient_tr,
             reward_calibrator=calibration_result.calibrator,
         )
     return TRCPOEstimator(
-        sampler, n_folds=n_folds, weight_mode=weight_mode, use_iic=use_iic
+        sampler,
+        n_folds=n_folds,
+        weight_mode=weight_mode,
+        use_iic=use_iic,
+        use_efficient_tr=use_efficient_tr,
     )
 
 
@@ -180,21 +186,34 @@ def _build_stacked_dr(
     calibration_result: Optional[Any],
     verbose: bool,
 ) -> StackedDREstimator:
-    estimators = config.get("estimators", ["dr-cpo", "tmle", "mrdr"])
-    use_outer_split = config.get("use_outer_split", True)
+    estimators = config.get(
+        "estimators",
+        ["dr-cpo", "tmle", "mrdr", "oc-dr-cpo", "tr-cpo-e"],
+    )
     parallel = config.get("parallel", True)
+    seed = config.get("seed", 42)
+    n_folds = config.get("n_folds", 5)
+    covariance_regularization = config.get("covariance_regularization", 1e-4)
+    use_iic = config.get("use_iic", False)
+    use_calibrated_weights = config.get("use_calibrated_weights", True)
+    weight_mode = config.get("weight_mode", "hajek")
     if verbose:
         logger.info(f"Using stacked DR with estimators: {estimators}")
     # Pass calibrator when available so DR components can reuse calibration models
     kwargs: Dict[str, Any] = {
         "estimators": estimators,
-        "use_outer_split": use_outer_split,
         "parallel": parallel,
+        "seed": seed,
+        "n_folds": n_folds,
+        "covariance_regularization": covariance_regularization,
+        "use_iic": use_iic,
+        "use_calibrated_weights": use_calibrated_weights,
+        "weight_mode": weight_mode,
     }
     if calibration_result and getattr(calibration_result, "calibrator", None):
         if verbose:
             logger.info("Using calibration models for stacked DR components")
-        kwargs["calibrator"] = calibration_result.calibrator
+        kwargs["reward_calibrator"] = calibration_result.calibrator
     return StackedDREstimator(sampler, **kwargs)
 
 
@@ -204,7 +223,13 @@ REGISTRY: Dict[str, BuilderFn] = {
     "raw-ips": _build_raw_ips,
     "dr-cpo": _build_dr_cpo,
     "oc-dr-cpo": _build_oc_dr_cpo,
-    "tr-cpo": _build_tr_cpo,
+    # Raw variant (use_efficient_tr=False) and efficient variant (default)
+    "tr-cpo": lambda s, c, r, v: _build_tr_cpo(
+        s, {**c, "use_efficient_tr": False}, r, v
+    ),
+    "tr-cpo-e": lambda s, c, r, v: _build_tr_cpo(
+        s, {**c, "use_efficient_tr": True}, r, v
+    ),
     "mrdr": _build_mrdr,
     "tmle": _build_tmle,
     "stacked-dr": _build_stacked_dr,
