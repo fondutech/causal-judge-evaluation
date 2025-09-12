@@ -98,10 +98,7 @@ def create_result(spec: ExperimentSpec, seed: int) -> Dict[str, Any]:
         "reward_overlap_warning": None,  # True if min > 0.1 or max < 0.9 (indicates extrapolation issues)
         "reward_calibration_used": None,  # Which mode was used (auto may select)
         # "simcal_distortion": {},  # Not currently computed
-        "rho_used": {},  # Actual ρ used per policy
-        "blend_alpha": {},  # SIMCal blend parameter α
         # Oracle augmentation metrics
-        "augmentation_share": {},  # Fraction of variance from augmentation
         "oracle_slice_size": None,  # Number of oracle labels used
         # DR-specific metrics
         "mc_variance_share": {},  # Monte Carlo share of variance
@@ -109,10 +106,6 @@ def create_result(spec: ExperimentSpec, seed: int) -> Dict[str, Any]:
         "outcome_r2_max": None,  # Maximum outcome model R² across policies
         "draws_per_prompt": None,  # K value used
         "policies_skipped": [],  # Policies that couldn't be estimated
-        # CF-bits efficiency metrics (minimal integration)
-        "ifr_main": {},  # Information Fraction Ratio (efficiency)
-        "aess_adjusted": {},  # Adjusted ESS (n * IFR)
-        "cf_dominant": {},  # "identification" or "sampling" - dominant uncertainty source
         # Overall metrics
         "overall_status": None,  # Health check: "GOOD", "WARNING", or "CRITICAL"
         "rmse_vs_oracle": None,  # RMSE across all policies

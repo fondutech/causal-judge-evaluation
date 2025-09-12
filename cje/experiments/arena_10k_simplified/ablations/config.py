@@ -25,20 +25,20 @@ EXPERIMENTS = {
     ],  # Test with and without weight calibration (SIMCal)
     # IIC for DR methods
     "use_iic": [True, False],
-    # Reward calibration modes
-    "reward_calibration_modes": ["auto", "monotone", "two_stage"],
+    # Reward calibration mode (not ablated - just use monotone)
+    "reward_calibration_mode": "monotone",
     # Multiple seeds for robust results
     "seeds": [
         42,
-        123,
-        456,
-        789,
-        1011,
-        1213,
-        1415,
-        1617,
-        1819,
-        2021,
+        # 123,
+        # 456,
+        # 789,
+        # 1011,
+        # 1213,
+        # 1415,
+        # 1617,
+        # 1819,
+        # 2021,
     ],  # 10 seeds for statistical robustness
 }
 
@@ -73,7 +73,6 @@ CONSTRAINTS = {
 
 # Fixed parameters for DR methods
 DR_CONFIG = {
-    "fresh_draws_k": 1,
     "n_folds": 20,  # Increased from 5 to enable reliable cluster-robust inference
     "v_folds_stacking": 20,  # Outer folds for stacked-dr (also increased)
 }

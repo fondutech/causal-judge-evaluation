@@ -5,11 +5,16 @@ Systematic ablation studies demonstrating the value of calibrated importance sam
 ## Quick Start
 
 ```bash
-# Run all ablation experiments (400 total with constraints)
+# Run all ablation experiments (360 total)
 python run.py       # Runs with checkpoint/resume support
 
 # Quick verification test
 python test_quick.py  # Runs 5 experiments to verify parameters are working
+
+# Generate paper tables
+python reporting/paper_tables.py --format markdown    # Main tables
+python reporting/appendix_tables.py --format markdown  # Appendix tables
+python generate_quadrant_leaderboard.py               # Quadrant analysis
 
 # Analyze results
 python analyze_simple.py   # Generate summary tables and basic plots
@@ -17,6 +22,17 @@ python analyze_simple.py   # Generate summary tables and basic plots
 # For detailed analysis with paper comparison
 python analyze_calibration_detail.py  # Statistical significance testing
 ```
+
+## Table Generation
+
+See `GENERATE_TABLES.md` for detailed instructions on generating all paper tables.
+
+Key commands:
+- `python reporting/paper_tables.py` - Tables 1-3 (leaderboard, design choices, stacking)
+- `python reporting/appendix_tables.py` - Tables A1-A5 (quadrants, coverage, runtime, etc.)
+- `python generate_quadrant_leaderboard.py` - Quadrant-specific leaderboards
+
+Tables are saved to `tables/main/`, `tables/appendix/`, and `tables/quadrant/`.
 
 ## Current System Structure
 

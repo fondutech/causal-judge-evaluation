@@ -100,6 +100,7 @@ class UnifiedAblation(BaseAblation):
             str(spec.get("oracle_coverage", "")),
             str(spec.get("extra", {}).get("use_weight_calibration", False)),
             str(spec.get("extra", {}).get("use_iic", False)),
+            str(spec.get("extra", {}).get("reward_calibration_mode", "monotone")),
             str(spec.get("seed_base", 42)),
         ]
         return "_".join(key_params)
@@ -128,21 +129,6 @@ class UnifiedAblation(BaseAblation):
         estimator_name = spec.estimator
         use_weight_calibration = spec.extra.get("use_weight_calibration", False)
         use_iic = spec.extra.get("use_iic", False)
-
-        # Handle IPS with calibration
-        if estimator_name == "ips":
-            from cje.estimators.calibrated_ips import CalibratedIPS
-
-            return CalibratedIPS(
-                sampler,
-                calibrate_weights=use_weight_calibration,  # Controlled by use_weight_calibration parameter
-                use_iic=use_iic,
-                reward_calibrator=(
-                    cal_result.calibrator
-                    if use_weight_calibration and cal_result
-                    else None
-                ),
-            )
 
         # Handle DR methods with our parameters
         if estimator_name in ["dr-cpo", "tmle", "mrdr"]:
@@ -183,10 +169,9 @@ class UnifiedAblation(BaseAblation):
                 "parallel": False,
                 "use_iic": use_iic,
                 "covariance_regularization": 1e-4,  # Add regularization for numerical stability
-                "use_oracle_ic": True,  # Use simple oracle IC approach (theoretically justified)
-                "use_outer_split": False,  # Disable complex CV when using oracle IC
+                "use_outer_split": False,  # Disable complex CV (using simple oracle IC approach)
                 "use_calibrated_weights": use_weight_calibration,  # Controls SIMCal for weights
-                "weight_shrinkage": 0.0,  # Back to optimal weights
+                "weight_shrinkage": 0.05,  # Small shrinkage for stability
             }
 
             # Always pass reward calibrator for outcome model (if available)
@@ -246,6 +231,7 @@ class UnifiedAblation(BaseAblation):
                                     extra={
                                         "use_weight_calibration": use_weight_calibration,
                                         "use_iic": use_iic,
+                                        "reward_calibration_mode": EXPERIMENTS["reward_calibration_mode"],
                                     },
                                 )
 

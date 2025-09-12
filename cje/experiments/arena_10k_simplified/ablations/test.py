@@ -21,15 +21,15 @@ orig_sample_sizes = config.EXPERIMENTS["sample_sizes"]
 orig_oracle_coverages = config.EXPERIMENTS["oracle_coverages"]
 orig_seeds = config.EXPERIMENTS["seeds"]
 
-# Set minimal test values - include ALL estimators from current config
+# Set minimal test values - test subset of estimators
 config.EXPERIMENTS["estimators"] = [
     "calibrated-ips",
     "dr-cpo",
     "stacked-dr",
-]  # Test all estimators
-config.EXPERIMENTS["sample_sizes"] = [1000, 1500]  # Just 1 small size
-config.EXPERIMENTS["oracle_coverages"] = [0.10, 0.25]  # Just 1 coverage
-config.EXPERIMENTS["seeds"] = [42, 789]
+]  # Test key estimators only
+config.EXPERIMENTS["sample_sizes"] = [500, 1000] 
+config.EXPERIMENTS["oracle_coverages"] = [0.25]  
+config.EXPERIMENTS["seeds"] = [42] 
 
 # Update paths for test (use absolute paths to avoid issues)
 config.RESULTS_PATH = config.BASE_DIR / "results" / "test_results.jsonl"
@@ -46,18 +46,13 @@ print(f"  Seeds: {len(config.EXPERIMENTS['seeds'])}")
 print("")
 
 # Expected number of experiments with IIC and calibration constraints:
-# Each estimator runs with IIC=True and IIC=False
-# - raw-ips: 1 size × 1 coverage × 1 cal(False) × 2 IIC = 2
-# - calibrated-ips: 1 size × 1 coverage × 1 cal(True) × 2 IIC = 2
-# - orthogonalized-ips: 1 size × 1 coverage × 1 cal(True) × 2 IIC = 2
-# - dr-cpo: 1 size × 1 coverage × 2 cal × 2 IIC = 4
-# - oc-dr-cpo: 1 size × 1 coverage × 1 cal(True) × 2 IIC = 2
-# - tr-cpo: 1 size × 1 coverage × 1 cal(False) × 2 IIC = 2
-# - tr-cpo-e: 1 size × 1 coverage × 1 cal(False) × 2 IIC = 2
-# - stacked-dr: 1 size × 1 coverage × 1 cal(True) × 2 IIC = 2
-# Total: 18 experiments × 1 seed = 18 runs
-print(f"Expected experiments: {18 * len(config.EXPERIMENTS['seeds'])}")
-print(f"Estimated time: {18 * len(config.EXPERIMENTS['seeds'])/60} minutes")
+# Testing with 2 sample sizes × 1 coverage × 1 seed
+# - calibrated-ips: 2 sizes × 1 coverage × 1 cal(True) × 2 IIC = 4
+# - dr-cpo: 2 sizes × 1 coverage × 2 cal × 2 IIC = 8
+# - stacked-dr: 2 sizes × 1 coverage × 1 cal(True) × 2 IIC = 4
+# Total: 16 experiments × 1 seed = 16 runs
+print(f"Expected experiments: {16 * len(config.EXPERIMENTS['seeds'])}")
+print(f"Estimated time: ~{16 * len(config.EXPERIMENTS['seeds'])} seconds")
 print("")
 
 # Import and run

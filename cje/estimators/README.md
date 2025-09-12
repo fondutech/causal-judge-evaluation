@@ -44,11 +44,17 @@ Achieves robustness to:
 Optimally combines outcome models and importance weights through targeted fluctuation to achieve optimal asymptotic efficiency.
 
 ### 6. Estimator Stacking
-Forms an optimal convex combination of multiple DR estimators (DR-CPO, TMLE, MRDR) by minimizing the variance of the combined influence function using regularized covariance matrices. The simplified implementation uses the oracle influence curve approach (w₀ᵀφ(Z)) for proper inference, as weight learning is O_p(n^{-1}) and doesn't affect asymptotic distribution.
+Forms an optimal convex combination of multiple DR estimators (DR-CPO, TMLE, MRDR, OC-DR-CPO, TR-CPO-E) by minimizing the variance of the combined influence function using regularized covariance matrices. The simplified implementation uses the oracle influence curve approach (w₀ᵀφ(Z)) for proper inference, as weight learning is O_p(n^{-1}) and doesn't affect asymptotic distribution.
 
-- IF hygiene: Before stacking, per‑component IF columns are aligned on a common index set, sign‑aligned to a reference, and centered. This avoids spurious cancellation and improves numerical stability.
-- Numerics: Covariance estimation is conditioned by Ledoit–Wolf shrinkage and a small ridge term; condition numbers and eigenvalues are reported for auditability.
-- MC variance: When components record per‑policy Monte‑Carlo variance (fresh draws), the stacked MC variance is aggregated conservatively as Σ α_k²·mc_var_k.
+**Key Features:**
+- **Oracle IC approach**: Direct computation of w^T φ(Z) with theoretically justified simplifications
+- **OUA support**: Stacked oracle-augmented jackknife via linear combination of component jackknife paths
+- **IF hygiene**: Per-component IFs are aligned on common indices, sign-aligned, and centered
+- **Numerical stability**: Ridge regularization with condition number monitoring and diagnostics
+- **Weight shrinkage**: Optional shrinkage toward uniform weights for stability (default 5%)
+- **MC variance**: Aggregated conservatively as Σ α_k²·mc_var_k when components use fresh draws
+
+**Implementation (~700 lines)**: The clean implementation in `stacking.py` removes ~1200 lines of unnecessary complexity (no honest CV, no outer splits, no two-way clustering) while maintaining theoretical validity through the oracle IC approach.
 
 ### 7. Orthogonalized Estimators
 Achieve first-order insensitivity to nuisance estimation errors through cross-fitting:

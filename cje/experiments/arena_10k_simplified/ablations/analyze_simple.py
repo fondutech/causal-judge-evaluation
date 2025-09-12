@@ -18,6 +18,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 import warnings
+from scipy.stats import kendalltau
 
 warnings.filterwarnings("ignore")
 
@@ -1657,6 +1658,146 @@ def print_quadrant_comparison(results: List[Dict[str, Any]]) -> None:
         )
 
 
+def compute_ranking_metrics(
+    results: List[Dict[str, Any]],
+    policies: List[str],
+    min_oracle_gap: float = 0.0,
+) -> Dict[str, pd.DataFrame]:
+    """Compute ranking metrics per experiment and aggregates by estimator/quadrant.
+
+    Metrics per experiment:
+      - tau_b: Kendall's tau-b between estimate and truth vectors
+      - top1_acc: 1 if argmax(est) == argmax(truth) else 0
+      - pairwise_acc: fraction of policy pairs where sign(est_i - est_j) matches sign(truth_i - truth_j),
+                      restricted to pairs with |truth_i - truth_j| >= min_oracle_gap
+      - regret: truth[oracle_best] - truth[pred_best]
+    """
+    rows: List[Dict[str, Any]] = []
+
+    for result in results:
+        spec = result.get("spec", {})
+        estimator = spec.get("estimator", "unknown")
+        seed = spec.get("seed_base", 0)
+        sample_size = spec.get("sample_size", 0)
+        oracle_cov = spec.get("oracle_coverage", 0.0)
+        quad = result.get("quadrant", "Unknown")
+        est_map = result.get("estimates", {}) or {}
+        truth_map = result.get("oracle_truths", {}) or {}
+
+        try:
+            est_vec = np.array([float(est_map[p]) for p in policies])
+            truth_vec = np.array([float(truth_map[p]) for p in policies])
+        except Exception:
+            continue
+
+        if not (np.isfinite(est_vec).all() and np.isfinite(truth_vec).all()):
+            continue
+
+        try:
+            tau, _ = kendalltau(est_vec, truth_vec)
+        except Exception:
+            tau = np.nan
+
+        try:
+            top1_acc = int(int(np.argmax(est_vec)) == int(np.argmax(truth_vec)))
+        except Exception:
+            top1_acc = 0
+
+        correct = 0
+        total = 0
+        for i in range(len(policies)):
+            for j in range(i + 1, len(policies)):
+                dt = truth_vec[i] - truth_vec[j]
+                if abs(dt) < float(min_oracle_gap):
+                    continue
+                de = est_vec[i] - est_vec[j]
+                if de == 0:
+                    continue
+                if (dt > 0 and de > 0) or (dt < 0 and de < 0):
+                    correct += 1
+                total += 1
+
+        pairwise_acc = (correct / total) if total > 0 else np.nan
+
+        try:
+            regret = float(np.max(truth_vec) - truth_vec[int(np.argmax(est_vec))])
+        except Exception:
+            regret = np.nan
+
+        rows.append(
+            {
+                "estimator": estimator,
+                "seed": seed,
+                "sample_size": sample_size,
+                "oracle_coverage": oracle_cov,
+                "quadrant": quad,
+                "tau_b": float(tau) if tau is not None else np.nan,
+                "top1_acc": float(top1_acc),
+                "pairwise_acc": float(pairwise_acc) if pairwise_acc == pairwise_acc else np.nan,
+                "regret": float(regret) if regret == regret else np.nan,
+                "n_pairs": int(total),
+            }
+        )
+
+    per_exp = pd.DataFrame(rows)
+    if per_exp.empty:
+        return {"per_experiment": per_exp, "agg_quadrant": pd.DataFrame(), "agg_overall": pd.DataFrame()}
+
+    def _agg(df: pd.DataFrame, by: List[str]) -> pd.DataFrame:
+        grp = df.groupby(by, dropna=False)
+        out = grp[["tau_b", "top1_acc", "pairwise_acc", "regret"]].mean().reset_index()
+        out["n_experiments"] = grp.size().values
+        out["avg_n_pairs"] = grp["n_pairs"].mean().values
+        return out
+
+    agg_q = _agg(per_exp, ["estimator", "quadrant"])
+    agg_o = _agg(per_exp, ["estimator"])
+    return {"per_experiment": per_exp, "agg_quadrant": agg_q, "agg_overall": agg_o}
+
+
+def print_ranking_summary(results: List[Dict[str, Any]], min_oracle_gap: float = 0.0) -> None:
+    """Print a concise ranking performance block."""
+    print("\n" + "=" * 160)
+    print("RANKING PERFORMANCE: Kendall τ-b, Top-1, Pairwise, Regret")
+    print("=" * 160)
+
+    policies = ["clone", "parallel_universe_prompt", "premium", "unhelpful"]
+    rk = compute_ranking_metrics(results, policies=policies, min_oracle_gap=min_oracle_gap)
+    agg_q = rk["agg_quadrant"]
+    agg_o = rk["agg_overall"]
+
+    if agg_q.empty and agg_o.empty:
+        print("No ranking data available")
+        return
+
+    if not agg_q.empty:
+        print("\nBy Quadrant (means across experiments)")
+        cols_q = [
+            "estimator",
+            "quadrant",
+            "tau_b",
+            "top1_acc",
+            "pairwise_acc",
+            "regret",
+            "n_experiments",
+            "avg_n_pairs",
+        ]
+        print(agg_q[cols_q].to_string(index=False, float_format=lambda x: f"{x:.3f}"))
+
+    if not agg_o.empty:
+        print("\nOverall (means across experiments)")
+        cols_o = [
+            "estimator",
+            "tau_b",
+            "top1_acc",
+            "pairwise_acc",
+            "regret",
+            "n_experiments",
+            "avg_n_pairs",
+        ]
+        print(agg_o[cols_o].to_string(index=False, float_format=lambda x: f"{x:.3f}"))
+
+
 def main() -> None:
     """Main analysis function."""
     parser = argparse.ArgumentParser(description="Analyze ablation experiment results")
@@ -1671,6 +1812,12 @@ def main() -> None:
         choices=["overall", "quadrants"],
         default="overall",
         help="Analysis mode: overall summary or quadrant comparison",
+    )
+    parser.add_argument(
+        "--ranking-min-gap",
+        type=float,
+        default=0.0,
+        help="Minimum oracle gap for pairwise ranking (exclude near-ties)",
     )
 
     args = parser.parse_args()
@@ -1705,6 +1852,8 @@ def main() -> None:
         print_quadrant_comparison(results)
     else:
         print_summary_tables(results)
+        # Also print a concise ranking block
+        print_ranking_summary(results, min_oracle_gap=args.ranking_min_gap)
 
 
 if __name__ == "__main__":
