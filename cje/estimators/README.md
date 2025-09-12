@@ -46,6 +46,10 @@ Optimally combines outcome models and importance weights through targeted fluctu
 ### 6. Estimator Stacking
 Forms an optimal convex combination of multiple DR estimators (DR-CPO, TMLE, MRDR) by minimizing the variance of the combined influence function using regularized covariance matrices. The simplified implementation uses the oracle influence curve approach (w₀ᵀφ(Z)) for proper inference, as weight learning is O_p(n^{-1}) and doesn't affect asymptotic distribution.
 
+- IF hygiene: Before stacking, per‑component IF columns are aligned on a common index set, sign‑aligned to a reference, and centered. This avoids spurious cancellation and improves numerical stability.
+- Numerics: Covariance estimation is conditioned by Ledoit–Wolf shrinkage and a small ridge term; condition numbers and eigenvalues are reported for auditability.
+- MC variance: When components record per‑policy Monte‑Carlo variance (fresh draws), the stacked MC variance is aggregated conservatively as Σ α_k²·mc_var_k.
+
 ### 7. Orthogonalized Estimators
 Achieve first-order insensitivity to nuisance estimation errors through cross-fitting:
 - **OC-IPS**: Robust to errors in reward calibration f̂(S) and weight calibration m̂(S)
@@ -84,7 +88,7 @@ estimators/
 
 ## Default Recommendation
 
-**Use StackedDREstimator** - This is the recommended default for all estimation tasks. It automatically combines multiple DR methods (DR-CPO, TMLE, MRDR) via optimal weighting to minimize variance. The implementation includes covariance regularization to ensure numerical stability when component estimators are highly correlated. Requires fresh draws.
+**Use StackedDREstimator** - This is the recommended default for all estimation tasks. It automatically combines multiple DR methods (DR-CPO, TMLE, MRDR, OC-DR-CPO, TR-CPO‑E) via optimal weighting to minimize variance. The implementation includes covariance regularization to ensure numerical stability when component estimators are highly correlated. Requires fresh draws.
 
 For specific requirements or debugging, individual estimators are available but StackedDR typically provides modest improvements (1-5% SE reduction) over the best single method when components are correlated.
 
@@ -320,10 +324,10 @@ The StackedDREstimator uses regularized covariance estimation to handle highly c
 # Key parameters
 estimator = StackedDREstimator(
     sampler,
-    estimators=['dr-cpo', 'tmle', 'mrdr'],  # Component estimators
-    covariance_regularization=1e-4,          # Regularization strength
-    n_folds=20,                               # Cross-fitting folds
-    parallel=False                            # Sequential processing
+    estimators=['dr-cpo', 'tmle', 'mrdr', 'oc-dr-cpo', 'tr-cpo-e'],  # Default components
+    covariance_regularization=1e-4,                                   # Regularization strength
+    n_folds=20,                                                       # Cross-fitting folds
+    parallel=False                                                    # Sequential processing
 )
 ```
 
@@ -331,6 +335,12 @@ estimator = StackedDREstimator(
 1. **Regularized Covariance**: Adds λI to covariance matrix (default λ=1e-4) to handle near-singular matrices when components are highly correlated
 2. **Oracle IC Approach**: Uses w₀ᵀφ(Z) where w₀ are the population-optimal weights, valid because weight learning is O_p(n^{-1})
 3. **Unified Fresh Draws**: All components share the same fresh draws to ensure consistent IF computation
+
+Other DR‑family estimators (e.g., OC‑DR‑CPO, TR‑CPO) can be included, but the default keeps a compact, highly correlated trio.
+
+### Inference for Stacked DR
+
+- Default inference uses the oracle‑IC path: weights are learned once on the aligned IF matrix; SE is computed from the stacked IF (sd/√n). When fold IDs are available, a cluster‑robust variant can be used on the stacked IF to account for within‑fold dependence. Calibrator OUA remains at the component level and is not re‑estimated at the stack level.
 
 **Diagnostics Provided:**
 - Condition numbers (pre/post regularization)
@@ -360,6 +370,8 @@ robust_ses = result.robust_standard_errors   # Standard + oracle uncertainty
 - Delete-one-fold recomputation: SE_robust = √(SE_main² + Var_oracle)
 - Available for all estimators (IPS, DR, MRDR, TMLE, TR-CPO)
 - Provides honest inference accounting for calibrator uncertainty
+
+Note: StackedDR uses component‑level OUA (from the underlying DR/TMLE/MRDR estimators); OUA is not re‑run at the stack level.
 
 ### Custom Estimators
 Inherit from `BaseCJEEstimator` or `DREstimator` and implement `fit()` and `estimate()`. Always compute and store influence functions in `_influence_functions`.

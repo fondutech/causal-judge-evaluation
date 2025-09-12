@@ -52,6 +52,7 @@ Stabilizes importance weights through score-indexed monotone projection:
 
 ### 3. Cross-Fitted Models
 For doubly robust methods, provides out-of-fold predictions to maintain orthogonality between nuisance functions.
+Stacking relies on the component estimators' influence functions and does not re-fit nuisances at the stack level.
 
 ### 4. Oracle Uncertainty Quantification (Two Approaches)
 When we calibrate judge scores using only a subset of oracle labels (e.g., 10% coverage), the calibration function f̂ itself has uncertainty. We handle this through two complementary mechanisms:

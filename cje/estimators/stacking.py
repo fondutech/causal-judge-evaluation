@@ -67,7 +67,13 @@ class StackedDREstimator(BaseCJEEstimator):
         super().__init__(sampler)
 
         # Configuration
-        self.estimators = estimators or ["dr-cpo", "tmle", "mrdr"]
+        self.estimators = estimators or [
+            "dr-cpo",
+            "tmle",
+            "mrdr",
+            "oc-dr-cpo",
+            "tr-cpo-e",
+        ]
         self.covariance_regularization = covariance_regularization
         self.min_weight = min_weight
         self.weight_shrinkage = weight_shrinkage
@@ -367,11 +373,17 @@ class StackedDREstimator(BaseCJEEstimator):
         from cje.estimators.dr_base import DRCPOEstimator
         from cje.estimators.tmle import TMLEEstimator
         from cje.estimators.mrdr import MRDREstimator
+        from cje.estimators.orthogonalized_calibrated_dr import (
+            OrthogonalizedCalibratedDRCPO,
+        )
+        from cje.estimators.tr_cpo import TRCPOEstimator
 
         estimator_map = {
             "dr-cpo": DRCPOEstimator,
             "tmle": TMLEEstimator,
             "mrdr": MRDREstimator,
+            "oc-dr-cpo": OrthogonalizedCalibratedDRCPO,
+            "tr-cpo-e": TRCPOEstimator,  # efficient TR-CPO (m̂(S))
         }
 
         if est_name not in estimator_map:
