@@ -40,12 +40,13 @@ class StackedDREstimator(BaseCJEEstimator):
         estimators: Optional[List[str]] = None,
         covariance_regularization: float = 1e-4,
         min_weight: float = 0.0,
-        weight_shrinkage: float = 0.0,
+        weight_shrinkage: float = 0.05,  # Small default shrinkage for stability
         parallel: bool = True,
         seed: int = 42,
         n_folds: int = 5,
         use_iic: bool = False,
         oua_jackknife: bool = True,
+        force_uniform_weights: bool = False,  # Hidden flag for sanity checks
         **kwargs: Any,
     ):
         """Initialize the stacked estimator.
@@ -62,6 +63,7 @@ class StackedDREstimator(BaseCJEEstimator):
             n_folds: Number of folds for component cross-fitting
             use_iic: If True, component estimators use IIC
             oua_jackknife: If True, enable OUA for component estimators
+            force_uniform_weights: If True, force uniform weights (for debugging)
             **kwargs: Additional arguments (reward_calibrator, etc.)
         """
         super().__init__(sampler)
@@ -82,6 +84,7 @@ class StackedDREstimator(BaseCJEEstimator):
         self.n_folds = n_folds
         self.use_iic = use_iic
         self.oua_jackknife = oua_jackknife
+        self.force_uniform_weights = force_uniform_weights
 
         # Extract additional configuration
         self.reward_calibrator = kwargs.pop("reward_calibrator", None)
@@ -273,6 +276,15 @@ class StackedDREstimator(BaseCJEEstimator):
         """
         K = IF_matrix.shape[1]
 
+        # Check if forcing uniform weights (for debugging/sanity checks)
+        if self.force_uniform_weights:
+            w = np.ones(K) / K
+            diagnostics = {
+                "forced_uniform": True,
+                "weights": w.tolist(),
+            }
+            return w, diagnostics
+
         # Compute covariance matrix
         centered_IF = IF_matrix - IF_matrix.mean(axis=0, keepdims=True)
         Sigma = np.cov(centered_IF.T)
@@ -317,12 +329,23 @@ class StackedDREstimator(BaseCJEEstimator):
             logger.warning("Singular covariance matrix, using uniform weights")
             w = ones / K
 
+        # Compute pairwise correlations between estimators
+        correlations = np.corrcoef(centered_IF.T)
+        max_corr = np.max(np.abs(correlations[np.triu_indices_from(correlations, k=1)]))
+
         diagnostics = {
             "condition_pre": condition_pre,
             "condition_post": condition_post,
             "eigenvalues": eigenvalues.tolist(),
-            "regularization": self.covariance_regularization,
+            "eigenvalues_post": eigenvalues_post.tolist(),
+            "min_eigenvalue": float(eigenvalues.min()),
+            "max_eigenvalue": float(eigenvalues.max()),
+            "regularization_used": self.covariance_regularization,
+            "max_pairwise_correlation": float(max_corr),
             "weights": w.tolist(),
+            "weight_shrinkage": self.weight_shrinkage,
+            "min_weight": float(w.min()),
+            "max_weight": float(w.max()),
         }
 
         return w, diagnostics
