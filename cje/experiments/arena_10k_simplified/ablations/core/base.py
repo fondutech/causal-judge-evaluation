@@ -444,6 +444,7 @@ class BaseAblation:
                 enable_cross_fit=True,
                 n_folds=DR_CONFIG["n_folds"] if n_oracle >= 50 else 3,
                 calibration_mode=reward_calibration_mode,
+                random_seed=seed,  # Pass the experiment seed for fold assignment
             )
 
             if cal_result:
