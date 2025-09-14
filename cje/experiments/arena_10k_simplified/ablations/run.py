@@ -177,7 +177,7 @@ class UnifiedAblation(BaseAblation):
                 "covariance_regularization": 1e-4,  # Add regularization for numerical stability
                 "use_outer_split": False,  # Disable complex CV (using simple oracle IC approach)
                 "use_calibrated_weights": use_weight_calibration,  # Controls SIMCal for weights
-                "weight_shrinkage": 0.05,  # Small shrinkage for stability
+                "weight_shrinkage": 0.0,  # No shrinkage - let optimizer find optimal weights
             }
 
             # Always pass reward calibrator for outcome model (if available)
