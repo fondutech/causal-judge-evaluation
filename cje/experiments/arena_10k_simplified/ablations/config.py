@@ -15,6 +15,7 @@ EXPERIMENTS = {
         "tr-cpo",  # Triply-Robust CPO (vanilla, raw W)
         "tr-cpo-e",  # Triply-Robust CPO (efficient, m̂(S))
         "stacked-dr",  # Ensemble (always with calibration)
+        "stacked-dr-core",  # Ensemble with only dr-cpo, tmle, mrdr
     ],
     "sample_sizes": [500, 1000, 2500, 5000],
     "oracle_coverages": [0.05, 0.10, 0.25, 0.5, 1.00],
@@ -29,17 +30,17 @@ EXPERIMENTS = {
     "reward_calibration_mode": "monotone",
     # Multiple seeds for robust results
     "seeds": [
-        42,
-        123,
-        456,
-        789,
-        1011,
-        1213,
-        1415,
-        1617,
-        1819,
-        2021,
-    ],  # 10 seeds for statistical robustness
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+    ],
 }
 
 # Method-specific constraints
@@ -51,6 +52,7 @@ REQUIRES_CALIBRATION = {
     "orthogonalized-ips",  # Requires calibrated weights for orthogonalization
     "oc-dr-cpo",  # Orthogonalized Calibrated DR requires calibration
     "stacked-dr",  # Production default - always uses calibration
+    "stacked-dr-core",  # Core DR ensemble - always uses calibration
 }
 
 # These estimators can work with or without calibration

@@ -93,6 +93,14 @@ class StackedDREstimator(BaseCJEEstimator):
         self.use_calibrated_weights = kwargs.pop("use_calibrated_weights", True)
         self.weight_mode = kwargs.pop("weight_mode", "hajek")
 
+        # MC-aware stacking configuration (optional)
+        # If enabled, incorporate per-component MC variance from fresh draws
+        # into the stacking objective (rank-1 update). See _compute_optimal_weights.
+        self.include_mc_in_objective: bool = bool(
+            kwargs.pop("include_mc_in_objective", True)
+        )
+        self.mc_lambda: float = float(kwargs.pop("mc_lambda", 1.0))
+
         # Storage for results
         self.component_results: Dict[str, Optional[EstimationResult]] = {}
         self.component_estimators: Dict[str, Any] = {}
@@ -355,7 +363,9 @@ class StackedDREstimator(BaseCJEEstimator):
                     )
 
         # Compute optimal weights with regularization
-        weights, weight_diagnostics = self._compute_optimal_weights(IF_matrix_clean)
+        weights, weight_diagnostics = self._compute_optimal_weights(
+            IF_matrix_clean, used_names, policy
+        )
         self.weights_per_policy[policy] = weights
         self.diagnostics_per_policy[policy] = weight_diagnostics
 
@@ -384,6 +394,20 @@ class StackedDREstimator(BaseCJEEstimator):
             alpha=0.05,
         )
         se_if = float(res_if["se"])
+
+        # Record SE diagnostics for downstream CI construction (t-critical)
+        try:
+            if not hasattr(self, "_se_diagnostics"):
+                self._se_diagnostics: Dict[str, Dict[str, Any]] = {}
+            det = {
+                "G_outer": int(res_if.get("n_clusters", 0)),
+                "G_inner": None,
+                "df": int(res_if.get("df", 0)),
+            }
+            self._se_diagnostics.setdefault(policy, {})
+            self._se_diagnostics[policy]["cluster_robust_detail"] = det
+        except Exception:
+            pass
 
         # Add MC variance if present
         mc_var = self._aggregate_mc_variance(policy, used_names, weights)
@@ -450,7 +474,7 @@ class StackedDREstimator(BaseCJEEstimator):
         return np.ones(K) / K
 
     def _compute_optimal_weights(
-        self, IF_matrix: np.ndarray
+        self, IF_matrix: np.ndarray, used_names: List[str], policy: str
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Compute optimal stacking weights with regularization.
 
@@ -474,6 +498,46 @@ class StackedDREstimator(BaseCJEEstimator):
         # Compute covariance matrix
         centered_IF = IF_matrix - IF_matrix.mean(axis=0, keepdims=True)
         Sigma = np.cov(centered_IF.T)
+
+        # Optionally incorporate per-component Monte Carlo variance as a
+        # rank-1 update: Σ_total = Σ_IF + n · λ_mc · (s s^T), where s_k = sqrt(mc_var_k)
+        mc_used = False
+        if self.include_mc_in_objective and K > 0:
+            try:
+                s_vals: List[float] = []
+                for name in used_names:
+                    v = 0.0
+                    comp_res = self.component_results.get(name)
+                    if (
+                        comp_res
+                        and hasattr(comp_res, "metadata")
+                        and isinstance(comp_res.metadata, dict)
+                    ):
+                        mcd = comp_res.metadata.get("mc_variance_diagnostics", {}) or {}
+                        if (
+                            isinstance(mcd, dict)
+                            and policy in mcd
+                            and isinstance(mcd[policy], dict)
+                            and "mc_var" in mcd[policy]
+                        ):
+                            v = float(mcd[policy]["mc_var"]) or 0.0
+                        else:
+                            v = float(
+                                comp_res.metadata.get("mc_variance", {}).get(
+                                    policy, 0.0
+                                )
+                            )
+                    s_vals.append(max(0.0, v) ** 0.5)
+
+                # If all zeros, this has no effect; otherwise add rank-1 term
+                s_vec = np.asarray(s_vals, dtype=float).reshape(-1, 1)
+                n_rows = IF_matrix.shape[0]
+                Sigma = Sigma + (max(1, n_rows) * float(self.mc_lambda)) * (
+                    s_vec @ s_vec.T
+                )
+                mc_used = True
+            except Exception:
+                mc_used = False
 
         # Check condition number before regularization
         eigenvalues = np.linalg.eigvalsh(Sigma)
@@ -570,6 +634,8 @@ class StackedDREstimator(BaseCJEEstimator):
             "effective_estimators": int(
                 sum(1 for weight in w if weight > 0.05)
             ),  # Estimators with meaningful weight
+            "mc_aware": bool(mc_used),
+            "mc_lambda": float(self.mc_lambda),
         }
 
         return w, diagnostics
@@ -880,6 +946,10 @@ class StackedDREstimator(BaseCJEEstimator):
             "n_folds": self.n_folds,
             "covariance_regularization": self.covariance_regularization,
         }
+
+        # Attach SE diagnostics if available (for t-based CI in ablations)
+        if hasattr(self, "_se_diagnostics") and isinstance(self._se_diagnostics, dict):
+            metadata["_se_diagnostics"] = self._se_diagnostics
 
         # Add sample indices if available
         if_sample_indices: Dict[str, Any] = {}

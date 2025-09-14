@@ -24,6 +24,7 @@ from .appendix_tables import (
     generate_oracle_adjustment_table,
     generate_boundary_outlier_table,
     generate_runtime_complexity_table,
+    generate_mae_summary_table,
 )
 
 __all__ = [
@@ -45,4 +46,5 @@ __all__ = [
     "generate_oracle_adjustment_table",
     "generate_boundary_outlier_table",
     "generate_runtime_complexity_table",
+    "generate_mae_summary_table",
 ]

@@ -27,7 +27,7 @@ from reporting import (
 )
 
 
-def main():
+def main() -> None:
     """Generate all paper tables."""
     parser = argparse.ArgumentParser(
         description="Generate information-dense tables for paper"
@@ -67,7 +67,31 @@ def main():
             except json.JSONDecodeError as e:
                 print(f"Warning: Skipping invalid JSON line: {e}")
 
-    print(f"Loaded {len(results)} experiment results")
+    # Filter to successful runs only
+    results = [r for r in results if r.get("success")]
+
+    # Deduplicate by (estimator, sample_size, oracle_coverage, seed_base, use_calib, use_iic)
+    seen = set()
+    deduped = []
+    for r in results:
+        spec = r.get("spec", {})
+        est = spec.get("estimator")
+        size = spec.get("sample_size")
+        cov = spec.get("oracle_coverage")
+        seed = spec.get("seed_base", r.get("seed"))
+        extra = spec.get("extra", {})
+        use_calib = extra.get(
+            "use_weight_calibration", r.get("use_weight_calibration", False)
+        )
+        use_iic = extra.get("use_iic", r.get("use_iic", False))
+        key = (est, size, cov, seed, bool(use_calib), bool(use_iic))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(r)
+    results = deduped
+
+    print(f"Loaded {len(results)} successful experiment results")
 
     # Create output directories
     args.output.mkdir(exist_ok=True, parents=True)
@@ -81,35 +105,43 @@ def main():
 
     # Table 1: Leaderboard
     print("\nGenerating Table 1: Estimator Leaderboard...")
-    if args.format in ["latex", "both"]:
-        leaderboard_latex = generate_leaderboard(results, "latex")
-        (args.output / "main" / "table1_leaderboard.tex").write_text(leaderboard_latex)
-        print("  ✓ LaTeX version saved")
+    try:
+        if args.format in ["latex", "both"]:
+            leaderboard_latex = generate_leaderboard(results, "latex")
+            (args.output / "main" / "table1_leaderboard.tex").write_text(
+                leaderboard_latex
+            )
+            print("  ✓ LaTeX version saved")
 
-    if args.format in ["markdown", "both"]:
-        leaderboard_md = generate_leaderboard(results, "markdown")
-        (args.output / "main" / "table1_leaderboard.md").write_text(leaderboard_md)
-        print("  ✓ Markdown version saved")
+        if args.format in ["markdown", "both"]:
+            leaderboard_md = generate_leaderboard(results, "markdown")
+            (args.output / "main" / "table1_leaderboard.md").write_text(leaderboard_md)
+            print("  ✓ Markdown version saved")
+    except Exception as e:
+        print(f"  ⚠ Warning: Could not generate leaderboard: {e}")
 
     # Table 2: Design Choice Effects
     print("\nGenerating Table 2: Design Choice Effects...")
-    if args.format in ["latex", "both"]:
-        delta_tables = generate_delta_tables(results, "latex")
-        (args.output / "main" / "table2a_calibration.tex").write_text(
-            delta_tables["calibration"]
-        )
-        (args.output / "main" / "table2b_iic.tex").write_text(delta_tables["iic"])
-        print("  ✓ LaTeX versions saved (2a: calibration, 2b: IIC)")
+    try:
+        if args.format in ["latex", "both"]:
+            delta_tables = generate_delta_tables(results, "latex")
+            (args.output / "main" / "table2a_calibration.tex").write_text(
+                delta_tables["calibration"]
+            )
+            (args.output / "main" / "table2b_iic.tex").write_text(delta_tables["iic"])
+            print("  ✓ LaTeX versions saved (2a: calibration, 2b: IIC)")
 
-    if args.format in ["markdown", "both"]:
-        delta_tables_md = generate_delta_tables(results, "markdown")
-        (args.output / "main" / "table2_deltas.md").write_text(
-            "## Panel A: Weight Calibration Effect\n\n"
-            + delta_tables_md["calibration"]
-            + "\n\n## Panel B: IIC Effect\n\n"
-            + delta_tables_md["iic"]
-        )
-        print("  ✓ Markdown version saved")
+        if args.format in ["markdown", "both"]:
+            delta_tables_md = generate_delta_tables(results, "markdown")
+            (args.output / "main" / "table2_deltas.md").write_text(
+                "## Panel A: Weight Calibration Effect\n\n"
+                + delta_tables_md["calibration"]
+                + "\n\n## Panel B: IIC Effect\n\n"
+                + delta_tables_md["iic"]
+            )
+            print("  ✓ Markdown version saved")
+    except Exception as e:
+        print(f"  ⚠ Warning: Could not generate delta tables: {e}")
 
     # Table 3: Stacking Diagnostics
     print("\nGenerating Table 3: Stacking Efficiency & Stability...")
@@ -139,6 +171,7 @@ def main():
         ("A4", "Oracle Adjustment Share", generate_oracle_adjustment_table),
         ("A5", "Calibration Boundary Analysis", generate_boundary_outlier_table),
         ("A6", "Runtime & Complexity", generate_runtime_complexity_table),
+        # ("A7", "MAE Summary (Well-Behaved)", generate_mae_summary_table),  # Not yet implemented
     ]
 
     for table_num, caption, generator in appendix_tables:

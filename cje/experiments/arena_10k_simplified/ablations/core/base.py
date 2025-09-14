@@ -154,6 +154,14 @@ class BaseAblation:
         # logger.info(f"Creating {spec.estimator} with use_iic={use_iic}, "
         #            f"use_weight_calibration(SIMCal)={use_weight_calibration}")
 
+        # Stacking MC config knobs from spec.extra (optional)
+        include_mc = (
+            bool(spec.extra.get("include_mc_in_objective", True))
+            if spec.extra
+            else True
+        )
+        mc_lambda = float(spec.extra.get("mc_lambda", 1.0)) if spec.extra else 1.0
+
         estimator_map = {
             "raw-ips": lambda s: CalibratedIPS(
                 s,
@@ -247,7 +255,21 @@ class BaseAblation:
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
                 covariance_regularization=1e-4,  # Add regularization for numerical stability
+                include_mc_in_objective=include_mc,
+                mc_lambda=mc_lambda,
                 # Remove use_outer_split - it doesn't exist
+            ),
+            "stacked-dr-core": lambda s: StackedDREstimator(
+                s,
+                estimators=["dr-cpo", "tmle", "mrdr"],  # Only 3 core DR estimators
+                reward_calibrator=cal_result.calibrator if cal_result else None,
+                n_folds=DR_CONFIG["n_folds"],  # Use n_folds, not V_folds
+                use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
+                use_iic=use_iic,  # Pass IIC setting
+                oua_jackknife=oua,
+                covariance_regularization=1e-4,  # Add regularization for numerical stability
+                include_mc_in_objective=include_mc,
+                mc_lambda=mc_lambda,
             ),
         }
 

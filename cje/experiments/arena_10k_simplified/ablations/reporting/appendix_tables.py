@@ -11,20 +11,25 @@ from pathlib import Path
 import json
 
 
-def generate_quadrant_leaderboard(results: List[Dict[str, Any]]) -> pd.DataFrame:
+def generate_quadrant_leaderboard(
+    results: List[Dict[str, Any]], include_debiased: bool = True
+) -> pd.DataFrame:
     """Generate Table A1: Quadrant-specific leaderboard.
 
     Shows RMSE_d and CalibScore broken down by data regime quadrant.
+    Optionally includes debiased versions that account for oracle uncertainty.
 
     Args:
         results: List of experiment results
+        include_debiased: Whether to include debiased calibration scores
 
     Returns:
         DataFrame with quadrant-specific metrics
     """
-    from .paper_tables import create_config_key
+    from .paper_tables import create_config_key, compute_oracle_variance
+    from scipy import stats as scipy_stats
 
-    metrics_by_quadrant: Dict[str, Dict[str, Dict[str, List[float]]]] = {}
+    metrics_by_quadrant: Dict[str, Dict[str, Dict[str, List[Any]]]] = {}
 
     for result in results:
         config_key = create_config_key(result)
@@ -49,7 +54,11 @@ def generate_quadrant_leaderboard(results: List[Dict[str, Any]]) -> pd.DataFrame
         if quadrant not in metrics_by_quadrant:
             metrics_by_quadrant[quadrant] = {}
         if config_key not in metrics_by_quadrant[quadrant]:
-            metrics_by_quadrant[quadrant][config_key] = {"rmse": [], "coverage": []}
+            metrics_by_quadrant[quadrant][config_key] = {
+                "rmse": [],
+                "coverage": [],
+                "coverage_debiased": [],  # For debiased calibration
+            }
 
         # Collect RMSE
         rmse = result.get("rmse_vs_oracle")
@@ -63,15 +72,44 @@ def generate_quadrant_leaderboard(results: List[Dict[str, Any]]) -> pd.DataFrame
         oracle_truths = result.get("oracle_truths", {})
 
         covered = []
+        coverage_probs = []  # For debiased version
+
         for policy in ["clone", "parallel_universe_prompt", "premium"]:
             if policy in robust_cis and policy in oracle_truths:
-                ci = robust_cis[policy]
-                truth = oracle_truths[policy]
-                covered.append(ci[0] <= truth <= ci[1])
+                ci_lower, ci_upper = robust_cis[policy]
+                oracle_mean = oracle_truths[policy]
+
+                # Standard binary coverage
+                covered.append(ci_lower <= oracle_mean <= ci_upper)
+
+                # Debiased probabilistic coverage
+                if include_debiased:
+                    oracle_var = compute_oracle_variance(oracle_mean, n_oracle=4989)
+                    oracle_se = np.sqrt(oracle_var)
+
+                    if oracle_se > 1e-10:
+                        # Probability that true value is in CI given oracle uncertainty
+                        z_lower = (ci_lower - oracle_mean) / oracle_se
+                        z_upper = (ci_upper - oracle_mean) / oracle_se
+                        coverage_prob = scipy_stats.norm.cdf(
+                            z_upper
+                        ) - scipy_stats.norm.cdf(z_lower)
+                    else:
+                        coverage_prob = (
+                            1.0 if ci_lower <= oracle_mean <= ci_upper else 0.0
+                        )
+
+                    coverage_probs.append(coverage_prob)
 
         if covered:
             coverage = np.mean(covered)
             metrics_by_quadrant[quadrant][config_key]["coverage"].append(coverage)
+
+        if coverage_probs:
+            coverage_debiased = np.mean(coverage_probs)
+            metrics_by_quadrant[quadrant][config_key]["coverage_debiased"].append(
+                coverage_debiased
+            )
 
     # Build table with quadrants as columns
     rows = []
@@ -101,6 +139,9 @@ def generate_quadrant_leaderboard(results: List[Dict[str, Any]]) -> pd.DataFrame
             ):
                 rmse_vals = metrics_by_quadrant[quadrant][config]["rmse"]
                 cov_vals = metrics_by_quadrant[quadrant][config]["coverage"]
+                cov_debiased_vals = metrics_by_quadrant[quadrant][config][
+                    "coverage_debiased"
+                ]
 
                 if rmse_vals:
                     row[f"{abbrev}_RMSE"] = np.mean(rmse_vals)
@@ -111,9 +152,19 @@ def generate_quadrant_leaderboard(results: List[Dict[str, Any]]) -> pd.DataFrame
                     row[f"{abbrev}_Calib"] = abs(np.mean(cov_vals) - 0.95) * 100
                 else:
                     row[f"{abbrev}_Calib"] = np.nan
+
+                # Add debiased calibration if requested
+                if include_debiased and cov_debiased_vals:
+                    row[f"{abbrev}_Calib_d"] = (
+                        abs(np.mean(cov_debiased_vals) - 0.95) * 100
+                    )
+                elif include_debiased:
+                    row[f"{abbrev}_Calib_d"] = np.nan
             else:
                 row[f"{abbrev}_RMSE"] = np.nan
                 row[f"{abbrev}_Calib"] = np.nan
+                if include_debiased:
+                    row[f"{abbrev}_Calib_d"] = np.nan
 
         rows.append(row)
 
@@ -207,6 +258,30 @@ def generate_bias_patterns_table(results: List[Dict[str, Any]]) -> pd.DataFrame:
         rows.append(row)
 
     return pd.DataFrame(rows).sort_values("Mean_Abs_Bias")
+
+
+def generate_mae_summary_table(results: List[Dict[str, Any]]) -> pd.DataFrame:
+    """Generate Table A7: MAE Summary (well-behaved policies).
+
+    Provides a robust accuracy view complementary to RMSE^d.
+
+    Args:
+        results: List of experiment results
+
+    Returns:
+        DataFrame with Estimator and MAE
+    """
+    from .paper_tables import create_config_key
+    from .paper_tables import compute_mae
+
+    mae_map = compute_mae(results)
+    rows = []
+    for cfg in sorted(mae_map.keys()):
+        rows.append({"Estimator": cfg, "MAE": mae_map[cfg]})
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df = df.sort_values("MAE")
+    return df
 
 
 def generate_overlap_diagnostics_table(results: List[Dict[str, Any]]) -> pd.DataFrame:
@@ -615,7 +690,7 @@ def main() -> None:
     args.output.mkdir(exist_ok=True, parents=True)
 
     # Generate tables
-    tables = [
+    tables: List[Tuple[str, str, Any]] = [
         ("A1", "Quadrant Leaderboard", generate_quadrant_leaderboard),
         ("A2", "Bias Patterns", generate_bias_patterns_table),
         ("A3", "Overlap & Tail Diagnostics", generate_overlap_diagnostics_table),

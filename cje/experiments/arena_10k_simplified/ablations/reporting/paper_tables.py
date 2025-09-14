@@ -14,16 +14,23 @@ import json
 
 
 def compute_debiased_rmse(
-    results: List[Dict[str, Any]], policies: Optional[List[str]] = None
+    results: List[Dict[str, Any]],
+    policies: Optional[List[str]] = None,
+    n_oracle_default: int = 4989,
 ) -> Dict[str, float]:
-    """Compute oracle-noise-debiased RMSE for each estimator configuration.
+    """Compute oracle-noise-debiased RMSE (RMSE^d) per estimator config.
+
+    RMSE^d is defined as sqrt(mean_p(max{0, (est_p - oracle_p)^2 - Var_oracle_p})).
+    This adjusts for oracle sampling noise, providing a fairer accuracy metric when
+    oracle truths are computed from finite samples.
 
     Args:
         results: List of experiment results
         policies: Policies to include (default: well-behaved only)
+        n_oracle_default: Fallback oracle sample size if not inferable
 
     Returns:
-        Dict mapping estimator config to debiased RMSE
+        Dict mapping estimator config to RMSE^d
     """
     if policies is None:
         policies = ["clone", "parallel_universe_prompt", "premium"]
@@ -32,16 +39,32 @@ def compute_debiased_rmse(
 
     for result in results:
         config_key = create_config_key(result)
+        estimates = result.get("estimates", {}) or {}
+        truths = result.get("oracle_truths", {}) or {}
 
-        # Get RMSE vs oracle (already debiased in our pipeline)
-        rmse = result.get("rmse_vs_oracle")
-        if rmse is not None and not np.isnan(rmse):
-            if config_key not in rmse_by_config:
-                rmse_by_config[config_key] = []
-            rmse_by_config[config_key].append(rmse)
+        if not estimates or not truths:
+            continue
+
+        debiased_sq_errors: List[float] = []
+
+        # Number of oracle samples used to compute each truth; default to global
+        n_oracle = int(result.get("n_oracle", n_oracle_default) or n_oracle_default)
+
+        for pol in policies:
+            if pol in estimates and pol in truths:
+                est = float(estimates[pol])
+                tru = float(truths[pol])
+                err2 = (est - tru) ** 2
+                var_oracle = compute_oracle_variance(tru, n_oracle)
+                debiased = max(0.0, err2 - var_oracle)
+                debiased_sq_errors.append(debiased)
+
+        if debiased_sq_errors:
+            rmse_d = float(np.sqrt(np.mean(debiased_sq_errors)))
+            rmse_by_config.setdefault(config_key, []).append(rmse_d)
 
     # Average across seeds/experiments
-    return {k: np.mean(v) for k, v in rmse_by_config.items()}
+    return {k: float(np.mean(v)) for k, v in rmse_by_config.items()}
 
 
 def compute_interval_score_oa(
@@ -99,6 +122,192 @@ def compute_interval_score_oa(
             scores_by_config[config_key].append(geom_mean)
 
     return {k: np.exp(np.mean(np.log(v))) for k, v in scores_by_config.items()}
+
+
+def compute_oracle_variance(oracle_truth: float, n_oracle: int = 4989) -> float:
+    """Compute conservative Bernoulli variance estimate for oracle.
+
+    The oracle truth is always computed from the complete ~5k dataset,
+    regardless of the experiment's sample size.
+
+    Args:
+        oracle_truth: Oracle point estimate (probability)
+        n_oracle: Number of samples used to compute oracle truth (default 4989)
+
+    Returns:
+        Variance of oracle estimate
+    """
+    # Conservative Bernoulli variance (max at p=0.5)
+    # Note: Oracle is always computed from full ~5k dataset
+    return min(oracle_truth * (1 - oracle_truth), 0.25) / n_oracle
+
+
+def compute_debiased_interval_score(
+    results: List[Dict[str, Any]], alpha: float = 0.05, n_oracle: int = 4989
+) -> Dict[str, float]:
+    """Compute interval score accounting for oracle sampling uncertainty.
+
+    Unlike the standard interval score which treats oracle as fixed truth,
+    this accounts for the fact that oracle is a sample mean with variance.
+
+    Args:
+        results: List of experiment results
+        alpha: Significance level (default 0.05 for 95% CIs)
+        n_oracle: Number of samples used for oracle truth
+
+    Returns:
+        Dict mapping estimator config to debiased interval score
+    """
+    from scipy import stats as scipy_stats
+
+    scores_by_config: Dict[str, List[float]] = {}
+
+    for result in results:
+        config_key = create_config_key(result)
+
+        # Get robust CIs (which include OUA)
+        robust_cis = result.get("robust_confidence_intervals") or result.get(
+            "confidence_intervals", {}
+        )
+        oracle_truths = result.get("oracle_truths", {})
+
+        if not robust_cis or not oracle_truths:
+            continue
+
+        scores = []
+        for policy in ["clone", "parallel_universe_prompt", "premium"]:
+            if policy in robust_cis and policy in oracle_truths:
+                ci_lower, ci_upper = robust_cis[policy]
+                oracle_mean = oracle_truths[policy]
+
+                # Compute oracle SE
+                oracle_var = compute_oracle_variance(oracle_mean, n_oracle)
+                oracle_se = np.sqrt(oracle_var)
+
+                # Width component
+                width = ci_upper - ci_lower
+
+                if oracle_se > 1e-10:  # Oracle has uncertainty
+                    # Compute expected penalty under oracle uncertainty
+                    # Oracle ~ N(oracle_mean, oracle_se^2) approximately
+
+                    # Standardize CI bounds relative to oracle distribution
+                    z_lower = (ci_lower - oracle_mean) / oracle_se
+                    z_upper = (ci_upper - oracle_mean) / oracle_se
+
+                    # Expected penalty for undercoverage
+                    # E[penalty | oracle < ci_lower] * P(oracle < ci_lower)
+                    prob_below = scipy_stats.norm.cdf(z_lower)
+                    if prob_below > 1e-10:
+                        # Expected distance given oracle is below CI
+                        exp_dist_below = oracle_se * (
+                            scipy_stats.norm.pdf(z_lower) / prob_below - z_lower
+                        )
+                        penalty_below = (2 / alpha) * prob_below * exp_dist_below
+                    else:
+                        penalty_below = 0
+
+                    # E[penalty | oracle > ci_upper] * P(oracle > ci_upper)
+                    prob_above = 1 - scipy_stats.norm.cdf(z_upper)
+                    if prob_above > 1e-10:
+                        # Expected distance given oracle is above CI
+                        exp_dist_above = oracle_se * (
+                            scipy_stats.norm.pdf(z_upper) / prob_above + z_upper
+                        )
+                        penalty_above = (2 / alpha) * prob_above * exp_dist_above
+                    else:
+                        penalty_above = 0
+
+                    score = width + penalty_below + penalty_above
+                else:
+                    # Fall back to standard interval score if no oracle uncertainty
+                    if oracle_mean < ci_lower:
+                        penalty = 2 / alpha * (ci_lower - oracle_mean)
+                    elif oracle_mean > ci_upper:
+                        penalty = 2 / alpha * (oracle_mean - ci_upper)
+                    else:
+                        penalty = 0
+                    score = width + penalty
+
+                scores.append(score)
+
+        if scores:
+            # Geometric mean across policies
+            geom_mean = np.exp(np.mean(np.log(scores)))
+            if config_key not in scores_by_config:
+                scores_by_config[config_key] = []
+            scores_by_config[config_key].append(geom_mean)
+
+    return {k: np.exp(np.mean(np.log(v))) for k, v in scores_by_config.items()}
+
+
+def compute_debiased_calibration_score(
+    results: List[Dict[str, Any]], target: float = 0.95, n_oracle: int = 4989
+) -> Dict[str, float]:
+    """Compute calibration score accounting for oracle sampling uncertainty.
+
+    Instead of binary coverage, computes probabilistic coverage given
+    that oracle is itself a random variable.
+
+    Args:
+        results: List of experiment results
+        target: Target coverage (default 0.95)
+        n_oracle: Number of samples used for oracle truth
+
+    Returns:
+        Dict mapping estimator config to debiased calibration score
+    """
+    from scipy import stats as scipy_stats
+
+    calib_by_config: Dict[str, List[float]] = {}
+
+    for result in results:
+        config_key = create_config_key(result)
+
+        # Get robust CIs (which include OUA)
+        robust_cis = result.get("robust_confidence_intervals") or result.get(
+            "confidence_intervals", {}
+        )
+        oracle_truths = result.get("oracle_truths", {})
+
+        if not robust_cis or not oracle_truths:
+            continue
+
+        coverage_probs = []
+        for policy in ["clone", "parallel_universe_prompt", "premium"]:
+            if policy in robust_cis and policy in oracle_truths:
+                ci_lower, ci_upper = robust_cis[policy]
+                oracle_mean = oracle_truths[policy]
+
+                # Compute oracle SE
+                oracle_var = compute_oracle_variance(oracle_mean, n_oracle)
+                oracle_se = np.sqrt(oracle_var)
+
+                if oracle_se > 1e-10:  # Oracle has uncertainty
+                    # Probability that true value is in CI given oracle uncertainty
+                    # True value ~ N(oracle_mean, oracle_se^2)
+                    z_lower = (ci_lower - oracle_mean) / oracle_se
+                    z_upper = (ci_upper - oracle_mean) / oracle_se
+
+                    # P(true value in CI) = P(z_lower < Z < z_upper)
+                    coverage_prob = scipy_stats.norm.cdf(
+                        z_upper
+                    ) - scipy_stats.norm.cdf(z_lower)
+                else:
+                    # No oracle uncertainty, use binary coverage
+                    coverage_prob = 1.0 if ci_lower <= oracle_mean <= ci_upper else 0.0
+
+                coverage_probs.append(coverage_prob)
+
+        if coverage_probs:
+            mean_coverage = np.mean(coverage_probs)
+            calib_score = abs(mean_coverage - target)
+
+            if config_key not in calib_by_config:
+                calib_by_config[config_key] = []
+            calib_by_config[config_key].append(calib_score)
+
+    return {k: np.mean(v) for k, v in calib_by_config.items()}
 
 
 def compute_calibration_score(
@@ -258,7 +467,9 @@ def create_config_key(result: Dict[str, Any]) -> str:
 
 
 def compute_aggregate_score(
-    row: pd.Series, normalize_bounds: Dict[str, Tuple[float, float]]
+    row: pd.Series,
+    normalize_bounds: Dict[str, Tuple[float, float]],
+    weights: Optional[Dict[str, float]] = None,
 ) -> float:
     """
     Compute aggregate ranking score for an estimator.
@@ -277,7 +488,26 @@ def compute_aggregate_score(
         Aggregate score in [0, 100] where higher is better
     """
     score_components = []
-    weights = []
+    weight_list = []
+
+    # Top-level weights across components (must sum to 1)
+    # Defaults: 25% accuracy, 25% efficiency, 30% ranking, 20% calibration
+    w = {
+        "accuracy": 0.25,
+        "efficiency": 0.25,
+        "ranking": 0.30,
+        "calibration": 0.20,
+    }
+    if isinstance(weights, dict):
+        # Merge without trusting malformed input
+        for k in list(w.keys()):
+            if k in weights and isinstance(weights[k], (int, float)):
+                w[k] = float(weights[k])
+        # Renormalize to sum to 1
+        total = sum(max(0.0, v) for v in w.values())
+        if total > 0:
+            for k in w:
+                w[k] = max(0.0, w[k]) / total
 
     # Accuracy component (25%) - RMSE^d
     if not pd.isna(row.get("RMSE_d")):
@@ -288,7 +518,7 @@ def compute_aggregate_score(
         else:
             normalized = 0.5
         score_components.append(normalized)
-        weights.append(0.25)
+        weight_list.append(w["accuracy"])
 
     # Ranking component (25%) - Split between Kendall τ and Top-1
     ranking_scores = []
@@ -313,7 +543,7 @@ def compute_aggregate_score(
     if ranking_scores:
         ranking_score = np.average(ranking_scores, weights=ranking_weights)
         score_components.append(ranking_score)
-        weights.append(sum(ranking_weights))
+        weight_list.append(w["ranking"])
 
     # Calibration component (25%) - Split between CalibScore and IntervalScore
     calib_scores = []
@@ -343,7 +573,7 @@ def compute_aggregate_score(
         # Weighted average of calibration components
         calib_score = np.average(calib_scores, weights=calib_weights)
         score_components.append(calib_score)
-        weights.append(sum(calib_weights))
+        weight_list.append(w["calibration"])
 
     # Efficiency component (25%) - SE GeoMean
     if not pd.isna(row.get("SE_GeoMean")):
@@ -354,12 +584,12 @@ def compute_aggregate_score(
         else:
             normalized = 0.5
         score_components.append(normalized)
-        weights.append(0.25)
+        weight_list.append(w["efficiency"])
 
     # Compute weighted average, handling missing components
     if score_components:
         # Renormalize weights to sum to 1
-        weights_array = np.array(weights)
+        weights_array = np.array(weight_list)
         weights_normalized = weights_array / weights_array.sum()
         aggregate = np.average(score_components, weights=weights_normalized)
         return float(aggregate * 100)  # Scale to 0-100
@@ -367,10 +597,45 @@ def compute_aggregate_score(
         return 0  # No valid metrics
 
 
+def compute_mae(
+    results: List[Dict[str, Any]], policies: Optional[List[str]] = None
+) -> Dict[str, float]:
+    """Compute Mean Absolute Error (MAE) per estimator configuration.
+
+    Args:
+        results: List of experiment results
+        policies: Policies to include (default well-behaved)
+
+    Returns:
+        Dict mapping estimator config to MAE
+    """
+    if policies is None:
+        policies = ["clone", "parallel_universe_prompt", "premium"]
+
+    mae_by_config: Dict[str, List[float]] = {}
+
+    for result in results:
+        config_key = create_config_key(result)
+        estimates = result.get("estimates", {}) or {}
+        truths = result.get("oracle_truths", {}) or {}
+        if not estimates or not truths:
+            continue
+        abs_errors = []
+        for pol in policies:
+            if pol in estimates and pol in truths:
+                abs_errors.append(abs(float(estimates[pol]) - float(truths[pol])))
+        if abs_errors:
+            mae = float(np.mean(abs_errors))
+            mae_by_config.setdefault(config_key, []).append(mae)
+
+    return {k: float(np.mean(v)) for k, v in mae_by_config.items()}
+
+
 def generate_leaderboard(
     results: List[Dict[str, Any]],
     output_format: str = "dataframe",
     include_aggregate: bool = True,
+    include_debiased: bool = True,
 ) -> Any:
     """Generate Table 1: Estimator Leaderboard with optional aggregate ranking.
 
@@ -378,6 +643,7 @@ def generate_leaderboard(
         results: List of experiment results
         output_format: "dataframe", "latex", or "markdown"
         include_aggregate: Whether to compute and include aggregate score
+        include_debiased: Whether to include debiased metrics
 
     Returns:
         Formatted table
@@ -388,6 +654,11 @@ def generate_leaderboard(
     calib_scores = compute_calibration_score(results)
     se_geomeans = compute_se_geomean(results)
     ranking_metrics = compute_ranking_metrics(results)
+
+    # Compute debiased metrics if requested
+    if include_debiased:
+        interval_scores_d = compute_debiased_interval_score(results)
+        calib_scores_d = compute_debiased_calibration_score(results)
 
     # Build rows
     rows = []
@@ -404,6 +675,14 @@ def generate_leaderboard(
             "Kendall_tau": ranking_metrics.get(config, {}).get("kendall_tau", np.nan),
             "Top1_Acc": ranking_metrics.get(config, {}).get("top1_acc", np.nan),
         }
+
+        # Add debiased metrics if computed
+        if include_debiased:
+            row["IntervalScore_d"] = interval_scores_d.get(config, np.nan)
+            row["CalibScore_d"] = (
+                calib_scores_d.get(config, np.nan) * 100
+            )  # Convert to percentage
+
         rows.append(row)
 
     df = pd.DataFrame(rows)

@@ -7,13 +7,16 @@ import numpy as np
 from collections import defaultdict
 import sys
 from pathlib import Path
+from typing import Dict, List
 
-# Add reporting to path
-sys.path.append("reporting")
+# Add reporting to path (robust to CWD)
+sys.path.append(str((Path(__file__).parent / "reporting").resolve()))
 from paper_tables import (
     compute_debiased_rmse,
     compute_interval_score_oa,
+    compute_debiased_interval_score,
     compute_calibration_score,
+    compute_debiased_calibration_score,
     compute_se_geomean,
     compute_ranking_metrics,
     create_config_key,
@@ -21,17 +24,29 @@ from paper_tables import (
 )
 
 
-def generate_quadrant_leaderboards(results_file: str = "results/all_experiments.jsonl"):
+def generate_quadrant_leaderboards(
+    results_file: str = "results/all_experiments.jsonl",
+    agg_w_accuracy: float = 0.25,
+    agg_w_efficiency: float = 0.25,
+    agg_w_ranking: float = 0.30,
+    agg_w_calibration: float = 0.20,
+) -> None:
     """Generate leaderboard for each quadrant."""
 
     # Load results
     results = []
     with open(results_file, "r") as f:
         for line in f:
-            results.append(json.loads(line))
+            try:
+                results.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+
+    # Filter to successful runs only
+    results = [r for r in results if r.get("success")]
 
     # Define quadrants based on actual data
-    quadrants = {
+    quadrants: Dict[str, Dict[str, List[float]]] = {
         "Small-Low": {"size": [500, 1000], "coverage": [0.05, 0.10]},
         "Small-High": {"size": [500, 1000], "coverage": [0.25, 0.50, 1.00]},
         "Large-Low": {"size": [2500, 5000], "coverage": [0.05, 0.10]},
@@ -56,7 +71,9 @@ def generate_quadrant_leaderboards(results_file: str = "results/all_experiments.
         # Compute metrics ONLY for this quadrant's results
         rmse_d = compute_debiased_rmse(quad_results)
         interval_scores = compute_interval_score_oa(quad_results)
+        interval_scores_d = compute_debiased_interval_score(quad_results)
         calib_scores = compute_calibration_score(quad_results)
+        calib_scores_d = compute_debiased_calibration_score(quad_results)
         se_geomeans = compute_se_geomean(quad_results)
         ranking_metrics = compute_ranking_metrics(quad_results)
 
@@ -73,9 +90,15 @@ def generate_quadrant_leaderboards(results_file: str = "results/all_experiments.
                 "Estimator": config,
                 "RMSE_d": rmse_d.get(config, np.nan),
                 "IntervalScore_OA": interval_scores.get(config, np.nan),
+                "IntervalScore_d": interval_scores_d.get(config, np.nan),
                 "CalibScore": (
                     calib_scores.get(config, np.nan) * 100
                     if config in calib_scores
+                    else np.nan
+                ),
+                "CalibScore_d": (
+                    calib_scores_d.get(config, np.nan) * 100
+                    if config in calib_scores_d
                     else np.nan
                 ),
                 "SE_GeoMean": se_geomeans.get(config, np.nan),
@@ -104,8 +127,19 @@ def generate_quadrant_leaderboards(results_file: str = "results/all_experiments.
             "Top1_Acc": (df["Top1_Acc"].min(), df["Top1_Acc"].max()),
         }
 
+        # Aggregate weights
+        agg_weights = {
+            "accuracy": float(agg_w_accuracy),
+            "efficiency": float(agg_w_efficiency),
+            "ranking": float(agg_w_ranking),
+            "calibration": float(agg_w_calibration),
+        }
+
         df["AggScore"] = df.apply(
-            lambda row: compute_aggregate_score(row, normalize_bounds), axis=1
+            lambda row: compute_aggregate_score(
+                row, normalize_bounds, weights=agg_weights
+            ),
+            axis=1,
         )
         df = df.sort_values("AggScore", ascending=False)
         df["Rank"] = range(1, len(df) + 1)
@@ -128,32 +162,48 @@ def generate_quadrant_leaderboards(results_file: str = "results/all_experiments.
         print(f"Total experiments in quadrant: {len(quad_results)}")
         print()
         print(
-            "| Rank | Estimator | Score | RMSE^d | IS^OA | CalibScore | SE_GM | K-tau | Top-1 |"
+            "| Rank | Estimator | Score | RMSE^d | IS^OA | IS^d | CalibScore | CalibScore^d | SE_GM | K-tau | Top-1 |"
         )
-        print("|---:|:---|---:|---:|---:|---:|---:|---:|---:|")
+        print("|---:|:---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 
         for _, row in df.iterrows():
-            est_short = row["Estimator"][:35]
+            est_short = row["Estimator"][:30]  # Shorter to fit more columns
             # Handle NaN values for display
-            rmse = f"{row['RMSE_d']:.4f}" if not pd.isna(row["RMSE_d"]) else "—"
+            rmse = f"{row['RMSE_d']:.4f}" if not pd.isna(row.get("RMSE_d")) else "—"
             is_oa = (
                 f"{row['IntervalScore_OA']:.4f}"
-                if not pd.isna(row["IntervalScore_OA"])
+                if not pd.isna(row.get("IntervalScore_OA"))
+                else "—"
+            )
+            is_d = (
+                f"{row['IntervalScore_d']:.4f}"
+                if not pd.isna(row.get("IntervalScore_d"))
                 else "—"
             )
             calib = (
-                f"{row['CalibScore']:.1f}" if not pd.isna(row["CalibScore"]) else "—"
+                f"{row['CalibScore']:.1f}"
+                if not pd.isna(row.get("CalibScore"))
+                else "—"
+            )
+            calib_d = (
+                f"{row['CalibScore_d']:.1f}"
+                if not pd.isna(row.get("CalibScore_d"))
+                else "—"
             )
             se_gm = (
-                f"{row['SE_GeoMean']:.4f}" if not pd.isna(row["SE_GeoMean"]) else "—"
+                f"{row['SE_GeoMean']:.4f}"
+                if not pd.isna(row.get("SE_GeoMean"))
+                else "—"
             )
             ktau = (
-                f"{row['Kendall_tau']:.3f}" if not pd.isna(row["Kendall_tau"]) else "—"
+                f"{row['Kendall_tau']:.3f}"
+                if not pd.isna(row.get("Kendall_tau"))
+                else "—"
             )
-            top1 = f"{row['Top1_Acc']:.0f}" if not pd.isna(row["Top1_Acc"]) else "—"
+            top1 = f"{row['Top1_Acc']:.0f}" if not pd.isna(row.get("Top1_Acc")) else "—"
 
             print(
-                f"| {row['Rank']} | {est_short} | {row['AggScore']:.1f} | {rmse} | {is_oa} | {calib} | {se_gm} | {ktau} | {top1} |"
+                f"| {row['Rank']} | {est_short} | {row['AggScore']:.1f} | {rmse} | {is_oa} | {is_d} | {calib} | {calib_d} | {se_gm} | {ktau} | {top1} |"
             )
 
         # Save to file
@@ -180,7 +230,9 @@ def generate_quadrant_leaderboards(results_file: str = "results/all_experiments.
                     "AggScore",
                     "RMSE_d",
                     "IntervalScore_OA",
+                    "IntervalScore_d",
                     "CalibScore",
+                    "CalibScore_d",
                     "SE_GeoMean",
                     "Kendall_tau",
                     "Top1_Acc",
@@ -191,7 +243,9 @@ def generate_quadrant_leaderboards(results_file: str = "results/all_experiments.
             df_display["AggScore"] = df_display["AggScore"].round(1)
             df_display["RMSE_d"] = df_display["RMSE_d"].round(4)
             df_display["IntervalScore_OA"] = df_display["IntervalScore_OA"].round(4)
+            df_display["IntervalScore_d"] = df_display["IntervalScore_d"].round(4)
             df_display["CalibScore"] = df_display["CalibScore"].round(1)
+            df_display["CalibScore_d"] = df_display["CalibScore_d"].round(1)
             df_display["SE_GeoMean"] = df_display["SE_GeoMean"].round(4)
             df_display["Kendall_tau"] = df_display["Kendall_tau"].round(3)
             df_display["Top1_Acc"] = df_display["Top1_Acc"].round(0)
@@ -203,4 +257,44 @@ def generate_quadrant_leaderboards(results_file: str = "results/all_experiments.
 
 
 if __name__ == "__main__":
-    generate_quadrant_leaderboards()
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Generate quadrant-specific leaderboards")
+    ap.add_argument(
+        "--results",
+        type=str,
+        default="results/all_experiments.jsonl",
+        help="Path to results JSONL",
+    )
+    ap.add_argument(
+        "--w-accuracy",
+        type=float,
+        default=0.25,
+        help="Aggregate weight: accuracy (RMSE^d)",
+    )
+    ap.add_argument(
+        "--w-efficiency",
+        type=float,
+        default=0.25,
+        help="Aggregate weight: efficiency (SE GM)",
+    )
+    ap.add_argument(
+        "--w-ranking",
+        type=float,
+        default=0.30,
+        help="Aggregate weight: ranking (K-tau + Top-1)",
+    )
+    ap.add_argument(
+        "--w-calibration",
+        type=float,
+        default=0.20,
+        help="Aggregate weight: calibration (CalibScore + IS^OA)",
+    )
+    args = ap.parse_args()
+    generate_quadrant_leaderboards(
+        args.results,
+        agg_w_accuracy=args.w_accuracy,
+        agg_w_efficiency=args.w_efficiency,
+        agg_w_ranking=args.w_ranking,
+        agg_w_calibration=args.w_calibration,
+    )

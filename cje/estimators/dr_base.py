@@ -163,6 +163,8 @@ class DREstimator(BaseCJEEstimator):
         self._outcome_predictions: Dict[str, np.ndarray] = {}
         self._orthogonality_scores: Dict[str, Dict[str, Any]] = {}
         self._dm_ips_decompositions: Dict[str, Dict[str, Any]] = {}
+        # Per-policy SE diagnostics for downstream CI construction
+        self._se_diagnostics: Dict[str, Dict[str, Any]] = {}
 
         # Note: Fold assignments are now computed on-demand from prompt_ids
         # This ensures correct folds even for filtered data
@@ -650,6 +652,17 @@ class DREstimator(BaseCJEEstimator):
                     f"naive={np.std(if_contributions, ddof=1) / np.sqrt(len(if_contributions)):.6f}, "
                     f"robust={se_if:.6f}, n_clusters={res_if['n_clusters']}, df={res_if['df']}"
                 )
+                # Record SE diagnostics for downstream CI construction (t-critical)
+                try:
+                    det = {
+                        "G_outer": int(res_if.get("n_clusters", 0)),
+                        "G_inner": None,
+                        "df": int(res_if.get("df", 0)),
+                    }
+                    self._se_diagnostics.setdefault(policy, {})
+                    self._se_diagnostics[policy]["cluster_robust_detail"] = det
+                except Exception:
+                    pass
             except Exception as e:
                 logger.debug(f"cluster_robust_se failed for {policy}: {e}")
 
@@ -842,6 +855,9 @@ class DREstimator(BaseCJEEstimator):
             ),  # IIC applied to influence functions
             "iic_estimate_adjusted": False,  # Point estimates unchanged by IIC
         }
+        # Attach SE diagnostics for ablation runner to use t-critical
+        if self._se_diagnostics:
+            metadata["_se_diagnostics"] = self._se_diagnostics
 
         # Get IPS diagnostics if available
         ips_diag = None

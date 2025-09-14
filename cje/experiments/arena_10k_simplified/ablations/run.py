@@ -186,6 +186,34 @@ class UnifiedAblation(BaseAblation):
 
             return StackedDREstimator(**kwargs)
 
+        elif estimator_name == "stacked-dr-core":
+            from cje.estimators.stacking import StackedDREstimator
+
+            kwargs = {
+                "sampler": sampler,
+                "estimators": [
+                    "dr-cpo",
+                    "tmle",
+                    "mrdr",
+                ],  # Only 3 core DR estimators
+                "n_folds": DR_CONFIG["n_folds"],  # Inner folds for component estimators
+                "V_folds": DR_CONFIG.get(
+                    "v_folds_stacking", 20
+                ),  # Use config value, default 20
+                "parallel": False,
+                "use_iic": use_iic,
+                "covariance_regularization": 1e-4,  # Add regularization for numerical stability
+                "use_calibrated_weights": use_weight_calibration,  # Controls SIMCal for weights
+                "weight_shrinkage": 0.0,  # No shrinkage - let optimizer find optimal weights
+            }
+
+            # Always pass reward calibrator for outcome model (if available)
+            # This is independent of weight calibration
+            if cal_result and cal_result.calibrator:
+                kwargs["reward_calibrator"] = cal_result.calibrator
+
+            return StackedDREstimator(**kwargs)
+
         else:
             # Fall back to base implementation
             return super().create_estimator(spec, sampler, cal_result)
