@@ -299,7 +299,9 @@ class StackedDREstimator(BaseCJEEstimator):
             Tuple of (estimate, se, stacked_if) or None if failed
         """
         # Collect and align influence functions
-        IF_matrix, used_names, common_indices = self._collect_aligned_ifs(policy, valid_estimators)
+        IF_matrix, used_names, common_indices = self._collect_aligned_ifs(
+            policy, valid_estimators
+        )
 
         if IF_matrix is None:
             logger.warning(f"No valid influence functions for policy {policy}")
@@ -365,11 +367,13 @@ class StackedDREstimator(BaseCJEEstimator):
         prompt_ids = common_indices_clean.astype(object)
 
         # Get fold configuration from dataset metadata or use defaults
-        n_folds = self.n_folds if hasattr(self, 'n_folds') else 5
+        n_folds = self.n_folds if hasattr(self, "n_folds") else 5
         fold_seed = 42  # Use consistent seed for fold assignment
 
         # Reproduce the fold hashing used everywhere else
-        fold_ids = np.array([get_fold(str(pid), n_folds, fold_seed) for pid in prompt_ids], dtype=int)
+        fold_ids = np.array(
+            [get_fold(str(pid), n_folds, fold_seed) for pid in prompt_ids], dtype=int
+        )
 
         # Compute cluster-robust SE
         res_if = cluster_robust_se(
@@ -406,11 +410,14 @@ class StackedDREstimator(BaseCJEEstimator):
         # Report overlap fraction
         max_component_length = 0
         for name in valid_estimators:
-            if self.component_results[name] and self.component_results[name].influence_functions:
-                ifs = self.component_results[name].influence_functions.get(policy, [])
+            result = self.component_results[name]
+            if result and result.influence_functions:
+                ifs: Any = result.influence_functions.get(policy, [])
                 if len(ifs) > max_component_length:
                     max_component_length = len(ifs)
-        weight_diagnostics["overlap_fraction"] = len(stacked_if) / max(max_component_length, 1)
+        weight_diagnostics["overlap_fraction"] = len(stacked_if) / max(
+            max_component_length, 1
+        )
 
         return estimate, se, stacked_if
 
@@ -707,15 +714,22 @@ class StackedDREstimator(BaseCJEEstimator):
                 f"Falling back to position-based alignment (less reliable)."
             )
             # Find minimum length across all components with IFs
-            min_length = float('inf')
+            min_length: Optional[int] = None
             for est_name in valid_estimators:
                 result = self.component_results[est_name]
-                if result and result.influence_functions and policy in result.influence_functions:
+                if (
+                    result
+                    and result.influence_functions
+                    and policy in result.influence_functions
+                ):
                     if_data = result.influence_functions[policy]
                     if if_data is not None and len(if_data) > 0:
-                        min_length = min(min_length, len(if_data))
+                        if min_length is None:
+                            min_length = len(if_data)
+                        else:
+                            min_length = min(min_length, len(if_data))
 
-            if min_length == float('inf'):
+            if min_length is None:
                 logger.warning(f"No valid influence functions found for {policy}")
                 return None, [], set()
 
@@ -724,7 +738,11 @@ class StackedDREstimator(BaseCJEEstimator):
             used_names = []
             for est_name in valid_estimators:
                 result = self.component_results[est_name]
-                if result and result.influence_functions and policy in result.influence_functions:
+                if (
+                    result
+                    and result.influence_functions
+                    and policy in result.influence_functions
+                ):
                     if_data = result.influence_functions[policy]
                     if if_data is not None and len(if_data) >= min_length:
                         IF_columns.append(if_data[:min_length])
@@ -806,7 +824,11 @@ class StackedDREstimator(BaseCJEEstimator):
         for est_name in used_names:
             result = self.component_results[est_name]
             v = 0.0
-            if result and hasattr(result, "metadata") and isinstance(result.metadata, dict):
+            if (
+                result
+                and hasattr(result, "metadata")
+                and isinstance(result.metadata, dict)
+            ):
                 # Prefer detailed diagnostics if present
                 mcd = result.metadata.get("mc_variance_diagnostics", {})
                 if policy in mcd and "mc_var" in mcd[policy]:
@@ -821,7 +843,7 @@ class StackedDREstimator(BaseCJEEstimator):
 
         # Conservative assumption: perfect correlation across components
         # (they share the same fresh draws)
-        return float((np.sum(weights * np.sqrt(mc_vars)))**2)
+        return float((np.sum(weights * np.sqrt(mc_vars))) ** 2)
 
     def _build_metadata(self, valid_estimators: List[str]) -> Dict[str, Any]:
         """Build metadata for the result."""

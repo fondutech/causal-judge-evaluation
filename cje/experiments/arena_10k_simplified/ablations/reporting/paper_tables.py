@@ -14,7 +14,7 @@ import json
 
 
 def compute_debiased_rmse(
-    results: List[Dict[str, Any]], policies: List[str] = None
+    results: List[Dict[str, Any]], policies: Optional[List[str]] = None
 ) -> Dict[str, float]:
     """Compute oracle-noise-debiased RMSE for each estimator configuration.
 
@@ -28,7 +28,7 @@ def compute_debiased_rmse(
     if policies is None:
         policies = ["clone", "parallel_universe_prompt", "premium"]
 
-    rmse_by_config = {}
+    rmse_by_config: Dict[str, List[float]] = {}
 
     for result in results:
         config_key = create_config_key(result)
@@ -59,7 +59,7 @@ def compute_interval_score_oa(
     Returns:
         Dict mapping estimator config to geometric mean interval score
     """
-    scores_by_config = {}
+    scores_by_config: Dict[str, List[float]] = {}
 
     for result in results:
         config_key = create_config_key(result)
@@ -113,7 +113,7 @@ def compute_calibration_score(
     Returns:
         Dict mapping estimator config to calibration score (lower is better)
     """
-    calib_by_config = {}
+    calib_by_config: Dict[str, List[float]] = {}
 
     for result in results:
         config_key = create_config_key(result)
@@ -154,7 +154,7 @@ def compute_se_geomean(results: List[Dict[str, Any]]) -> Dict[str, float]:
     Returns:
         Dict mapping estimator config to geometric mean SE
     """
-    se_by_config = {}
+    se_by_config: Dict[str, List[float]] = {}
 
     for result in results:
         config_key = create_config_key(result)
@@ -189,7 +189,7 @@ def compute_ranking_metrics(
     """
     from scipy.stats import kendalltau
 
-    ranking_by_config = {}
+    ranking_by_config: Dict[str, Dict[str, List[float]]] = {}
 
     for result in results:
         config_key = create_config_key(result)
@@ -258,7 +258,7 @@ def create_config_key(result: Dict[str, Any]) -> str:
 
 
 def compute_aggregate_score(
-    row: pd.Series, normalize_bounds: Dict[str, tuple]
+    row: pd.Series, normalize_bounds: Dict[str, Tuple[float, float]]
 ) -> float:
     """
     Compute aggregate ranking score for an estimator.
@@ -359,10 +359,10 @@ def compute_aggregate_score(
     # Compute weighted average, handling missing components
     if score_components:
         # Renormalize weights to sum to 1
-        weights = np.array(weights)
-        weights = weights / weights.sum()
-        aggregate = np.average(score_components, weights=weights)
-        return aggregate * 100  # Scale to 0-100
+        weights_array = np.array(weights)
+        weights_normalized = weights_array / weights_array.sum()
+        aggregate = np.average(score_components, weights=weights_normalized)
+        return float(aggregate * 100)  # Scale to 0-100
     else:
         return 0  # No valid metrics
 
@@ -571,7 +571,7 @@ def format_leaderboard_markdown(
         ]
         df_display = df_display[[c for c in cols if c in df_display.columns]]
 
-    return df_display.to_markdown(index=False)
+    return str(df_display.to_markdown(index=False))
 
 
 def compute_paired_deltas(
@@ -594,7 +594,7 @@ def compute_paired_deltas(
         DataFrame with delta statistics and significance tests
     """
     # Build pairing index
-    paired_data = {}
+    paired_data: Dict[Tuple[str, Tuple[Any, ...], bool], List[Dict[str, Any]]] = {}
 
     for result in results:
         spec = result.get("spec", {})
@@ -625,10 +625,10 @@ def compute_paired_deltas(
     # Group by (within_val, match_key) and find on/off pairs
     for within_val in set(k[0] for k in paired_data.keys()):
         deltas_rmse = []
-        deltas_interval = []
-        deltas_calib = []
-        deltas_se = []
-        deltas_tau = []
+        deltas_interval: List[float] = []
+        deltas_calib: List[float] = []
+        deltas_se: List[float] = []
+        deltas_tau: List[float] = []
         deltas_se_geomean = []
 
         for match_key in set(k[1] for k in paired_data.keys() if k[0] == within_val):
@@ -895,7 +895,7 @@ def compute_stacking_diagnostics(results: List[Dict[str, Any]]) -> pd.DataFrame:
     rows = []
 
     # Group by estimator and configuration
-    estimator_data = {}
+    estimator_data: Dict[str, Dict[str, List[float]]] = {}
 
     for result in results:
         spec = result.get("spec", {})
@@ -1032,7 +1032,7 @@ def format_stacking_latex(df: pd.DataFrame) -> str:
     return "\n".join(latex)
 
 
-def main():
+def main() -> None:
     """Generate all paper tables."""
     import argparse
 

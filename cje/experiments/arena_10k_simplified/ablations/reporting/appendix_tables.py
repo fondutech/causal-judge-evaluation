@@ -24,7 +24,7 @@ def generate_quadrant_leaderboard(results: List[Dict[str, Any]]) -> pd.DataFrame
     """
     from .paper_tables import create_config_key
 
-    metrics_by_quadrant = {}
+    metrics_by_quadrant: Dict[str, Dict[str, Dict[str, List[float]]]] = {}
 
     for result in results:
         config_key = create_config_key(result)
@@ -75,7 +75,7 @@ def generate_quadrant_leaderboard(results: List[Dict[str, Any]]) -> pd.DataFrame
 
     # Build table with quadrants as columns
     rows = []
-    all_configs = set()
+    all_configs: set[str] = set()
     for q_metrics in metrics_by_quadrant.values():
         all_configs.update(q_metrics.keys())
 
@@ -133,7 +133,7 @@ def generate_bias_patterns_table(results: List[Dict[str, Any]]) -> pd.DataFrame:
     """
     from .paper_tables import create_config_key
 
-    bias_by_config = {}
+    bias_by_config: Dict[str, Dict[str, List[float]]] = {}
 
     for result in results:
         config_key = create_config_key(result)
@@ -167,7 +167,7 @@ def generate_bias_patterns_table(results: List[Dict[str, Any]]) -> pd.DataFrame:
     # Compute statistics
     rows = []
     for config, errors_dict in bias_by_config.items():
-        row = {"Estimator": config}
+        row: Dict[str, Any] = {"Estimator": config}
 
         # Overall bias (well-behaved only)
         if errors_dict["all_errors"]:
@@ -177,11 +177,13 @@ def generate_bias_patterns_table(results: List[Dict[str, Any]]) -> pd.DataFrame:
             row["Bias_SE"] = np.std(all_errors) / np.sqrt(len(all_errors))
 
             # Classify pattern
-            if row["Mean_Bias"] < -0.005:
+            mean_bias = float(row["Mean_Bias"])
+            mean_abs_bias = float(row["Mean_Abs_Bias"])
+            if mean_bias < -0.005:
                 row["Pattern"] = "Negative"
-            elif row["Mean_Bias"] > 0.005:
+            elif mean_bias > 0.005:
                 row["Pattern"] = "Positive"
-            elif row["Mean_Abs_Bias"] < 0.01:
+            elif mean_abs_bias < 0.01:
                 row["Pattern"] = "Unbiased"
             else:
                 row["Pattern"] = "Mixed"
@@ -220,7 +222,7 @@ def generate_overlap_diagnostics_table(results: List[Dict[str, Any]]) -> pd.Data
     """
     from .paper_tables import create_config_key
 
-    diagnostics_by_config = {}
+    diagnostics_by_config: Dict[str, Dict[str, List[float]]] = {}
 
     for result in results:
         config_key = create_config_key(result)
@@ -302,7 +304,7 @@ def generate_oracle_adjustment_table(results: List[Dict[str, Any]]) -> pd.DataFr
     """
     from .paper_tables import create_config_key
 
-    oa_by_config = {}
+    oa_by_config: Dict[str, Dict[str, List[float]]] = {}
 
     for result in results:
         config_key = create_config_key(result)
@@ -355,7 +357,7 @@ def generate_oracle_adjustment_table(results: List[Dict[str, Any]]) -> pd.DataFr
     # Aggregate
     rows = []
     for config, oa_dict in oa_by_config.items():
-        row = {"Estimator": config}
+        row: Dict[str, Any] = {"Estimator": config}
 
         if oa_dict["oa_shares"]:
             row["OA_Share_Mean"] = np.mean(oa_dict["oa_shares"]) * 100
@@ -389,7 +391,7 @@ def generate_boundary_outlier_table(results: List[Dict[str, Any]]) -> pd.DataFra
     """
     from .paper_tables import create_config_key
 
-    boundary_by_config = {}
+    boundary_by_config: Dict[str, Dict[str, List[float]]] = {}
 
     for result in results:
         config_key = create_config_key(result)
@@ -522,14 +524,14 @@ def generate_runtime_complexity_table(results: List[Dict[str, Any]]) -> pd.DataF
             estimator = runtime_dict["estimator"]
             if estimator in ["raw-ips", "calibrated-ips", "orthogonalized-ips"]:
                 row["Complexity"] = "O(n)"
-                row["N_Folds"] = 0
+                row["N_Folds"] = "0"
             elif estimator.startswith("stacked"):
                 row["Complexity"] = "O(M*K*n)"
-                row["N_Folds"] = 20
-                row["M_Components"] = 5 if estimator == "stacked-dr" else 4
+                row["N_Folds"] = "20"
+                row["M_Components"] = "5" if estimator == "stacked-dr" else "4"
             else:
                 row["Complexity"] = "O(K*n)"
-                row["N_Folds"] = 20
+                row["N_Folds"] = "20"
 
             # Runtime per sample (normalized)
             if runtime_dict["sample_sizes"]:
@@ -589,7 +591,7 @@ def format_appendix_latex(df: pd.DataFrame, table_num: str, caption: str) -> str
     return "\n".join(latex)
 
 
-def main():
+def main() -> None:
     """Generate all appendix tables."""
     import argparse
 
