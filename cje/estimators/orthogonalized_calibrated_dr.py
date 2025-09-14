@@ -104,6 +104,7 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
             reward_calibrator=reward_calibrator,
             random_seed=random_seed,
             run_diagnostics=run_diagnostics,
+            use_iic=use_iic,  # Pass use_iic explicitly
             **kwargs,
         )
         self.use_iic = use_iic

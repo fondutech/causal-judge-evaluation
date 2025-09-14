@@ -515,7 +515,9 @@ class StackedDREstimator(BaseCJEEstimator):
                     # Add more detailed error info to help debugging
                     import traceback
 
-                    logger.debug(f"Traceback for {est_name}:\n{traceback.format_exc()}")
+                    # Always log the full traceback for debugging oc-dr-cpo and tr-cpo-e issues
+                    full_traceback = traceback.format_exc()
+                    logger.error(f"Full traceback for {est_name}:\n{full_traceback}")
                     self.component_results[est_name] = None
 
     def _run_sequential(self) -> None:
@@ -532,7 +534,9 @@ class StackedDREstimator(BaseCJEEstimator):
                 # Add more detailed error info to help debugging
                 import traceback
 
-                logger.debug(f"Traceback for {est_name}:\n{traceback.format_exc()}")
+                # Always log the full traceback for debugging oc-dr-cpo and tr-cpo-e issues
+                full_traceback = traceback.format_exc()
+                logger.error(f"Full traceback for {est_name}:\n{full_traceback}")
                 self.component_results[est_name] = None
 
     def _run_single_estimator(self, est_name: str) -> Tuple[EstimationResult, Any]:
