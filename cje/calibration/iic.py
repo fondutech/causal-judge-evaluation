@@ -22,6 +22,9 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Any, Tuple
 import numpy as np
 from sklearn.isotonic import IsotonicRegression
+from sklearn.preprocessing import SplineTransformer
+from sklearn.linear_model import RidgeCV
+from sklearn.pipeline import make_pipeline
 import logging
 
 logger = logging.getLogger(__name__)
@@ -37,13 +40,19 @@ class IICConfig:
         min_samples_for_iic: Minimum samples to attempt IIC
         compute_diagnostics: Whether to compute R² and other diagnostics
         store_components: Whether to store E[φ|S] for visualization
+        use_splines: Whether to use spline regression instead of isotonic (default True)
+        n_knots: Number of knots for spline regression
+        spline_degree: Degree of spline polynomials
     """
 
     enable: bool = True  # On by default - no reason not to use it
     use_cross_fit: bool = True
-    min_samples_for_iic: int = 50  # Need enough data for isotonic regression
+    min_samples_for_iic: int = 50  # Need enough data for regression
     compute_diagnostics: bool = True
     store_components: bool = False  # For debugging/visualization
+    use_splines: bool = True  # Use flexible splines by default
+    n_knots: int = 8  # Number of spline knots
+    spline_degree: int = 3  # Cubic splines
 
 
 class IsotonicInfluenceControl:
@@ -125,7 +134,7 @@ class IsotonicInfluenceControl:
                 }
             # We'll only fit on valid scores
 
-        # Fit E[φ|S] using isotonic regression
+        # Fit E[φ|S] using regression
         if self.config.use_cross_fit and fold_ids is not None:
             fitted_values = self._fit_cross_fitted(
                 influence, judge_scores, fold_ids, valid_scores
@@ -133,18 +142,22 @@ class IsotonicInfluenceControl:
         else:
             fitted_values = self._fit_global(influence, judge_scores, valid_scores)
 
-        # Compute residuals: φ̃ = φ - Ê[φ|S]
-        residuals = influence - fitted_values
+        # CRITICAL: Center the fitted values to preserve the mean
+        # E[φ̃] = E[φ - (Ê[φ|S] - E[Ê[φ|S]])] = E[φ] - E[Ê[φ|S]] + E[Ê[φ|S]] = E[φ]
+        fitted_mean = np.mean(fitted_values)
+        fitted_values_centered = fitted_values - fitted_mean
+
+        # Compute residuals: φ̃ = φ - centered(Ê[φ|S])
+        residuals = influence - fitted_values_centered
 
         # CRITICAL: IIC must be variance-only
-        # We residualize the influence functions: φ̃ = φ - Ê[φ|S]
-        # But the point estimate should NOT change (variance reduction only)
+        # We residualize the influence functions but preserve the mean
         # Therefore, point_estimate_adjustment must always be 0
         point_estimate_adjustment = 0.0
 
         # Store fitted component if requested (for visualization)
         if self.config.store_components:
-            self._fitted_components[policy] = fitted_values
+            self._fitted_components[policy] = fitted_values_centered
 
         # Compute diagnostics
         diagnostics = {
@@ -153,7 +166,9 @@ class IsotonicInfluenceControl:
         }
         if self.config.compute_diagnostics:
             diagnostics.update(
-                self._compute_diagnostics(influence, fitted_values, residuals, policy)
+                self._compute_diagnostics(
+                    influence, fitted_values_centered, residuals, policy
+                )
             )
 
         self._diagnostics[policy] = diagnostics
@@ -168,16 +183,64 @@ class IsotonicInfluenceControl:
     def _fit_global(
         self, influence: np.ndarray, judge_scores: np.ndarray, valid_mask: np.ndarray
     ) -> np.ndarray:
-        """Global isotonic fit (simpler but may overfit).
+        """Global fit (simpler but may overfit).
 
-        This fits a single isotonic regression on all data.
-        Direction (increasing/decreasing) is chosen based on Spearman correlation.
+        This fits a single regression model on all data.
+        Uses splines by default for flexibility, or isotonic as fallback.
         """
         fitted = np.zeros_like(influence)
 
         if valid_mask.sum() < 2:
             # Not enough valid data
             return fitted
+
+        if self.config.use_splines:
+            # Use spline regression for flexible fit
+            n_samples = valid_mask.sum()
+            # Adaptive number of knots based on sample size
+            n_knots = min(
+                self.config.n_knots,
+                max(4, n_samples // 20),  # At least 4 knots, at most n_samples/20
+            )
+
+            try:
+                # Fit spline model
+                spline = SplineTransformer(
+                    n_knots=n_knots,
+                    degree=self.config.spline_degree,
+                    include_bias=False,
+                )
+                ridge = RidgeCV(alphas=np.logspace(-3, 3, 13), store_cv_results=False)
+                model = make_pipeline(spline, ridge)
+
+                # Reshape for sklearn
+                X = judge_scores[valid_mask].reshape(-1, 1)
+                y = influence[valid_mask]
+
+                model.fit(X, y)
+                fitted[valid_mask] = model.predict(X)
+
+                # For invalid scores, use mean of influence (no reduction)
+                fitted[~valid_mask] = influence[valid_mask].mean()
+
+                # Store model type in diagnostics
+                self._last_model_type = "spline"
+
+            except Exception as e:
+                logger.warning(f"Spline fitting failed: {e}. Falling back to isotonic.")
+                # Fall back to isotonic
+                return self._fit_isotonic_fallback(influence, judge_scores, valid_mask)
+        else:
+            # Use isotonic regression (original behavior)
+            return self._fit_isotonic_fallback(influence, judge_scores, valid_mask)
+
+        return fitted
+
+    def _fit_isotonic_fallback(
+        self, influence: np.ndarray, judge_scores: np.ndarray, valid_mask: np.ndarray
+    ) -> np.ndarray:
+        """Fallback to isotonic regression (original behavior)."""
+        fitted = np.zeros_like(influence)
 
         # Determine direction based on Spearman correlation
         from scipy.stats import spearmanr
@@ -200,6 +263,7 @@ class IsotonicInfluenceControl:
         # Store direction in diagnostics
         self._last_direction = "increasing" if increasing else "decreasing"
         self._last_correlation = float(corr)
+        self._last_model_type = "isotonic"
 
         return fitted
 
@@ -210,11 +274,10 @@ class IsotonicInfluenceControl:
         fold_ids: np.ndarray,
         valid_mask: np.ndarray,
     ) -> np.ndarray:
-        """Fold-honest isotonic fit (recommended).
+        """Fold-honest fit (recommended).
 
         This prevents overfitting by using out-of-fold predictions.
         Each sample's E[φ|S] is predicted using a model trained on other folds.
-        Direction is chosen per fold based on training data correlation.
         """
         fitted = np.zeros_like(influence)
         unique_folds = np.unique(fold_ids[fold_ids >= 0])
@@ -223,6 +286,110 @@ class IsotonicInfluenceControl:
             # Not enough folds for cross-fitting
             logger.debug("Insufficient folds for cross-fitting, using global fit")
             return self._fit_global(influence, judge_scores, valid_mask)
+
+        if self.config.use_splines:
+            # Spline-based cross-fitting
+            model_types = []
+
+            for fold in unique_folds:
+                # Define train and test sets
+                train_mask = (fold_ids >= 0) & (fold_ids != fold) & valid_mask
+                test_mask = (fold_ids == fold) & valid_mask
+
+                if train_mask.sum() < 10 or test_mask.sum() == 0:
+                    # Not enough data in this fold
+                    if test_mask.sum() > 0:
+                        fitted[test_mask] = (
+                            influence[train_mask].mean() if train_mask.sum() > 0 else 0
+                        )
+                    continue
+
+                n_train = train_mask.sum()
+                # Adaptive number of knots based on training size
+                n_knots = min(
+                    self.config.n_knots,
+                    max(4, n_train // 20),  # At least 4 knots, at most n_train/20
+                )
+
+                try:
+                    # Fit spline model on training folds
+                    spline = SplineTransformer(
+                        n_knots=n_knots,
+                        degree=self.config.spline_degree,
+                        include_bias=False,
+                    )
+                    ridge = RidgeCV(
+                        alphas=np.logspace(-3, 3, 13), store_cv_results=False
+                    )
+                    model = make_pipeline(spline, ridge)
+
+                    X_train = judge_scores[train_mask].reshape(-1, 1)
+                    y_train = influence[train_mask]
+                    X_test = judge_scores[test_mask].reshape(-1, 1)
+
+                    model.fit(X_train, y_train)
+                    fitted[test_mask] = model.predict(X_test)
+                    model_types.append("spline")
+
+                except Exception as e:
+                    logger.debug(f"Spline fitting failed for fold {fold}: {e}")
+                    # Fall back to isotonic for this fold
+                    fitted[test_mask] = self._fit_isotonic_single_fold(
+                        judge_scores[train_mask],
+                        influence[train_mask],
+                        judge_scores[test_mask],
+                    )
+                    model_types.append("isotonic")
+
+            # Store model info for diagnostics
+            if model_types:
+                from collections import Counter
+
+                model_counts = Counter(model_types)
+                self._last_model_type = model_counts.most_common(1)[0][0]
+                self._fold_model_types = model_types
+
+        else:
+            # Original isotonic cross-fitting
+            return self._fit_isotonic_cross_fitted(
+                influence, judge_scores, fold_ids, valid_mask
+            )
+
+        # Handle samples not in any fold
+        unfitted = (fold_ids < 0) | ~valid_mask
+        if unfitted.sum() > 0:
+            fitted[unfitted] = (
+                influence[valid_mask].mean() if valid_mask.sum() > 0 else 0
+            )
+
+        return fitted
+
+    def _fit_isotonic_single_fold(
+        self,
+        train_scores: np.ndarray,
+        train_influence: np.ndarray,
+        test_scores: np.ndarray,
+    ) -> np.ndarray:
+        """Fit isotonic regression for a single fold."""
+        from scipy.stats import spearmanr
+
+        corr, _ = spearmanr(train_scores, train_influence)
+        increasing = corr >= 0
+
+        iso = IsotonicRegression(increasing=increasing, out_of_bounds="clip")
+        iso.fit(train_scores, train_influence)
+        return iso.predict(test_scores)
+
+    def _fit_isotonic_cross_fitted(
+        self,
+        influence: np.ndarray,
+        judge_scores: np.ndarray,
+        fold_ids: np.ndarray,
+        valid_mask: np.ndarray,
+    ) -> np.ndarray:
+        """Original isotonic cross-fitting implementation."""
+        fitted = np.zeros_like(influence)
+        unique_folds = np.unique(fold_ids[fold_ids >= 0])
 
         # Track directions used across folds for diagnostics
         directions_used = []
@@ -256,7 +423,7 @@ class IsotonicInfluenceControl:
             # Predict on test fold
             fitted[test_mask] = iso.predict(judge_scores[test_mask])
 
-        # Handle samples not in any fold (shouldn't happen with our fold system)
+        # Handle samples not in any fold
         unfitted = (fold_ids < 0) | ~valid_mask
         if unfitted.sum() > 0:
             fitted[unfitted] = (
@@ -274,6 +441,7 @@ class IsotonicInfluenceControl:
                 float(np.mean(correlations)) if correlations else 0.0
             )
             self._fold_directions = directions_used  # Store for detailed diagnostics
+            self._last_model_type = "isotonic"
 
         return fitted
 
@@ -331,12 +499,23 @@ class IsotonicInfluenceControl:
             < 1e-10,
         }
 
-        # Add direction information if available
+        # Add model type information
+        if hasattr(self, "_last_model_type"):
+            diagnostics["model_type"] = self._last_model_type
+
+        # Add direction information if available (isotonic only)
         if hasattr(self, "_last_direction"):
             diagnostics["direction"] = self._last_direction
             diagnostics["correlation"] = self._last_correlation
 
-        # Add per-fold directions if cross-fitting was used
+        # Add per-fold model types if cross-fitting was used with splines
+        if hasattr(self, "_fold_model_types"):
+            from collections import Counter
+
+            model_counts = Counter(self._fold_model_types)
+            diagnostics["fold_model_types"] = dict(model_counts)
+
+        # Add per-fold directions if cross-fitting was used with isotonic
         if hasattr(self, "_fold_directions"):
             from collections import Counter
 
