@@ -205,7 +205,6 @@ def _create_stacked_dr(
     """Create stacked DR estimator combining DR-CPO, TMLE, and MRDR."""
     n_folds = estimator_config.get("n_folds", 5)
     estimators = estimator_config.get("estimators", ["dr-cpo", "tmle", "mrdr"])
-    use_outer_split = estimator_config.get("use_outer_split", True)
 
     # Create stacked estimator
     if cal_result and cal_result.calibrator:
@@ -214,7 +213,6 @@ def _create_stacked_dr(
             reward_calibrator=cal_result.calibrator,
             estimators=estimators,
             n_folds=n_folds,
-            use_outer_split=use_outer_split,
         )
         print(f"   Creating stacked estimator with: {', '.join(estimators)}")
         print("   Using CalibratorBackedOutcomeModel (reusing calibration models)")
@@ -223,7 +221,6 @@ def _create_stacked_dr(
             sampler,
             estimators=estimators,
             n_folds=n_folds,
-            use_outer_split=use_outer_split,
         )
         print(f"   Creating stacked estimator with: {', '.join(estimators)}")
         print("   Using IsotonicOutcomeModel (refitting models)")

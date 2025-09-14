@@ -6,24 +6,24 @@
 \toprule
 Estimator & Runtime Median & Runtime P90 & Complexity & N Folds & Runtime per 1k & M Components \\
 \midrule
-raw-ips (iic=False) & 0.244 & 0.367 & O(n) & 0 & 0.109 & -- \\
-calibrated-ips (iic=False) & 0.314 & 0.517 & O(n) & 0 & 0.140 & -- \\
-calibrated-ips (iic=True) & 0.331 & 0.518 & O(n) & 0 & 0.147 & -- \\
-raw-ips (iic=True) & 0.345 & 0.527 & O(n) & 0 & 0.153 & -- \\
-orthogonalized-ips (iic=False) & 0.359 & 0.606 & O(n) & 0 & 0.160 & -- \\
-orthogonalized-ips (iic=True) & 0.455 & 0.785 & O(n) & 0 & 0.202 & -- \\
-tr-cpo-e (iic=False) & 20.0 & 105 & O(K*n) & 20 & 8.9 & -- \\
-tr-cpo (iic=False) & 20.0 & 104 & O(K*n) & 20 & 8.9 & -- \\
-tr-cpo (iic=True) & 20.1 & 103 & O(K*n) & 20 & 8.9 & -- \\
-tr-cpo-e (iic=True) & 20.1 & 105 & O(K*n) & 20 & 8.9 & -- \\
-oc-dr-cpo (iic=False) & 20.8 & 104 & O(K*n) & 20 & 9.3 & -- \\
-oc-dr-cpo (iic=True) & 21.0 & 103 & O(K*n) & 20 & 9.3 & -- \\
-dr-cpo (calib=False, iic=False) & 21.9 & 108 & O(K*n) & 20 & 9.7 & -- \\
-dr-cpo (calib=False, iic=True) & 22.1 & 108 & O(K*n) & 20 & 9.8 & -- \\
-dr-cpo (calib=True, iic=False) & 22.1 & 108 & O(K*n) & 20 & 9.8 & -- \\
-dr-cpo (calib=True, iic=True) & 22.4 & 108 & O(K*n) & 20 & 9.9 & -- \\
-stacked-dr (iic=True) & 62.8 & 310 & O(M*K*n) & 20 & 27.9 & 5.0 \\
-stacked-dr (iic=False) & 62.8 & 310 & O(M*K*n) & 20 & 27.9 & 5.0 \\
+raw-ips (iic=False) & 0.243 & 0.357 & O(n) & 0 & 0.108 & -- \\
+raw-ips (iic=True) & 0.277 & 0.420 & O(n) & 0 & 0.123 & -- \\
+calibrated-ips (iic=False) & 0.328 & 0.575 & O(n) & 0 & 0.146 & -- \\
+calibrated-ips (iic=True) & 0.338 & 0.582 & O(n) & 0 & 0.150 & -- \\
+orthogonalized-ips (iic=False) & 0.356 & 0.581 & O(n) & 0 & 0.158 & -- \\
+orthogonalized-ips (iic=True) & 0.391 & 0.656 & O(n) & 0 & 0.174 & -- \\
+stacked-dr (iic=False) & 5.5 & 14.8 & O(M*K*n) & 20 & 7.9 & 5 \\
+stacked-dr (iic=True) & 5.6 & 14.8 & O(M*K*n) & 20 & 7.7 & 5 \\
+tr-cpo (iic=False) & 6.8 & 31.4 & O(K*n) & 20 & 3.0 & -- \\
+tr-cpo-e (iic=False) & 6.8 & 31.4 & O(K*n) & 20 & 3.0 & -- \\
+tr-cpo (iic=True) & 6.8 & 31.6 & O(K*n) & 20 & 3.0 & -- \\
+tr-cpo-e (iic=True) & 6.8 & 31.5 & O(K*n) & 20 & 3.0 & -- \\
+oc-dr-cpo (iic=False) & 7.4 & 35.0 & O(K*n) & 20 & 3.3 & -- \\
+oc-dr-cpo (iic=True) & 7.4 & 35.1 & O(K*n) & 20 & 3.3 & -- \\
+dr-cpo (calib=False, iic=False) & 8.5 & 42.1 & O(K*n) & 20 & 3.8 & -- \\
+dr-cpo (calib=False, iic=True) & 8.5 & 42.2 & O(K*n) & 20 & 3.8 & -- \\
+dr-cpo (calib=True, iic=False) & 8.5 & 42.2 & O(K*n) & 20 & 3.8 & -- \\
+dr-cpo (calib=True, iic=True) & 8.6 & 42.2 & O(K*n) & 20 & 3.8 & -- \\
 \bottomrule
 \end{tabular}
 \end{table}

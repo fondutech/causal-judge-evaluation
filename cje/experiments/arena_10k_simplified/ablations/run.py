@@ -175,7 +175,6 @@ class UnifiedAblation(BaseAblation):
                 "parallel": False,
                 "use_iic": use_iic,
                 "covariance_regularization": 1e-4,  # Add regularization for numerical stability
-                "use_outer_split": False,  # Disable complex CV (using simple oracle IC approach)
                 "use_calibrated_weights": use_weight_calibration,  # Controls SIMCal for weights
                 "weight_shrinkage": 0.0,  # No shrinkage - let optimizer find optimal weights
             }

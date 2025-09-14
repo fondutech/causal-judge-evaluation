@@ -6,24 +6,24 @@
 \toprule
 Rank & Estimator & Score & RMSE$^d$ $\downarrow$ & IS$^{OA}$ $\downarrow$ & CalibScore $\downarrow$ & SE GM $\downarrow$ & K-$\tau$ $\uparrow$ & Top-1 $\uparrow$ \\
 \midrule
-1 & dr-cpo (calib=True, iic=False) & \textbf{94.8} & \underline{0.0089} & 0.0809 & \textbf{5.0} & 0.0206 & 0.867 & 90.0 \\
-2 & dr-cpo (calib=True, iic=True) & \textbf{94.8} & 0.0089 & 0.0810 & 5.0 & 0.0207 & 0.867 & 90.0 \\
-3 & oc-dr-cpo (iic=False) & \textbf{92.2} & 0.0152 & \textbf{0.0447} & 27.0 & 0.0068 & 0.867 & 95.0 \\
-4 & oc-dr-cpo (iic=True) & \textbf{90.9} & 0.0152 & \underline{0.0459} & 32.7 & 0.0061 & 0.867 & 95.0 \\
-5 & stacked-dr (iic=False) & \textbf{89.8} & \textbf{0.0089} & 0.0574 & 45.7 & \underline{0.0029} & \textbf{0.933} & \textbf{100.0} \\
-6 & stacked-dr (iic=True) & \textbf{89.8} & 0.0090 & 0.0573 & 45.7 & \textbf{0.0029} & \underline{0.933} & \underline{100.0} \\
-7 & tr-cpo-e (iic=True) & \textbf{84.1} & 0.0595 & 0.0809 & 5.0 & 0.0206 & 0.533 & 60.0 \\
-8 & tr-cpo-e (iic=False) & \textbf{84.0} & 0.0595 & 0.0815 & 5.0 & 0.0208 & 0.533 & 60.0 \\
-9 & dr-cpo (calib=False, iic=False) & \textbf{76.1} & 0.0371 & 0.1507 & 5.0 & 0.0385 & 0.267 & 45.0 \\
-10 & dr-cpo (calib=False, iic=True) & \textbf{76.0} & 0.0371 & 0.1526 & \underline{5.0} & 0.0389 & 0.267 & 45.0 \\
-11 & calibrated-ips (iic=False) & \textbf{50.9} & 0.0165 & 0.4955 & 6.2 & 0.0898 & -0.367 & 5.0 \\
-12 & calibrated-ips (iic=True) & \textbf{50.9} & 0.0165 & 0.4955 & 6.2 & 0.0898 & -0.367 & 5.0 \\
-13 & tr-cpo (iic=False) & \textbf{37.6} & 0.5121 & 0.2626 & 11.3 & 0.0529 & -0.167 & 15.0 \\
-14 & tr-cpo (iic=True) & \textbf{37.6} & 0.5121 & 0.2654 & 11.3 & 0.0531 & -0.167 & 15.0 \\
-15 & orthogonalized-ips (iic=True) & \textbf{29.2} & 0.1648 & 0.7327 & 7.3 & 0.1717 & -0.233 & 0.0 \\
-16 & orthogonalized-ips (iic=False) & \textbf{29.2} & 0.1648 & 0.7328 & 7.3 & 0.1718 & -0.233 & 0.0 \\
-17 & raw-ips (iic=False) & \textbf{27.7} & 0.1799 & 0.7306 & 7.3 & 0.1742 & -0.267 & 0.0 \\
-18 & raw-ips (iic=True) & \textbf{27.3} & 0.1799 & 0.7375 & 7.3 & 0.1760 & -0.267 & 0.0 \\
+1 & dr-cpo (calib=True, iic=False) & \textbf{95.8} & \textbf{0.0113} & 0.0809 & \underline{5.5} & 0.0204 & \textbf{0.700} & \textbf{82.5} \\
+2 & dr-cpo (calib=True, iic=True) & \textbf{95.7} & \underline{0.0113} & 0.0834 & 5.5 & 0.0211 & \underline{0.700} & \underline{82.5} \\
+3 & stacked-dr (iic=True) & \textbf{87.7} & 0.0165 & 0.0759 & 14.0 & 0.0158 & 0.467 & 66.7 \\
+4 & oc-dr-cpo (iic=False) & \textbf{87.2} & 0.0262 & \textbf{0.0581} & 9.6 & \underline{0.0136} & 0.373 & 64.5 \\
+5 & oc-dr-cpo (iic=True) & \textbf{87.1} & 0.0262 & \underline{0.0618} & 9.2 & 0.0145 & 0.373 & 64.5 \\
+6 & stacked-dr (iic=False) & \textbf{87.1} & 0.0175 & 0.0819 & 14.5 & 0.0166 & 0.472 & 65.9 \\
+7 & dr-cpo (calib=False, iic=False) & \textbf{78.8} & 0.0346 & 0.1383 & 5.5 & 0.0351 & 0.197 & 52.0 \\
+8 & dr-cpo (calib=False, iic=True) & \textbf{78.6} & 0.0346 & 0.1456 & \textbf{5.0} & 0.0372 & 0.197 & 52.0 \\
+9 & tr-cpo-e (iic=False) & \textbf{74.8} & 0.0615 & 0.0977 & 7.4 & 0.0234 & 0.120 & 37.0 \\
+10 & tr-cpo-e (iic=True) & \textbf{73.9} & 0.0615 & 0.1155 & 7.0 & 0.0279 & 0.120 & 37.0 \\
+11 & calibrated-ips (iic=True) & \textbf{63.1} & 0.0172 & 0.0915 & 38.4 & \textbf{0.0087} & -0.277 & 18.0 \\
+12 & calibrated-ips (iic=False) & \textbf{56.7} & 0.0172 & 0.4449 & 7.6 & 0.0786 & -0.277 & 18.0 \\
+13 & tr-cpo (iic=False) & \textbf{40.3} & 0.2146 & 0.2249 & 9.2 & 0.0523 & -0.260 & 15.5 \\
+14 & tr-cpo (iic=True) & \textbf{39.0} & 0.2146 & 0.2552 & 6.9 & 0.0625 & -0.260 & 15.5 \\
+15 & orthogonalized-ips (iic=True) & \textbf{26.7} & 0.1276 & 0.6397 & 5.6 & 0.1605 & -0.263 & 9.5 \\
+16 & orthogonalized-ips (iic=False) & \textbf{26.6} & 0.1276 & 0.6398 & 5.6 & 0.1605 & -0.263 & 9.5 \\
+17 & raw-ips (iic=False) & \textbf{22.7} & 0.1396 & 0.6747 & 5.7 & 0.1696 & -0.290 & 10.0 \\
+18 & raw-ips (iic=True) & \textbf{22.5} & 0.1396 & 0.6781 & 5.6 & 0.1705 & -0.290 & 10.0 \\
 \bottomrule
 \end{tabular}
 \footnotesize{Aggregate Score: 30\% ranking (K-$\tau$+Top-1), 25\% accuracy (RMSE$^d$), 25\% efficiency (SE GM), 20\% calibration (CalibScore+IS$^{OA}$)}
