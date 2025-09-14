@@ -171,6 +171,7 @@ class BaseAblation:
                 use_outer_cv=True,  # Enable outer CV for robust inference
                 n_outer_folds=5,  # Use 5 folds for clustering
                 outer_cv_seed=42,  # Consistent fold generation
+                honest_iic=use_iic,  # Enable honest IIC when outer CV is used
             ),
             "orthogonalized-ips": lambda s: OrthogonalizedCalibratedIPS(
                 s,
@@ -180,6 +181,7 @@ class BaseAblation:
                 use_outer_cv=True,  # Enable outer CV for robust inference
                 n_outer_folds=5,  # Use 5 folds for clustering
                 outer_cv_seed=42,  # Consistent fold generation
+                honest_iic=use_iic,  # Enable honest IIC when outer CV is used
             ),
             "dr-cpo": lambda s: DRCPOEstimator(
                 s,
@@ -240,12 +242,12 @@ class BaseAblation:
             "stacked-dr": lambda s: StackedDREstimator(
                 s,
                 reward_calibrator=cal_result.calibrator if cal_result else None,
-                V_folds=5,
+                n_folds=DR_CONFIG["n_folds"],  # Use n_folds, not V_folds
                 use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
                 covariance_regularization=1e-4,  # Add regularization for numerical stability
-                use_outer_split=False,  # Disable complex CV (using simple oracle IC approach)
+                # Remove use_outer_split - it doesn't exist
             ),
         }
 

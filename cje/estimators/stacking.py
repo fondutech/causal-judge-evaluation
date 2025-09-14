@@ -323,9 +323,10 @@ class StackedDREstimator(BaseCJEEstimator):
             )
             return None
 
-        # Harmonize scales and signs if needed
+        # Harmonize scales if needed
         IF_matrix_clean = self._harmonize_if_scales(IF_matrix_clean, used_names)
-        IF_matrix_clean = self._align_if_signs(IF_matrix_clean)
+        # NOTE: Sign alignment removed - it's inconsistent to flip IF signs without flipping estimates
+        # IF_matrix_clean = self._align_if_signs(IF_matrix_clean)
 
         # Compute optimal weights with regularization
         weights, weight_diagnostics = self._compute_optimal_weights(IF_matrix_clean)
@@ -359,6 +360,34 @@ class StackedDREstimator(BaseCJEEstimator):
         weight_diagnostics["components"] = used_names
 
         return estimate, se, stacked_if
+
+    def _solve_simplex_qp(self, Sigma: np.ndarray, max_iter: int = 50) -> np.ndarray:
+        """Minimize α^T Σ α s.t. α ≥ 0, 1^T α = 1 using an active-set method."""
+        K = Sigma.shape[0]
+        active = set(range(K))  # start with all active
+        for _ in range(max_iter):
+            if not active:
+                return np.ones(K) / K
+            idx = sorted(active)
+            S = Sigma[np.ix_(idx, idx)]
+            ones = np.ones(len(idx))
+            try:
+                Sinv1 = np.linalg.solve(S, ones)
+                denom = float(ones @ Sinv1)
+                alpha_act = Sinv1 / (denom if abs(denom) > 1e-12 else len(idx))
+            except np.linalg.LinAlgError:
+                alpha_act = ones / len(idx)
+            if np.all(alpha_act >= -1e-12):
+                alpha = np.zeros(K)
+                for j, k in enumerate(idx):
+                    alpha[k] = max(0.0, float(alpha_act[j]))
+                s = float(alpha.sum())
+                return alpha / (s if s > 0 else 1.0)
+            # remove the most negative weight and iterate
+            remove_local = np.argmin(alpha_act)
+            active.remove(idx[remove_local])
+        # fallback
+        return np.ones(K) / K
 
     def _compute_optimal_weights(
         self, IF_matrix: np.ndarray
@@ -404,45 +433,56 @@ class StackedDREstimator(BaseCJEEstimator):
                 f"{condition_post:.2e} after regularization)"
             )
 
-        # Solve for optimal weights
-        ones = np.ones(K)
-        try:
-            w = np.linalg.solve(Sigma_reg, ones)
-            w = w / w.sum()
+        # Ensure symmetry for numerical stability
+        Sigma_reg = 0.5 * (Sigma_reg + Sigma_reg.T)
 
-            # Apply minimum weight constraint if specified
+        # Guard against extreme conditioning
+        if condition_post > 1e8:
+            logger.warning(
+                f"Condition number still too high ({condition_post:.2e}), using uniform weights"
+            )
+            w = np.ones(K) / K
+        else:
+            # Solve for optimal weights using simplex QP (ensures non-negative weights)
+            w = self._solve_simplex_qp(Sigma_reg)
+
+            # Apply minimum weight constraint if specified (outside strict KKT)
             if self.min_weight > 0:
                 w = np.maximum(w, self.min_weight)
                 w = w / w.sum()
 
             # Apply shrinkage toward uniform if specified
             if self.weight_shrinkage > 0:
-                u = ones / K
+                u = np.ones(K) / K
                 gamma = np.clip(self.weight_shrinkage, 0.0, 1.0)
                 w = (1 - gamma) * w + gamma * u
                 w = w / w.sum()
 
-        except np.linalg.LinAlgError:
-            logger.warning("Singular covariance matrix, using uniform weights")
-            w = ones / K
-
         # Compute pairwise correlations between estimators
-        correlations = np.corrcoef(centered_IF.T)
-        max_corr = np.max(np.abs(correlations[np.triu_indices_from(correlations, k=1)]))
+        if K > 1:
+            correlations = np.corrcoef(centered_IF.T)
+            max_corr = np.max(
+                np.abs(correlations[np.triu_indices_from(correlations, k=1)])
+            )
+        else:
+            max_corr = 0.0
 
         diagnostics = {
-            "condition_pre": condition_pre,
-            "condition_post": condition_post,
+            "condition_pre": float(condition_pre),
+            "condition_post": float(condition_post),
             "eigenvalues": eigenvalues.tolist(),
             "eigenvalues_post": eigenvalues_post.tolist(),
             "min_eigenvalue": float(eigenvalues.min()),
             "max_eigenvalue": float(eigenvalues.max()),
-            "regularization_used": self.covariance_regularization,
+            "regularization_used": float(self.covariance_regularization),
             "max_pairwise_correlation": float(max_corr),
             "weights": w.tolist(),
-            "weight_shrinkage": self.weight_shrinkage,
+            "weight_shrinkage": (
+                float(self.weight_shrinkage) if self.weight_shrinkage else 0.0
+            ),
             "min_weight": float(w.min()),
             "max_weight": float(w.max()),
+            "simplex_qp": True,  # Flag indicating we're using the constrained solver
         }
 
         return w, diagnostics
@@ -472,6 +512,10 @@ class StackedDREstimator(BaseCJEEstimator):
                         logger.info(f"Successfully ran {est_name}")
                 except Exception as e:
                     logger.error(f"Failed to run {est_name}: {e}")
+                    # Add more detailed error info to help debugging
+                    import traceback
+
+                    logger.debug(f"Traceback for {est_name}:\n{traceback.format_exc()}")
                     self.component_results[est_name] = None
 
     def _run_sequential(self) -> None:
@@ -485,6 +529,10 @@ class StackedDREstimator(BaseCJEEstimator):
                     logger.info(f"Successfully ran {est_name}")
             except Exception as e:
                 logger.error(f"Failed to run {est_name}: {e}")
+                # Add more detailed error info to help debugging
+                import traceback
+
+                logger.debug(f"Traceback for {est_name}:\n{traceback.format_exc()}")
                 self.component_results[est_name] = None
 
     def _run_single_estimator(self, est_name: str) -> Tuple[EstimationResult, Any]:
@@ -512,16 +560,30 @@ class StackedDREstimator(BaseCJEEstimator):
         EstimatorClass = estimator_map[est_name]
 
         # Create estimator with shared configuration
-        # TR-CPO has different constructor
+        # TR-CPO has different constructor (doesn't accept use_calibrated_weights)
         if est_name == "tr-cpo-e":
             estimator = EstimatorClass(
                 sampler=self.sampler,
                 reward_calibrator=self.reward_calibrator,
                 n_folds=self.n_folds,
+                weight_mode=self.weight_mode,  # TR-CPO does accept weight_mode
                 use_iic=self.use_iic,
                 oua_jackknife=self.oua_jackknife,
+                use_efficient_tr=True,  # Ensure we're using the efficient version
+            )
+        elif est_name == "mrdr":
+            # MRDR has omega_mode parameter but also accepts standard DR parameters
+            estimator = EstimatorClass(
+                sampler=self.sampler,
+                reward_calibrator=self.reward_calibrator,
+                n_folds=self.n_folds,
+                omega_mode="w",  # Use weights for omega
+                use_calibrated_weights=self.use_calibrated_weights,
+                weight_mode=self.weight_mode,
+                # MRDR doesn't take use_iic or oua_jackknife
             )
         else:
+            # DR-CPO, TMLE, OC-DR-CPO all accept these parameters
             estimator = EstimatorClass(
                 sampler=self.sampler,
                 reward_calibrator=self.reward_calibrator,

@@ -263,6 +263,9 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
             n = len(data)
             n_used[policy] = n
 
+            # Store sample indices for IF alignment in stacking
+            self._store_sample_indices(policy, data)
+
             # SIMCal weights (anchor) and mean-one raw/Hájek W for the retarget term
             W_tilde = self.ips_estimator.get_weights(policy)
             if W_tilde is None:
@@ -474,6 +477,8 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
                 "iic_applied_to_if": bool(self.use_iic),
                 "iic_estimate_adjusted": False,  # Point estimates unchanged by IIC
                 "iic_diagnostics": getattr(self, "_iic_diagnostics", None),
+                # Add sample indices for IF alignment in stacking
+                "if_sample_indices": getattr(self, "_if_sample_indices", {}),
                 # oracle_augmentation removed - using OUA jackknife only
             },
         )

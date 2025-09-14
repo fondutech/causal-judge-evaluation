@@ -29,7 +29,7 @@ from .appendix_tables import (
 __all__ = [
     # Core tables
     "generate_leaderboard",
-    "generate_delta_tables", 
+    "generate_delta_tables",
     "generate_stacking_table",
     # Metrics
     "compute_debiased_rmse",

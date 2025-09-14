@@ -13,66 +13,72 @@ from pathlib import Path
 import json
 
 
-def compute_debiased_rmse(results: List[Dict[str, Any]], policies: List[str] = None) -> Dict[str, float]:
+def compute_debiased_rmse(
+    results: List[Dict[str, Any]], policies: List[str] = None
+) -> Dict[str, float]:
     """Compute oracle-noise-debiased RMSE for each estimator configuration.
-    
+
     Args:
         results: List of experiment results
         policies: Policies to include (default: well-behaved only)
-        
+
     Returns:
         Dict mapping estimator config to debiased RMSE
     """
     if policies is None:
         policies = ["clone", "parallel_universe_prompt", "premium"]
-    
+
     rmse_by_config = {}
-    
+
     for result in results:
         config_key = create_config_key(result)
-        
+
         # Get RMSE vs oracle (already debiased in our pipeline)
         rmse = result.get("rmse_vs_oracle")
         if rmse is not None and not np.isnan(rmse):
             if config_key not in rmse_by_config:
                 rmse_by_config[config_key] = []
             rmse_by_config[config_key].append(rmse)
-    
+
     # Average across seeds/experiments
     return {k: np.mean(v) for k, v in rmse_by_config.items()}
 
 
-def compute_interval_score_oa(results: List[Dict[str, Any]], alpha: float = 0.05) -> Dict[str, float]:
+def compute_interval_score_oa(
+    results: List[Dict[str, Any]], alpha: float = 0.05
+) -> Dict[str, float]:
     """Compute oracle-adjusted interval score (geometric mean).
-    
+
     Interval score = width + 2/α * (coverage penalty)
     Lower is better - balances sharpness and calibration.
-    
+
     Args:
         results: List of experiment results
         alpha: Significance level (default 0.05 for 95% CIs)
-        
+
     Returns:
         Dict mapping estimator config to geometric mean interval score
     """
     scores_by_config = {}
-    
+
     for result in results:
         config_key = create_config_key(result)
-        
+
         # Get oracle-adjusted CIs and coverage (prefer robust, fall back to regular)
-        robust_cis = result.get("robust_confidence_intervals") or result.get("confidence_intervals", {})
+        robust_cis = result.get("robust_confidence_intervals") or result.get(
+            "confidence_intervals", {}
+        )
         oracle_truths = result.get("oracle_truths", {})
-        
+
         if not robust_cis or not oracle_truths:
             continue
-            
+
         scores = []
         for policy in ["clone", "parallel_universe_prompt", "premium"]:
             if policy in robust_cis and policy in oracle_truths:
                 ci = robust_cis[policy]
                 truth = oracle_truths[policy]
-                
+
                 # Interval score formula
                 width = ci[1] - ci[0]
                 if truth < ci[0]:
@@ -81,110 +87,116 @@ def compute_interval_score_oa(results: List[Dict[str, Any]], alpha: float = 0.05
                     penalty = 2 / alpha * (truth - ci[1])
                 else:
                     penalty = 0
-                
+
                 score = width + penalty
                 scores.append(score)
-        
+
         if scores:
             # Use geometric mean to reduce impact of outliers
             geom_mean = np.exp(np.mean(np.log(scores)))
             if config_key not in scores_by_config:
                 scores_by_config[config_key] = []
             scores_by_config[config_key].append(geom_mean)
-    
+
     return {k: np.exp(np.mean(np.log(v))) for k, v in scores_by_config.items()}
 
 
-def compute_calibration_score(results: List[Dict[str, Any]], target: float = 0.95) -> Dict[str, float]:
+def compute_calibration_score(
+    results: List[Dict[str, Any]], target: float = 0.95
+) -> Dict[str, float]:
     """Compute calibration score: mean |coverage - target|.
-    
+
     Args:
         results: List of experiment results
         target: Target coverage (default 0.95)
-        
+
     Returns:
         Dict mapping estimator config to calibration score (lower is better)
     """
     calib_by_config = {}
-    
+
     for result in results:
         config_key = create_config_key(result)
-        
+
         # Count coverage (prefer robust, fall back to regular)
-        robust_cis = result.get("robust_confidence_intervals") or result.get("confidence_intervals", {})
+        robust_cis = result.get("robust_confidence_intervals") or result.get(
+            "confidence_intervals", {}
+        )
         oracle_truths = result.get("oracle_truths", {})
-        
+
         if not robust_cis or not oracle_truths:
             continue
-        
+
         covered = []
         for policy in ["clone", "parallel_universe_prompt", "premium"]:
             if policy in robust_cis and policy in oracle_truths:
                 ci = robust_cis[policy]
                 truth = oracle_truths[policy]
                 covered.append(ci[0] <= truth <= ci[1])
-        
+
         if covered:
             coverage = np.mean(covered)
             calib_score = abs(coverage - target)
-            
+
             if config_key not in calib_by_config:
                 calib_by_config[config_key] = []
             calib_by_config[config_key].append(calib_score)
-    
+
     return {k: np.mean(v) for k, v in calib_by_config.items()}
 
 
 def compute_se_geomean(results: List[Dict[str, Any]]) -> Dict[str, float]:
     """Compute geometric mean of robust SEs (sharpness proxy).
-    
+
     Args:
         results: List of experiment results
-        
+
     Returns:
         Dict mapping estimator config to geometric mean SE
     """
     se_by_config = {}
-    
+
     for result in results:
         config_key = create_config_key(result)
-        
+
         # Get robust SEs (prefer robust, fall back to base)
         ses = result.get("robust_standard_errors") or result.get("standard_errors", {})
-        
+
         se_values = []
         for policy in ["clone", "parallel_universe_prompt", "premium"]:
             if policy in ses and ses[policy] is not None and ses[policy] > 0:
                 se_values.append(ses[policy])
-        
+
         if se_values:
             geom_mean = np.exp(np.mean(np.log(se_values)))
             if config_key not in se_by_config:
                 se_by_config[config_key] = []
             se_by_config[config_key].append(geom_mean)
-    
+
     return {k: np.exp(np.mean(np.log(v))) for k, v in se_by_config.items()}
 
 
-def compute_ranking_metrics(results: List[Dict[str, Any]]) -> Dict[str, Dict[str, float]]:
+def compute_ranking_metrics(
+    results: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, float]]:
     """Compute ranking metrics (Kendall tau-b and Top-1 accuracy).
-    
+
     Args:
         results: List of experiment results
-        
+
     Returns:
         Dict mapping estimator config to {'kendall_tau': ..., 'top1_acc': ...}
     """
     from scipy.stats import kendalltau
-    
+
     ranking_by_config = {}
-    
+
     for result in results:
         config_key = create_config_key(result)
-        
+
         estimates = result.get("estimates", {})
         oracle_truths = result.get("oracle_truths", {})
-        
+
         # Get values for well-behaved policies
         est_values = []
         true_values = []
@@ -192,34 +204,34 @@ def compute_ranking_metrics(results: List[Dict[str, Any]]) -> Dict[str, Dict[str
             if policy in estimates and policy in oracle_truths:
                 est_values.append(estimates[policy])
                 true_values.append(oracle_truths[policy])
-        
+
         if len(est_values) >= 2:
             # Kendall tau-b (handles ties)
             tau, _ = kendalltau(est_values, true_values)
-            
+
             # Top-1 accuracy
             if len(est_values) >= 3:
                 best_est = np.argmax(est_values)
                 best_true = np.argmax(true_values)
-                top1_correct = (best_est == best_true)
+                top1_correct = best_est == best_true
             else:
                 top1_correct = np.nan
-            
+
             if config_key not in ranking_by_config:
-                ranking_by_config[config_key] = {'tau': [], 'top1': []}
-            
-            ranking_by_config[config_key]['tau'].append(tau)
+                ranking_by_config[config_key] = {"tau": [], "top1": []}
+
+            ranking_by_config[config_key]["tau"].append(tau)
             if not np.isnan(top1_correct):
-                ranking_by_config[config_key]['top1'].append(top1_correct)
-    
+                ranking_by_config[config_key]["top1"].append(top1_correct)
+
     # Average
     result_dict = {}
     for config, metrics in ranking_by_config.items():
         result_dict[config] = {
-            'kendall_tau': np.mean(metrics['tau']),
-            'top1_acc': np.mean(metrics['top1']) * 100 if metrics['top1'] else np.nan
+            "kendall_tau": np.mean(metrics["tau"]),
+            "top1_acc": np.mean(metrics["top1"]) * 100 if metrics["top1"] else np.nan,
         }
-    
+
     return result_dict
 
 
@@ -227,12 +239,14 @@ def create_config_key(result: Dict[str, Any]) -> str:
     """Create a configuration key for grouping results."""
     spec = result.get("spec", {})
     estimator = spec.get("estimator", "unknown")
-    
+
     # Check for flags in spec.extra first, then fall back to top-level
     extra = spec.get("extra", {})
-    use_calib = extra.get("use_weight_calibration", result.get("use_weight_calibration", False))
+    use_calib = extra.get(
+        "use_weight_calibration", result.get("use_weight_calibration", False)
+    )
     use_iic = extra.get("use_iic", result.get("use_iic", False))
-    
+
     # Special cases that always have calibration
     if estimator in ["calibrated-ips", "orthogonalized-ips", "oc-dr-cpo", "stacked-dr"]:
         return f"{estimator} (iic={use_iic})"
@@ -243,103 +257,105 @@ def create_config_key(result: Dict[str, Any]) -> str:
         return f"{estimator} (calib={use_calib}, iic={use_iic})"
 
 
-def compute_aggregate_score(row: pd.Series, normalize_bounds: Dict[str, tuple]) -> float:
+def compute_aggregate_score(
+    row: pd.Series, normalize_bounds: Dict[str, tuple]
+) -> float:
     """
     Compute aggregate ranking score for an estimator.
-    
+
     Components (weights adjusted per user request):
     - Ranking quality (30%): Kendall τ + Top-1 accuracy (higher is better)
     - Accuracy (25%): RMSE^d (lower is better)
     - Efficiency (25%): SE GeoMean (lower is better, proxy for sample efficiency)
     - Calibration (20%): CalibScore + IntervalScore^OA (lower is better)
-    
+
     Args:
         row: Series with estimator metrics
         normalize_bounds: Dict with (min, max) bounds for each metric
-    
+
     Returns:
         Aggregate score in [0, 100] where higher is better
     """
     score_components = []
     weights = []
-    
+
     # Accuracy component (25%) - RMSE^d
-    if not pd.isna(row.get('RMSE_d')):
-        min_val, max_val = normalize_bounds['RMSE_d']
+    if not pd.isna(row.get("RMSE_d")):
+        min_val, max_val = normalize_bounds["RMSE_d"]
         # Lower is better, so invert
         if max_val > min_val:
-            normalized = 1 - (row['RMSE_d'] - min_val) / (max_val - min_val)
+            normalized = 1 - (row["RMSE_d"] - min_val) / (max_val - min_val)
         else:
             normalized = 0.5
         score_components.append(normalized)
         weights.append(0.25)
-    
-    # Ranking component (30%) - Split between Kendall τ and Top-1
+
+    # Ranking component (25%) - Split between Kendall τ and Top-1
     ranking_scores = []
     ranking_weights = []
-    
-    if not pd.isna(row.get('Kendall_tau')):
-        min_val, max_val = normalize_bounds['Kendall_tau']
+
+    if not pd.isna(row.get("Kendall_tau")):
+        min_val, max_val = normalize_bounds["Kendall_tau"]
         # Higher is better, map from [-1, 1] to [0, 1]
         if max_val > min_val:
-            normalized = (row['Kendall_tau'] - min_val) / (max_val - min_val)
+            normalized = (row["Kendall_tau"] - min_val) / (max_val - min_val)
         else:
             normalized = 0.5
         ranking_scores.append(normalized)
-        ranking_weights.append(0.18)  # 60% of ranking weight
-    
-    if not pd.isna(row.get('Top1_Acc')):
+        ranking_weights.append(0.15)  # 60% of ranking weight
+
+    if not pd.isna(row.get("Top1_Acc")):
         # Already in [0, 100], normalize to [0, 1]
-        normalized = row['Top1_Acc'] / 100
+        normalized = row["Top1_Acc"] / 100
         ranking_scores.append(normalized)
-        ranking_weights.append(0.12)  # 40% of ranking weight
-    
+        ranking_weights.append(0.10)  # 40% of ranking weight
+
     if ranking_scores:
         ranking_score = np.average(ranking_scores, weights=ranking_weights)
         score_components.append(ranking_score)
         weights.append(sum(ranking_weights))
-    
-    # Calibration component (20%) - Split between CalibScore and IntervalScore
+
+    # Calibration component (25%) - Split between CalibScore and IntervalScore
     calib_scores = []
     calib_weights = []
-    
-    if not pd.isna(row.get('CalibScore')):
-        min_val, max_val = normalize_bounds['CalibScore']
+
+    if not pd.isna(row.get("CalibScore")):
+        min_val, max_val = normalize_bounds["CalibScore"]
         # Lower is better (distance from 95% coverage)
         if max_val > min_val:
-            normalized = 1 - (row['CalibScore'] - min_val) / (max_val - min_val)
+            normalized = 1 - (row["CalibScore"] - min_val) / (max_val - min_val)
         else:
             normalized = 0.5
         calib_scores.append(normalized)
-        calib_weights.append(0.10)  # 50% of calibration weight
-    
-    if not pd.isna(row.get('IntervalScore_OA')):
-        min_val, max_val = normalize_bounds['IntervalScore_OA']
+        calib_weights.append(0.125)  # 50% of calibration weight
+
+    if not pd.isna(row.get("IntervalScore_OA")):
+        min_val, max_val = normalize_bounds["IntervalScore_OA"]
         # Lower is better
         if max_val > min_val:
-            normalized = 1 - (row['IntervalScore_OA'] - min_val) / (max_val - min_val)
+            normalized = 1 - (row["IntervalScore_OA"] - min_val) / (max_val - min_val)
         else:
             normalized = 0.5
         calib_scores.append(normalized)
-        calib_weights.append(0.10)  # 50% of calibration weight
-    
+        calib_weights.append(0.125)  # 50% of calibration weight
+
     if calib_scores:
         # Weighted average of calibration components
         calib_score = np.average(calib_scores, weights=calib_weights)
         score_components.append(calib_score)
         weights.append(sum(calib_weights))
-    
+
     # Efficiency component (25%) - SE GeoMean
-    if not pd.isna(row.get('SE_GeoMean')):
-        min_val, max_val = normalize_bounds['SE_GeoMean']
+    if not pd.isna(row.get("SE_GeoMean")):
+        min_val, max_val = normalize_bounds["SE_GeoMean"]
         # Lower is better (more efficient)
         if max_val > min_val:
-            normalized = 1 - (row['SE_GeoMean'] - min_val) / (max_val - min_val)
+            normalized = 1 - (row["SE_GeoMean"] - min_val) / (max_val - min_val)
         else:
             normalized = 0.5
         score_components.append(normalized)
         weights.append(0.25)
-    
+
     # Compute weighted average, handling missing components
     if score_components:
         # Renormalize weights to sum to 1
@@ -351,14 +367,18 @@ def compute_aggregate_score(row: pd.Series, normalize_bounds: Dict[str, tuple]) 
         return 0  # No valid metrics
 
 
-def generate_leaderboard(results: List[Dict[str, Any]], output_format: str = "dataframe", include_aggregate: bool = True) -> Any:
+def generate_leaderboard(
+    results: List[Dict[str, Any]],
+    output_format: str = "dataframe",
+    include_aggregate: bool = True,
+) -> Any:
     """Generate Table 1: Estimator Leaderboard with optional aggregate ranking.
-    
+
     Args:
         results: List of experiment results
         output_format: "dataframe", "latex", or "markdown"
         include_aggregate: Whether to compute and include aggregate score
-        
+
     Returns:
         Formatted table
     """
@@ -368,48 +388,54 @@ def generate_leaderboard(results: List[Dict[str, Any]], output_format: str = "da
     calib_scores = compute_calibration_score(results)
     se_geomeans = compute_se_geomean(results)
     ranking_metrics = compute_ranking_metrics(results)
-    
+
     # Build rows
     rows = []
     all_configs = set(rmse_d.keys()) | set(interval_scores.keys())
-    
+
     for config in sorted(all_configs):
         row = {
-            'Estimator': config,
-            'RMSE_d': rmse_d.get(config, np.nan),
-            'IntervalScore_OA': interval_scores.get(config, np.nan),
-            'CalibScore': calib_scores.get(config, np.nan) * 100,  # Convert to percentage
-            'SE_GeoMean': se_geomeans.get(config, np.nan),
-            'Kendall_tau': ranking_metrics.get(config, {}).get('kendall_tau', np.nan),
-            'Top1_Acc': ranking_metrics.get(config, {}).get('top1_acc', np.nan)
+            "Estimator": config,
+            "RMSE_d": rmse_d.get(config, np.nan),
+            "IntervalScore_OA": interval_scores.get(config, np.nan),
+            "CalibScore": calib_scores.get(config, np.nan)
+            * 100,  # Convert to percentage
+            "SE_GeoMean": se_geomeans.get(config, np.nan),
+            "Kendall_tau": ranking_metrics.get(config, {}).get("kendall_tau", np.nan),
+            "Top1_Acc": ranking_metrics.get(config, {}).get("top1_acc", np.nan),
         }
         rows.append(row)
-    
+
     df = pd.DataFrame(rows)
-    
+
     if include_aggregate and len(df) > 0:
         # Compute normalization bounds (min, max) for each metric
         normalize_bounds = {
-            'RMSE_d': (df['RMSE_d'].min(), df['RMSE_d'].max()),
-            'IntervalScore_OA': (df['IntervalScore_OA'].min(), df['IntervalScore_OA'].max()),
-            'CalibScore': (df['CalibScore'].min(), df['CalibScore'].max()),
-            'SE_GeoMean': (df['SE_GeoMean'].min(), df['SE_GeoMean'].max()),
-            'Kendall_tau': (df['Kendall_tau'].min(), df['Kendall_tau'].max()),
-            'Top1_Acc': (0, 100)  # Fixed bounds for percentage
+            "RMSE_d": (df["RMSE_d"].min(), df["RMSE_d"].max()),
+            "IntervalScore_OA": (
+                df["IntervalScore_OA"].min(),
+                df["IntervalScore_OA"].max(),
+            ),
+            "CalibScore": (df["CalibScore"].min(), df["CalibScore"].max()),
+            "SE_GeoMean": (df["SE_GeoMean"].min(), df["SE_GeoMean"].max()),
+            "Kendall_tau": (df["Kendall_tau"].min(), df["Kendall_tau"].max()),
+            "Top1_Acc": (0, 100),  # Fixed bounds for percentage
         }
-        
+
         # Compute aggregate scores
-        df['AggScore'] = df.apply(lambda row: compute_aggregate_score(row, normalize_bounds), axis=1)
-        
+        df["AggScore"] = df.apply(
+            lambda row: compute_aggregate_score(row, normalize_bounds), axis=1
+        )
+
         # Sort by aggregate score (higher is better)
-        df = df.sort_values('AggScore', ascending=False, na_position='last')
-        
+        df = df.sort_values("AggScore", ascending=False, na_position="last")
+
         # Add rank column
-        df['Rank'] = range(1, len(df) + 1)
+        df["Rank"] = range(1, len(df) + 1)
     else:
         # Sort by RMSE_d as primary metric
-        df = df.sort_values('RMSE_d')
-    
+        df = df.sort_values("RMSE_d")
+
     if output_format == "dataframe":
         return df
     elif output_format == "latex":
@@ -427,22 +453,26 @@ def format_leaderboard_latex(df: pd.DataFrame, include_aggregate: bool = True) -
     latex.append("\\centering")
     latex.append("\\caption{Estimator Leaderboard (Well-Behaved Policies Only)}")
     latex.append("\\label{tab:leaderboard}")
-    
-    if include_aggregate and 'AggScore' in df.columns:
+
+    if include_aggregate and "AggScore" in df.columns:
         latex.append("\\begin{tabular}{cl|c|cccccc}")
         latex.append("\\toprule")
-        latex.append("Rank & Estimator & Score & RMSE$^d$ $\\downarrow$ & IS$^{OA}$ $\\downarrow$ & CalibScore $\\downarrow$ & SE GM $\\downarrow$ & K-$\\tau$ $\\uparrow$ & Top-1 $\\uparrow$ \\\\")
+        latex.append(
+            "Rank & Estimator & Score & RMSE$^d$ $\\downarrow$ & IS$^{OA}$ $\\downarrow$ & CalibScore $\\downarrow$ & SE GM $\\downarrow$ & K-$\\tau$ $\\uparrow$ & Top-1 $\\uparrow$ \\\\"
+        )
     else:
         latex.append("\\begin{tabular}{l|cccccc}")
         latex.append("\\toprule")
-        latex.append("Estimator & RMSE$^d$ $\\downarrow$ & IS$^{OA}$ $\\downarrow$ & CalibScore $\\downarrow$ & SE GM $\\downarrow$ & Kendall $\\tau$ $\\uparrow$ & Top-1 \\% $\\uparrow$ \\\\")
+        latex.append(
+            "Estimator & RMSE$^d$ $\\downarrow$ & IS$^{OA}$ $\\downarrow$ & CalibScore $\\downarrow$ & SE GM $\\downarrow$ & Kendall $\\tau$ $\\uparrow$ & Top-1 \\% $\\uparrow$ \\\\"
+        )
     latex.append("\\midrule")
-    
+
     # Find best and second-best for each metric
     best_idx = {}
     second_idx = {}
-    
-    for col in ['RMSE_d', 'IntervalScore_OA', 'CalibScore', 'SE_GeoMean']:
+
+    for col in ["RMSE_d", "IntervalScore_OA", "CalibScore", "SE_GeoMean"]:
         # Filter out NaN values first, then sort
         valid_df = df[~df[col].isna()]
         if len(valid_df) >= 1:
@@ -451,8 +481,8 @@ def format_leaderboard_latex(df: pd.DataFrame, include_aggregate: bool = True) -
         if len(valid_df) >= 2:
             sorted_vals = valid_df[col].sort_values()
             second_idx[col] = sorted_vals.index[1]
-    
-    for col in ['Kendall_tau', 'Top1_Acc']:
+
+    for col in ["Kendall_tau", "Top1_Acc"]:
         # Filter out NaN values first, then sort descending
         valid_df = df[~df[col].isna()]
         if len(valid_df) >= 1:
@@ -461,29 +491,34 @@ def format_leaderboard_latex(df: pd.DataFrame, include_aggregate: bool = True) -
         if len(valid_df) >= 2:
             sorted_vals = valid_df[col].sort_values(ascending=False)
             second_idx[col] = sorted_vals.index[1]
-    
+
     # Format rows
     for idx, row in df.iterrows():
         cells = []
-        
-        if include_aggregate and 'AggScore' in df.columns:
-            cells.append(str(row.get('Rank', '')))
-            cells.append(row['Estimator'])
+
+        if include_aggregate and "AggScore" in df.columns:
+            cells.append(str(row.get("Rank", "")))
+            cells.append(row["Estimator"])
             # Format aggregate score with bold
-            score = row.get('AggScore', np.nan)
+            score = row.get("AggScore", np.nan)
             if pd.isna(score):
-                cells.append('--')
+                cells.append("--")
             else:
                 cells.append(f"\\textbf{{{score:.1f}}}")
         else:
-            cells.append(row['Estimator'])
-        
-        for col, fmt in [('RMSE_d', '.4f'), ('IntervalScore_OA', '.4f'), 
-                        ('CalibScore', '.1f'), ('SE_GeoMean', '.4f'),
-                        ('Kendall_tau', '.3f'), ('Top1_Acc', '.1f')]:
+            cells.append(row["Estimator"])
+
+        for col, fmt in [
+            ("RMSE_d", ".4f"),
+            ("IntervalScore_OA", ".4f"),
+            ("CalibScore", ".1f"),
+            ("SE_GeoMean", ".4f"),
+            ("Kendall_tau", ".3f"),
+            ("Top1_Acc", ".1f"),
+        ]:
             val = row[col]
             if pd.isna(val):
-                cells.append('--')
+                cells.append("--")
             else:
                 formatted = f"{val:{fmt}}"
                 if idx == best_idx.get(col):
@@ -491,83 +526,102 @@ def format_leaderboard_latex(df: pd.DataFrame, include_aggregate: bool = True) -
                 elif idx == second_idx.get(col):
                     formatted = f"\\underline{{{formatted}}}"
                 cells.append(formatted)
-        
+
         latex.append(" & ".join(cells) + " \\\\")
-    
+
     latex.append("\\bottomrule")
     latex.append("\\end{tabular}")
-    
-    if include_aggregate and 'AggScore' in df.columns:
-        latex.append("\\footnotesize{Aggregate Score: 30\\% ranking (K-$\\tau$+Top-1), 25\\% accuracy (RMSE$^d$), 25\\% efficiency (SE GM), 20\\% calibration (CalibScore+IS$^{OA}$)}")
-    
+
+    if include_aggregate and "AggScore" in df.columns:
+        latex.append(
+            "\\footnotesize{Aggregate Score: 30\\% ranking (K-$\\tau$+Top-1), 25\\% accuracy (RMSE$^d$), 25\\% efficiency (SE GM), 20\\% calibration (CalibScore+IS$^{OA}$)}"
+        )
+
     latex.append("\\end{table}")
-    
+
     return "\n".join(latex)
 
 
-def format_leaderboard_markdown(df: pd.DataFrame, include_aggregate: bool = True) -> str:
+def format_leaderboard_markdown(
+    df: pd.DataFrame, include_aggregate: bool = True
+) -> str:
     """Format leaderboard as Markdown table."""
     # Round values for display
     df_display = df.copy()
-    df_display['RMSE_d'] = df_display['RMSE_d'].round(4)
-    df_display['IntervalScore_OA'] = df_display['IntervalScore_OA'].round(4)
-    df_display['CalibScore'] = df_display['CalibScore'].round(1)
-    df_display['SE_GeoMean'] = df_display['SE_GeoMean'].round(4)
-    df_display['Kendall_tau'] = df_display['Kendall_tau'].round(3)
-    df_display['Top1_Acc'] = df_display['Top1_Acc'].round(1)
-    
-    if include_aggregate and 'AggScore' in df_display.columns:
-        df_display['AggScore'] = df_display['AggScore'].round(1)
+    df_display["RMSE_d"] = df_display["RMSE_d"].round(4)
+    df_display["IntervalScore_OA"] = df_display["IntervalScore_OA"].round(4)
+    df_display["CalibScore"] = df_display["CalibScore"].round(1)
+    df_display["SE_GeoMean"] = df_display["SE_GeoMean"].round(4)
+    df_display["Kendall_tau"] = df_display["Kendall_tau"].round(3)
+    df_display["Top1_Acc"] = df_display["Top1_Acc"].round(1)
+
+    if include_aggregate and "AggScore" in df_display.columns:
+        df_display["AggScore"] = df_display["AggScore"].round(1)
         # Reorder columns to put rank and score first
-        cols = ['Rank', 'Estimator', 'AggScore', 'RMSE_d', 'IntervalScore_OA', 
-                'CalibScore', 'SE_GeoMean', 'Kendall_tau', 'Top1_Acc']
+        cols = [
+            "Rank",
+            "Estimator",
+            "AggScore",
+            "RMSE_d",
+            "IntervalScore_OA",
+            "CalibScore",
+            "SE_GeoMean",
+            "Kendall_tau",
+            "Top1_Acc",
+        ]
         df_display = df_display[[c for c in cols if c in df_display.columns]]
-    
+
     return df_display.to_markdown(index=False)
 
 
 def compute_paired_deltas(
-    results: List[Dict[str, Any]], 
-    toggle: str = 'use_weight_calibration',
-    within: str = 'estimator',
-    hold_constant: Tuple[str, ...] = ('seed_base', 'sample_size', 'oracle_coverage'),
-    focus_on_variance: bool = False
+    results: List[Dict[str, Any]],
+    toggle: str = "use_weight_calibration",
+    within: str = "estimator",
+    hold_constant: Tuple[str, ...] = ("seed_base", "sample_size", "oracle_coverage"),
+    focus_on_variance: bool = False,
 ) -> pd.DataFrame:
     """Compute paired differences for design choice effects.
-    
+
     Args:
         results: List of experiment results
         toggle: Variable to toggle (e.g., 'use_weight_calibration', 'use_iic')
         within: Group comparisons within this variable
         hold_constant: Variables that must match for pairing
         focus_on_variance: If True, focus on SE/CI metrics instead of point estimates
-        
+
     Returns:
         DataFrame with delta statistics and significance tests
     """
     # Build pairing index
     paired_data = {}
-    
+
     for result in results:
         spec = result.get("spec", {})
-        
+
         # Extract key components
         within_val = spec.get(within, "unknown")
         toggle_val = result.get(toggle, spec.get("extra", {}).get(toggle, False))
-        
+
         # Build matching key
-        match_key = tuple(spec.get(h) if h != 'seed_base' else result.get('seed', spec.get('seed_base'))
-                         for h in hold_constant)
-        
+        match_key = tuple(
+            (
+                spec.get(h)
+                if h != "seed_base"
+                else result.get("seed", spec.get("seed_base"))
+            )
+            for h in hold_constant
+        )
+
         full_key = (within_val, match_key, toggle_val)
-        
+
         if full_key not in paired_data:
             paired_data[full_key] = []
         paired_data[full_key].append(result)
-    
+
     # Compute deltas for matched pairs
     delta_rows = []
-    
+
     # Group by (within_val, match_key) and find on/off pairs
     for within_val in set(k[0] for k in paired_data.keys()):
         deltas_rmse = []
@@ -576,18 +630,18 @@ def compute_paired_deltas(
         deltas_se = []
         deltas_tau = []
         deltas_se_geomean = []
-        
+
         for match_key in set(k[1] for k in paired_data.keys() if k[0] == within_val):
             # Find on and off versions
             key_on = (within_val, match_key, True)
             key_off = (within_val, match_key, False)
-            
+
             if key_on in paired_data and key_off in paired_data:
                 # Should be one result each for matched experiments
                 if len(paired_data[key_on]) == 1 and len(paired_data[key_off]) == 1:
                     result_on = paired_data[key_on][0]
                     result_off = paired_data[key_off][0]
-                    
+
                     if not focus_on_variance:
                         # Compute deltas for point estimates
                         rmse_on = result_on.get("rmse_vs_oracle")
@@ -596,9 +650,13 @@ def compute_paired_deltas(
                             deltas_rmse.append(rmse_on - rmse_off)
                     else:
                         # Focus on SE changes for IIC
-                        ses_on = result_on.get("robust_standard_errors") or result_on.get("standard_errors", {})
-                        ses_off = result_off.get("robust_standard_errors") or result_off.get("standard_errors", {})
-                        
+                        ses_on = result_on.get(
+                            "robust_standard_errors"
+                        ) or result_on.get("standard_errors", {})
+                        ses_off = result_off.get(
+                            "robust_standard_errors"
+                        ) or result_off.get("standard_errors", {})
+
                         se_vals_on = []
                         se_vals_off = []
                         for policy in ["clone", "parallel_universe_prompt", "premium"]:
@@ -606,118 +664,144 @@ def compute_paired_deltas(
                                 if ses_on[policy] > 0 and ses_off[policy] > 0:
                                     se_vals_on.append(ses_on[policy])
                                     se_vals_off.append(ses_off[policy])
-                        
+
                         if se_vals_on and se_vals_off:
                             # Geometric mean of SEs
                             geom_on = np.exp(np.mean(np.log(se_vals_on)))
                             geom_off = np.exp(np.mean(np.log(se_vals_off)))
                             # Percent change in SE
-                            deltas_se_geomean.append((geom_on - geom_off) / geom_off * 100 if geom_off > 0 else 0)
-                    
+                            deltas_se_geomean.append(
+                                (geom_on - geom_off) / geom_off * 100
+                                if geom_off > 0
+                                else 0
+                            )
+
                     # Add more delta computations...
                     # (Similar for interval score, calibration, ranking)
-        
+
         if deltas_rmse or deltas_se_geomean:
             # Compute statistics based on focus
             if not focus_on_variance and deltas_rmse:
                 delta_row = {
                     within: within_val,
-                    'n_pairs': len(deltas_rmse),
-                    'ΔRMSE_d': np.mean(deltas_rmse),
-                    'ΔRMSE_d_se': np.std(deltas_rmse) / np.sqrt(len(deltas_rmse)),
-                    'ΔRMSE_d_p': stats.wilcoxon(deltas_rmse, alternative='two-sided').pvalue if len(deltas_rmse) > 5 and len(set(deltas_rmse)) > 1 else np.nan
+                    "n_pairs": len(deltas_rmse),
+                    "ΔRMSE_d": np.mean(deltas_rmse),
+                    "ΔRMSE_d_se": np.std(deltas_rmse) / np.sqrt(len(deltas_rmse)),
+                    "ΔRMSE_d_p": (
+                        stats.wilcoxon(deltas_rmse, alternative="two-sided").pvalue
+                        if len(deltas_rmse) > 5 and len(set(deltas_rmse)) > 1
+                        else np.nan
+                    ),
                 }
-                
+
                 # Add bootstrap CI
                 if len(deltas_rmse) >= 20:
                     bootstrap_means = []
                     for _ in range(1000):
-                        sample = np.random.choice(deltas_rmse, size=len(deltas_rmse), replace=True)
+                        sample = np.random.choice(
+                            deltas_rmse, size=len(deltas_rmse), replace=True
+                        )
                         bootstrap_means.append(np.mean(sample))
-                    delta_row['ΔRMSE_d_ci_low'] = np.percentile(bootstrap_means, 2.5)
-                    delta_row['ΔRMSE_d_ci_high'] = np.percentile(bootstrap_means, 97.5)
-                
+                    delta_row["ΔRMSE_d_ci_low"] = np.percentile(bootstrap_means, 2.5)
+                    delta_row["ΔRMSE_d_ci_high"] = np.percentile(bootstrap_means, 97.5)
+
                 delta_rows.append(delta_row)
             elif focus_on_variance and deltas_se_geomean:
                 delta_row = {
                     within: within_val,
-                    'n_pairs': len(deltas_se_geomean),
-                    'ΔSE_pct': np.mean(deltas_se_geomean),
-                    'ΔSE_pct_se': np.std(deltas_se_geomean) / np.sqrt(len(deltas_se_geomean)),
-                    'ΔSE_pct_p': stats.wilcoxon(deltas_se_geomean, alternative='two-sided').pvalue if len(deltas_se_geomean) > 5 and len(set(deltas_se_geomean)) > 1 else np.nan
+                    "n_pairs": len(deltas_se_geomean),
+                    "ΔSE_pct": np.mean(deltas_se_geomean),
+                    "ΔSE_pct_se": np.std(deltas_se_geomean)
+                    / np.sqrt(len(deltas_se_geomean)),
+                    "ΔSE_pct_p": (
+                        stats.wilcoxon(
+                            deltas_se_geomean, alternative="two-sided"
+                        ).pvalue
+                        if len(deltas_se_geomean) > 5
+                        and len(set(deltas_se_geomean)) > 1
+                        else np.nan
+                    ),
                 }
-                
+
                 # Add bootstrap CI for SE change
                 if len(deltas_se_geomean) >= 20:
                     bootstrap_means = []
                     for _ in range(1000):
-                        sample = np.random.choice(deltas_se_geomean, size=len(deltas_se_geomean), replace=True)
+                        sample = np.random.choice(
+                            deltas_se_geomean, size=len(deltas_se_geomean), replace=True
+                        )
                         bootstrap_means.append(np.mean(sample))
-                    delta_row['ΔSE_pct_ci_low'] = np.percentile(bootstrap_means, 2.5)
-                    delta_row['ΔSE_pct_ci_high'] = np.percentile(bootstrap_means, 97.5)
-                
+                    delta_row["ΔSE_pct_ci_low"] = np.percentile(bootstrap_means, 2.5)
+                    delta_row["ΔSE_pct_ci_high"] = np.percentile(bootstrap_means, 97.5)
+
                 delta_rows.append(delta_row)
-    
+
     return pd.DataFrame(delta_rows)
 
 
-def generate_delta_tables(results: List[Dict[str, Any]], output_format: str = "dataframe") -> Dict[str, Any]:
+def generate_delta_tables(
+    results: List[Dict[str, Any]], output_format: str = "dataframe"
+) -> Dict[str, Any]:
     """Generate Table 2: Effects of Design Choices (paired deltas).
-    
+
     Args:
         results: List of experiment results
         output_format: "dataframe", "latex", or "markdown"
-        
+
     Returns:
         Dict with panels A (calibration) and B (IIC)
     """
     # Panel A: Weight calibration effect (affects point estimates)
-    panel_a = compute_paired_deltas(results, toggle='use_weight_calibration', focus_on_variance=False)
-    
+    panel_a = compute_paired_deltas(
+        results, toggle="use_weight_calibration", focus_on_variance=False
+    )
+
     # Panel B: IIC effect (affects SEs only, not point estimates)
-    panel_b = compute_paired_deltas(results, toggle='use_iic', focus_on_variance=True)
-    
+    panel_b = compute_paired_deltas(results, toggle="use_iic", focus_on_variance=True)
+
     if output_format == "dataframe":
-        return {'calibration': panel_a, 'iic': panel_b}
+        return {"calibration": panel_a, "iic": panel_b}
     elif output_format == "latex":
         return {
-            'calibration': format_delta_latex(panel_a, "Weight Calibration (SIMCal) Effect"),
-            'iic': format_delta_latex(panel_b, "IIC Effect")
+            "calibration": format_delta_latex(
+                panel_a, "Weight Calibration (SIMCal) Effect"
+            ),
+            "iic": format_delta_latex(panel_b, "IIC Effect"),
         }
     else:
-        return {'calibration': panel_a.to_markdown(), 'iic': panel_b.to_markdown()}
+        return {"calibration": panel_a.to_markdown(), "iic": panel_b.to_markdown()}
 
 
 def format_delta_latex(df: pd.DataFrame, title: str) -> str:
     """Format delta table as LaTeX with significance markers."""
     latex = []
     latex.append(f"\\subsubsection{{{title}}}")
-    
+
     # Check if this is an SE-focused table (for IIC)
-    if 'ΔSE_pct' in df.columns:
+    if "ΔSE_pct" in df.columns:
         latex.append("\\begin{tabular}{l|ccc}")
         latex.append("\\toprule")
         latex.append("Estimator & $\\Delta$SE (\\%) & CI & p-value \\\\")
         latex.append("\\midrule")
-        
+
         for _, row in df.iterrows():
-            cells = [row['estimator']]
-            
+            cells = [row["estimator"]]
+
             # Format SE percentage change
-            se_change = row.get('ΔSE_pct', np.nan)
+            se_change = row.get("ΔSE_pct", np.nan)
             if not pd.isna(se_change):
                 formatted = f"{se_change:.1f}\\%"
-                
+
                 # Add CI if available
-                ci_low = row.get('ΔSE_pct_ci_low')
-                ci_high = row.get('ΔSE_pct_ci_high')
+                ci_low = row.get("ΔSE_pct_ci_low")
+                ci_high = row.get("ΔSE_pct_ci_high")
                 if ci_low is not None and ci_high is not None:
                     ci_str = f"[{ci_low:.1f}, {ci_high:.1f}]"
                 else:
                     ci_str = "--"
-                
+
                 # Add p-value
-                p_val = row.get('ΔSE_pct_p', np.nan)
+                p_val = row.get("ΔSE_pct_p", np.nan)
                 if not pd.isna(p_val):
                     if p_val < 0.001:
                         p_str = "< 0.001***"
@@ -729,38 +813,46 @@ def format_delta_latex(df: pd.DataFrame, title: str) -> str:
                         p_str = f"{p_val:.3f}"
                 else:
                     p_str = "--"
-                
+
                 cells.extend([formatted, ci_str, p_str])
             else:
                 cells.extend(["--", "--", "--"])
-            
+
             latex.append(" & ".join(cells) + " \\\\")
     else:
         # Original format for RMSE-focused tables
         latex.append("\\begin{tabular}{l|ccccc}")
         latex.append("\\toprule")
-        latex.append("Estimator & $\\Delta$RMSE$^d$ & $\\Delta$IS$^{OA}$ & $\\Delta$CalibScore & $\\Delta$SE & $\\Delta\\tau$ \\\\")
+        latex.append(
+            "Estimator & $\\Delta$RMSE$^d$ & $\\Delta$IS$^{OA}$ & $\\Delta$CalibScore & $\\Delta$SE & $\\Delta\\tau$ \\\\"
+        )
         latex.append("\\midrule")
-        
+
         for _, row in df.iterrows():
-            cells = [row['estimator']]
-            
+            cells = [row["estimator"]]
+
             # Format each delta with CI and significance
-            for metric in ['RMSE_d', 'IntervalScore_OA', 'CalibScore', 'SE_GeoMean', 'Kendall_tau']:
-                delta_key = f'Δ{metric}'
+            for metric in [
+                "RMSE_d",
+                "IntervalScore_OA",
+                "CalibScore",
+                "SE_GeoMean",
+                "Kendall_tau",
+            ]:
+                delta_key = f"Δ{metric}"
                 if delta_key in row:
                     val = row[delta_key]
-                    ci_low = row.get(f'{delta_key}_ci_low')
-                    ci_high = row.get(f'{delta_key}_ci_high')
-                    p_val = row.get(f'{delta_key}_p')
-                    
+                    ci_low = row.get(f"{delta_key}_ci_low")
+                    ci_high = row.get(f"{delta_key}_ci_high")
+                    p_val = row.get(f"{delta_key}_p")
+
                     # Format value
                     formatted = f"{val:.4f}"
-                    
+
                     # Add CI if available
                     if ci_low is not None and ci_high is not None:
                         formatted += f" [{ci_low:.4f}, {ci_high:.4f}]"
-                    
+
                     # Add significance marker
                     if p_val is not None:
                         if p_val < 0.001:
@@ -769,114 +861,122 @@ def format_delta_latex(df: pd.DataFrame, title: str) -> str:
                             formatted += "**"
                         elif p_val < 0.05:
                             formatted += "*"
-                    
+
                     # Add direction arrow
                     if val > 0.001:
                         formatted += " ↑"
                     elif val < -0.001:
                         formatted += " ↓"
-                        
+
                     cells.append(formatted)
                 else:
                     cells.append("--")
-            
+
             latex.append(" & ".join(cells) + " \\\\")
-    
+
     latex.append("\\bottomrule")
     latex.append("\\end{tabular}")
-    
+
     return "\n".join(latex)
 
 
 def compute_stacking_diagnostics(results: List[Dict[str, Any]]) -> pd.DataFrame:
     """Extract and analyze stacking diagnostics.
-    
+
     Since stacking-specific diagnostics aren't saved, we'll compare
     stacked-dr variants on available metrics.
-    
+
     Args:
         results: List of experiment results
-        
+
     Returns:
         DataFrame with stacking efficiency comparison
     """
     rows = []
-    
+
     # Group by estimator and configuration
     estimator_data = {}
-    
+
     for result in results:
         spec = result.get("spec", {})
         estimator = spec.get("estimator", "")
         if not estimator.startswith("stacked"):
             continue
-            
+
         config_key = create_config_key(result)
-        
+
         if config_key not in estimator_data:
             estimator_data[config_key] = {
-                'ses': [],
-                'rmses': [],
-                'coverages': [],
-                'runtimes': [],
-                'ess_values': []
+                "ses": [],
+                "rmses": [],
+                "coverages": [],
+                "runtimes": [],
+                "ess_values": [],
             }
-        
+
         # Collect available metrics
         ses = result.get("standard_errors", {})
         for policy in ["clone", "parallel_universe_prompt", "premium"]:
             if policy in ses and ses[policy] is not None:
-                estimator_data[config_key]['ses'].append(ses[policy])
-        
+                estimator_data[config_key]["ses"].append(ses[policy])
+
         rmse = result.get("rmse_vs_oracle")
         if rmse is not None:
-            estimator_data[config_key]['rmses'].append(rmse)
-        
+            estimator_data[config_key]["rmses"].append(rmse)
+
         runtime = result.get("runtime_s")
         if runtime is not None:
-            estimator_data[config_key]['runtimes'].append(runtime)
-        
+            estimator_data[config_key]["runtimes"].append(runtime)
+
         # ESS relative - it's stored as a dict by policy
         ess_rel = result.get("ess_relative")
         if ess_rel and isinstance(ess_rel, dict):
             for policy in ["clone", "parallel_universe_prompt", "premium"]:
                 if policy in ess_rel and ess_rel[policy] is not None:
-                    estimator_data[config_key]['ess_values'].append(ess_rel[policy])
-    
+                    estimator_data[config_key]["ess_values"].append(ess_rel[policy])
+
     # Build comparison rows
     for config_key, data in estimator_data.items():
-        if data['ses'] and data['rmses']:
+        if data["ses"] and data["rmses"]:
             row = {
-                'Estimator': config_key,
-                'SE_GeoMean': np.exp(np.mean(np.log(data['ses']))) if data['ses'] else np.nan,
-                'RMSE': np.mean(data['rmses']) if data['rmses'] else np.nan,
-                'Runtime_Median': np.median(data['runtimes']) if data['runtimes'] else np.nan,
-                'ESS_Mean': np.mean(data['ess_values']) * 100 if data['ess_values'] else np.nan,
-                'N_Experiments': len(data['rmses'])
+                "Estimator": config_key,
+                "SE_GeoMean": (
+                    np.exp(np.mean(np.log(data["ses"]))) if data["ses"] else np.nan
+                ),
+                "RMSE": np.mean(data["rmses"]) if data["rmses"] else np.nan,
+                "Runtime_Median": (
+                    np.median(data["runtimes"]) if data["runtimes"] else np.nan
+                ),
+                "ESS_Mean": (
+                    np.mean(data["ess_values"]) * 100 if data["ess_values"] else np.nan
+                ),
+                "N_Experiments": len(data["rmses"]),
             }
             rows.append(row)
-    
+
     df = pd.DataFrame(rows)
-    
+
     # Sort by estimator name for consistent ordering
     if not df.empty:
-        df = df.sort_values('Estimator')
-    
+        df = df.sort_values("Estimator")
+
     return df
 
 
-def generate_stacking_table(results: List[Dict[str, Any]], output_format: str = "dataframe") -> Any:
+def generate_stacking_table(
+    results: List[Dict[str, Any]], output_format: str = "dataframe"
+) -> Any:
     """Generate Table 3: Stacked-DR Efficiency & Stability.
-    
+
     Args:
         results: List of experiment results
         output_format: "dataframe", "latex", or "markdown"
-        
+
     Returns:
         Formatted table
     """
     df = compute_stacking_diagnostics(results)
-    
+
     if output_format == "dataframe":
         return df
     elif output_format == "latex":
@@ -892,7 +992,7 @@ def format_stacking_latex(df: pd.DataFrame) -> str:
     latex.append("\\centering")
     latex.append("\\caption{Stacked-DR Performance Summary}")
     latex.append("\\label{tab:stacking}")
-    
+
     if df.empty:
         # Empty table
         latex.append("\\begin{tabular}{l}")
@@ -905,52 +1005,56 @@ def format_stacking_latex(df: pd.DataFrame) -> str:
         latex.append("\\toprule")
         latex.append("Metric & Value \\\\")
         latex.append("\\midrule")
-        
+
         # Since we only have one estimator now, show as key-value pairs
         if len(df) == 1:
             row = df.iloc[0]
-            
+
             # Format metrics as rows
             metrics = [
-                ("RMSE", row.get('RMSE'), '.4f'),
-                ("SE (Geometric Mean)", row.get('SE_GeoMean'), '.4f'),
-                ("Runtime (median, s)", row.get('Runtime_Median'), '.1f'),
-                ("N Experiments", row.get('N_Experiments'), '.0f')
+                ("RMSE", row.get("RMSE"), ".4f"),
+                ("SE (Geometric Mean)", row.get("SE_GeoMean"), ".4f"),
+                ("Runtime (median, s)", row.get("Runtime_Median"), ".1f"),
+                ("N Experiments", row.get("N_Experiments"), ".0f"),
             ]
-            
+
             for metric_name, value, fmt in metrics:
                 if not pd.isna(value):
                     latex.append(f"{metric_name} & {value:{fmt}} \\\\")
                 else:
                     latex.append(f"{metric_name} & -- \\\\")
-        
+
         latex.append("\\bottomrule")
         latex.append("\\end{tabular}")
-    
+
     latex.append("\\end{table}")
-    
+
     return "\n".join(latex)
 
 
 def main():
     """Generate all paper tables."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Generate paper tables")
-    parser.add_argument("--results", type=Path, default=Path("results/all_experiments.jsonl"))
+    parser.add_argument(
+        "--results", type=Path, default=Path("results/all_experiments.jsonl")
+    )
     parser.add_argument("--output", type=Path, default=Path("tables/"))
-    parser.add_argument("--format", choices=["dataframe", "latex", "markdown"], default="latex")
+    parser.add_argument(
+        "--format", choices=["dataframe", "latex", "markdown"], default="latex"
+    )
     args = parser.parse_args()
-    
+
     # Load results
     results = []
     with open(args.results) as f:
         for line in f:
             results.append(json.loads(line))
-    
+
     # Create output directory
     args.output.mkdir(exist_ok=True, parents=True)
-    
+
     # Generate tables
     print("Generating Table 1: Leaderboard...")
     leaderboard = generate_leaderboard(results, args.format)
@@ -958,25 +1062,27 @@ def main():
         (args.output / "main" / "table1_leaderboard.tex").write_text(leaderboard)
     elif args.format == "markdown":
         (args.output / "main" / "table1_leaderboard.md").write_text(leaderboard)
-    
+
     print("Generating Table 2: Design Choice Effects...")
     delta_tables = generate_delta_tables(results, args.format)
     if args.format == "latex":
-        (args.output / "main" / "table2a_calibration.tex").write_text(delta_tables['calibration'])
-        (args.output / "main" / "table2b_iic.tex").write_text(delta_tables['iic'])
+        (args.output / "main" / "table2a_calibration.tex").write_text(
+            delta_tables["calibration"]
+        )
+        (args.output / "main" / "table2b_iic.tex").write_text(delta_tables["iic"])
     elif args.format == "markdown":
         (args.output / "main" / "table2_deltas.md").write_text(
             f"## Calibration Effects\n\n{delta_tables['calibration']}\n\n"
             f"## IIC Effects\n\n{delta_tables['iic']}"
         )
-    
+
     print("Generating Table 3: Stacking Diagnostics...")
     stacking = generate_stacking_table(results, args.format)
     if args.format == "latex":
         (args.output / "main" / "table3_stacking.tex").write_text(stacking)
     elif args.format == "markdown":
         (args.output / "main" / "table3_stacking.md").write_text(stacking)
-    
+
     print(f"Tables written to {args.output}/")
 
 

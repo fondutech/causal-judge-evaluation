@@ -308,6 +308,9 @@ class TRCPOEstimator(DREstimator):
             n = len(data)
             n_used[policy] = n
 
+            # Store sample indices for IF alignment in stacking
+            self._store_sample_indices(policy, data)
+
             # Raw/Hájek weights (critical: no SIMCal here)
             w = self.sampler.compute_importance_weights(
                 policy, clip_weight=None, mode=self.weight_mode
@@ -627,6 +630,8 @@ class TRCPOEstimator(DREstimator):
                 "weight_mode": self.weight_mode,
                 "mc_variance_diagnostics": getattr(self, "_mc_diagnostics", None),
                 "iic_diagnostics": getattr(self, "_iic_diagnostics", None),
+                # Add sample indices for IF alignment in stacking
+                "if_sample_indices": getattr(self, "_if_sample_indices", {}),
             },
         )
 
