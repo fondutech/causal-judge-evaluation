@@ -40,9 +40,9 @@ class StackedDREstimator(BaseCJEEstimator):
         self,
         sampler: PrecomputedSampler,
         estimators: Optional[List[str]] = None,
-        covariance_regularization: float = 1e-3,  # Increased for better stability with high correlations
+        covariance_regularization: float = 1e-4,
         min_weight: float = 0.0,
-        weight_shrinkage: float = 0.01,  # Reduced shrinkage to allow more extreme weights
+        weight_shrinkage: float = 0.0,  # No shrinkage - let optimizer find optimal weights
         parallel: bool = True,
         seed: int = 42,
         n_folds: int = 5,
@@ -532,15 +532,15 @@ class StackedDREstimator(BaseCJEEstimator):
         else:
             max_corr = 0.0
 
-        # Check for weights at boundary
-        min_threshold = 0.01 if self.weight_shrinkage >= 0.05 else 0.002
-        weights_at_min = sum(1 for weight in w if weight <= min_threshold)
+        # Check for weights at boundary (near zero)
+        min_threshold = 1e-6
+        weights_at_zero = sum(1 for weight in w if weight <= min_threshold)
 
-        # Warn if many weights are at the minimum
-        if weights_at_min > 2:
+        # Warn if many weights are effectively zero
+        if weights_at_zero > 2:
             logger.warning(
-                f"{weights_at_min} weights at/near minimum ({min_threshold:.3f}). "
-                f"Consider reducing shrinkage (currently {self.weight_shrinkage:.2%})"
+                f"{weights_at_zero} estimators have near-zero weight (<{min_threshold:.1e}). "
+                f"Consider using fewer estimators or checking for redundancy."
             )
 
         # Warn if condition number is very high
@@ -566,7 +566,7 @@ class StackedDREstimator(BaseCJEEstimator):
             "min_weight": float(w.min()),
             "max_weight": float(w.max()),
             "simplex_qp": True,  # Flag indicating we're using the constrained solver
-            "weights_at_boundary": int(weights_at_min),  # Number of weights at minimum
+            "weights_at_boundary": int(weights_at_zero),  # Number of weights near zero
             "effective_estimators": int(
                 sum(1 for weight in w if weight > 0.05)
             ),  # Estimators with meaningful weight
