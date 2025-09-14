@@ -47,15 +47,19 @@ def compute_debiased_rmse(
 
         debiased_sq_errors: List[float] = []
 
-        # Number of oracle samples used to compute each truth; default to global
-        n_oracle = int(result.get("n_oracle", n_oracle_default) or n_oracle_default)
+        # Per-policy oracle counts if available; fall back to global default
+        n_oracle_map = result.get("n_oracle_per_policy", {}) or {}
+        n_oracle_global = int(
+            result.get("n_oracle", n_oracle_default) or n_oracle_default
+        )
 
         for pol in policies:
             if pol in estimates and pol in truths:
                 est = float(estimates[pol])
                 tru = float(truths[pol])
                 err2 = (est - tru) ** 2
-                var_oracle = compute_oracle_variance(tru, n_oracle)
+                n_pol = int(n_oracle_map.get(pol, n_oracle_global) or n_oracle_global)
+                var_oracle = compute_oracle_variance(tru, n_pol)
                 debiased = max(0.0, err2 - var_oracle)
                 debiased_sq_errors.append(debiased)
 

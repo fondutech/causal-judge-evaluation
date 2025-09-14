@@ -356,6 +356,15 @@ class BaseAblation:
 
                 if oracle_values:
                     oracle_means[policy] = float(np.mean(oracle_values))
+                    # Store per-policy oracle counts for debiasing
+                    try:
+                        dataset_name = getattr(self, "name", "ablation")
+                    except Exception:
+                        dataset_name = "ablation"
+                    # Attach to an attribute for later consumption in run_single
+                    if not hasattr(self, "_oracle_counts_per_policy"):
+                        self._oracle_counts_per_policy = {}
+                    self._oracle_counts_per_policy[policy] = int(len(oracle_values))
 
         return oracle_means
 
@@ -790,6 +799,13 @@ class BaseAblation:
                 list(sampler.target_policies),
             )
             result["oracle_truths"] = oracle_truths
+            # If available, attach per-policy oracle counts to result
+            if hasattr(self, "_oracle_counts_per_policy") and isinstance(
+                self._oracle_counts_per_policy, dict
+            ):
+                result["n_oracle_per_policy"] = {
+                    k: int(v) for k, v in self._oracle_counts_per_policy.items()
+                }
 
             # Compute RMSE (excluding unhelpful policy which has different distribution)
             result["rmse_vs_oracle"] = self._compute_rmse(
