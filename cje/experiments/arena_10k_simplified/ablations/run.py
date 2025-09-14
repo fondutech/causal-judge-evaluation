@@ -161,7 +161,7 @@ class UnifiedAblation(BaseAblation):
 
             kwargs = {
                 "sampler": sampler,
-                "estimators": ["dr-cpo", "tmle", "mrdr"],
+                "estimators": ["dr-cpo", "tmle", "mrdr", "oc-dr-cpo", "tr-cpo-e"],  # All 5 estimators
                 "n_folds": DR_CONFIG["n_folds"],  # Inner folds for component estimators
                 "V_folds": DR_CONFIG.get(
                     "v_folds_stacking", 20
