@@ -27,9 +27,9 @@ config.EXPERIMENTS["estimators"] = [
     "dr-cpo",
     "stacked-dr",
 ]  # Test key estimators only
-config.EXPERIMENTS["sample_sizes"] = [500, 1000] 
-config.EXPERIMENTS["oracle_coverages"] = [0.25]  
-config.EXPERIMENTS["seeds"] = [42] 
+config.EXPERIMENTS["sample_sizes"] = [500, 1000]
+config.EXPERIMENTS["oracle_coverages"] = [0.25]
+config.EXPERIMENTS["seeds"] = [42]
 
 # Update paths for test (use absolute paths to avoid issues)
 config.RESULTS_PATH = config.BASE_DIR / "results" / "test_results.jsonl"

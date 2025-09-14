@@ -15,6 +15,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from cje.estimators.base_estimator import BaseCJEEstimator
 from cje.data.models import EstimationResult
 from cje.data.precomputed_sampler import PrecomputedSampler
+from cje.diagnostics.robust_inference import cluster_robust_se
+from cje.data.folds import get_fold
 
 logger = logging.getLogger(__name__)
 
@@ -98,8 +100,8 @@ class StackedDREstimator(BaseCJEEstimator):
         self.diagnostics_per_policy: Dict[str, Dict] = {}
         self._influence_functions: Dict[str, np.ndarray] = {}
 
-        # Set random seed
-        np.random.seed(self.seed)
+        # Use local RNG to avoid global side effects
+        self.rng = np.random.default_rng(self.seed)
 
     def fit(self) -> None:
         """Fit is a no-op for stacked estimator (components fit themselves)."""
@@ -297,7 +299,7 @@ class StackedDREstimator(BaseCJEEstimator):
             Tuple of (estimate, se, stacked_if) or None if failed
         """
         # Collect and align influence functions
-        IF_matrix, used_names = self._collect_aligned_ifs(policy, valid_estimators)
+        IF_matrix, used_names, common_indices = self._collect_aligned_ifs(policy, valid_estimators)
 
         if IF_matrix is None:
             logger.warning(f"No valid influence functions for policy {policy}")
@@ -311,11 +313,17 @@ class StackedDREstimator(BaseCJEEstimator):
         # Cast for mypy - we've already checked IF_matrix is not None above
         IF_matrix_clean = cast(np.ndarray, IF_matrix)
 
+        # Track which rows are valid for proper alignment with common_indices
         valid_rows = np.all(np.isfinite(IF_matrix_clean), axis=1)
         if not np.all(valid_rows):
             n_dropped = (~valid_rows).sum()
             logger.debug(f"Dropping {n_dropped} rows with NaN/Inf for {policy}")
             IF_matrix_clean = IF_matrix_clean[valid_rows]
+            # Also filter common_indices to match
+            common_indices_array = np.array(sorted(common_indices))
+            common_indices_clean = common_indices_array[valid_rows]
+        else:
+            common_indices_clean = np.array(sorted(common_indices))
 
         if IF_matrix_clean.shape[0] < 10:
             logger.warning(
@@ -328,6 +336,22 @@ class StackedDREstimator(BaseCJEEstimator):
         # NOTE: Sign alignment removed - it's inconsistent to flip IF signs without flipping estimates
         # IF_matrix_clean = self._align_if_signs(IF_matrix_clean)
 
+        # Scale/consistency sanity check for each component
+        for i, est_name in enumerate(used_names):
+            IF_k = IF_matrix_clean[:, i]
+            # Expected SE from IF: sd(IF_k)/sqrt(n)
+            se_if = np.std(IF_k, ddof=1) / np.sqrt(len(IF_k))
+            result = self.component_results[est_name]
+            if result and policy_idx < len(result.standard_errors):
+                se_rep = float(result.standard_errors[policy_idx])
+                # Compare orders of magnitude
+                ratio = se_if / max(se_rep, 1e-12)
+                if ratio < 0.2 or ratio > 5:
+                    logger.warning(
+                        f"IF/SE mismatch for {est_name} on {policy} (ratio={ratio:.2f}); "
+                        f"check scaling. SE_IF={se_if:.4f}, SE_reported={se_rep:.4f}"
+                    )
+
         # Compute optimal weights with regularization
         weights, weight_diagnostics = self._compute_optimal_weights(IF_matrix_clean)
         self.weights_per_policy[policy] = weights
@@ -335,7 +359,27 @@ class StackedDREstimator(BaseCJEEstimator):
 
         # Oracle IC approach: simple and theoretically justified
         stacked_if = IF_matrix_clean @ weights
-        se_if = np.std(stacked_if, ddof=1) / np.sqrt(len(stacked_if))
+
+        # CRITICAL FIX: Use cluster-robust SE accounting for fold dependence
+        # Recover prompt_ids in the same order used to build stacked_if
+        prompt_ids = common_indices_clean.astype(object)
+
+        # Get fold configuration from dataset metadata or use defaults
+        n_folds = self.n_folds if hasattr(self, 'n_folds') else 5
+        fold_seed = 42  # Use consistent seed for fold assignment
+
+        # Reproduce the fold hashing used everywhere else
+        fold_ids = np.array([get_fold(str(pid), n_folds, fold_seed) for pid in prompt_ids], dtype=int)
+
+        # Compute cluster-robust SE
+        res_if = cluster_robust_se(
+            data=stacked_if,
+            cluster_ids=fold_ids,
+            statistic_fn=lambda x: np.mean(x),
+            influence_fn=lambda x: x,  # already an IF
+            alpha=0.05,
+        )
+        se_if = float(res_if["se"])
 
         # Add MC variance if present
         mc_var = self._aggregate_mc_variance(policy, used_names, weights)
@@ -358,6 +402,15 @@ class StackedDREstimator(BaseCJEEstimator):
         weight_diagnostics["mc_var"] = mc_var
         weight_diagnostics["n_samples"] = len(stacked_if)
         weight_diagnostics["components"] = used_names
+
+        # Report overlap fraction
+        max_component_length = 0
+        for name in valid_estimators:
+            if self.component_results[name] and self.component_results[name].influence_functions:
+                ifs = self.component_results[name].influence_functions.get(policy, [])
+                if len(ifs) > max_component_length:
+                    max_component_length = len(ifs)
+        weight_diagnostics["overlap_fraction"] = len(stacked_if) / max(max_component_length, 1)
 
         return estimate, se, stacked_if
 
@@ -446,17 +499,22 @@ class StackedDREstimator(BaseCJEEstimator):
             # Solve for optimal weights using simplex QP (ensures non-negative weights)
             w = self._solve_simplex_qp(Sigma_reg)
 
-            # Apply minimum weight constraint if specified (outside strict KKT)
-            if self.min_weight > 0:
-                w = np.maximum(w, self.min_weight)
-                w = w / w.sum()
-
-            # Apply shrinkage toward uniform if specified
+            # Apply shrinkage toward uniform if specified (preserves optimality better than hard floor)
             if self.weight_shrinkage > 0:
                 u = np.ones(K) / K
                 gamma = np.clip(self.weight_shrinkage, 0.0, 1.0)
                 w = (1 - gamma) * w + gamma * u
                 w = w / w.sum()
+
+            # If min_weight is needed, use parametric shrinkage rather than hard floor
+            # (hard floor breaks KKT optimality)
+            if self.min_weight > 0:
+                u = np.ones(K) / K
+                # Heuristic mapping: ensure no weight below min_weight via shrinkage
+                gamma_min = min(1.0, self.min_weight * K)
+                if gamma_min > self.weight_shrinkage:
+                    w = (1 - gamma_min) * w + gamma_min * u
+                    w = w / w.sum()
 
         # Compute pairwise correlations between estimators
         if K > 1:
@@ -609,12 +667,13 @@ class StackedDREstimator(BaseCJEEstimator):
 
     def _collect_aligned_ifs(
         self, policy: str, valid_estimators: List[str]
-    ) -> Tuple[Optional[np.ndarray], List[str]]:
+    ) -> Tuple[Optional[np.ndarray], List[str], set]:
         """Collect and align influence functions from components.
 
         Returns:
             IF_matrix: n x K matrix of aligned IFs
             used_names: List of estimator names that contributed IFs
+            common_indices: Set of sample indices used for alignment
         """
         # Find common sample indices across all components
         common_indices = None
@@ -641,9 +700,46 @@ class StackedDREstimator(BaseCJEEstimator):
                         else:
                             common_indices = common_indices.intersection(indices)
 
-        if common_indices is None or len(common_indices) == 0:
+        # Fallback if no indices provided: align by position up to min length
+        if common_indices is None:
+            logger.warning(
+                f"No if_sample_indices provided by components for {policy}. "
+                f"Falling back to position-based alignment (less reliable)."
+            )
+            # Find minimum length across all components with IFs
+            min_length = float('inf')
+            for est_name in valid_estimators:
+                result = self.component_results[est_name]
+                if result and result.influence_functions and policy in result.influence_functions:
+                    if_data = result.influence_functions[policy]
+                    if if_data is not None and len(if_data) > 0:
+                        min_length = min(min_length, len(if_data))
+
+            if min_length == float('inf'):
+                logger.warning(f"No valid influence functions found for {policy}")
+                return None, [], set()
+
+            # Use position-based alignment up to min length
+            IF_columns = []
+            used_names = []
+            for est_name in valid_estimators:
+                result = self.component_results[est_name]
+                if result and result.influence_functions and policy in result.influence_functions:
+                    if_data = result.influence_functions[policy]
+                    if if_data is not None and len(if_data) >= min_length:
+                        IF_columns.append(if_data[:min_length])
+                        used_names.append(est_name)
+
+            if len(IF_columns) == 0:
+                return None, [], set()
+
+            IF_matrix = np.column_stack(IF_columns)
+            # Return pseudo-indices for position-based alignment
+            return IF_matrix, used_names, set(range(min_length))
+
+        if len(common_indices) == 0:
             logger.warning(f"No common samples found for {policy}")
-            return None, []
+            return None, [], set()
 
         # Collect aligned IFs
         IF_columns = []
@@ -678,10 +774,10 @@ class StackedDREstimator(BaseCJEEstimator):
                             used_names.append(est_name)
 
         if len(IF_columns) == 0:
-            return None, []
+            return None, [], set()
 
         IF_matrix = np.column_stack(IF_columns)
-        return IF_matrix, used_names
+        return IF_matrix, used_names, common_indices
 
     def _harmonize_if_scales(
         self, IF_matrix: np.ndarray, used_names: List[str]
@@ -697,46 +793,35 @@ class StackedDREstimator(BaseCJEEstimator):
 
         return IF_matrix
 
-    def _align_if_signs(self, IF_matrix: np.ndarray) -> np.ndarray:
-        """Align signs of IFs to ensure they're measuring the same direction."""
-        if IF_matrix.shape[1] <= 1:
-            return IF_matrix
-
-        # Use first column as reference
-        reference = IF_matrix[:, 0]
-
-        for i in range(1, IF_matrix.shape[1]):
-            correlation = np.corrcoef(reference, IF_matrix[:, i])[0, 1]
-            if correlation < 0:
-                logger.debug(
-                    f"Flipping sign of component {i} (correlation={correlation:.3f})"
-                )
-                IF_matrix[:, i] = -IF_matrix[:, i]
-
-        return IF_matrix
-
     def _aggregate_mc_variance(
         self, policy: str, used_names: List[str], weights: np.ndarray
     ) -> float:
-        """Aggregate Monte Carlo variance from components."""
+        """Aggregate Monte Carlo variance from components.
+
+        Conservative assumption: perfect correlation across components
+        (they share the same fresh draws).
+        """
         mc_vars = []
 
         for est_name in used_names:
             result = self.component_results[est_name]
-            if (
-                result
-                and hasattr(result, "metadata")
-                and isinstance(result.metadata, dict)
-            ):
-                mc_var = result.metadata.get("mc_variance", {}).get(policy, 0.0)
-                mc_vars.append(mc_var)
-            else:
-                mc_vars.append(0.0)
+            v = 0.0
+            if result and hasattr(result, "metadata") and isinstance(result.metadata, dict):
+                # Prefer detailed diagnostics if present
+                mcd = result.metadata.get("mc_variance_diagnostics", {})
+                if policy in mcd and "mc_var" in mcd[policy]:
+                    v = float(mcd[policy]["mc_var"])
+                else:
+                    # Legacy key (if ever set)
+                    v = float(result.metadata.get("mc_variance", {}).get(policy, 0.0))
+            mc_vars.append(v)
 
-        if mc_vars:
-            # Weighted sum of MC variances
-            return float(np.dot(weights**2, mc_vars))
-        return 0.0
+        if not mc_vars:
+            return 0.0
+
+        # Conservative assumption: perfect correlation across components
+        # (they share the same fresh draws)
+        return float((np.sum(weights * np.sqrt(mc_vars)))**2)
 
     def _build_metadata(self, valid_estimators: List[str]) -> Dict[str, Any]:
         """Build metadata for the result."""

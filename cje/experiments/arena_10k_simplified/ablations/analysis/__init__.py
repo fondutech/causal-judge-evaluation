@@ -54,7 +54,7 @@ __all__ = [
     "add_quadrant_classification",
     "filter_results",
     # RMSE analysis
-    "compute_rmse_metrics", 
+    "compute_rmse_metrics",
     "compute_debiased_rmse",
     "aggregate_rmse_by_quadrant",
     # Coverage analysis

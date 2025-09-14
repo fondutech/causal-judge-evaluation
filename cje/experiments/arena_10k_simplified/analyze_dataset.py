@@ -251,7 +251,6 @@ def main() -> int:
         if hasattr(estimator, "get_raw_weights"):
             analyze_extreme_weights_report(estimator, sampler, calibrated_dataset, args)
 
-
         # 8. Generate visualizations
         generate_visualizations(
             results,

@@ -5,11 +5,16 @@ POLICIES = ["clone", "parallel_universe_prompt", "premium", "unhelpful"]
 WELL_BEHAVED_POLICIES = ["clone", "parallel_universe_prompt", "premium"]
 
 # Quadrant definitions
-QUADRANT_ORDER = ["Small-LowOracle", "Small-HighOracle", "Large-LowOracle", "Large-HighOracle"]
+QUADRANT_ORDER = [
+    "Small-LowOracle",
+    "Small-HighOracle",
+    "Large-LowOracle",
+    "Large-HighOracle",
+]
 QUADRANT_ABBREVIATIONS = {
-    "Small-LowOracle":  "SL",
+    "Small-LowOracle": "SL",
     "Small-HighOracle": "SH",
-    "Large-LowOracle":  "LL",
+    "Large-LowOracle": "LL",
     "Large-HighOracle": "LH",
 }
 

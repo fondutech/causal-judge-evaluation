@@ -36,6 +36,7 @@ from .dr_base import DREstimator  # outcome model, fresh draws, OUA, IIC scaffol
 from ..data.precomputed_sampler import PrecomputedSampler
 from ..data.models import EstimationResult
 from ..data.folds import get_fold
+from ..diagnostics.robust_inference import cluster_robust_se
 
 logger = logging.getLogger(__name__)
 
@@ -489,8 +490,15 @@ class TRCPOEstimator(DREstimator):
                 # IIC is variance-only: it residualizes the IF but does NOT change the point estimate
                 # The point estimate V_hat remains unchanged
 
-            # Compute SE with Monte Carlo variance adjustment
-            base_se = float(np.std(phi, ddof=1) / np.sqrt(n)) if n > 1 else 0.0
+            # CRITICAL FIX: Use cluster-robust SE for fold dependence
+            res_if = cluster_robust_se(
+                data=phi,
+                cluster_ids=fold_ids,
+                statistic_fn=lambda x: np.mean(x),
+                influence_fn=lambda x: x,  # already an IF
+                alpha=0.05,
+            )
+            base_se = float(res_if["se"])
             mc_var = float(np.sum(fresh_var / np.maximum(M, 1.0)) / (n**2))
             se = float(np.sqrt(base_se**2 + mc_var))
             ses.append(se)

@@ -1733,7 +1733,9 @@ def compute_ranking_metrics(
                 "quadrant": quad,
                 "tau_b": float(tau) if tau is not None else np.nan,
                 "top1_acc": float(top1_acc),
-                "pairwise_acc": float(pairwise_acc) if pairwise_acc == pairwise_acc else np.nan,
+                "pairwise_acc": (
+                    float(pairwise_acc) if pairwise_acc == pairwise_acc else np.nan
+                ),
                 "regret": float(regret) if regret == regret else np.nan,
                 "n_pairs": int(total),
             }
@@ -1741,7 +1743,11 @@ def compute_ranking_metrics(
 
     per_exp = pd.DataFrame(rows)
     if per_exp.empty:
-        return {"per_experiment": per_exp, "agg_quadrant": pd.DataFrame(), "agg_overall": pd.DataFrame()}
+        return {
+            "per_experiment": per_exp,
+            "agg_quadrant": pd.DataFrame(),
+            "agg_overall": pd.DataFrame(),
+        }
 
     def _agg(df: pd.DataFrame, by: List[str]) -> pd.DataFrame:
         grp = df.groupby(by, dropna=False)
@@ -1755,14 +1761,18 @@ def compute_ranking_metrics(
     return {"per_experiment": per_exp, "agg_quadrant": agg_q, "agg_overall": agg_o}
 
 
-def print_ranking_summary(results: List[Dict[str, Any]], min_oracle_gap: float = 0.0) -> None:
+def print_ranking_summary(
+    results: List[Dict[str, Any]], min_oracle_gap: float = 0.0
+) -> None:
     """Print a concise ranking performance block."""
     print("\n" + "=" * 160)
     print("RANKING PERFORMANCE: Kendall τ-b, Top-1, Pairwise, Regret")
     print("=" * 160)
 
     policies = ["clone", "parallel_universe_prompt", "premium", "unhelpful"]
-    rk = compute_ranking_metrics(results, policies=policies, min_oracle_gap=min_oracle_gap)
+    rk = compute_ranking_metrics(
+        results, policies=policies, min_oracle_gap=min_oracle_gap
+    )
     agg_q = rk["agg_quadrant"]
     agg_o = rk["agg_overall"]
 
