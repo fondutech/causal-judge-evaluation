@@ -16,6 +16,7 @@ from sklearn.isotonic import IsotonicRegression
 from .calibrated_ips import CalibratedIPS
 from ..data.models import EstimationResult
 from ..data.folds import get_fold
+from ..diagnostics.robust_inference import cluster_robust_se
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
     - Preserved variance gains from SIMCal
 
     The SIMCal-anchored formulation:
-    V̂ = P_n[W̃·R] + P_n[(W-m̂^OOF)(R^OOF-f̂^OOF)] + P_n[f̂^OOF(W-W̃)]
+    V̂ = P_n[W̃·R] + P_n[(W-m̂^OOF)(R-f̂^OOF)] + P_n[f̂^OOF(W-W̃)]
 
     where:
     - W̃: SIMCal calibrated weights (variance-stabilized)
@@ -326,8 +327,11 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                 except Exception as e:
                     logger.debug(f"OC-IPS: OOF reward path failed for '{policy}': {e}")
 
-            # Get m̂^OOF (default to ones if not available)
-            m_hat_oof = self._m_hat_oof_cache.get(policy, np.ones_like(W))
+            # Get m̂^OOF (default to mean(W) if not available)
+            m_hat_oof = self._m_hat_oof_cache.get(policy, None)
+            if m_hat_oof is None:
+                muW = float(np.mean(W)) if np.isfinite(W).all() else 1.0
+                m_hat_oof = np.full_like(W, fill_value=muW)
 
             # Compute OC-IPS (SIMCal-anchored, full three-term version)
             # V̂ = P_n[W̃·R] + P_n[(W-m̂)(R-f̂)] + P_n[f̂(W-W̃)]
@@ -351,7 +355,7 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
             estimates.append(V_hat)
 
             # Influence function (perfectly aligned with estimator now)
-            # φ = contrib - V̂ = W̃·R^OOF + f̂^OOF(W-W̃) - V̂
+            # φ = contrib - V̂  (we build IF directly from the per-sample contributions)
             phi = contrib - V_hat
 
             # Apply IIC if enabled (variance reduction via residualization)
@@ -374,8 +378,22 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                 # IIC is variance-only: it residualizes the IF but does NOT change the point estimate
                 # The point estimate V_hat remains unchanged
 
-            # Standard error from influence function
-            se = float(np.std(phi, ddof=1) / np.sqrt(n))
+            # Cluster-robust SE across folds (accounts for within-fold dependence)
+            # Get fold assignments for clustering
+            prompt_ids = [d.get("prompt_id", f"sample_{i}") for i, d in enumerate(data)]
+            fold_ids = np.array(
+                [get_fold(pid, self.n_folds, self.random_seed) for pid in prompt_ids]
+            )
+
+            # Compute cluster-robust SE
+            res_if = cluster_robust_se(
+                data=phi,
+                cluster_ids=fold_ids,
+                statistic_fn=lambda x: np.mean(x),
+                influence_fn=lambda x: x,  # already centered IF
+                alpha=0.05,
+            )
+            se = float(res_if["se"])
             standard_errors.append(se)
             influence_functions[policy] = phi
 
@@ -395,7 +413,7 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                 "retarget_ci_lower": float(retarget.mean() - retarget_ci),
                 "retarget_ci_upper": float(retarget.mean() + retarget_ci),
                 "baseline_contrib": float(baseline.mean()),
-                "uses_oof_rewards": not np.array_equal(R, f_oof),
+                "uses_oof_calibrator": not np.array_equal(R, f_oof),
             }
 
             logger.debug(
@@ -544,8 +562,11 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                 )
                 W_tilde = W
 
-            # Get m̂^OOF
-            m_hat_oof = self._m_hat_oof_cache.get(policy, np.ones_like(W))
+            # Get m̂^OOF (default to mean(W) if not available)
+            m_hat_oof = self._m_hat_oof_cache.get(policy, None)
+            if m_hat_oof is None:
+                muW = float(np.mean(W)) if np.isfinite(W).all() else 1.0
+                m_hat_oof = np.full_like(W, fill_value=muW)
 
             judge_scores = np.array([d.get("judge_score") for d in data], dtype=float)
 
