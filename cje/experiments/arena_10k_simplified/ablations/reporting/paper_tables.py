@@ -1082,6 +1082,8 @@ def format_leaderboard_markdown(
     df_display["SE_GeoMean"] = df_display["SE_GeoMean"].round(4)
     df_display["Kendall_tau"] = df_display["Kendall_tau"].round(3)
     df_display["Top1_Acc"] = df_display["Top1_Acc"].round(1)
+    df_display["Pairwise_Acc"] = df_display["Pairwise_Acc"].round(1)
+    df_display["Top1_Regret"] = df_display["Top1_Regret"].round(4)
 
     if include_aggregate and "AggScore" in df_display.columns:
         df_display["AggScore"] = df_display["AggScore"].round(1)
@@ -1096,6 +1098,8 @@ def format_leaderboard_markdown(
             "SE_GeoMean",
             "Kendall_tau",
             "Top1_Acc",
+            "Pairwise_Acc",
+            "Top1_Regret",
         ]
         df_display = df_display[[c for c in cols if c in df_display.columns]]
 

@@ -22,7 +22,7 @@
 | dr-cpo (calib=True, iic=False)                        |         8.58217  |     42.5915   | O(K*n)       |        20 |         3.8143   |            nan |
 | dr-cpo (calib=False, iic=True)                        |         9.63394  |     44.5232   | O(K*n)       |        20 |         4.28175  |            nan |
 | dr-cpo (calib=True, iic=True)                         |         9.65517  |     44.6284   | O(K*n)       |        20 |         4.29119  |            nan |
-| stacked-dr (iic=False)                                |        16.4568   |    221.404    | O(M*K*n)     |        20 |         8.95249  |              5 |
-| stacked-dr (iic=True)                                 |        16.5744   |    226.906    | O(M*K*n)     |        20 |         8.92467  |              5 |
+| stacked-dr (iic=False)                                |        16.686    |    222.237    | O(M*K*n)     |        20 |         7.92587  |              5 |
+| stacked-dr (iic=True)                                 |        16.8327   |    227.612    | O(M*K*n)     |        20 |         7.99555  |              5 |
 | stacked-dr-core (calib=True, iic=False)               |        39.0154   |    104.958    | O(M*K*n)     |        20 |        17.3402   |              4 |
 | stacked-dr-core (calib=True, iic=True)                |        39.6962   |    106.871    | O(M*K*n)     |        20 |        17.6428   |              4 |

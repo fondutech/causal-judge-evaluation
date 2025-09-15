@@ -50,6 +50,18 @@ def main() -> None:
         default="latex",
         help="Output format",
     )
+    parser.add_argument(
+        "--weight-preset",
+        type=str,
+        choices=["balanced", "ranking", "accuracy", "inference"],
+        default="balanced",
+        help="Weight preset for aggregate scoring",
+    )
+    parser.add_argument(
+        "--no-robust-bounds",
+        action="store_true",
+        help="Disable robust percentile-based normalization",
+    )
     args = parser.parse_args()
 
     # Check results file exists
@@ -107,14 +119,24 @@ def main() -> None:
     print("\nGenerating Table 1: Estimator Leaderboard...")
     try:
         if args.format in ["latex", "both"]:
-            leaderboard_latex = generate_leaderboard(results, "latex")
+            leaderboard_latex = generate_leaderboard(
+                results,
+                output_format="latex",
+                weight_preset=args.weight_preset,
+                use_robust_bounds=not args.no_robust_bounds,
+            )
             (args.output / "main" / "table1_leaderboard.tex").write_text(
                 leaderboard_latex
             )
             print("  ✓ LaTeX version saved")
 
         if args.format in ["markdown", "both"]:
-            leaderboard_md = generate_leaderboard(results, "markdown")
+            leaderboard_md = generate_leaderboard(
+                results,
+                output_format="markdown",
+                weight_preset=args.weight_preset,
+                use_robust_bounds=not args.no_robust_bounds,
+            )
             (args.output / "main" / "table1_leaderboard.md").write_text(leaderboard_md)
             print("  ✓ Markdown version saved")
     except Exception as e:
