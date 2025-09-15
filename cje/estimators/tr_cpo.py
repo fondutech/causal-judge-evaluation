@@ -488,8 +488,8 @@ class TRCPOEstimator(DREstimator):
                 w_tilde = w
 
             # Anchor on SIMCal (baseline) + retarget to raw w (ensures identical estimand)
-            base_ips_vec = w_tilde * (R_oof - q_oof)
-            retarget_vec = (w - w_tilde) * (R_oof - q_oof)
+            base_ips_vec = w_tilde * (R - q_oof)
+            retarget_vec = (w - w_tilde) * (R - q_oof)
             dr_corr = float(np.mean(base_ips_vec + retarget_vec))
 
             # Choose weights for TR correction based on use_efficient_tr flag
@@ -532,7 +532,7 @@ class TRCPOEstimator(DREstimator):
 
             # Label-propensity correction (triply robust)
             # Use either m̂(S) or W based on use_efficient_tr flag
-            tr_vec = (L / pi_clipped) * tr_weights * (Y - R_oof)
+            tr_vec = (L / pi_clipped) * tr_weights * (Y - R)
             tr_corr = float(np.mean(tr_vec))
 
             # Build contributions (all components that sum to the estimator)
@@ -655,7 +655,7 @@ class TRCPOEstimator(DREstimator):
             # Compute retarget identity error if anchored (should be ~0)
             if self.anchor_on_simcal and w_tilde is not None:
                 identity_error = float(
-                    np.mean(np.abs((base_ips_vec + retarget_vec) - w * (R_oof - q_oof)))
+                    np.mean(np.abs((base_ips_vec + retarget_vec) - w * (R - q_oof)))
                 )
             else:
                 identity_error = 0.0

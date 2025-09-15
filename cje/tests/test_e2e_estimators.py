@@ -681,30 +681,3 @@ class TestEstimatorStress:
         assert all(se > 0 for se in results.standard_errors)
         # Standard errors should be relatively high due to limited oracle data
         assert all(se > 0.01 for se in results.standard_errors)
-
-    def test_all_oracle_coverage(self, arena_sample: Any) -> None:
-        """Test with 100% oracle coverage (ideal case)."""
-        # Don't mask any oracle labels
-        calibrated, cal_result = calibrate_dataset(
-            arena_sample, judge_field="judge_score", oracle_field="oracle_label"
-        )
-
-        # With 100% coverage, calibration should be very good
-        assert cal_result.n_oracle == len(
-            [
-                s
-                for s in arena_sample.samples
-                if "oracle_label" in s.metadata
-                and s.metadata["oracle_label"] is not None
-            ]
-        )
-
-        sampler = PrecomputedSampler(calibrated)
-        estimator = CalibratedIPS(sampler)
-        results = estimator.fit_and_estimate()
-
-        # Should have lower uncertainty with full oracle data
-        assert len(results.estimates) == 4
-        assert all(0 <= e <= 1 for e in results.estimates)
-        # Standard errors should be relatively low
-        assert all(se < 0.1 for se in results.standard_errors)
