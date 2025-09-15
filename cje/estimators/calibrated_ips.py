@@ -701,6 +701,7 @@ class CalibratedIPS(BaseCJEEstimator):
 
             # Check if we should use honest IFs with outer CV
             calib_info = self._calibration_info.get(policy, {})
+            iic_adjustment = 0.0  # Initialize to avoid UnboundLocalError
             if self.use_outer_cv and "outer_fold_ids" in calib_info:
                 # Honest influence functions using outer CV structure
                 influence = np.zeros(n)
