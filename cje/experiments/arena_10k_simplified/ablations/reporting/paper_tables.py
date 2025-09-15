@@ -649,6 +649,73 @@ def compute_robust_bounds(
     return bounds
 
 
+def compute_outlier_robust_bounds(
+    df: pd.DataFrame,
+    outlier_method: str = "iqr",
+    iqr_multiplier: float = 1.5,
+) -> Dict[str, Tuple[float, float]]:
+    """Compute normalization bounds with outlier handling.
+
+    Uses IQR method to detect outliers, then applies min-max on capped values.
+    This prevents extreme outliers from dominating the normalization while
+    preserving the full range of typical values.
+
+    Args:
+        df: DataFrame with metric columns
+        outlier_method: Method for outlier detection ('iqr' or 'none')
+        iqr_multiplier: Multiplier for IQR fence (default 1.5)
+
+    Returns:
+        Dict mapping metric names to (min, max) bounds
+    """
+    bounds = {}
+
+    # Metrics that need outlier handling
+    metrics_with_outliers = [
+        "RMSE_d",
+        "IntervalScore_OA",
+        "IntervalScore_d",
+        "CalibScore",
+        "CalibScore_d",
+        "SE_GeoMean",
+        "Top1_Regret",
+    ]
+
+    for col in metrics_with_outliers:
+        if col not in df.columns:
+            continue
+
+        values = df[col].dropna().values
+        if len(values) == 0:
+            bounds[col] = (0.0, 1.0)
+            continue
+
+        if outlier_method == "iqr" and len(values) >= 4:
+            # IQR-based outlier detection
+            q1, q3 = np.percentile(values, [25, 75])
+            iqr = q3 - q1
+
+            # Calculate fences
+            lower_fence = q1 - iqr_multiplier * iqr
+            upper_fence = q3 + iqr_multiplier * iqr
+
+            # Cap values at fences
+            capped_values = np.clip(values, lower_fence, upper_fence)
+
+            # Use min-max of capped values
+            bounds[col] = (float(capped_values.min()), float(capped_values.max()))
+        else:
+            # Fall back to simple min-max
+            bounds[col] = (float(values.min()), float(values.max()))
+
+    # Ranking metrics with natural bounds (no outlier handling needed)
+    bounds["Kendall_tau"] = (-1.0, 1.0)
+    bounds["Top1_Acc"] = (0.0, 100.0)
+    bounds["Pairwise_Acc"] = (0.0, 100.0)
+
+    return bounds
+
+
 def compute_aggregate_score(
     row: pd.Series,
     normalize_bounds: Dict[str, Tuple[float, float]],
@@ -954,8 +1021,8 @@ def generate_leaderboard(
     if include_aggregate and len(df) > 0:
         # Compute normalization bounds
         if use_robust_bounds:
-            # Use robust percentile-based bounds
-            normalize_bounds = compute_robust_bounds(df)
+            # Use outlier-robust min-max bounds (better for skewed distributions)
+            normalize_bounds = compute_outlier_robust_bounds(df)
         else:
             # Use min/max bounds (original approach)
             normalize_bounds = {

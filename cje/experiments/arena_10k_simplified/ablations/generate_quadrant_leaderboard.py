@@ -22,6 +22,7 @@ from paper_tables import (
     create_config_key,
     compute_aggregate_score,
     compute_robust_bounds,
+    compute_outlier_robust_bounds,
     get_weight_preset,
 )
 
@@ -136,7 +137,7 @@ def generate_quadrant_leaderboards(
 
         # Compute aggregate scores with quadrant-specific normalization
         if use_robust_bounds:
-            normalize_bounds = compute_robust_bounds(df)
+            normalize_bounds = compute_outlier_robust_bounds(df)
         else:
             normalize_bounds = {
                 "RMSE_d": (df["RMSE_d"].min(), df["RMSE_d"].max()),

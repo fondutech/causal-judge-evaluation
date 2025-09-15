@@ -8,8 +8,8 @@
 | calibrated-ips (iic=False)                            |        100 |        0 |          0 |     8734.4   |
 | orthogonalized-ips (iic=True)                         |        100 |        0 |          0 |     8734.4   |
 | orthogonalized-ips (iic=False)                        |        100 |        0 |          0 |     8734.4   |
-| dr-cpo (calib=True, iic=True)                         |        100 |        0 |          0 |     8812.76  |
-| dr-cpo (calib=True, iic=False)                        |        100 |        0 |          0 |     8819.9   |
+| dr-cpo (calib=True, iic=True)                         |        100 |        0 |          0 |     8734.4   |
+| dr-cpo (calib=True, iic=False)                        |        100 |        0 |          0 |     8808.37  |
 | dr-cpo (calib=False, iic=True)                        |        100 |        0 |          0 |      765.749 |
 | dr-cpo (calib=False, iic=False)                       |        100 |        0 |          0 |      765.749 |
 | oc-dr-cpo (iic=True)                                  |        100 |        0 |          0 |     8337.64  |
