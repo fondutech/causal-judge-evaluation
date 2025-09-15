@@ -49,25 +49,32 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
     """Orthogonalized Calibrated DR-CPO estimator (OC-DR-CPO).
 
     Estimator formula (per-sample contributions):
-        contrib = g_fresh
-                + W_tilde * (R - q_logged)
-                + (W - m_hat_oof) * (R_oof - f_oof)           # orthogonalizer
-                + (R_oof - q_oof) * (W - W_tilde)             # retarget-to-W
+        contrib_i = g_fresh_i
+                  + W_tilde_i * (f_oof_i - q_logged_oof_i)        # anchor baseline
+                  + (W_i - W_tilde_i) * (f_oof_i - q_logged_oof_i) # retarget-to-W
+                  + (W_i - m_hat_oof_i) * (R_logged_i - f_oof_i)   # orthogonalizer
 
-    Influence function (OOF path):
-        φ_i = g_fresh_i
-            + W_tilde_i * (R_oof_i - q_oof_i)
-            + (W_i - m_hat_oof_i)*(R_oof_i - f_oof_i)
-            + (R_oof_i - q_oof_i)*(W_i - W_tilde_i)
-            - V̂
+    Where:
+        - f_oof: Out-of-fold calibrated rewards (from reward_calibrator)
+        - R_logged: Actual observed rewards
+        - q_logged_oof: Out-of-fold outcome model predictions
+        - m_hat_oof: Out-of-fold E[W|S] predictions
+        - W_tilde: SIMCal-calibrated weights
+        - W: Raw/Hájek importance weights
+
+    The baseline + retarget terms satisfy the identity:
+        W_tilde * (f_oof - q_oof) + (W - W_tilde) * (f_oof - q_oof) = W * (f_oof - q_oof)
+
+    The orthogonalizer is asymptotically mean-zero under cross-fitting.
+
+    Influence function:
+        φ_i = contrib_i - V̂
 
     Notes
     -----
-    * Anchors on SIMCal weights (W̃) from the internal CalibratedIPS within DREstimator.
+    * Anchors on SIMCal weights (W̃) for tail stability while maintaining the DR estimand.
+    * First-order insensitive to errors in both f̂ and m̂ under cross-fitting.
     * Requires fresh draws (same as DR-CPO). Add via DREstimator.add_fresh_draws().
-    * Adds two residual diagnostics:
-        - orthog_residual = mean[(W - m̂^OOF)(R^OOF - f̂^OOF)]
-        - retarget_residual = mean[(R^OOF - q^OOF)(W - W̃)]
     """
 
     def __init__(
@@ -291,6 +298,12 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
             W = self.sampler.compute_importance_weights(
                 policy, clip_weight=None, mode=self.ips_estimator.weight_mode
             )
+            if W is None:
+                logger.warning(f"No raw weights for policy '{policy}'. Skipping.")
+                estimates.append(np.nan)
+                ses.append(np.nan)
+                n_used[policy] = 0
+                continue
 
             # Logged arrays
             R_logged = np.array([d["reward"] for d in data], dtype=float)
@@ -335,7 +348,7 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
                 )
                 g_fresh_list.append(float(np.mean(preds_i)))
                 fresh_var_list.append(
-                    float(np.var(preds_i)) if len(preds_i) > 1 else 0.0
+                    float(np.var(preds_i, ddof=1)) if len(preds_i) > 1 else 0.0
                 )
 
             g_fresh = np.asarray(g_fresh_list, dtype=float)
@@ -454,8 +467,18 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
             raw_ips = W * (f_oof - q_logged_oof)
             identity_error = float(np.mean(np.abs(base_plus_retarget - raw_ips)))
 
+            # Debug assertions to catch regressions
+            if __debug__:
+                assert np.allclose(
+                    base_plus_retarget, raw_ips, atol=1e-12, rtol=1e-12
+                ), f"OC-DR-CPO identity failed for {policy}: error={identity_error}"
+
             # Check IF mean (should be ~0)
             if_mean = float(np.mean(phi))
+            if __debug__:
+                assert (
+                    abs(if_mean) < 1e-9
+                ), f"OC-DR-CPO IF not centered for {policy}: mean={if_mean}"
 
             self._orthogonalization_diagnostics[policy] = {
                 "orthog_residual": ortho_mean,
@@ -520,3 +543,97 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
         self._influence_functions = ifs
         self._results = result
         return result
+
+    def get_oracle_jackknife(self, policy: str) -> Optional[np.ndarray]:
+        """Compute leave-one-oracle-fold-out estimates for OC-DR-CPO.
+
+        For each fold's calibrator, recompute the full OC-DR-CPO estimate including
+        all three terms (baseline, retarget, orthogonalizer).
+
+        Returns:
+            Array of K jackknife estimates, or None if not applicable
+        """
+        try:
+            if self.reward_calibrator is None:
+                return None
+
+            if not hasattr(self.reward_calibrator, "get_fold_models_for_oua"):
+                return None
+
+            fold_models = self.reward_calibrator.get_fold_models_for_oua()
+            if not fold_models:
+                return None
+
+            # Get necessary data
+            data = self.sampler.get_data_for_policy(policy)
+            if not data:
+                return None
+
+            # Get weights (reuse cached values)
+            W_tilde = self.ips_estimator.get_weights(policy)
+            W = self.sampler.compute_importance_weights(
+                policy, clip_weight=None, mode=self.ips_estimator.weight_mode
+            )
+            if W_tilde is None or W is None:
+                return None
+
+            # Normalize W_tilde
+            mu = float(np.mean(W_tilde))
+            W_tilde = W_tilde / mu if np.isfinite(mu) and mu > 0 else W
+
+            # Get m_hat_oof (or default)
+            m_hat = self._m_hat_oof_cache.get(policy)
+            if m_hat is None:
+                muW = float(np.mean(W)) if np.isfinite(W).all() else 1.0
+                m_hat = np.full_like(W, muW)
+
+            # Extract arrays
+            S = np.array([d.get("judge_score", np.nan) for d in data], dtype=float)
+            R = np.array([d["reward"] for d in data], dtype=float)
+            pids = [str(d.get("prompt_id")) for d in data]
+            fold_ids = np.array(
+                [self._promptid_to_fold[pid] for pid in pids], dtype=int
+            )
+
+            # Get outcome predictions
+            prompts = [d["prompt"] for d in data]
+            responses = [d["response"] for d in data]
+            q_oof = self.outcome_model.predict(prompts, responses, S, fold_ids)
+
+            # Get fresh draw data
+            fresh = self._fresh_draws.get(policy)
+            if fresh is None:
+                return None
+
+            # Compute jackknife estimates
+            jack = []
+            for fold_id, f_model in fold_models.items():
+                # Recalibrate rewards with this fold's model
+                f_loo = np.clip(f_model.predict(S), 0.0, 1.0)
+
+                # Compute fresh draw mean for this fold
+                g_fresh_list = []
+                for pid in set(pids):
+                    scores_i = fresh.get_scores_for_prompt_id(pid)
+                    if len(scores_i) > 0:
+                        preds_i = np.clip(f_model.predict(np.array(scores_i)), 0.0, 1.0)
+                        g_fresh_list.append(float(np.mean(preds_i)))
+
+                if not g_fresh_list:
+                    continue
+
+                g_fresh_mean = float(np.mean(g_fresh_list))
+
+                # Compute OC-DR-CPO estimate with all three terms
+                baseline = W_tilde * (f_loo - q_oof)
+                retarget = (W - W_tilde) * (f_loo - q_oof)
+                orthog = (W - m_hat) * (R - f_loo) if self.use_orthogonalization else 0
+
+                contrib = g_fresh_mean + np.mean(baseline + retarget + orthog)
+                jack.append(float(contrib))
+
+            return np.asarray(jack, dtype=float) if jack else None
+
+        except Exception as e:
+            logger.debug(f"OC-DR-CPO jackknife failed for {policy}: {e}")
+            return None
