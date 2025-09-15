@@ -393,18 +393,92 @@ def compute_se_geomean(results: List[Dict[str, Any]]) -> Dict[str, float]:
     return {k: np.exp(np.mean(np.log(v))) for k, v in se_by_config.items()}
 
 
-def compute_ranking_metrics(
+def compute_runtime_efficiency(
     results: List[Dict[str, Any]],
 ) -> Dict[str, Dict[str, float]]:
-    """Compute ranking metrics (Kendall tau-b and Top-1 accuracy).
+    """Compute runtime efficiency metrics.
 
     Args:
         results: List of experiment results
 
     Returns:
-        Dict mapping estimator config to {'kendall_tau': ..., 'top1_acc': ...}
+        Dict mapping estimator config to {'se_per_second': ..., 'gate_rate': ...}
+    """
+    efficiency_by_config: Dict[str, Dict[str, List[float]]] = {}
+
+    for result in results:
+        config_key = create_config_key(result)
+
+        # Get runtime
+        runtime = result.get("runtime_s")
+        if runtime is None or runtime <= 0:
+            continue
+
+        # Get SEs for efficiency calculation
+        ses = result.get("robust_standard_errors") or result.get("standard_errors", {})
+        estimates = result.get("estimates", {})
+
+        # Compute SE per second (lower is better - more efficient)
+        se_values = []
+        gate_count = 0
+        total_policies = 0
+
+        for policy in ["clone", "parallel_universe_prompt", "premium"]:
+            total_policies += 1
+            if policy in ses and ses[policy] is not None and ses[policy] > 0:
+                se_values.append(ses[policy])
+            else:
+                # Check if estimate is NaN/None (gated)
+                if (
+                    policy not in estimates
+                    or estimates[policy] is None
+                    or np.isnan(estimates[policy])
+                ):
+                    gate_count += 1
+
+        if config_key not in efficiency_by_config:
+            efficiency_by_config[config_key] = {"se_per_sec": [], "gate_rate": []}
+
+        # SE per second (geometric mean SE / runtime)
+        if se_values:
+            geom_mean_se = np.exp(np.mean(np.log(se_values)))
+            se_per_sec = geom_mean_se / runtime
+            efficiency_by_config[config_key]["se_per_sec"].append(se_per_sec)
+
+        # Gate rate (fraction of policies that failed)
+        if total_policies > 0:
+            gate_rate = gate_count / total_policies
+            efficiency_by_config[config_key]["gate_rate"].append(gate_rate)
+
+    # Average across experiments
+    result_dict = {}
+    for config, metrics in efficiency_by_config.items():
+        result_dict[config] = {
+            "se_per_second": (
+                np.mean(metrics["se_per_sec"]) if metrics["se_per_sec"] else np.nan
+            ),
+            "gate_rate": (
+                np.mean(metrics["gate_rate"]) * 100 if metrics["gate_rate"] else 0.0
+            ),
+        }
+
+    return result_dict
+
+
+def compute_ranking_metrics(
+    results: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, float]]:
+    """Compute ranking metrics (Kendall tau-b, Top-1 accuracy, Pairwise accuracy, Top-1 regret).
+
+    Args:
+        results: List of experiment results
+
+    Returns:
+        Dict mapping estimator config to {'kendall_tau': ..., 'top1_acc': ...,
+                                           'pairwise_acc': ..., 'top1_regret': ...}
     """
     from scipy.stats import kendalltau
+    from itertools import combinations
 
     ranking_by_config: Dict[str, Dict[str, List[float]]] = {}
 
@@ -417,10 +491,12 @@ def compute_ranking_metrics(
         # Get values for well-behaved policies
         est_values = []
         true_values = []
+        policies = []
         for policy in ["clone", "parallel_universe_prompt", "premium"]:
             if policy in estimates and policy in oracle_truths:
                 est_values.append(estimates[policy])
                 true_values.append(oracle_truths[policy])
+                policies.append(policy)
 
         if len(est_values) >= 2:
             # Kendall tau-b (handles ties)
@@ -434,19 +510,63 @@ def compute_ranking_metrics(
             else:
                 top1_correct = np.nan
 
+            # Pairwise accuracy: fraction of correctly ordered pairs
+            if len(est_values) >= 2:
+                correct_pairs = 0
+                total_pairs = 0
+                for i, j in combinations(range(len(est_values)), 2):
+                    # Check if ordering is preserved
+                    est_ordering = est_values[i] > est_values[j]
+                    true_ordering = true_values[i] > true_values[j]
+                    if est_ordering == true_ordering:
+                        correct_pairs += 1
+                    total_pairs += 1
+                pairwise_acc = (
+                    correct_pairs / total_pairs if total_pairs > 0 else np.nan
+                )
+            else:
+                pairwise_acc = np.nan
+
+            # Top-1 regret: difference from true best value
+            if len(est_values) >= 2:
+                # What we selected as best
+                selected_idx = np.argmax(est_values)
+                selected_true_value = true_values[selected_idx]
+
+                # True best value
+                best_true_value = np.max(true_values)
+
+                # Regret is the difference (higher is worse)
+                top1_regret = best_true_value - selected_true_value
+            else:
+                top1_regret = np.nan
+
             if config_key not in ranking_by_config:
-                ranking_by_config[config_key] = {"tau": [], "top1": []}
+                ranking_by_config[config_key] = {
+                    "tau": [],
+                    "top1": [],
+                    "pairwise": [],
+                    "regret": [],
+                }
 
             ranking_by_config[config_key]["tau"].append(tau)
             if not np.isnan(top1_correct):
                 ranking_by_config[config_key]["top1"].append(top1_correct)
+            if not np.isnan(pairwise_acc):
+                ranking_by_config[config_key]["pairwise"].append(pairwise_acc)
+            if not np.isnan(top1_regret):
+                ranking_by_config[config_key]["regret"].append(top1_regret)
 
     # Average
     result_dict = {}
     for config, metrics in ranking_by_config.items():
         result_dict[config] = {
-            "kendall_tau": np.mean(metrics["tau"]),
+            "kendall_tau": np.mean(metrics["tau"]) if metrics["tau"] else np.nan,
             "top1_acc": np.mean(metrics["top1"]) * 100 if metrics["top1"] else np.nan,
+            "pairwise_acc": (
+                np.mean(metrics["pairwise"]) * 100 if metrics["pairwise"] else np.nan
+            ),
+            "top1_regret": np.mean(metrics["regret"]) if metrics["regret"] else np.nan,
         }
 
     return result_dict
@@ -472,6 +592,53 @@ def create_config_key(result: Dict[str, Any]) -> str:
         return f"{estimator} (iic={use_iic})"
     else:
         return f"{estimator} (calib={use_calib}, iic={use_iic})"
+
+
+def compute_robust_bounds(
+    df: pd.DataFrame,
+    percentile_low: float = 5,
+    percentile_high: float = 95,
+) -> Dict[str, Tuple[float, float]]:
+    """Compute robust normalization bounds using percentiles.
+
+    Args:
+        df: DataFrame with metric columns
+        percentile_low: Lower percentile for clipping (default 5)
+        percentile_high: Upper percentile for clipping (default 95)
+
+    Returns:
+        Dict mapping metric names to (min, max) bounds
+    """
+    bounds = {}
+
+    for col in ["RMSE_d", "IntervalScore_OA", "CalibScore", "SE_GeoMean"]:
+        if col in df.columns:
+            valid_values = df[col].dropna()
+            if len(valid_values) > 0:
+                bounds[col] = (
+                    float(np.percentile(valid_values, percentile_low)),
+                    float(np.percentile(valid_values, percentile_high)),
+                )
+            else:
+                bounds[col] = (0.0, 1.0)
+
+    # Ranking metrics have natural bounds
+    bounds["Kendall_tau"] = (-1.0, 1.0)
+    bounds["Top1_Acc"] = (0.0, 100.0)
+    bounds["Pairwise_Acc"] = (0.0, 100.0)
+
+    # Top-1 regret: use percentiles since it's unbounded
+    if "Top1_Regret" in df.columns:
+        valid_values = df["Top1_Regret"].dropna()
+        if len(valid_values) > 0:
+            bounds["Top1_Regret"] = (
+                float(np.percentile(valid_values, percentile_low)),
+                float(np.percentile(valid_values, percentile_high)),
+            )
+        else:
+            bounds["Top1_Regret"] = (0.0, 0.1)
+
+    return bounds
 
 
 def compute_aggregate_score(
@@ -528,25 +695,45 @@ def compute_aggregate_score(
         score_components.append(normalized)
         weight_list.append(w["accuracy"])
 
-    # Ranking component (25%) - Split between Kendall τ and Top-1
+    # Ranking component - Split between multiple metrics
     ranking_scores = []
     ranking_weights = []
 
+    # Kendall tau (25% of ranking weight)
     if not pd.isna(row.get("Kendall_tau")):
-        min_val, max_val = normalize_bounds["Kendall_tau"]
+        min_val, max_val = normalize_bounds.get("Kendall_tau", (-1, 1))
         # Higher is better, map from [-1, 1] to [0, 1]
         if max_val > min_val:
             normalized = (row["Kendall_tau"] - min_val) / (max_val - min_val)
         else:
             normalized = 0.5
         ranking_scores.append(normalized)
-        ranking_weights.append(0.15)  # 60% of ranking weight
+        ranking_weights.append(0.25)
 
+    # Pairwise accuracy (30% of ranking weight - more robust than tau)
+    if not pd.isna(row.get("Pairwise_Acc")):
+        # Already in [0, 100], normalize to [0, 1]
+        normalized = row["Pairwise_Acc"] / 100
+        ranking_scores.append(normalized)
+        ranking_weights.append(0.30)
+
+    # Top-1 accuracy (25% of ranking weight)
     if not pd.isna(row.get("Top1_Acc")):
         # Already in [0, 100], normalize to [0, 1]
         normalized = row["Top1_Acc"] / 100
         ranking_scores.append(normalized)
-        ranking_weights.append(0.10)  # 40% of ranking weight
+        ranking_weights.append(0.25)
+
+    # Top-1 regret (20% of ranking weight - penalty for wrong selection)
+    if not pd.isna(row.get("Top1_Regret")):
+        min_val, max_val = normalize_bounds.get("Top1_Regret", (0, 0.1))
+        # Lower is better (it's a regret)
+        if max_val > min_val:
+            normalized = 1 - (row["Top1_Regret"] - min_val) / (max_val - min_val)
+        else:
+            normalized = 0.5
+        ranking_scores.append(normalized)
+        ranking_weights.append(0.20)
 
     if ranking_scores:
         ranking_score = np.average(ranking_scores, weights=ranking_weights)
@@ -639,11 +826,51 @@ def compute_mae(
     return {k: float(np.mean(v)) for k, v in mae_by_config.items()}
 
 
+def get_weight_preset(preset_name: str = "balanced") -> Dict[str, float]:
+    """Get predefined weight presets for aggregate scoring.
+
+    Args:
+        preset_name: One of 'balanced', 'ranking', 'accuracy', 'inference'
+
+    Returns:
+        Dict with weights for accuracy, efficiency, ranking, calibration
+    """
+    presets = {
+        "balanced": {
+            "accuracy": 0.25,
+            "efficiency": 0.25,
+            "ranking": 0.30,
+            "calibration": 0.20,
+        },
+        "ranking": {
+            "accuracy": 0.20,
+            "efficiency": 0.20,
+            "ranking": 0.50,
+            "calibration": 0.10,
+        },
+        "accuracy": {
+            "accuracy": 0.40,
+            "efficiency": 0.20,
+            "ranking": 0.10,
+            "calibration": 0.30,
+        },
+        "inference": {
+            "accuracy": 0.20,
+            "efficiency": 0.30,
+            "ranking": 0.10,
+            "calibration": 0.40,
+        },
+    }
+    return presets.get(preset_name, presets["balanced"])
+
+
 def generate_leaderboard(
     results: List[Dict[str, Any]],
     output_format: str = "dataframe",
     include_aggregate: bool = True,
     include_debiased: bool = True,
+    weight_preset: str = "balanced",
+    use_robust_bounds: bool = True,
 ) -> Any:
     """Generate Table 1: Estimator Leaderboard with optional aggregate ranking.
 
@@ -652,6 +879,8 @@ def generate_leaderboard(
         output_format: "dataframe", "latex", or "markdown"
         include_aggregate: Whether to compute and include aggregate score
         include_debiased: Whether to include debiased metrics
+        weight_preset: Weight preset name ('balanced', 'ranking', 'accuracy', 'inference')
+        use_robust_bounds: Whether to use robust percentile-based normalization
 
     Returns:
         Formatted table
@@ -682,6 +911,8 @@ def generate_leaderboard(
             "SE_GeoMean": se_geomeans.get(config, np.nan),
             "Kendall_tau": ranking_metrics.get(config, {}).get("kendall_tau", np.nan),
             "Top1_Acc": ranking_metrics.get(config, {}).get("top1_acc", np.nan),
+            "Pairwise_Acc": ranking_metrics.get(config, {}).get("pairwise_acc", np.nan),
+            "Top1_Regret": ranking_metrics.get(config, {}).get("top1_regret", np.nan),
         }
 
         # Add debiased metrics if computed
@@ -696,22 +927,32 @@ def generate_leaderboard(
     df = pd.DataFrame(rows)
 
     if include_aggregate and len(df) > 0:
-        # Compute normalization bounds (min, max) for each metric
-        normalize_bounds = {
-            "RMSE_d": (df["RMSE_d"].min(), df["RMSE_d"].max()),
-            "IntervalScore_OA": (
-                df["IntervalScore_OA"].min(),
-                df["IntervalScore_OA"].max(),
-            ),
-            "CalibScore": (df["CalibScore"].min(), df["CalibScore"].max()),
-            "SE_GeoMean": (df["SE_GeoMean"].min(), df["SE_GeoMean"].max()),
-            "Kendall_tau": (df["Kendall_tau"].min(), df["Kendall_tau"].max()),
-            "Top1_Acc": (0, 100),  # Fixed bounds for percentage
-        }
+        # Compute normalization bounds
+        if use_robust_bounds:
+            # Use robust percentile-based bounds
+            normalize_bounds = compute_robust_bounds(df)
+        else:
+            # Use min/max bounds (original approach)
+            normalize_bounds = {
+                "RMSE_d": (df["RMSE_d"].min(), df["RMSE_d"].max()),
+                "IntervalScore_OA": (
+                    df["IntervalScore_OA"].min(),
+                    df["IntervalScore_OA"].max(),
+                ),
+                "CalibScore": (df["CalibScore"].min(), df["CalibScore"].max()),
+                "SE_GeoMean": (df["SE_GeoMean"].min(), df["SE_GeoMean"].max()),
+                "Kendall_tau": (df["Kendall_tau"].min(), df["Kendall_tau"].max()),
+                "Top1_Acc": (0, 100),  # Fixed bounds for percentage
+                "Pairwise_Acc": (0, 100),
+                "Top1_Regret": (df["Top1_Regret"].min(), df["Top1_Regret"].max()),
+            }
+
+        # Get weight preset
+        weights = get_weight_preset(weight_preset)
 
         # Compute aggregate scores
         df["AggScore"] = df.apply(
-            lambda row: compute_aggregate_score(row, normalize_bounds), axis=1
+            lambda row: compute_aggregate_score(row, normalize_bounds, weights), axis=1
         )
 
         # Sort by aggregate score (higher is better)

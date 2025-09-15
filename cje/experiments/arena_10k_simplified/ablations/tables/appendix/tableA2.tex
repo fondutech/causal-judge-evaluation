@@ -1,0 +1,35 @@
+\begin{table}[htbp]
+\centering
+\caption{Bias Patterns}
+\label{tab:A2}
+\begin{tabular}{l|ccccccccccccc}
+\toprule
+Estimator & Mean Bias & Mean Abs Bias & Bias SE & Pattern & clone bias & clone t & clone sig & parallel bias & parallel t & parallel sig & premium bias & premium t & premium sig \\
+\midrule
+dr-cpo (calib=True, iic=True) & 0.0008 & 0.012 & 0.0020 & Mixed & 0.0026 & 0.764 &  & -0.0017 & 0.506 &  & 0.0014 & 0.402 &  \\
+dr-cpo (calib=True, iic=False) & 0.0008 & 0.012 & 0.0020 & Mixed & 0.0026 & 0.764 &  & -0.0017 & 0.506 &  & 0.0014 & 0.402 &  \\
+stacked-dr (iic=True) & 0.0011 & 0.014 & 0.0022 & Mixed & 0.0033 & 0.875 &  & -0.0015 & 0.398 &  & 0.0015 & 0.382 &  \\
+stacked-dr (iic=False) & 0.0010 & 0.014 & 0.0023 & Mixed & 0.0032 & 0.811 &  & -0.0015 & 0.381 &  & 0.0014 & 0.367 &  \\
+stacked-dr-core (calib=True, iic=False) & 0.0044 & 0.015 & 0.0031 & Mixed & 0.0059 & 1.1 &  & 0.0024 & 0.460 &  & 0.0049 & 0.889 &  \\
+stacked-dr-core (calib=True, iic=True) & 0.0045 & 0.015 & 0.0031 & Mixed & 0.0059 & 1.1 &  & 0.0025 & 0.466 &  & 0.0050 & 0.910 &  \\
+calibrated-ips (iic=True) & 0.0020 & 0.016 & 0.0021 & Mixed & 0.0046 & 1.4 &  & -0.0068 & 2.1 & * & 0.0081 & 2.0 & * \\
+calibrated-ips (iic=False) & 0.0020 & 0.016 & 0.0021 & Mixed & 0.0046 & 1.4 &  & -0.0068 & 2.1 & * & 0.0081 & 2.0 & * \\
+dr-cpo (calib=False, iic=True) & 0.0040 & 0.030 & 0.0059 & Mixed & 0.0063 & 1.6 &  & 0.0064 & 0.403 &  & -0.0007 & 0.114 &  \\
+dr-cpo (calib=False, iic=False) & 0.0040 & 0.030 & 0.0059 & Mixed & 0.0063 & 1.6 &  & 0.0064 & 0.403 &  & -0.0007 & 0.114 &  \\
+oc-dr-cpo (iic=False) & -0.0105 & 0.032 & 0.0067 & Negative & -0.0095 & 1.0 &  & -0.0050 & 0.471 &  & -0.0171 & 1.2 &  \\
+oc-dr-cpo (iic=True) & -0.0105 & 0.032 & 0.0067 & Negative & -0.0095 & 1.0 &  & -0.0050 & 0.471 &  & -0.0171 & 1.2 &  \\
+raw-ips (iic=False) & -0.0227 & 0.066 & 0.010 & Negative & 0.0024 & 0.722 &  & -0.0794 & 3.0 & * & 0.0089 & 0.689 &  \\
+raw-ips (iic=True) & -0.0227 & 0.066 & 0.010 & Negative & 0.0024 & 0.722 &  & -0.0794 & 3.0 & * & 0.0089 & 0.689 &  \\
+orthogonalized-ips (iic=False) & -0.0208 & 0.066 & 0.010 & Negative & 0.0031 & 0.900 &  & -0.0743 & 2.8 & * & 0.0088 & 0.697 &  \\
+orthogonalized-ips (iic=True) & -0.0208 & 0.066 & 0.010 & Negative & 0.0031 & 0.900 &  & -0.0743 & 2.8 & * & 0.0088 & 0.697 &  \\
+tr-cpo-e (iic=True) & 0.049 & 0.070 & 0.013 & Positive & 0.101 & 3.4 & * & 0.011 & 0.638 &  & 0.036 & 2.1 & * \\
+tr-cpo-e (iic=False) & 0.049 & 0.070 & 0.013 & Positive & 0.101 & 3.4 & * & 0.011 & 0.638 &  & 0.036 & 2.1 & * \\
+tr-cpo-e-anchored (calib=False, iic=True) & 0.049 & 0.070 & 0.013 & Positive & 0.101 & 3.4 & * & 0.011 & 0.638 &  & 0.036 & 2.1 & * \\
+tr-cpo-e-anchored (calib=False, iic=False) & 0.049 & 0.070 & 0.013 & Positive & 0.101 & 3.4 & * & 0.011 & 0.638 &  & 0.036 & 2.1 & * \\
+tr-cpo-e-anchored-orthogonal (calib=False, iic=True) & 0.054 & 0.092 & 0.017 & Positive & 0.106 & 3.5 & * & 0.024 & 0.692 &  & 0.034 & 1.5 &  \\
+tr-cpo-e-anchored-orthogonal (calib=False, iic=False) & 0.054 & 0.092 & 0.017 & Positive & 0.106 & 3.5 & * & 0.024 & 0.692 &  & 0.034 & 1.5 &  \\
+tr-cpo (iic=True) & 0.444 & 0.559 & 0.266 & Positive & 0.081 & 3.3 & * & 0.374 & 1.4 &  & 0.878 & 1.2 &  \\
+tr-cpo (iic=False) & 0.444 & 0.559 & 0.266 & Positive & 0.081 & 3.3 & * & 0.374 & 1.4 &  & 0.878 & 1.2 &  \\
+\bottomrule
+\end{tabular}
+\end{table}

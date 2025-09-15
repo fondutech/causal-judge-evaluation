@@ -21,6 +21,8 @@ from paper_tables import (
     compute_ranking_metrics,
     create_config_key,
     compute_aggregate_score,
+    compute_robust_bounds,
+    get_weight_preset,
 )
 
 
@@ -30,8 +32,20 @@ def generate_quadrant_leaderboards(
     agg_w_efficiency: float = 0.25,
     agg_w_ranking: float = 0.30,
     agg_w_calibration: float = 0.20,
+    weight_preset: str = None,
+    use_robust_bounds: bool = True,
 ) -> None:
-    """Generate leaderboard for each quadrant."""
+    """Generate leaderboard for each quadrant.
+
+    Args:
+        results_file: Path to results JSONL
+        agg_w_accuracy: Weight for accuracy component (ignored if weight_preset is set)
+        agg_w_efficiency: Weight for efficiency component (ignored if weight_preset is set)
+        agg_w_ranking: Weight for ranking component (ignored if weight_preset is set)
+        agg_w_calibration: Weight for calibration component (ignored if weight_preset is set)
+        weight_preset: Optional preset name ('balanced', 'ranking', 'accuracy', 'inference')
+        use_robust_bounds: Whether to use robust percentile-based normalization
+    """
 
     # Load results
     results = []
@@ -106,6 +120,12 @@ def generate_quadrant_leaderboards(
                     "kendall_tau", np.nan
                 ),
                 "Top1_Acc": ranking_metrics.get(config, {}).get("top1_acc", np.nan),
+                "Pairwise_Acc": ranking_metrics.get(config, {}).get(
+                    "pairwise_acc", np.nan
+                ),
+                "Top1_Regret": ranking_metrics.get(config, {}).get(
+                    "top1_regret", np.nan
+                ),
             }
             rows.append(row)
 
@@ -115,25 +135,33 @@ def generate_quadrant_leaderboards(
         df = pd.DataFrame(rows)
 
         # Compute aggregate scores with quadrant-specific normalization
-        normalize_bounds = {
-            "RMSE_d": (df["RMSE_d"].min(), df["RMSE_d"].max()),
-            "IntervalScore_OA": (
-                df["IntervalScore_OA"].min(),
-                df["IntervalScore_OA"].max(),
-            ),
-            "CalibScore": (df["CalibScore"].min(), df["CalibScore"].max()),
-            "SE_GeoMean": (df["SE_GeoMean"].min(), df["SE_GeoMean"].max()),
-            "Kendall_tau": (df["Kendall_tau"].min(), df["Kendall_tau"].max()),
-            "Top1_Acc": (df["Top1_Acc"].min(), df["Top1_Acc"].max()),
-        }
+        if use_robust_bounds:
+            normalize_bounds = compute_robust_bounds(df)
+        else:
+            normalize_bounds = {
+                "RMSE_d": (df["RMSE_d"].min(), df["RMSE_d"].max()),
+                "IntervalScore_OA": (
+                    df["IntervalScore_OA"].min(),
+                    df["IntervalScore_OA"].max(),
+                ),
+                "CalibScore": (df["CalibScore"].min(), df["CalibScore"].max()),
+                "SE_GeoMean": (df["SE_GeoMean"].min(), df["SE_GeoMean"].max()),
+                "Kendall_tau": (df["Kendall_tau"].min(), df["Kendall_tau"].max()),
+                "Top1_Acc": (df["Top1_Acc"].min(), df["Top1_Acc"].max()),
+                "Pairwise_Acc": (0, 100),
+                "Top1_Regret": (df["Top1_Regret"].min(), df["Top1_Regret"].max()),
+            }
 
-        # Aggregate weights
-        agg_weights = {
-            "accuracy": float(agg_w_accuracy),
-            "efficiency": float(agg_w_efficiency),
-            "ranking": float(agg_w_ranking),
-            "calibration": float(agg_w_calibration),
-        }
+        # Get weights from preset or use provided values
+        if weight_preset:
+            agg_weights = get_weight_preset(weight_preset)
+        else:
+            agg_weights = {
+                "accuracy": float(agg_w_accuracy),
+                "efficiency": float(agg_w_efficiency),
+                "ranking": float(agg_w_ranking),
+                "calibration": float(agg_w_calibration),
+            }
 
         df["AggScore"] = df.apply(
             lambda row: compute_aggregate_score(
@@ -162,9 +190,9 @@ def generate_quadrant_leaderboards(
         print(f"Total experiments in quadrant: {len(quad_results)}")
         print()
         print(
-            "| Rank | Estimator | Score | RMSE^d | IS^OA | IS^d | CalibScore | CalibScore^d | SE_GM | K-tau | Top-1 |"
+            "| Rank | Estimator | Score | RMSE^d | IS^OA | IS^d | CalibScore | CalibScore^d | SE_GM | K-tau | Top-1 | PairAcc | Regret |"
         )
-        print("|---:|:---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+        print("|---:|:---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 
         for _, row in df.iterrows():
             est_short = row["Estimator"][:30]  # Shorter to fit more columns
@@ -202,8 +230,20 @@ def generate_quadrant_leaderboards(
             )
             top1 = f"{row['Top1_Acc']:.0f}" if not pd.isna(row.get("Top1_Acc")) else "—"
 
+            # Get new metrics
+            pairwise = (
+                f"{row['Pairwise_Acc']:.1f}"
+                if not pd.isna(row.get("Pairwise_Acc"))
+                else "—"
+            )
+            regret = (
+                f"{row['Top1_Regret']:.4f}"
+                if not pd.isna(row.get("Top1_Regret"))
+                else "—"
+            )
+
             print(
-                f"| {row['Rank']} | {est_short} | {row['AggScore']:.1f} | {rmse} | {is_oa} | {is_d} | {calib} | {calib_d} | {se_gm} | {ktau} | {top1} |"
+                f"| {row['Rank']} | {est_short} | {row['AggScore']:.1f} | {rmse} | {is_oa} | {is_d} | {calib} | {calib_d} | {se_gm} | {ktau} | {top1} | {pairwise} | {regret} |"
             )
 
         # Save to file
@@ -236,6 +276,8 @@ def generate_quadrant_leaderboards(
                     "SE_GeoMean",
                     "Kendall_tau",
                     "Top1_Acc",
+                    "Pairwise_Acc",
+                    "Top1_Regret",
                 ]
             ].copy()
 
@@ -249,6 +291,8 @@ def generate_quadrant_leaderboards(
             df_display["SE_GeoMean"] = df_display["SE_GeoMean"].round(4)
             df_display["Kendall_tau"] = df_display["Kendall_tau"].round(3)
             df_display["Top1_Acc"] = df_display["Top1_Acc"].round(0)
+            df_display["Pairwise_Acc"] = df_display["Pairwise_Acc"].round(1)
+            df_display["Top1_Regret"] = df_display["Top1_Regret"].round(4)
 
             f.write(df_display.to_markdown(index=False))
             f.write("\n\n")
@@ -290,6 +334,18 @@ if __name__ == "__main__":
         default=0.20,
         help="Aggregate weight: calibration (CalibScore + IS^OA)",
     )
+    ap.add_argument(
+        "--weight-preset",
+        type=str,
+        choices=["balanced", "ranking", "accuracy", "inference"],
+        default=None,
+        help="Use predefined weight preset (overrides individual weights)",
+    )
+    ap.add_argument(
+        "--no-robust-bounds",
+        action="store_true",
+        help="Disable robust percentile-based normalization",
+    )
     args = ap.parse_args()
     generate_quadrant_leaderboards(
         args.results,
@@ -297,4 +353,6 @@ if __name__ == "__main__":
         agg_w_efficiency=args.w_efficiency,
         agg_w_ranking=args.w_ranking,
         agg_w_calibration=args.w_calibration,
+        weight_preset=args.weight_preset,
+        use_robust_bounds=not args.no_robust_bounds,
     )
