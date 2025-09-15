@@ -6,26 +6,26 @@
 \toprule
 Estimator & Mean Bias & Mean Abs Bias & Bias SE & Pattern & clone bias & clone t & clone sig & parallel bias & parallel t & parallel sig & premium bias & premium t & premium sig \\
 \midrule
-dr-cpo (calib=True, iic=True) & 0.0008 & 0.012 & 0.0020 & Mixed & 0.0026 & 0.764 &  & -0.0017 & 0.506 &  & 0.0014 & 0.402 &  \\
-dr-cpo (calib=True, iic=False) & 0.0008 & 0.012 & 0.0020 & Mixed & 0.0026 & 0.764 &  & -0.0017 & 0.506 &  & 0.0014 & 0.402 &  \\
-stacked-dr (iic=True) & 0.0009 & 0.013 & 0.0020 & Mixed & 0.0030 & 0.868 &  & -0.0017 & 0.499 &  & 0.0014 & 0.403 &  \\
-stacked-dr (iic=False) & 0.0010 & 0.013 & 0.0021 & Mixed & 0.0031 & 0.861 &  & -0.0016 & 0.445 &  & 0.0016 & 0.438 &  \\
-stacked-dr-core (calib=True, iic=False) & 0.0044 & 0.015 & 0.0031 & Mixed & 0.0059 & 1.1 &  & 0.0024 & 0.460 &  & 0.0049 & 0.889 &  \\
-stacked-dr-core (calib=True, iic=True) & 0.0045 & 0.015 & 0.0031 & Mixed & 0.0059 & 1.1 &  & 0.0025 & 0.466 &  & 0.0050 & 0.910 &  \\
-calibrated-ips (iic=True) & 0.0020 & 0.016 & 0.0021 & Mixed & 0.0046 & 1.4 &  & -0.0068 & 2.1 & * & 0.0081 & 2.0 & * \\
-calibrated-ips (iic=False) & 0.0020 & 0.016 & 0.0021 & Mixed & 0.0046 & 1.4 &  & -0.0068 & 2.1 & * & 0.0081 & 2.0 & * \\
-dr-cpo (calib=False, iic=True) & 0.0040 & 0.030 & 0.0059 & Mixed & 0.0063 & 1.6 &  & 0.0064 & 0.403 &  & -0.0007 & 0.114 &  \\
-dr-cpo (calib=False, iic=False) & 0.0040 & 0.030 & 0.0059 & Mixed & 0.0063 & 1.6 &  & 0.0064 & 0.403 &  & -0.0007 & 0.114 &  \\
+stacked-dr-core (calib=True, iic=False) & 0.0007 & 0.012 & 0.0019 & Mixed & 0.0023 & 0.685 &  & -0.0017 & 0.530 &  & 0.0015 & 0.446 &  \\
+stacked-dr-core (calib=True, iic=True) & 0.0007 & 0.012 & 0.0019 & Mixed & 0.0023 & 0.705 &  & -0.0017 & 0.530 &  & 0.0015 & 0.450 &  \\
+stacked-dr (iic=False) & 0.0009 & 0.012 & 0.0019 & Mixed & 0.0029 & 0.866 &  & -0.0018 & 0.535 &  & 0.0015 & 0.461 &  \\
+stacked-dr (iic=True) & 0.0009 & 0.012 & 0.0019 & Mixed & 0.0030 & 0.900 &  & -0.0018 & 0.535 &  & 0.0015 & 0.456 &  \\
+dr-cpo (calib=True, iic=True) & 0.0016 & 0.013 & 0.0017 & Mixed & 0.0034 & 1.1 &  & -0.0008 & 0.287 &  & 0.0024 & 0.784 &  \\
+dr-cpo (calib=True, iic=False) & 0.0017 & 0.013 & 0.0017 & Mixed & 0.0034 & 1.1 &  & -0.0007 & 0.252 &  & 0.0024 & 0.765 &  \\
+calibrated-ips (iic=True) & 0.0005 & 0.016 & 0.0017 & Mixed & 0.0045 & 1.7 &  & -0.0073 & 2.8 & * & 0.0044 & 1.3 &  \\
+calibrated-ips (iic=False) & 0.0005 & 0.016 & 0.0017 & Mixed & 0.0045 & 1.7 &  & -0.0073 & 2.8 & * & 0.0044 & 1.3 &  \\
+dr-cpo (calib=False, iic=True) & 0.0078 & 0.031 & 0.0056 & Positive & 0.0074 & 2.2 & * & 0.013 & 0.842 &  & 0.0030 & 0.538 &  \\
+dr-cpo (calib=False, iic=False) & 0.0078 & 0.031 & 0.0056 & Positive & 0.0074 & 2.2 & * & 0.013 & 0.842 &  & 0.0030 & 0.538 &  \\
 oc-dr-cpo (iic=False) & -0.0105 & 0.032 & 0.0067 & Negative & -0.0095 & 1.0 &  & -0.0050 & 0.471 &  & -0.0171 & 1.2 &  \\
 oc-dr-cpo (iic=True) & -0.0105 & 0.032 & 0.0067 & Negative & -0.0095 & 1.0 &  & -0.0050 & 0.471 &  & -0.0171 & 1.2 &  \\
-raw-ips (iic=False) & -0.0227 & 0.066 & 0.010 & Negative & 0.0024 & 0.722 &  & -0.0794 & 3.0 & * & 0.0089 & 0.689 &  \\
-raw-ips (iic=True) & -0.0227 & 0.066 & 0.010 & Negative & 0.0024 & 0.722 &  & -0.0794 & 3.0 & * & 0.0089 & 0.689 &  \\
-orthogonalized-ips (iic=False) & -0.0208 & 0.066 & 0.010 & Negative & 0.0031 & 0.900 &  & -0.0743 & 2.8 & * & 0.0088 & 0.697 &  \\
-orthogonalized-ips (iic=True) & -0.0208 & 0.066 & 0.010 & Negative & 0.0031 & 0.900 &  & -0.0743 & 2.8 & * & 0.0088 & 0.697 &  \\
 tr-cpo-e (iic=True) & 0.049 & 0.070 & 0.013 & Positive & 0.101 & 3.4 & * & 0.011 & 0.638 &  & 0.036 & 2.1 & * \\
 tr-cpo-e (iic=False) & 0.049 & 0.070 & 0.013 & Positive & 0.101 & 3.4 & * & 0.011 & 0.638 &  & 0.036 & 2.1 & * \\
 tr-cpo-e-anchored (calib=False, iic=True) & 0.049 & 0.070 & 0.013 & Positive & 0.101 & 3.4 & * & 0.011 & 0.638 &  & 0.036 & 2.1 & * \\
 tr-cpo-e-anchored (calib=False, iic=False) & 0.049 & 0.070 & 0.013 & Positive & 0.101 & 3.4 & * & 0.011 & 0.638 &  & 0.036 & 2.1 & * \\
+raw-ips (iic=False) & -0.0177 & 0.072 & 0.0091 & Negative & 0.0016 & 0.604 &  & -0.0892 & 4.0 & * & 0.034 & 3.3 & * \\
+raw-ips (iic=True) & -0.0177 & 0.072 & 0.0091 & Negative & 0.0016 & 0.604 &  & -0.0892 & 4.0 & * & 0.034 & 3.3 & * \\
+orthogonalized-ips (iic=False) & -0.0161 & 0.073 & 0.0091 & Negative & 0.0021 & 0.772 &  & -0.0839 & 3.7 & * & 0.034 & 3.3 & * \\
+orthogonalized-ips (iic=True) & -0.0161 & 0.073 & 0.0091 & Negative & 0.0021 & 0.772 &  & -0.0839 & 3.7 & * & 0.034 & 3.3 & * \\
 tr-cpo-e-anchored-orthogonal (calib=False, iic=True) & 0.054 & 0.092 & 0.017 & Positive & 0.106 & 3.5 & * & 0.024 & 0.692 &  & 0.034 & 1.5 &  \\
 tr-cpo-e-anchored-orthogonal (calib=False, iic=False) & 0.054 & 0.092 & 0.017 & Positive & 0.106 & 3.5 & * & 0.024 & 0.692 &  & 0.034 & 1.5 &  \\
 tr-cpo (iic=True) & 0.444 & 0.559 & 0.266 & Positive & 0.081 & 3.3 & * & 0.374 & 1.4 &  & 0.878 & 1.2 &  \\

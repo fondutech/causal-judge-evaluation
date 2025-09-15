@@ -2,16 +2,16 @@
 
 | Estimator                                             |   ESS_Good |   ESS_OK |   ESS_Poor |   ESS_Median |
 |:------------------------------------------------------|-----------:|---------:|-----------:|-------------:|
-| raw-ips (iic=True)                                    |        100 |        0 |          0 |      996.297 |
-| raw-ips (iic=False)                                   |        100 |        0 |          0 |      996.297 |
-| calibrated-ips (iic=True)                             |        100 |        0 |          0 |     8337.64  |
-| calibrated-ips (iic=False)                            |        100 |        0 |          0 |     8337.64  |
-| orthogonalized-ips (iic=True)                         |        100 |        0 |          0 |     8337.64  |
-| orthogonalized-ips (iic=False)                        |        100 |        0 |          0 |     8337.64  |
-| dr-cpo (calib=True, iic=True)                         |        100 |        0 |          0 |     8337.64  |
-| dr-cpo (calib=True, iic=False)                        |        100 |        0 |          0 |     8337.64  |
-| dr-cpo (calib=False, iic=True)                        |        100 |        0 |          0 |      996.297 |
-| dr-cpo (calib=False, iic=False)                       |        100 |        0 |          0 |      996.297 |
+| raw-ips (iic=True)                                    |        100 |        0 |          0 |      755.425 |
+| raw-ips (iic=False)                                   |        100 |        0 |          0 |      755.425 |
+| calibrated-ips (iic=True)                             |        100 |        0 |          0 |     8734.4   |
+| calibrated-ips (iic=False)                            |        100 |        0 |          0 |     8734.4   |
+| orthogonalized-ips (iic=True)                         |        100 |        0 |          0 |     8734.4   |
+| orthogonalized-ips (iic=False)                        |        100 |        0 |          0 |     8734.4   |
+| dr-cpo (calib=True, iic=True)                         |        100 |        0 |          0 |     8819.9   |
+| dr-cpo (calib=True, iic=False)                        |        100 |        0 |          0 |     8819.9   |
+| dr-cpo (calib=False, iic=True)                        |        100 |        0 |          0 |      765.749 |
+| dr-cpo (calib=False, iic=False)                       |        100 |        0 |          0 |      765.749 |
 | oc-dr-cpo (iic=True)                                  |        100 |        0 |          0 |     8337.64  |
 | oc-dr-cpo (iic=False)                                 |        100 |        0 |          0 |     8337.64  |
 | tr-cpo (iic=True)                                     |        100 |        0 |          0 |      996.297 |

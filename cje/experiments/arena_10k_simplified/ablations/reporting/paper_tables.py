@@ -611,7 +611,15 @@ def compute_robust_bounds(
     """
     bounds = {}
 
-    for col in ["RMSE_d", "IntervalScore_OA", "CalibScore", "SE_GeoMean"]:
+    # Include both regular and debiased versions
+    for col in [
+        "RMSE_d",
+        "IntervalScore_OA",
+        "IntervalScore_d",
+        "CalibScore",
+        "CalibScore_d",
+        "SE_GeoMean",
+    ]:
         if col in df.columns:
             valid_values = df[col].dropna()
             if len(valid_values) > 0:
@@ -740,29 +748,46 @@ def compute_aggregate_score(
         score_components.append(ranking_score)
         weight_list.append(w["ranking"])
 
-    # Calibration component (25%) - Split between CalibScore and IntervalScore
+    # Calibration component (20%) - Split between CalibScore and IntervalScore
+    # Prefer debiased versions when available (they account for oracle uncertainty)
     calib_scores = []
     calib_weights = []
 
-    if not pd.isna(row.get("CalibScore")):
-        min_val, max_val = normalize_bounds["CalibScore"]
+    # CalibScore - prefer debiased version
+    calib_metric = (
+        "CalibScore_d"
+        if "CalibScore_d" in row and not pd.isna(row.get("CalibScore_d"))
+        else "CalibScore"
+    )
+    if not pd.isna(row.get(calib_metric)):
+        min_val, max_val = normalize_bounds.get(
+            calib_metric, normalize_bounds.get("CalibScore", (0, 100))
+        )
         # Lower is better (distance from 95% coverage)
         if max_val > min_val:
-            normalized = 1 - (row["CalibScore"] - min_val) / (max_val - min_val)
+            normalized = 1 - (row[calib_metric] - min_val) / (max_val - min_val)
         else:
             normalized = 0.5
         calib_scores.append(normalized)
-        calib_weights.append(0.125)  # 50% of calibration weight
+        calib_weights.append(0.5)  # 50% of calibration weight
 
-    if not pd.isna(row.get("IntervalScore_OA")):
-        min_val, max_val = normalize_bounds["IntervalScore_OA"]
+    # IntervalScore - prefer debiased version
+    interval_metric = (
+        "IntervalScore_d"
+        if "IntervalScore_d" in row and not pd.isna(row.get("IntervalScore_d"))
+        else "IntervalScore_OA"
+    )
+    if not pd.isna(row.get(interval_metric)):
+        min_val, max_val = normalize_bounds.get(
+            interval_metric, normalize_bounds.get("IntervalScore_OA", (0, 1))
+        )
         # Lower is better
         if max_val > min_val:
-            normalized = 1 - (row["IntervalScore_OA"] - min_val) / (max_val - min_val)
+            normalized = 1 - (row[interval_metric] - min_val) / (max_val - min_val)
         else:
             normalized = 0.5
         calib_scores.append(normalized)
-        calib_weights.append(0.125)  # 50% of calibration weight
+        calib_weights.append(0.5)  # 50% of calibration weight
 
     if calib_scores:
         # Weighted average of calibration components
