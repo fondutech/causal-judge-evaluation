@@ -76,6 +76,8 @@ class TRCPOEstimator(DREstimator):
         run_diagnostics: bool = True,
         oua_jackknife: bool = False,
         use_efficient_tr: bool = True,  # Default to variance-reduced version
+        anchor_on_simcal: bool = False,  # Optional SIMCal anchoring with retarget to raw w
+        add_orthogonalizer: bool = False,  # Reserved: optional orthogonalizer term (off by default)
         **kwargs: Any,
     ):
         # TR uses raw/Hájek weights; disable SIMCal in parent (but reuse all DR infra)
@@ -96,9 +98,35 @@ class TRCPOEstimator(DREstimator):
         self.max_pi = float(max_pi)
         self.use_iic = bool(use_iic)
         self.use_efficient_tr = bool(use_efficient_tr)
+        self.anchor_on_simcal = bool(anchor_on_simcal)
+        self.add_orthogonalizer = bool(add_orthogonalizer)
         self._piL_oof_cache: Dict[str, np.ndarray] = {}
         self._m_hat_oof_cache: Dict[str, np.ndarray] = {}  # Cache for m̂(S) = E[W|S]
         self._tr_diagnostics: Dict[str, Dict[str, Any]] = {}
+
+        # Optional: a dedicated IPS estimator to produce SIMCal weights for anchoring
+        self._anchor_ips = None
+        if self.anchor_on_simcal:
+            try:
+                from .calibrated_ips import CalibratedIPS
+
+                self._anchor_ips = CalibratedIPS(
+                    sampler=sampler,
+                    calibrate_weights=True,
+                    weight_mode=self.weight_mode,
+                    reward_calibrator=reward_calibrator,
+                    run_diagnostics=False,
+                    oua_jackknife=False,
+                    use_outer_cv=True,
+                    n_outer_folds=n_folds,
+                    outer_cv_seed=random_seed,
+                    honest_iic=False,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"TR: Failed to initialize SIMCal anchoring estimator: {e}. Proceeding without anchoring."
+                )
+                self.anchor_on_simcal = False
 
     # ---------- Label-propensity (π̂_L) ----------
 
@@ -219,6 +247,17 @@ class TRCPOEstimator(DREstimator):
 
         # Parent fit: IPS (raw/Hájek), outcome model; builds _promptid_to_fold map
         super().fit()
+
+        # If anchoring on SIMCal, fit the auxiliary IPS estimator now
+        if self.anchor_on_simcal and self._anchor_ips is not None:
+            try:
+                self._anchor_ips.fit()
+            except Exception as e:
+                logger.warning(
+                    f"TR: Anchor IPS fit failed ({e}); disabling anchoring for this run."
+                )
+                self._anchor_ips = None
+                self.anchor_on_simcal = False
 
         # Build π̂_L OOF for each policy (based on policy subset)
         for policy in self.sampler.target_policies:
@@ -426,8 +465,32 @@ class TRCPOEstimator(DREstimator):
             # DM mean
             dm_term = float(np.mean(g_fresh))
 
-            # DR correction with raw/Hájek weights (use OOF reward)
-            dr_corr = float(np.mean(w * (R_oof - q_oof)))
+            # DR correction component (anchored on SIMCal if enabled)
+            if self.anchor_on_simcal and self._anchor_ips is not None:
+                try:
+                    w_tilde = self._anchor_ips.get_weights(policy)
+                    if w_tilde is None or len(w_tilde) != n:
+                        w_tilde = w
+                    else:
+                        # Defensive normalization to ensure mean-one
+                        mu = float(np.mean(w_tilde))
+                        if np.isfinite(mu) and mu > 0:
+                            w_tilde = w_tilde / mu
+                        else:
+                            logger.warning(
+                                f"TR: Invalid SIMCal weights mean ({mu}), falling back to raw weights"
+                            )
+                            w_tilde = w
+                except Exception as e:
+                    logger.debug(f"TR: Failed to get SIMCal weights: {e}")
+                    w_tilde = w
+            else:
+                w_tilde = w
+
+            # Anchor on SIMCal (baseline) + retarget to raw w (ensures identical estimand)
+            base_ips_vec = w_tilde * (R_oof - q_oof)
+            retarget_vec = (w - w_tilde) * (R_oof - q_oof)
+            dr_corr = float(np.mean(base_ips_vec + retarget_vec))
 
             # Choose weights for TR correction based on use_efficient_tr flag
             if self.use_efficient_tr:
@@ -472,17 +535,28 @@ class TRCPOEstimator(DREstimator):
             tr_vec = (L / pi_clipped) * tr_weights * (Y - R_oof)
             tr_corr = float(np.mean(tr_vec))
 
-            V_hat = dm_term + dr_corr + tr_corr
+            # Build contributions (all components that sum to the estimator)
+            contrib = g_fresh + base_ips_vec + retarget_vec + tr_vec
+
+            # Optional orthogonalizer (mean-zero variance reduction term)
+            orthog_vec = None
+            if self.add_orthogonalizer:
+                try:
+                    # Orthogonalizer uses reward calibrator residual times weight residual
+                    # This is mean-zero by construction and reduces covariance between nuisances
+                    orthog_vec = (w - m_hat) * (R - R_oof)
+                    contrib = contrib + orthog_vec
+                except Exception as e:
+                    logger.debug(f"TR: Failed to compute orthogonalizer: {e}")
+                    orthog_vec = None
+
+            # Point estimate from contributions
+            V_hat = float(np.mean(contrib))
             estimates.append(V_hat)
 
             # ----- Influence function (OOF path) -----
-            # φ = g_fresh + w*(R_oof - q_oof) + (L/pi_oof)*tr_weights*(Y - R_oof) - V_hat
-            phi = (
-                g_fresh
-                + w * (R_oof - q_oof)
-                + (L / pi_clipped) * tr_weights * (Y - R_oof)
-                - V_hat
-            )
+            # IF is simply the centered contributions
+            phi = contrib - V_hat
 
             # Optional IIC (variance-only tightening)
             if self.use_iic:
@@ -533,6 +607,62 @@ class TRCPOEstimator(DREstimator):
                     ss_res = np.var(w[valid] - m_hat[valid], ddof=1)
                     r2_w_s = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
 
+            # Compute CIs for anchor terms (cluster-robust mean CIs over folds)
+            try:
+                det_base = cluster_robust_se(
+                    data=base_ips_vec,
+                    cluster_ids=fold_ids,
+                    statistic_fn=lambda x: float(np.mean(x)),
+                    influence_fn=None,
+                    alpha=0.05,
+                )
+                det_retarget = cluster_robust_se(
+                    data=retarget_vec,
+                    cluster_ids=fold_ids,
+                    statistic_fn=lambda x: float(np.mean(x)),
+                    influence_fn=None,
+                    alpha=0.05,
+                )
+                base_ci = (float(det_base["ci_lower"]), float(det_base["ci_upper"]))
+                retarget_ci = (
+                    float(det_retarget["ci_lower"]),
+                    float(det_retarget["ci_upper"]),
+                )
+            except Exception:
+                base_ci = (None, None)
+                retarget_ci = (None, None)
+
+            # Optional orthogonalizer CI
+            orthog_mean: Optional[float] = None
+            orthog_ci: Tuple[Optional[float], Optional[float]] = (None, None)
+            if orthog_vec is not None:
+                try:
+                    det_orth = cluster_robust_se(
+                        data=orthog_vec,
+                        cluster_ids=fold_ids,
+                        statistic_fn=lambda x: float(np.mean(x)),
+                        influence_fn=None,
+                        alpha=0.05,
+                    )
+                    orthog_mean = float(np.mean(orthog_vec))
+                    orthog_ci = (
+                        float(det_orth["ci_lower"]),
+                        float(det_orth["ci_upper"]),
+                    )
+                except Exception:
+                    pass
+
+            # Compute retarget identity error if anchored (should be ~0)
+            if self.anchor_on_simcal and w_tilde is not None:
+                identity_error = float(
+                    np.mean(np.abs((base_ips_vec + retarget_vec) - w * (R_oof - q_oof)))
+                )
+            else:
+                identity_error = 0.0
+
+            # Check IF mean (should be ~0)
+            if_mean = float(np.mean(phi))
+
             self._tr_diagnostics[policy] = {
                 "dm_mean": dm_term,
                 "dr_correction_mean": dr_corr,
@@ -546,7 +676,22 @@ class TRCPOEstimator(DREstimator):
                 "iic_applied": bool(self.use_iic),
                 "uses_efficient_correction": uses_efficient_correction,
                 "use_efficient_tr": self.use_efficient_tr,
+                "anchor_on_simcal": bool(self.anchor_on_simcal),
+                "anchor_base_ips_mean": (
+                    float(np.mean(base_ips_vec)) if base_ips_vec.size else None
+                ),
+                "anchor_retarget_mean": (
+                    float(np.mean(retarget_vec)) if retarget_vec.size else None
+                ),
+                "anchor_base_ips_ci": base_ci,
+                "anchor_retarget_ci": retarget_ci,
                 "r2_w_given_s": r2_w_s,  # R²(W|S) - higher means more variance reduction
+                "orthogonalizer_mean": orthog_mean,
+                "orthogonalizer_ci": orthog_ci,
+                "retarget_identity_error": (
+                    identity_error if self.anchor_on_simcal else None
+                ),
+                "if_mean": if_mean,
             }
 
             # Gentle warnings for extreme regimes
@@ -620,11 +765,16 @@ class TRCPOEstimator(DREstimator):
                 )
 
         # Result (we keep metadata compact; stacked DR will consume IFs)
+        # Use descriptive method name based on configuration
+        method_name = "tr_cpo"
+        if self.anchor_on_simcal:
+            method_name = "tr_cpo_anchored"
+
         result = EstimationResult(
             estimates=np.asarray(estimates, dtype=float),
             standard_errors=np.asarray(ses, dtype=float),
             n_samples_used=n_used,
-            method="tr_cpo",
+            method=method_name,
             influence_functions=if_map,
             diagnostics=diagnostics,
             robust_standard_errors=None,
@@ -636,6 +786,12 @@ class TRCPOEstimator(DREstimator):
                 "iic_applied_to_if": bool(self.use_iic),
                 "iic_estimate_adjusted": False,  # Point estimates unchanged by IIC
                 "weight_mode": self.weight_mode,
+                "anchor_on_simcal": bool(self.anchor_on_simcal),
+                "add_orthogonalizer": bool(self.add_orthogonalizer),
+                "retarget_identity_error": (
+                    identity_error if self.anchor_on_simcal else None
+                ),
+                "if_mean": if_mean,
                 "mc_variance_diagnostics": getattr(self, "_mc_diagnostics", None),
                 "iic_diagnostics": getattr(self, "_iic_diagnostics", None),
                 # Add sample indices for IF alignment in stacking
@@ -761,7 +917,25 @@ class TRCPOEstimator(DREstimator):
                 # TR estimate with R_loo
                 pi_clipped = np.clip(pi_oof, self.min_pi, self.max_pi)
                 dm = float(np.mean(g_loo_array))
-                dr = float(np.mean(w * (R_loo - q_oof)))
+
+                # Respect anchor_on_simcal for OUA consistency
+                if self.anchor_on_simcal and self._anchor_ips is not None:
+                    w_tilde_jack = self._anchor_ips.get_weights(policy)
+                    if w_tilde_jack is None or len(w_tilde_jack) != len(w):
+                        w_tilde_jack = w
+                    else:
+                        # Defensive normalization
+                        mu = float(np.mean(w_tilde_jack))
+                        if np.isfinite(mu) and mu > 0:
+                            w_tilde_jack = w_tilde_jack / mu
+                        else:
+                            w_tilde_jack = w
+                    # Anchored decomposition
+                    base = w_tilde_jack * (R_loo - q_oof)
+                    retg = (w - w_tilde_jack) * (R_loo - q_oof)
+                    dr = float(np.mean(base + retg))
+                else:
+                    dr = float(np.mean(w * (R_loo - q_oof)))
 
                 # Use the same TR weights as in estimate(): m̂(S) if efficient, else W
                 # Note: m_hat was already loaded above (lines 716-726)

@@ -148,8 +148,8 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
                 continue
 
             # Local fold assignments (simple, robust): computed from prompt_id, independent of calibrator folds
-            n_folds = self.sampler.dataset.metadata.get("n_folds", 5)
-            seed = self.sampler.dataset.metadata.get("fold_seed", 42)
+            n_folds = self.n_folds
+            seed = self.random_seed
             prompt_ids = [d.get("prompt_id", f"sample_{i}") for i, d in enumerate(data)]
             fold_ids = np.array(
                 [get_fold(pid, n_folds, seed) for pid in prompt_ids], dtype=int
@@ -276,6 +276,18 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
                 ses.append(np.nan)
                 continue
 
+            # Defensive normalization to ensure mean-one
+            mu = float(np.mean(W_tilde))
+            if np.isfinite(mu) and mu > 0:
+                W_tilde = W_tilde / mu
+            else:
+                logger.warning(
+                    f"OC-DR: Invalid SIMCal weights mean ({mu}), falling back to raw weights"
+                )
+                W_tilde = self.sampler.compute_importance_weights(
+                    policy, clip_weight=None, mode=self.ips_estimator.weight_mode
+                )
+
             W = self.sampler.compute_importance_weights(
                 policy, clip_weight=None, mode=self.ips_estimator.weight_mode
             )
@@ -329,10 +341,10 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
             g_fresh = np.asarray(g_fresh_list, dtype=float)
             fresh_var = np.asarray(fresh_var_list, dtype=float)
 
-            # OOF rewards for orthogonalization (R^OOF and f̂^OOF)
+            # OOF rewards for orthogonalization (R_logged and f̂^OOF)
             # Prefer by-index OOF; else fold-based OOF; else plain predict() (warn).
-            R_oof = R_logged.copy()
-            f_oof = R_logged.copy()
+            # CRITICAL: f_oof holds the OOF calibrator prediction, R_logged is the actual reward
+            f_oof = R_logged.copy()  # Will hold the OOF calibrator prediction
             used_true_oof = False
 
             if self.reward_calibrator is not None:
@@ -344,27 +356,24 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
                         )
                         R_pred = self.reward_calibrator.predict_oof_by_index(ds_idx)
                         if R_pred is not None:
-                            R_oof = np.asarray(R_pred, dtype=float)
-                            f_oof = R_oof
+                            f_oof = np.asarray(R_pred, dtype=float)
                             used_true_oof = True
                     # 2) Else try fold-based OOF with prompt-based folds
                     elif hasattr(self.reward_calibrator, "predict_oof"):
-                        n_folds = self.sampler.dataset.metadata.get("n_folds", 5)
-                        seed = self.sampler.dataset.metadata.get("fold_seed", 42)
+                        n_folds = self.n_folds
+                        seed = self.random_seed
                         fold_cal = np.array(
                             [get_fold(pid, n_folds, seed) for pid in pids], dtype=int
                         )
                         R_pred = self.reward_calibrator.predict_oof(S_logged, fold_cal)
                         if R_pred is not None:
-                            R_oof = np.asarray(R_pred, dtype=float)
-                            f_oof = R_oof
+                            f_oof = np.asarray(R_pred, dtype=float)
                             used_true_oof = True
                     # 3) Fallback to in-fold predict (warn)
                     elif hasattr(self.reward_calibrator, "predict"):
                         R_pred = self.reward_calibrator.predict(S_logged)
                         if R_pred is not None:
-                            R_oof = np.asarray(R_pred, dtype=float)
-                            f_oof = R_oof
+                            f_oof = np.asarray(R_pred, dtype=float)
                             logger.warning(
                                 "ODR: Using in-fold calibrator.predict() (no OOF available). "
                                 "Orthogonalization guarantee may weaken."
@@ -378,13 +387,15 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
             m_hat_oof = self._m_hat_oof_cache.get(policy, np.ones_like(W, dtype=float))
 
             # ---------- Build contributions ----------
-            # Baseline DR (anchored on W̃) - use R_oof for consistency with IF
-            baseline_ips = W_tilde * (R_oof - q_logged_oof)
+            # Baseline DR (anchored on W̃) - use f_oof for consistency with IF
+            baseline_ips = W_tilde * (f_oof - q_logged_oof)
 
             # Orthogonalizer and retarget terms
             if self.use_orthogonalization:
-                orthog = (W - m_hat_oof) * (R_oof - f_oof)
-                retarget = (R_oof - q_logged_oof) * (W - W_tilde)
+                orthog = (W - m_hat_oof) * (
+                    R_logged - f_oof
+                )  # Observed reward minus OOF prediction
+                retarget = (f_oof - q_logged_oof) * (W - W_tilde)
             else:
                 orthog = np.zeros_like(W_tilde)
                 retarget = np.zeros_like(W_tilde)
@@ -438,6 +449,14 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
             ortho_mean, ortho_lo, ortho_hi = _mean_ci(orthog)
             retgt_mean, retgt_lo, retgt_hi = _mean_ci(retarget)
 
+            # Compute retarget identity error (should be ~0)
+            base_plus_retarget = baseline_ips + retarget
+            raw_ips = W * (f_oof - q_logged_oof)
+            identity_error = float(np.mean(np.abs(base_plus_retarget - raw_ips)))
+
+            # Check IF mean (should be ~0)
+            if_mean = float(np.mean(phi))
+
             self._orthogonalization_diagnostics[policy] = {
                 "orthog_residual": ortho_mean,
                 "orthog_ci_lower": ortho_lo,
@@ -445,6 +464,8 @@ class OrthogonalizedCalibratedDRCPO(DREstimator):
                 "retarget_residual": retgt_mean,
                 "retarget_ci_lower": retgt_lo,
                 "retarget_ci_upper": retgt_hi,
+                "retarget_identity_error": identity_error,
+                "if_mean": if_mean,
                 "baseline_dm_mean": float(np.mean(g_fresh)),
                 "baseline_ips_mean": float(np.mean(baseline_ips)),
                 "uses_true_oof_rewards": bool(used_true_oof),

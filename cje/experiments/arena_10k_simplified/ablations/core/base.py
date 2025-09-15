@@ -169,6 +169,10 @@ class BaseAblation:
                 reward_calibrator=cal_result.calibrator if cal_result else None,
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
+                use_outer_cv=True,
+                n_outer_folds=5,
+                outer_cv_seed=42,
+                honest_iic=use_iic,  # Enable honest IIC for raw-ips too
             ),  # No weight calibration, but still support OUA
             "calibrated-ips": lambda s: CalibratedIPS(
                 s,
@@ -222,6 +226,26 @@ class BaseAblation:
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
                 use_efficient_tr=True,  # Efficient TR-CPO uses m̂(S)
+            ),
+            "tr-cpo-e-anchored": lambda s: TRCPOEstimator(
+                s,
+                reward_calibrator=cal_result.calibrator if cal_result else None,
+                n_folds=DR_CONFIG["n_folds"],
+                use_iic=use_iic,  # Pass IIC setting
+                oua_jackknife=oua,
+                use_efficient_tr=True,  # Efficient TR-CPO uses m̂(S)
+                anchor_on_simcal=True,  # Anchor on SIMCal weights for stability
+                add_orthogonalizer=False,  # No orthogonalizer
+            ),
+            "tr-cpo-e-anchored-orthogonal": lambda s: TRCPOEstimator(
+                s,
+                reward_calibrator=cal_result.calibrator if cal_result else None,
+                n_folds=DR_CONFIG["n_folds"],
+                use_iic=use_iic,  # Pass IIC setting
+                oua_jackknife=oua,
+                use_efficient_tr=True,  # Efficient TR-CPO uses m̂(S)
+                anchor_on_simcal=True,  # Anchor on SIMCal weights for stability
+                add_orthogonalizer=True,  # Add orthogonalizer for variance reduction
             ),
             "calibrated-dr-cpo": lambda s: DRCPOEstimator(
                 s,
@@ -531,6 +555,8 @@ class BaseAblation:
                 "tmle",
                 "tr-cpo",
                 "tr-cpo-e",
+                "tr-cpo-e-anchored",
+                "tr-cpo-e-anchored-orthogonal",
                 "stacked-dr",
             ]:
                 data_dir = Path(spec.dataset_path).parent

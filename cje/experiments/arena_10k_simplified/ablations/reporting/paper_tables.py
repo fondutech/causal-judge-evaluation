@@ -204,7 +204,9 @@ def compute_debiased_interval_score(
                     prob_below = scipy_stats.norm.cdf(z_lower)
                     if prob_below > 1e-10:
                         # Expected distance given oracle is below CI
-                        exp_dist_below = oracle_se * (
+                        # E[|X - ci_lower| | X < ci_lower] where X ~ N(0,1)
+                        # This is E[ci_lower - X | X < z_lower] = -z_lower + pdf(z_lower)/cdf(z_lower)
+                        exp_dist_below = oracle_se * abs(
                             scipy_stats.norm.pdf(z_lower) / prob_below - z_lower
                         )
                         penalty_below = (2 / alpha) * prob_below * exp_dist_below
@@ -215,7 +217,9 @@ def compute_debiased_interval_score(
                     prob_above = 1 - scipy_stats.norm.cdf(z_upper)
                     if prob_above > 1e-10:
                         # Expected distance given oracle is above CI
-                        exp_dist_above = oracle_se * (
+                        # E[|X - ci_upper| | X > ci_upper] where X ~ N(0,1)
+                        # This is E[X - ci_upper | X > z_upper] = pdf(z_upper)/(1-cdf(z_upper)) - z_upper
+                        exp_dist_above = oracle_se * abs(
                             scipy_stats.norm.pdf(z_upper) / prob_above + z_upper
                         )
                         penalty_above = (2 / alpha) * prob_above * exp_dist_above

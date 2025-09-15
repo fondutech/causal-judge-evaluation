@@ -827,10 +827,32 @@ class CalibratedIPS(BaseCJEEstimator):
                         f"mean R²={np.mean(list(rsq_by_fold.values())):.3f}"
                     )
                 elif self.use_iic:
-                    logger.debug(
-                        f"IIC disabled for policy {policy} when using outer CV"
-                    )
-                iic_adjustment = 0.0
+                    # Apply non-honest IIC as a fallback even under outer CV
+                    # This residualizes the already-built honest IF vector against S
+                    # using the same outer_fold_ids for clustering consistency.
+                    try:
+                        S_vec = np.array(
+                            [d.get("judge_score", np.nan) for d in data], dtype=float
+                        )
+                        # Use _apply_iic residualization (variance-only)
+                        influence, iic_adjustment = self._apply_iic(
+                            influence, policy, fold_ids=outer_fold_ids
+                        )
+                        # Track diagnostics
+                        if not hasattr(self, "_iic_diagnostics"):
+                            self._iic_diagnostics = {}
+                        self._iic_diagnostics[policy] = {
+                            "honest_iic": False,
+                            "folds_applied": int(len(np.unique(outer_fold_ids))),
+                            "samples_residualized": 1.0,  # applied to all valid samples
+                        }
+                    except Exception as e:
+                        logger.debug(
+                            f"Fallback IIC residualization under outer CV failed for {policy}: {e}"
+                        )
+                        iic_adjustment = 0.0
+                else:
+                    iic_adjustment = 0.0
             else:
                 # Standard single-pass influence functions
                 # Ratio IF for Hajek term (use the same weights used in ψ̂_w)

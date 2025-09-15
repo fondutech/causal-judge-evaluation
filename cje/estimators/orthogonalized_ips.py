@@ -42,17 +42,26 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
     """
 
     def __init__(
-        self, *args: Any, use_orthogonalization: bool = True, **kwargs: Any
+        self,
+        *args: Any,
+        use_orthogonalization: bool = True,
+        n_folds: int = 5,
+        random_seed: int = 42,
+        **kwargs: Any,
     ) -> None:
         """Initialize OC-IPS estimator.
 
         Args:
             use_orthogonalization: Whether to apply orthogonalization.
                 If False, behaves exactly like CalibratedIPS.
+            n_folds: Number of folds for cross-fitting m̂(S).
+            random_seed: Random seed for fold assignment.
             *args, **kwargs: Passed to CalibratedIPS
         """
         super().__init__(*args, **kwargs)
         self.use_orthogonalization = use_orthogonalization
+        self.n_folds = n_folds
+        self.random_seed = random_seed
         self._m_hat_oof_cache: Dict[str, np.ndarray] = {}
         self._orthogonalization_diagnostics: Dict[str, Dict] = {}
 
@@ -90,8 +99,8 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                 continue
 
             # Get fold assignments (local to this policy subset)
-            n_folds = self.sampler.dataset.metadata.get("n_folds", 5)
-            seed = self.sampler.dataset.metadata.get("fold_seed", 42)
+            n_folds = self.n_folds
+            seed = self.random_seed
             prompt_ids = [d.get("prompt_id", f"sample_{i}") for i, d in enumerate(data)]
             fold_ids = np.array([get_fold(pid, n_folds, seed) for pid in prompt_ids])
 
@@ -228,12 +237,21 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
             )  # Raw weights
             W_tilde = self._weights_cache[policy]  # SIMCal calibrated weights
 
+            # Defensive normalization to ensure mean-one
+            mu = float(np.mean(W_tilde))
+            if np.isfinite(mu) and mu > 0:
+                W_tilde = W_tilde / mu
+            else:
+                logger.warning(
+                    f"OC-IPS: Invalid SIMCal weights mean ({mu}), falling back to raw weights"
+                )
+                W_tilde = W
+
             # Get rewards
             R = np.array([d["reward"] for d in data])  # Global fit rewards
 
-            # Initialize OOF quantities (default to global if not available)
-            R_oof = R.copy()
-            f_oof = R.copy()
+            # Initialize OOF prediction (default to global rewards if not available)
+            f_oof = R.copy()  # Will hold the OOF calibrator prediction
 
             # Try to get OOF rewards using dataset indices (best), else fold-based OOF
             if self.reward_calibrator is not None:
@@ -257,8 +275,7 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                         if np.all(ds_idx >= 0):
                             R_pred = self.reward_calibrator.predict_oof_by_index(ds_idx)
                             if R_pred is not None:
-                                R_oof = np.asarray(R_pred, dtype=float)
-                                f_oof = R_oof
+                                f_oof = np.asarray(R_pred, dtype=float)
                                 logger.debug(
                                     f"Using index-based OOF rewards for {policy}"
                                 )
@@ -267,8 +284,8 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                     elif hasattr(self.reward_calibrator, "predict_oof"):
                         from ..data.folds import get_fold
 
-                        n_folds = self.sampler.dataset.metadata.get("n_folds", 5)
-                        seed = self.sampler.dataset.metadata.get("fold_seed", 42)
+                        n_folds = self.n_folds
+                        seed = self.random_seed
                         judge_scores = np.array(
                             [d.get("judge_score", np.nan) for d in data], dtype=float
                         )
@@ -288,8 +305,7 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                                 judge_scores, fold_cal
                             )
                             if R_pred is not None:
-                                R_oof = np.asarray(R_pred, dtype=float)
-                                f_oof = R_oof
+                                f_oof = np.asarray(R_pred, dtype=float)
                                 logger.debug(
                                     f"Using fold-based OOF rewards for {policy}"
                                 )
@@ -303,8 +319,7 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                         if valid_scores.sum() > 0:
                             R_pred = self.reward_calibrator.predict(judge_scores)
                             if R_pred is not None:
-                                R_oof = np.asarray(R_pred, dtype=float)
-                                f_oof = R_oof
+                                f_oof = np.asarray(R_pred, dtype=float)
                                 logger.warning(
                                     f"OC-IPS: Using in-fold calibrator.predict() for {policy}; orthogonality guarantees may weaken."
                                 )
@@ -317,12 +332,13 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
             # Compute OC-IPS (SIMCal-anchored, full three-term version)
             # V̂ = P_n[W̃·R] + P_n[(W-m̂)(R-f̂)] + P_n[f̂(W-W̃)]
 
-            # 1. Baseline term (use OOF rewards for consistency with IF)
-            baseline = W_tilde * R_oof
+            # 1. Baseline term (use actual rewards R, not OOF)
+            baseline = W_tilde * R
 
             # 2. Orthogonalization term (doubly-robust correction)
             # This is the KEY term that makes us robust to both f̂ and m̂ errors
-            orthogonalization = (W - m_hat_oof) * (R_oof - f_oof)
+            # Uses observed reward R minus OOF prediction f_oof
+            orthogonalization = (W - m_hat_oof) * (R - f_oof)
 
             # 3. Re-targeting term (aligns with SIMCal weights)
             retarget = f_oof * (W - W_tilde)
@@ -340,8 +356,8 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
 
             # Apply IIC if enabled (variance reduction via residualization)
             if self.use_iic:
-                n_folds = self.sampler.dataset.metadata.get("n_folds", 5)
-                seed = self.sampler.dataset.metadata.get("fold_seed", 42)
+                n_folds = self.n_folds
+                seed = self.random_seed
                 prompt_ids = [
                     d.get("prompt_id", f"sample_{i}") for i, d in enumerate(data)
                 ]
@@ -379,7 +395,7 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                 "retarget_ci_lower": float(retarget.mean() - retarget_ci),
                 "retarget_ci_upper": float(retarget.mean() + retarget_ci),
                 "baseline_contrib": float(baseline.mean()),
-                "uses_oof_rewards": not np.array_equal(R, R_oof),
+                "uses_oof_rewards": not np.array_equal(R, f_oof),
             }
 
             logger.debug(
@@ -518,6 +534,16 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
             if W is None or W_tilde is None:
                 return None
 
+            # Defensive normalization for W_tilde
+            mu = float(np.mean(W_tilde))
+            if np.isfinite(mu) and mu > 0:
+                W_tilde = W_tilde / mu
+            else:
+                logger.warning(
+                    f"OC-IPS jackknife: Invalid SIMCal weights mean ({mu}), falling back to raw weights"
+                )
+                W_tilde = W
+
             # Get m̂^OOF
             m_hat_oof = self._m_hat_oof_cache.get(policy, np.ones_like(W))
 
@@ -534,14 +560,13 @@ class OrthogonalizedCalibratedIPS(CalibratedIPS):
                 rewards_loo = np.clip(fold_model.predict(judge_scores), 0.0, 1.0)
 
                 # OUA jackknife: recompute OC-IPS with different calibrator
-                # Use the same three-term structure as estimate method:
-                # V̂ = P_n[W̃·R^(−k)] + P_n[(W-m̂)(R^(−k)-R^(−k))] + P_n[R^(−k)(W-W̃)]
-                #   = P_n[W̃·R^(−k)] + 0 + P_n[R^(−k)(W-W̃)]
-                #   = P_n[R^(−k)·W]  (since the orthogonalization term cancels)
+                # Mirror the estimator exactly: keep baseline on R, only swap f_oof → rewards_loo
+                # Get actual rewards R (not OOF)
+                R = np.array([d["reward"] for d in data])
 
-                # For jackknife, we use the same structure but with leave-one-fold rewards
-                baseline_loo = W_tilde * rewards_loo
-                orthog_loo = (W - m_hat_oof) * (rewards_loo - rewards_loo)  # = 0
+                # V̂^(−k) = P_n[W̃·R] + P_n[(W-m̂)(R-R^(−k))] + P_n[R^(−k)(W-W̃)]
+                baseline_loo = W_tilde * R  # Keep baseline on actual rewards
+                orthog_loo = (W - m_hat_oof) * (R - rewards_loo)  # Now non-zero!
                 retarget_loo = rewards_loo * (W - W_tilde)
 
                 contrib_loo = baseline_loo + orthog_loo + retarget_loo

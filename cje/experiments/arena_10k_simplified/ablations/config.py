@@ -14,6 +14,8 @@ EXPERIMENTS = {
         "oc-dr-cpo",  # Orthogonalized Calibrated DR
         "tr-cpo",  # Triply-Robust CPO (vanilla, raw W)
         "tr-cpo-e",  # Triply-Robust CPO (efficient, m̂(S))
+        "tr-cpo-e-anchored",  # TR-CPO (efficient + SIMCal-anchored)
+        "tr-cpo-e-anchored-orthogonal",  # TR-CPO (efficient + anchored + orthogonal)
         "stacked-dr",  # Ensemble (always with calibration)
         "stacked-dr-core",  # Ensemble with only dr-cpo, tmle, mrdr
     ],
@@ -65,6 +67,8 @@ NEVER_CALIBRATED = {
     "raw-ips",  # Never uses calibration by design
     "tr-cpo",  # Always uses raw/Hajek weights (no SIMCal) for theoretical correctness
     "tr-cpo-e",  # Also uses raw/Hajek weights, but with m̂(S) in TR term for efficiency
+    "tr-cpo-e-anchored",  # Uses raw weights but leverages SIMCal internally for anchoring
+    "tr-cpo-e-anchored-orthogonal",  # Uses raw weights with SIMCal anchoring + orthogonalization
 }
 
 CONSTRAINTS = {

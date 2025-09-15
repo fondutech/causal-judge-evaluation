@@ -101,7 +101,7 @@ class UnifiedAblation(BaseAblation):
             str(spec.get("extra", {}).get("use_weight_calibration", False)),
             str(spec.get("extra", {}).get("use_iic", False)),
             str(spec.get("extra", {}).get("reward_calibration_mode", "monotone")),
-            str(spec.get("seed_base", 42)),
+            str(spec.get("seed_base", 42)),  # This now properly includes the seed
         ]
         return "_".join(key_params)
 
@@ -227,31 +227,35 @@ class UnifiedAblation(BaseAblation):
         completed = 0
         failed = 0
 
-        # Generate all parameter combinations
-        for estimator in EXPERIMENTS["estimators"]:
-            for sample_size in EXPERIMENTS["sample_sizes"]:
-                for oracle_coverage in EXPERIMENTS["oracle_coverages"]:
+        # SEEDS AS OUTERMOST LOOP - ensures all estimators are evaluated with seed 0 first
+        for seed in EXPERIMENTS["seeds"]:
+            logger.info(f"\n{'='*60}")
+            logger.info(f"STARTING SEED {seed}")
+            logger.info(f"{'='*60}")
 
-                    # Apply calibration constraints
-                    if estimator in CONSTRAINTS.get("requires_calibration", set()):
-                        # These estimators MUST have calibration
-                        calibration_options = [True]
-                    elif estimator in CONSTRAINTS.get("never_calibrated", set()):
-                        # These estimators NEVER use calibration
-                        calibration_options = [False]
-                    else:
-                        # These estimators can use either
-                        calibration_options = EXPERIMENTS["use_weight_calibration"]
+            # Generate all parameter combinations for this seed
+            for estimator in EXPERIMENTS["estimators"]:
+                for sample_size in EXPERIMENTS["sample_sizes"]:
+                    for oracle_coverage in EXPERIMENTS["oracle_coverages"]:
 
-                    for use_weight_calibration in calibration_options:
+                        # Apply calibration constraints
+                        if estimator in CONSTRAINTS.get("requires_calibration", set()):
+                            # These estimators MUST have calibration
+                            calibration_options = [True]
+                        elif estimator in CONSTRAINTS.get("never_calibrated", set()):
+                            # These estimators NEVER use calibration
+                            calibration_options = [False]
+                        else:
+                            # These estimators can use either
+                            calibration_options = EXPERIMENTS["use_weight_calibration"]
 
-                        # IIC works for all estimators (IPS and DR)
-                        # It's a general variance reduction technique for any asymptotically linear estimator
-                        iic_values = EXPERIMENTS["use_iic"]
+                        for use_weight_calibration in calibration_options:
 
-                        for use_iic in iic_values:
-                            # Iterate over multiple seeds for statistical robustness
-                            for seed in EXPERIMENTS["seeds"]:
+                            # IIC works for all estimators (IPS and DR)
+                            # It's a general variance reduction technique for any asymptotically linear estimator
+                            iic_values = EXPERIMENTS["use_iic"]
+
+                            for use_iic in iic_values:
                                 # Create specification
                                 spec = ExperimentSpec(
                                     ablation="unified",
@@ -281,10 +285,10 @@ class UnifiedAblation(BaseAblation):
 
                                 # Run experiment with current seed
                                 logger.info(
-                                    f"\n[{completed + failed + 1}/{total_experiments}] "
+                                    f"\n[Seed {seed}][{completed + failed + 1}/{total_experiments}] "
                                     f"Running: {estimator} n={sample_size} "
                                     f"oracle={oracle_coverage:.0%} "
-                                    f"weight_cal={use_weight_calibration} iic={use_iic} seed={seed}"
+                                    f"weight_cal={use_weight_calibration} iic={use_iic}"
                                 )
 
                                 try:
