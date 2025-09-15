@@ -8,10 +8,10 @@
 | orthogonalized-ips (iic=False)                        |         0.412599 |      0.705697 | O(n)         |         0 |         0.183377 |            nan |
 | raw-ips (iic=True)                                    |         1.11038  |      2.39106  | O(n)         |         0 |         0.493503 |            nan |
 | orthogonalized-ips (iic=True)                         |         1.21312  |      2.67031  | O(n)         |         0 |         0.539166 |            nan |
-| dr-cpo (calib=False, iic=False)                       |         3.35054  |     42.2626   | O(K*n)       |        20 |         1.67527  |            nan |
+| dr-cpo (calib=False, iic=False)                       |         3.37932  |     42.3198   | O(K*n)       |        20 |         1.64558  |            nan |
 | dr-cpo (calib=False, iic=True)                        |         3.39161  |     44.5135   | O(K*n)       |        20 |         1.65157  |            nan |
 | dr-cpo (calib=True, iic=False)                        |         3.39754  |     42.5411   | O(K*n)       |        20 |         1.65446  |            nan |
-| dr-cpo (calib=True, iic=True)                         |         3.45677  |     44.5955   | O(K*n)       |        20 |         1.6833   |            nan |
+| dr-cpo (calib=True, iic=True)                         |         3.52359  |     44.6985   | O(K*n)       |        20 |         1.67371  |            nan |
 | tr-cpo (iic=False)                                    |         6.73708  |     31.3472   | O(K*n)       |        20 |         2.99426  |            nan |
 | tr-cpo-e (iic=False)                                  |         6.77763  |     31.5214   | O(K*n)       |        20 |         3.01228  |            nan |
 | tr-cpo-e-anchored (calib=False, iic=False)            |         6.84211  |     31.612    | O(K*n)       |        20 |         3.04094  |            nan |

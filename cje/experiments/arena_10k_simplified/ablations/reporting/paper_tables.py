@@ -1110,16 +1110,24 @@ def format_leaderboard_markdown(
     df_display["Pairwise_Acc"] = df_display["Pairwise_Acc"].round(1)
     df_display["Top1_Regret"] = df_display["Top1_Regret"].round(4)
 
+    # Round debiased metrics if present
+    if "IntervalScore_d" in df_display.columns:
+        df_display["IntervalScore_d"] = df_display["IntervalScore_d"].round(4)
+    if "CalibScore_d" in df_display.columns:
+        df_display["CalibScore_d"] = df_display["CalibScore_d"].round(1)
+
     if include_aggregate and "AggScore" in df_display.columns:
         df_display["AggScore"] = df_display["AggScore"].round(1)
-        # Reorder columns to put rank and score first
+        # Reorder columns to put rank and score first, including debiased metrics
         cols = [
             "Rank",
             "Estimator",
             "AggScore",
             "RMSE_d",
             "IntervalScore_OA",
+            "IntervalScore_d",
             "CalibScore",
+            "CalibScore_d",
             "SE_GeoMean",
             "Kendall_tau",
             "Top1_Acc",
