@@ -20,7 +20,7 @@ except ImportError:
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    from config import DR_CONFIG, CFBITS_CONFIG
+    from config import DR_CONFIG as DR_CONFIG, CFBITS_CONFIG as CFBITS_CONFIG  # type: ignore[import, no-redef]
 
 # No local diagnostics file needed!
 # Import standard diagnostics from CJE

@@ -22,11 +22,11 @@ from cje.diagnostics import format_cfbits_summary, format_cfbits_table
 class TestCFBitsAblation(BaseAblation):
     """Test ablation for CF-bits integration."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(name="cfbits_test")
 
 
-def test_cfbits_with_ablations():
+def test_cfbits_with_ablations() -> None:
     """Test that CF-bits works with ablations and produces structured diagnostics."""
 
     print("Testing CF-bits integration with ablations...")

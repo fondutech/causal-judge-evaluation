@@ -17,7 +17,7 @@ from cje.diagnostics import (
 from ablations.analysis.cfbits import get_cfbits_summary_stats
 
 
-def test_structured_cfbits():
+def test_structured_cfbits() -> None:
     """Test the structured CF-bits diagnostics work correctly."""
 
     print("Testing structured CF-bits diagnostics...")

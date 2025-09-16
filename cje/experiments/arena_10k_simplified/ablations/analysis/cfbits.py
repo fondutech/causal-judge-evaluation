@@ -115,7 +115,7 @@ def analyze_cfbits_from_file(results_file: Path) -> None:
         return
 
     # Group by estimator type
-    by_estimator = {}
+    by_estimator: Dict[str, List[CFBitsDiagnostics]] = {}
     for cfbits in all_cfbits:
         if cfbits.estimator_type not in by_estimator:
             by_estimator[cfbits.estimator_type] = []
@@ -176,7 +176,7 @@ def get_cfbits_summary_stats(cfbits_list: List[CFBitsDiagnostics]) -> Dict[str, 
     # Gate distribution
     from cje.diagnostics import GateState
 
-    gate_counts = {}
+    gate_counts: Dict[str, int] = {}
     for c in cfbits_list:
         gate_key = (
             c.gate_state.value if hasattr(c.gate_state, "value") else str(c.gate_state)

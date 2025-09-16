@@ -4,11 +4,11 @@ Display and formatting utilities for diagnostics.
 Updated to work with both new diagnostic objects and legacy dictionaries.
 """
 
-from typing import Dict, Any, Union, Optional, TYPE_CHECKING
+from typing import Dict, Any, Union, Optional, TYPE_CHECKING, List
 import numpy as np
 
 if TYPE_CHECKING:
-    from .models import IPSDiagnostics, DRDiagnostics
+    from .models import IPSDiagnostics, DRDiagnostics, CFBitsDiagnostics
 
 
 def create_weight_summary_table(
@@ -388,12 +388,6 @@ def format_diagnostic_comparison(
     return "\n".join(lines)
 
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .models import CFBitsDiagnostics
-
-
 def format_cfbits_summary(cfbits: "CFBitsDiagnostics") -> str:
     """Create a unified one-liner summary of CF-bits diagnostics.
 
@@ -474,7 +468,7 @@ def format_cfbits_summary(cfbits: "CFBitsDiagnostics") -> str:
     return " | ".join(parts)
 
 
-def format_cfbits_table(cfbits_list: list[Any]) -> str:
+def format_cfbits_table(cfbits_list: List["CFBitsDiagnostics"]) -> str:
     """Create a formatted table comparing CF-bits across multiple policies.
 
     Args:
