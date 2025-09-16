@@ -2,34 +2,34 @@
 \centering
 \caption{Overlap & Tail Diagnostics}
 \label{tab:A3}
-\begin{tabular}{l|cccc}
+\begin{tabular}{l|cccccccccccc}
 \toprule
-Estimator & ESS Good & ESS OK & ESS Poor & ESS Median \\
+Estimator & ESS Good & ESS OK & ESS Poor & ESS Median & Tail Good & Tail OK & Tail Poor & Tail Median & Hell Good & Hell OK & Hell Poor & Hell Median \\
 \midrule
-raw-ips (iic=True) & 100 & 0.0000 & 0.0000 & 755 \\
-raw-ips (iic=False) & 100 & 0.0000 & 0.0000 & 755 \\
-calibrated-ips (iic=True) & 100 & 0.0000 & 0.0000 & 8734 \\
-calibrated-ips (iic=False) & 100 & 0.0000 & 0.0000 & 8734 \\
-orthogonalized-ips (iic=True) & 100 & 0.0000 & 0.0000 & 8734 \\
-orthogonalized-ips (iic=False) & 100 & 0.0000 & 0.0000 & 8734 \\
-dr-cpo (calib=True, iic=True) & 100 & 0.0000 & 0.0000 & 8827 \\
-dr-cpo (calib=True, iic=False) & 100 & 0.0000 & 0.0000 & 8820 \\
-dr-cpo (calib=False, iic=True) & 100 & 0.0000 & 0.0000 & 766 \\
-dr-cpo (calib=False, iic=False) & 100 & 0.0000 & 0.0000 & 766 \\
-oc-dr-cpo (iic=True) & 100 & 0.0000 & 0.0000 & 8338 \\
-oc-dr-cpo (iic=False) & 100 & 0.0000 & 0.0000 & 8338 \\
-tr-cpo (iic=True) & 100 & 0.0000 & 0.0000 & 996 \\
-tr-cpo (iic=False) & 100 & 0.0000 & 0.0000 & 996 \\
-tr-cpo-e (iic=True) & 100 & 0.0000 & 0.0000 & 996 \\
-tr-cpo-e (iic=False) & 100 & 0.0000 & 0.0000 & 996 \\
-tr-cpo-e-anchored (calib=False, iic=True) & 100 & 0.0000 & 0.0000 & 996 \\
-tr-cpo-e-anchored (calib=False, iic=False) & 100 & 0.0000 & 0.0000 & 996 \\
-tr-cpo-e-anchored-orthogonal (calib=False, iic=True) & 100 & 0.0000 & 0.0000 & 996 \\
-tr-cpo-e-anchored-orthogonal (calib=False, iic=False) & 100 & 0.0000 & 0.0000 & 996 \\
-stacked-dr (iic=True) & -- & -- & -- & -- \\
-stacked-dr (iic=False) & -- & -- & -- & -- \\
-stacked-dr-core (calib=True, iic=True) & -- & -- & -- & -- \\
-stacked-dr-core (calib=True, iic=False) & -- & -- & -- & -- \\
+raw-ips (iic=True) & 0.0000 & 22.5 & 77.5 & 7.2 & 0.0000 & 0.0000 & 100 & 0.541 & 33.3 & 0.0000 & 66.7 & 0.162 \\
+raw-ips (iic=False) & 0.0000 & 22.5 & 77.5 & 7.2 & 0.0000 & 0.0000 & 100 & 0.541 & 33.3 & 0.0000 & 66.7 & 0.162 \\
+calibrated-ips (iic=True) & 100 & 0.0000 & 0.0000 & 92.0 & 92.7 & 3.2 & 4.2 & 11.3 & 100 & 0.0000 & 0.0000 & 0.998 \\
+calibrated-ips (iic=False) & 100 & 0.0000 & 0.0000 & 92.0 & 92.7 & 3.2 & 4.2 & 11.3 & 100 & 0.0000 & 0.0000 & 0.998 \\
+orthogonalized-ips (iic=True) & 100 & 0.0000 & 0.0000 & 92.0 & 92.7 & 3.2 & 4.2 & 11.3 & 100 & 0.0000 & 0.0000 & 0.998 \\
+orthogonalized-ips (iic=False) & 100 & 0.0000 & 0.0000 & 92.0 & 92.7 & 3.2 & 4.2 & 11.3 & 100 & 0.0000 & 0.0000 & 0.998 \\
+dr-cpo (calib=True, iic=True) & 100 & 0.0000 & 0.0000 & 92.0 & 92.7 & 3.2 & 4.2 & 11.3 & 100 & 0.0000 & 0.0000 & 0.998 \\
+dr-cpo (calib=True, iic=False) & 100 & 0.0000 & 0.0000 & 92.0 & 92.7 & 3.2 & 4.2 & 11.3 & 100 & 0.0000 & 0.0000 & 0.998 \\
+dr-cpo (calib=False, iic=True) & 0.0000 & 22.5 & 77.5 & 7.2 & 0.0000 & 0.0000 & 100 & 0.541 & 33.3 & 0.0000 & 66.7 & 0.162 \\
+dr-cpo (calib=False, iic=False) & 0.0000 & 22.5 & 77.5 & 7.2 & 0.0000 & 0.0000 & 100 & 0.541 & 33.3 & 0.0000 & 66.7 & 0.162 \\
+oc-dr-cpo (iic=True) & 100 & 0.0000 & 0.0000 & 92.0 & 92.7 & 3.2 & 4.2 & 11.3 & 100 & 0.0000 & 0.0000 & 0.998 \\
+oc-dr-cpo (iic=False) & 100 & 0.0000 & 0.0000 & 92.0 & 92.7 & 3.2 & 4.2 & 11.3 & 100 & 0.0000 & 0.0000 & 0.998 \\
+tr-cpo (iic=True) & 0.0000 & 22.5 & 77.5 & 7.2 & 0.0000 & 0.0000 & 100 & 0.541 & 33.3 & 0.0000 & 66.7 & 0.162 \\
+tr-cpo (iic=False) & 0.0000 & 22.5 & 77.5 & 7.2 & 0.0000 & 0.0000 & 100 & 0.541 & 33.3 & 0.0000 & 66.7 & 0.162 \\
+tr-cpo-e (iic=True) & 0.0000 & 22.5 & 77.5 & 7.2 & 0.0000 & 0.0000 & 100 & 0.541 & 33.3 & 0.0000 & 66.7 & 0.162 \\
+tr-cpo-e (iic=False) & 0.0000 & 22.5 & 77.5 & 7.2 & 0.0000 & 0.0000 & 100 & 0.541 & 33.3 & 0.0000 & 66.7 & 0.162 \\
+tr-cpo-e-anchored (calib=False, iic=True) & 0.0000 & 22.5 & 77.5 & 7.2 & 0.0000 & 0.0000 & 100 & 0.541 & 33.3 & 0.0000 & 66.7 & 0.162 \\
+tr-cpo-e-anchored (calib=False, iic=False) & 0.0000 & 22.5 & 77.5 & 7.2 & 0.0000 & 0.0000 & 100 & 0.541 & 33.3 & 0.0000 & 66.7 & 0.162 \\
+tr-cpo-e-anchored-orthogonal (calib=False, iic=True) & 0.0000 & 22.5 & 77.5 & 7.2 & 0.0000 & 0.0000 & 100 & 0.541 & 33.3 & 0.0000 & 66.7 & 0.162 \\
+tr-cpo-e-anchored-orthogonal (calib=False, iic=False) & 0.0000 & 22.5 & 77.5 & 7.2 & 0.0000 & 0.0000 & 100 & 0.541 & 33.3 & 0.0000 & 66.7 & 0.162 \\
+stacked-dr (iic=True) & -- & -- & -- & -- & -- & -- & -- & -- & -- & -- & -- & -- \\
+stacked-dr (iic=False) & -- & -- & -- & -- & -- & -- & -- & -- & -- & -- & -- & -- \\
+stacked-dr-core (calib=True, iic=True) & -- & -- & -- & -- & -- & -- & -- & -- & -- & -- & -- & -- \\
+stacked-dr-core (calib=True, iic=False) & -- & -- & -- & -- & -- & -- & -- & -- & -- & -- & -- & -- \\
 \bottomrule
 \end{tabular}
 \end{table}

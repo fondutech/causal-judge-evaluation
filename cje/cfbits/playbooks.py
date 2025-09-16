@@ -12,6 +12,7 @@ from .sampling import compute_ifr_aess, compute_sampling_width, compute_estimato
 from .overlap import estimate_overlap_floors
 from .core import compute_cfbits, apply_gates
 from .identification import compute_identification_width
+from .config import get_config
 
 if TYPE_CHECKING:
     from ..estimators.base_estimator import BaseCJEEstimator
@@ -22,10 +23,7 @@ logger = logging.getLogger(__name__)
 def cfbits_report_fresh_draws(
     estimator: "BaseCJEEstimator",
     policy: str,
-    n_boot: int = 800,
-    alpha: float = 0.05,
-    random_state: Optional[int] = None,
-    compute_tail_index: bool = False,
+    cfbits_cfg: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """CF-bits report for fresh draws scenario (DR/TMLE).
 
@@ -37,14 +35,19 @@ def cfbits_report_fresh_draws(
     Args:
         estimator: Fitted DR/TMLE estimator
         policy: Target policy name
-        n_boot: Bootstrap samples for overlap CIs
-        alpha: Significance level (0.05 for 95% CI)
-        random_state: Random seed for reproducibility
-        compute_tail_index: Whether to compute Hill tail index
+        cfbits_cfg: Optional config overrides (merged with defaults)
 
     Returns:
         Complete CF-bits report dictionary
     """
+    # Get configuration with defaults
+    config = get_config(cfbits_cfg)
+    n_boot = config["n_boot"]
+    alpha = config["alpha"]
+    random_state = config.get("random_state")
+    compute_tail_index = config["compute_tail_index"]
+    thresholds = config.get("thresholds")
+
     report: Dict[str, Any] = {"policy": policy, "scenario": "fresh_draws"}
 
     # 1. Sampling width with OUA
@@ -57,7 +60,7 @@ def cfbits_report_fresh_draws(
         compute_oua=True,
     )
     report["sampling_width"] = {
-        "wvar": float(wvar),
+        "wvar": float(wvar) if wvar is not None else None,
         "var_main": float(var_components.var_main),
         "var_oracle": float(var_components.var_oracle),
         "var_total": float(var_components.var_total),
@@ -87,6 +90,7 @@ def cfbits_report_fresh_draws(
 
     # 3. Structural floors on logging data
     logger.info("Computing structural overlap floors")
+    W_log = None  # Initialize before try block
     try:
         # Get logging pool judge scores and RAW importance weights
         # Important: Use raw weights, not calibrated, to measure structural overlap
@@ -121,7 +125,7 @@ def cfbits_report_fresh_draws(
     # 4. Identification width (placeholder for now)
     wid, wid_diag = compute_identification_width(estimator, policy, alpha=alpha)
     report["identification"] = {
-        "wid": float(wid),
+        "wid": float(wid) if wid is not None else None,
         "diagnostics": wid_diag,
     }
 
@@ -157,9 +161,9 @@ def cfbits_report_fresh_draws(
     tail_index = None
     if compute_tail_index and W_log is not None:
         try:
-            from ..diagnostics.tail_diagnostics import estimate_tail_index
+            from ..diagnostics.weights import hill_tail_index
 
-            tail_index = estimate_tail_index(W_log)
+            tail_index = hill_tail_index(W_log)
         except:
             logger.debug("Could not compute tail index")
 
@@ -169,6 +173,9 @@ def cfbits_report_fresh_draws(
         ifr=efficiency.ifr_oua if efficiency else None,
         tail_index=tail_index,
         var_oracle_ratio=var_oracle_ratio,
+        wid=wid,
+        wvar=wvar,
+        thresholds=thresholds,
     )
     report["gates"] = {
         "state": decision.state,
@@ -185,10 +192,7 @@ def cfbits_report_fresh_draws(
 def cfbits_report_logging_only(
     estimator: "BaseCJEEstimator",
     policy: str,
-    n_boot: int = 800,
-    alpha: float = 0.05,
-    random_state: Optional[int] = None,
-    compute_tail_index: bool = True,
+    cfbits_cfg: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """CF-bits report for logging-only scenario (IPS/Cal-IPS).
 
@@ -200,14 +204,19 @@ def cfbits_report_logging_only(
     Args:
         estimator: Fitted IPS/Cal-IPS estimator
         policy: Target policy name
-        n_boot: Bootstrap samples for overlap CIs
-        alpha: Significance level (0.05 for 95% CI)
-        random_state: Random seed for reproducibility
-        compute_tail_index: Whether to compute Hill tail index
+        cfbits_cfg: Optional config overrides (merged with defaults)
 
     Returns:
         Complete CF-bits report dictionary
     """
+    # Get configuration with defaults
+    config = get_config(cfbits_cfg)
+    n_boot = config["n_boot"]
+    alpha = config["alpha"]
+    random_state = config.get("random_state")
+    compute_tail_index = config["compute_tail_index"]
+    thresholds = config.get("thresholds")
+
     report: Dict[str, Any] = {"policy": policy, "scenario": "logging_only"}
 
     # 1. Sampling width (with IIC if available)
@@ -216,7 +225,7 @@ def cfbits_report_logging_only(
         estimator, policy, alpha=alpha, use_iic=True, compute_oua=True
     )
     report["sampling_width"] = {
-        "wvar": float(wvar),
+        "wvar": float(wvar) if wvar is not None else None,
         "var_main": float(var_components.var_main),
         "var_oracle": float(var_components.var_oracle),
         "var_total": float(var_components.var_total),
@@ -263,6 +272,7 @@ def cfbits_report_logging_only(
 
     # 3. Structural floors (critical for IPS)
     logger.info("Computing structural overlap floors")
+    W_log = None  # Initialize before try block
     try:
         # Use RAW weights for structural overlap, not calibrated weights
         S_log = estimator.sampler.get_judge_scores()
@@ -292,11 +302,11 @@ def cfbits_report_logging_only(
         floors = None
         report["overlap"] = None
 
-    # 4. Identification width (placeholder)
-    wid = 0.1  # Conservative placeholder for logging-only
+    # 4. Identification width
+    wid, wid_diag = compute_identification_width(estimator, policy, alpha=alpha)
     report["identification"] = {
-        "wid": float(wid),
-        "note": "Conservative placeholder for logging-only scenario",
+        "wid": float(wid) if wid is not None else None,
+        "diagnostics": wid_diag,
     }
 
     # 5. CF-bits (limited without EIF)
@@ -344,6 +354,9 @@ def cfbits_report_logging_only(
         ifr=efficiency.ifr_oua if efficiency and efficiency.ifr_oua else None,
         tail_index=tail_index,
         var_oracle_ratio=var_oracle_ratio,
+        wid=wid,
+        wvar=wvar,
+        thresholds=thresholds,
     )
     report["gates"] = {
         "state": decision.state,
@@ -389,8 +402,10 @@ def _generate_summary(report: Dict[str, Any]) -> str:
     # CF-bits
     if report.get("cfbits"):
         cf = report["cfbits"]
-        parts.append(f"Total bits: {cf['bits_tot']:.2f}")
-        parts.append(f"Width: {cf['w_tot']:.3f}")
+        if cf.get("bits_tot") is not None:
+            parts.append(f"Total bits: {cf['bits_tot']:.2f}")
+        if cf.get("w_tot") is not None:
+            parts.append(f"Width: {cf['w_tot']:.3f}")
 
     # Main recommendation
     if gate_state == "REFUSE":

@@ -11,12 +11,12 @@ The diagnostics system is now consolidated into a single cohesive module at `cje
 ```
 cje/diagnostics/
 ├── __init__.py          # Public API exports
-├── models.py            # Data models (IPSDiagnostics, DRDiagnostics, Status)
+├── models.py            # Data models (IPSDiagnostics, DRDiagnostics, CFBitsDiagnostics, Status, GateState)
 ├── weights.py           # Weight diagnostic computations (ESS, Hill, etc.)
-├── overlap.py           # Overlap metrics (Hellinger affinity, auto-tuning)
+├── overlap.py           # Overlap metrics (Hellinger affinity, auto-tuning, σ(S) floors)
 ├── dr.py                # DR-specific diagnostics
 ├── stability.py         # Stability and drift detection
-├── display.py           # Display and formatting utilities
+├── display.py           # Display and formatting utilities (including CF-bits)
 ├── robust_inference.py  # Robust standard errors and inference
 └── README.md           # This documentation
 ```
@@ -26,7 +26,7 @@ cje/diagnostics/
 ```
 ┌─────────────────┐
 │  Data Models    │  models.py: Immutable dataclasses
-│                 │  (IPSDiagnostics, DRDiagnostics)
+│                 │  (IPSDiagnostics, DRDiagnostics, CFBitsDiagnostics)
 └────────┬────────┘
          │
 ┌────────▼────────┐
@@ -50,7 +50,7 @@ cje/diagnostics/
 
 ## Diagnostic Classes
 
-The system provides two main diagnostic classes that share a common interface:
+The system provides three main diagnostic classes that share a common interface:
 
 ### Common Interface
 
@@ -79,15 +79,28 @@ Base diagnostics for importance sampling estimators. Key field groups:
 **Status**: `weight_status`, `status_per_policy`  
 **Calibration**: `calibration_rmse`, `calibration_r2`, `n_oracle_labels`
 
-### DRDiagnostics  
+### DRDiagnostics
 
 Extends IPSDiagnostics with doubly robust specific metrics:
 
-**Cross-fitting**: `dr_cross_fitted`, `dr_n_folds`  
-**Outcome model**: `outcome_r2_range`, `outcome_rmse_mean`  
-**Influence functions**: `worst_if_tail_ratio`, `influence_functions`  
-**Decompositions**: `dr_diagnostics_per_policy`, `dm_ips_decompositions`  
+**Cross-fitting**: `dr_cross_fitted`, `dr_n_folds`
+**Outcome model**: `outcome_r2_range`, `outcome_rmse_mean`
+**Influence functions**: `worst_if_tail_ratio`, `influence_functions`
+**Decompositions**: `dr_diagnostics_per_policy`, `dm_ips_decompositions`
 **Orthogonality**: `orthogonality_scores`
+
+### CFBitsDiagnostics
+
+Information-theoretic diagnostics that decompose uncertainty into identification and sampling components:
+
+**Width decomposition**: `wid` (identification), `wvar` (sampling), `w_tot` (total)
+**Information content**: `bits_tot`, `bits_id`, `bits_var` (log₂ reduction from baseline)
+**Efficiency metrics**: `ifr_oua`, `aess_oua` (with oracle uncertainty augmentation)
+**Structural floors**: `aessf_sigmaS`, `aessf_sigmaS_lcb`, `bc_sigmaS` (σ(S) marginal)
+**Reliability gates**: `gate_state` (GOOD/WARNING/CRITICAL/REFUSE), `gate_reasons`
+**Budget guidance**: `labels_for_wid_reduction`, `logs_factor_for_half_bit`
+
+CF-bits provides actionable recommendations by identifying whether uncertainty is structural (needs more labels) or statistical (needs more logs).
 
 ## Status System
 
@@ -100,6 +113,9 @@ The `Status` enum has three values:
 - `GOOD` - All metrics within acceptable ranges
 - `WARNING` - Some concerning metrics but results usable
 - `CRITICAL` - Severe issues detected
+
+The `GateState` enum (used by CF-bits) extends this with:
+- `REFUSE` - Overlap too poor for any reliable estimation
 
 Status computation varies by diagnostic class and combines multiple factors like ESS, tail indices, and calibration quality.
 
@@ -198,7 +214,7 @@ from cje.diagnostics.overlap import compute_overlap_metrics, diagnose_overlap_pr
 # Analyze overlap for a specific policy
 weights = estimator.get_raw_weights("target_policy")
 metrics = compute_overlap_metrics(
-    weights, 
+    weights,
     target_ci_halfwidth=0.01,  # Want ±1% CI
     auto_tune_threshold=True
 )
@@ -212,6 +228,29 @@ if metrics.can_calibrate:
     print("SIMCal calibration could improve ESS")
 else:
     print("Overlap too poor for calibration to help")
+```
+
+### Using CF-bits Diagnostics
+```python
+from cje.diagnostics import CFBitsDiagnostics, format_cfbits_summary
+
+# CF-bits is typically attached to EstimationResult
+if results.cfbits_diagnostics:
+    cfbits = results.cfbits_diagnostics["target_policy"]
+
+    # Get one-line summary
+    print(format_cfbits_summary(cfbits))
+    # Output: CF-bits: 2.1 bits | (W=0.23) | Wid=0.15, Wvar=0.08 | Gate: WARNING | → Add labels
+
+    # Check if identification or sampling dominates
+    if cfbits.needs_more_labels:
+        print(f"Add {cfbits.labels_for_wid_reduction} oracle labels")
+    else:
+        print(f"Collect {cfbits.logs_factor_for_half_bit}x more logs")
+
+    # Check reliability gate
+    if cfbits.gate_state == GateState.REFUSE:
+        print("Estimate unreliable - do not use")
 ```
 
 ### Export for Analysis

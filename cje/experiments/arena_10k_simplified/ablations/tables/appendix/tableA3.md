@@ -1,28 +1,28 @@
 ## Table A3: Overlap & Tail Diagnostics
 
-| Estimator                                             |   ESS_Good |   ESS_OK |   ESS_Poor |   ESS_Median |
-|:------------------------------------------------------|-----------:|---------:|-----------:|-------------:|
-| raw-ips (iic=True)                                    |        100 |        0 |          0 |      755.425 |
-| raw-ips (iic=False)                                   |        100 |        0 |          0 |      755.425 |
-| calibrated-ips (iic=True)                             |        100 |        0 |          0 |     8734.4   |
-| calibrated-ips (iic=False)                            |        100 |        0 |          0 |     8734.4   |
-| orthogonalized-ips (iic=True)                         |        100 |        0 |          0 |     8734.4   |
-| orthogonalized-ips (iic=False)                        |        100 |        0 |          0 |     8734.4   |
-| dr-cpo (calib=True, iic=True)                         |        100 |        0 |          0 |     8734.4   |
-| dr-cpo (calib=True, iic=False)                        |        100 |        0 |          0 |     8808.37  |
-| dr-cpo (calib=False, iic=True)                        |        100 |        0 |          0 |      765.749 |
-| dr-cpo (calib=False, iic=False)                       |        100 |        0 |          0 |      765.749 |
-| oc-dr-cpo (iic=True)                                  |        100 |        0 |          0 |     8337.64  |
-| oc-dr-cpo (iic=False)                                 |        100 |        0 |          0 |     8337.64  |
-| tr-cpo (iic=True)                                     |        100 |        0 |          0 |      996.297 |
-| tr-cpo (iic=False)                                    |        100 |        0 |          0 |      996.297 |
-| tr-cpo-e (iic=True)                                   |        100 |        0 |          0 |      996.297 |
-| tr-cpo-e (iic=False)                                  |        100 |        0 |          0 |      996.297 |
-| tr-cpo-e-anchored (calib=False, iic=True)             |        100 |        0 |          0 |      996.297 |
-| tr-cpo-e-anchored (calib=False, iic=False)            |        100 |        0 |          0 |      996.297 |
-| tr-cpo-e-anchored-orthogonal (calib=False, iic=True)  |        100 |        0 |          0 |      996.297 |
-| tr-cpo-e-anchored-orthogonal (calib=False, iic=False) |        100 |        0 |          0 |      996.297 |
-| stacked-dr (iic=True)                                 |        nan |      nan |        nan |      nan     |
-| stacked-dr (iic=False)                                |        nan |      nan |        nan |      nan     |
-| stacked-dr-core (calib=True, iic=True)                |        nan |      nan |        nan |      nan     |
-| stacked-dr-core (calib=True, iic=False)               |        nan |      nan |        nan |      nan     |
+| Estimator                                             |   ESS_Good |   ESS_OK |   ESS_Poor |   ESS_Median |   Tail_Good |   Tail_OK |   Tail_Poor |   Tail_Median |   Hell_Good |   Hell_OK |   Hell_Poor |   Hell_Median |
+|:------------------------------------------------------|-----------:|---------:|-----------:|-------------:|------------:|----------:|------------:|--------------:|------------:|----------:|------------:|--------------:|
+| raw-ips (iic=True)                                    |          0 |     22.5 |       77.5 |      7.22538 |      0      |   0       |   100       |      0.540816 |     33.3333 |         0 |     66.6667 |      0.162175 |
+| raw-ips (iic=False)                                   |          0 |     22.5 |       77.5 |      7.22538 |      0      |   0       |   100       |      0.540816 |     33.3333 |         0 |     66.6667 |      0.162175 |
+| calibrated-ips (iic=True)                             |        100 |      0   |        0   |     92.0352  |     92.6667 |   3.16667 |     4.16667 |     11.3029   |    100      |         0 |      0      |      0.997683 |
+| calibrated-ips (iic=False)                            |        100 |      0   |        0   |     92.0352  |     92.6667 |   3.16667 |     4.16667 |     11.3029   |    100      |         0 |      0      |      0.997683 |
+| orthogonalized-ips (iic=True)                         |        100 |      0   |        0   |     92.0352  |     92.6667 |   3.16667 |     4.16667 |     11.3029   |    100      |         0 |      0      |      0.997683 |
+| orthogonalized-ips (iic=False)                        |        100 |      0   |        0   |     92.0352  |     92.6667 |   3.16667 |     4.16667 |     11.3029   |    100      |         0 |      0      |      0.997683 |
+| dr-cpo (calib=True, iic=True)                         |        100 |      0   |        0   |     92.0352  |     92.6667 |   3.16667 |     4.16667 |     11.3029   |    100      |         0 |      0      |      0.997683 |
+| dr-cpo (calib=True, iic=False)                        |        100 |      0   |        0   |     92.0352  |     92.6667 |   3.16667 |     4.16667 |     11.3029   |    100      |         0 |      0      |      0.997683 |
+| dr-cpo (calib=False, iic=True)                        |          0 |     22.5 |       77.5 |      7.22538 |      0      |   0       |   100       |      0.540816 |     33.3333 |         0 |     66.6667 |      0.162175 |
+| dr-cpo (calib=False, iic=False)                       |          0 |     22.5 |       77.5 |      7.22538 |      0      |   0       |   100       |      0.540816 |     33.3333 |         0 |     66.6667 |      0.162175 |
+| oc-dr-cpo (iic=True)                                  |        100 |      0   |        0   |     92.0352  |     92.6667 |   3.16667 |     4.16667 |     11.3029   |    100      |         0 |      0      |      0.997683 |
+| oc-dr-cpo (iic=False)                                 |        100 |      0   |        0   |     92.0352  |     92.6667 |   3.16667 |     4.16667 |     11.3029   |    100      |         0 |      0      |      0.997683 |
+| tr-cpo (iic=True)                                     |          0 |     22.5 |       77.5 |      7.22538 |      0      |   0       |   100       |      0.540816 |     33.3333 |         0 |     66.6667 |      0.162175 |
+| tr-cpo (iic=False)                                    |          0 |     22.5 |       77.5 |      7.22538 |      0      |   0       |   100       |      0.540816 |     33.3333 |         0 |     66.6667 |      0.162175 |
+| tr-cpo-e (iic=True)                                   |          0 |     22.5 |       77.5 |      7.22538 |      0      |   0       |   100       |      0.540816 |     33.3333 |         0 |     66.6667 |      0.162175 |
+| tr-cpo-e (iic=False)                                  |          0 |     22.5 |       77.5 |      7.22538 |      0      |   0       |   100       |      0.540816 |     33.3333 |         0 |     66.6667 |      0.162175 |
+| tr-cpo-e-anchored (calib=False, iic=True)             |          0 |     22.5 |       77.5 |      7.22538 |      0      |   0       |   100       |      0.540816 |     33.3333 |         0 |     66.6667 |      0.162175 |
+| tr-cpo-e-anchored (calib=False, iic=False)            |          0 |     22.5 |       77.5 |      7.22538 |      0      |   0       |   100       |      0.540816 |     33.3333 |         0 |     66.6667 |      0.162175 |
+| tr-cpo-e-anchored-orthogonal (calib=False, iic=True)  |          0 |     22.5 |       77.5 |      7.22538 |      0      |   0       |   100       |      0.540816 |     33.3333 |         0 |     66.6667 |      0.162175 |
+| tr-cpo-e-anchored-orthogonal (calib=False, iic=False) |          0 |     22.5 |       77.5 |      7.22538 |      0      |   0       |   100       |      0.540816 |     33.3333 |         0 |     66.6667 |      0.162175 |
+| stacked-dr (iic=True)                                 |        nan |    nan   |      nan   |    nan       |    nan      | nan       |   nan       |    nan        |    nan      |       nan |    nan      |    nan        |
+| stacked-dr (iic=False)                                |        nan |    nan   |      nan   |    nan       |    nan      | nan       |   nan       |    nan        |    nan      |       nan |    nan      |    nan        |
+| stacked-dr-core (calib=True, iic=True)                |        nan |    nan   |      nan   |    nan       |    nan      | nan       |   nan       |    nan        |    nan      |       nan |    nan      |    nan        |
+| stacked-dr-core (calib=True, iic=False)               |        nan |    nan   |      nan   |    nan       |    nan      | nan       |   nan       |    nan        |    nan      |       nan |    nan      |    nan        |

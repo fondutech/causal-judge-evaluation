@@ -166,6 +166,11 @@ class EstimationResult(BaseModel):
         None, description="Diagnostic information (IPSDiagnostics or DRDiagnostics)"
     )
 
+    # CF-bits diagnostics (optional, computed when requested)
+    cfbits_diagnostics: Optional["CFBitsDiagnostics"] = Field(
+        None, description="CF-bits uncertainty decomposition and reliability gates"
+    )
+
     # Robust inference (Phase 3)
     robust_standard_errors: Optional[np.ndarray] = Field(
         None, description="Robust standard errors (bootstrap/cluster)"
@@ -310,7 +315,7 @@ class EstimationResult(BaseModel):
 
 
 # Import at the end to resolve forward references
-from ..diagnostics import IPSDiagnostics, DRDiagnostics
+from ..diagnostics import IPSDiagnostics, DRDiagnostics, CFBitsDiagnostics
 
 # Update forward references - compatible with both Pydantic v1 and v2
 if hasattr(EstimationResult, "model_rebuild"):

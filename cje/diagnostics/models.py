@@ -19,6 +19,15 @@ class Status(Enum):
     CRITICAL = "critical"
 
 
+class GateState(Enum):
+    """CF-bits gate states (extends Status with REFUSE)."""
+
+    GOOD = "good"
+    WARNING = "warning"
+    CRITICAL = "critical"
+    REFUSE = "refuse"
+
+
 @dataclass
 class IPSDiagnostics:
     """Diagnostics for IPS-based estimators (CalibratedIPS in both raw and calibrated modes)."""
@@ -462,3 +471,246 @@ class DRDiagnostics(IPSDiagnostics):
             data["outcome_r2_range"] = tuple(data["outcome_r2_range"])
 
         return cls(**data)
+
+
+@dataclass
+class CFBitsDiagnostics:
+    """CF-bits diagnostics combining uncertainty decomposition with actionable recommendations.
+
+    CF-bits provides an information-theoretic framework that:
+    1. Decomposes total uncertainty into identification (structural) and sampling (statistical) components
+    2. Converts uncertainties into bits of information (log₂ reduction from baseline)
+    3. Provides reliability gates (GOOD/WARNING/CRITICAL/REFUSE) based on thresholds
+    4. Suggests concrete budget allocations to achieve target improvements
+
+    Follows the same patterns as IPSDiagnostics and DRDiagnostics.
+    """
+
+    # ========== Core Identification ==========
+    policy: str  # Target policy being evaluated
+    estimator_type: str  # e.g., "CalibratedIPS", "DRCPOEstimator"
+    scenario: str  # "fresh_draws" or "logging_only"
+
+    # ========== Width Decomposition ==========
+    wid: Optional[float] = None  # Identification width (structural uncertainty)
+    wvar: Optional[float] = None  # Sampling width (statistical uncertainty)
+    w_tot: Optional[float] = None  # Total width (wid + wvar)
+    w_max: Optional[float] = None  # Maximum of wid and wvar (bottleneck)
+    w0: float = 1.0  # Baseline width (1.0 for [0,1] KPIs)
+
+    # ========== CF-bits Information ==========
+    bits_tot: Optional[float] = None  # Total bits of information
+    bits_id: Optional[float] = None  # Bits from identification channel
+    bits_var: Optional[float] = None  # Bits from sampling channel
+
+    # ========== Efficiency Metrics ==========
+    ifr_main: Optional[float] = None  # Information Fraction Ratio (standard)
+    ifr_oua: Optional[float] = None  # IFR with Oracle Uncertainty Augmentation
+    aess_main: Optional[float] = None  # Adjusted ESS (n × IFR_main)
+    aess_oua: Optional[float] = None  # Adjusted ESS with OUA
+
+    # ========== σ(S) Structural Floors ==========
+    aessf_sigmaS: Optional[float] = None  # A-ESSF on judge marginal
+    aessf_sigmaS_lcb: Optional[float] = None  # Lower confidence bound
+    bc_sigmaS: Optional[float] = None  # Bhattacharyya coefficient on σ(S)
+
+    # ========== Variance Components ==========
+    var_main: Optional[float] = None  # Main IF variance
+    var_oracle: Optional[float] = None  # Oracle uncertainty contribution
+    var_total: Optional[float] = None  # Total variance (main + oracle)
+
+    # ========== Identification Diagnostics ==========
+    wid_diagnostics: Optional[Dict[str, Any]] = None  # Details from Wid computation
+    p_mass_unlabeled: Optional[float] = None  # Target mass on unlabeled bins
+    n_bins_used: Optional[int] = None  # Number of bins in Phase-1 certificate
+    n_oracle_available: Optional[int] = None  # Oracle samples available
+
+    # ========== Reliability Gates ==========
+    gate_state: GateState = GateState.GOOD  # Overall reliability assessment
+    gate_reasons: List[str] = field(default_factory=list)  # Specific issues
+    gate_suggestions: Dict[str, Any] = field(
+        default_factory=dict
+    )  # Actionable recommendations
+
+    # ========== Budget Recommendations ==========
+    logs_factor_for_half_bit: Optional[float] = (
+        None  # Sample size multiplier for 0.5 bits
+    )
+    labels_for_wid_reduction: Optional[int] = None  # Additional labels to reduce Wid
+    dominant_channel: Optional[str] = None  # "identification" or "sampling"
+
+    def validate(self) -> List[str]:
+        """Validate internal consistency of CF-bits diagnostics."""
+        issues = []
+
+        # Check width consistency
+        if self.wid is not None and self.wvar is not None:
+            if self.w_tot is not None:
+                expected_tot = self.wid + self.wvar
+                if abs(self.w_tot - expected_tot) > 1e-6:
+                    issues.append(
+                        f"Width inconsistency: w_tot={self.w_tot:.3f} != wid+wvar={expected_tot:.3f}"
+                    )
+
+            if self.w_max is not None:
+                expected_max = max(self.wid, self.wvar)
+                if abs(self.w_max - expected_max) > 1e-6:
+                    issues.append(
+                        f"Max width inconsistency: w_max={self.w_max:.3f} != max(wid,wvar)={expected_max:.3f}"
+                    )
+
+        # Check efficiency bounds
+        if self.ifr_main is not None and not (
+            0 <= self.ifr_main <= 1.01
+        ):  # Allow slight numerical error
+            issues.append(f"IFR_main out of bounds: {self.ifr_main:.3f}")
+
+        if self.ifr_oua is not None and not (0 <= self.ifr_oua <= 1.01):
+            issues.append(f"IFR_OUA out of bounds: {self.ifr_oua:.3f}")
+
+        # Check overlap bounds
+        if self.aessf_sigmaS is not None and not (0 <= self.aessf_sigmaS <= 1.01):
+            issues.append(f"A-ESSF out of bounds: {self.aessf_sigmaS:.3f}")
+
+        if self.bc_sigmaS is not None and not (0 <= self.bc_sigmaS <= 1.01):
+            issues.append(f"BC out of bounds: {self.bc_sigmaS:.3f}")
+
+        # Check theoretical relationship: A-ESSF <= BC²
+        if self.aessf_sigmaS is not None and self.bc_sigmaS is not None:
+            if (
+                self.aessf_sigmaS > self.bc_sigmaS**2 * 1.1
+            ):  # Allow 10% numerical tolerance
+                issues.append(
+                    f"Theoretical violation: A-ESSF={self.aessf_sigmaS:.3f} > BC²={self.bc_sigmaS**2:.3f}"
+                )
+
+        return issues
+
+    def summary(self) -> str:
+        """One-line human-readable summary with key metrics and recommendations."""
+        parts = []
+
+        # CF-bits and width
+        if self.bits_tot is not None:
+            parts.append(f"CF-bits: {self.bits_tot:.1f}")
+        if self.w_tot is not None:
+            parts.append(f"W={self.w_tot:.2f}")
+
+        # Decomposition
+        if self.wid is not None and self.wvar is not None:
+            parts.append(f"(Wid={self.wid:.2f}, Wvar={self.wvar:.2f})")
+
+        # Efficiency
+        if self.ifr_oua is not None:
+            parts.append(f"IFR(OUA)={self.ifr_oua:.0%}")
+        elif self.ifr_main is not None:
+            parts.append(f"IFR={self.ifr_main:.0%}")
+
+        # Structural floors
+        if self.aessf_sigmaS_lcb is not None:
+            parts.append(f"A-ESSF(LCB)={self.aessf_sigmaS_lcb:.0%}")
+
+        # Gate
+        parts.append(f"Gate: {self.gate_state.value.upper()}")
+
+        # Primary recommendation
+        if self.gate_state == GateState.REFUSE:
+            parts.append("→ Do not use")
+        elif self.gate_state == GateState.CRITICAL:
+            parts.append("→ Use with extreme caution")
+        elif self.gate_state == GateState.WARNING:
+            if self.dominant_channel == "identification":
+                if self.p_mass_unlabeled is not None and self.p_mass_unlabeled > 0.1:
+                    parts.append(
+                        f"→ Add labels ({self.p_mass_unlabeled:.0%} mass unlabeled)"
+                    )
+                else:
+                    parts.append("→ Add more oracle labels")
+            else:
+                if self.logs_factor_for_half_bit is not None:
+                    parts.append(
+                        f"→ {self.logs_factor_for_half_bit:.1f}× logs for +0.5 bits"
+                    )
+                else:
+                    parts.append("→ Collect more logs")
+        else:
+            parts.append("→ Estimate reliable")
+
+        return " | ".join(parts)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        d = {
+            "policy": self.policy,
+            "estimator_type": self.estimator_type,
+            "scenario": self.scenario,
+            # Widths
+            "wid": self.wid,
+            "wvar": self.wvar,
+            "w_tot": self.w_tot,
+            "w_max": self.w_max,
+            "w0": self.w0,
+            # CF-bits
+            "bits_tot": self.bits_tot,
+            "bits_id": self.bits_id,
+            "bits_var": self.bits_var,
+            # Efficiency
+            "ifr_main": self.ifr_main,
+            "ifr_oua": self.ifr_oua,
+            "aess_main": self.aess_main,
+            "aess_oua": self.aess_oua,
+            # Structural floors
+            "aessf_sigmaS": self.aessf_sigmaS,
+            "aessf_sigmaS_lcb": self.aessf_sigmaS_lcb,
+            "bc_sigmaS": self.bc_sigmaS,
+            # Variance
+            "var_main": self.var_main,
+            "var_oracle": self.var_oracle,
+            "var_total": self.var_total,
+            # Diagnostics
+            "wid_diagnostics": self.wid_diagnostics,
+            "p_mass_unlabeled": self.p_mass_unlabeled,
+            "n_bins_used": self.n_bins_used,
+            "n_oracle_available": self.n_oracle_available,
+            # Gates
+            "gate_state": self.gate_state.value,
+            "gate_reasons": self.gate_reasons,
+            "gate_suggestions": self.gate_suggestions,
+            # Budget
+            "logs_factor_for_half_bit": self.logs_factor_for_half_bit,
+            "labels_for_wid_reduction": self.labels_for_wid_reduction,
+            "dominant_channel": self.dominant_channel,
+        }
+        return {k: v for k, v in d.items() if v is not None}  # Remove None values
+
+    def to_csv_row(self) -> Dict[str, Any]:
+        """Flatten for tabular export (excludes nested dicts)."""
+        d = self.to_dict()
+        # Remove nested structures
+        d.pop("wid_diagnostics", None)
+        d.pop("gate_suggestions", None)
+        # Flatten gate_reasons to string
+        if "gate_reasons" in d:
+            d["gate_reasons"] = "; ".join(d["gate_reasons"])
+        return d
+
+    @property
+    def needs_more_labels(self) -> bool:
+        """Whether identification uncertainty dominates."""
+        if self.wid is None or self.wvar is None:
+            return False
+        return self.wid > self.wvar
+
+    @property
+    def has_catastrophic_overlap(self) -> bool:
+        """Whether structural overlap is catastrophically bad."""
+        if self.aessf_sigmaS_lcb is not None:
+            return self.aessf_sigmaS_lcb < 0.05
+        if self.aessf_sigmaS is not None:
+            return self.aessf_sigmaS < 0.02
+        return False
+
+    @property
+    def is_reliable(self) -> bool:
+        """Whether estimate passes all reliability checks."""
+        return self.gate_state == GateState.GOOD

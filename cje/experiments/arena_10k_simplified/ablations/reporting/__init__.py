@@ -25,6 +25,8 @@ from .appendix_tables import (
     generate_boundary_outlier_table,
     generate_runtime_complexity_table,
     generate_mae_summary_table,
+    generate_simcal_ess_gain_table,
+    generate_simcal_weight_diag_table,
 )
 
 __all__ = [
@@ -47,4 +49,7 @@ __all__ = [
     "generate_boundary_outlier_table",
     "generate_runtime_complexity_table",
     "generate_mae_summary_table",
+    # SIMCal-focused tables
+    "generate_simcal_ess_gain_table",
+    "generate_simcal_weight_diag_table",
 ]

@@ -4,6 +4,8 @@ CF-bits provides an information-accounting layer that decomposes uncertainty int
 
 ## Quick Start - Two Scenarios
 
+**Note**: CF-bits assumes KPIs are rescaled to [0,1], so W₀=1.0 by default. For other scales, pass appropriate `w0` to `compute_cfbits()`.
+
 ### Scenario A: Fresh Draws Available (DR/TMLE)
 
 ```python
@@ -11,10 +13,9 @@ from cje.cfbits import cfbits_report_fresh_draws
 
 # After fitting your DR/TMLE estimator with fresh draws
 report = cfbits_report_fresh_draws(
-    estimator, 
+    estimator,
     policy="target_policy",
-    n_boot=800,
-    random_state=42
+    cfbits_cfg={"n_boot": 800, "random_state": 42}  # Optional config
 )
 
 print(report["summary"])  # One-line summary
@@ -29,14 +30,44 @@ from cje.cfbits import cfbits_report_logging_only
 # After fitting your IPS/CalibratedIPS estimator
 report = cfbits_report_logging_only(
     estimator,
-    policy="target_policy", 
-    n_boot=800,
-    random_state=42
+    policy="target_policy",
+    cfbits_cfg={"n_boot": 800, "random_state": 42}  # Optional config
 )
 
 if report["gates"]["state"] == "REFUSE":
     print("Cannot trust this estimate - need better overlap or fresh draws")
 ```
+
+## Integration with CJE Diagnostics
+
+CF-bits now integrates seamlessly with the CJE diagnostics system through the `CFBitsDiagnostics` dataclass:
+
+```python
+from cje.diagnostics import CFBitsDiagnostics, format_cfbits_summary
+
+# CF-bits diagnostics are automatically computed when enabled
+results = analyze_dataset("data.jsonl", estimator="calibrated-ips", compute_cfbits=True)
+
+# Access structured CF-bits diagnostics
+if results.cfbits_diagnostics:
+    cfbits = results.cfbits_diagnostics["target_policy"]
+
+    # One-line summary with actionable recommendations
+    print(format_cfbits_summary(cfbits))
+    # Output: CF-bits: 2.1 bits | (W=0.23) | Wid=0.15, Wvar=0.08 | Gate: WARNING | → Add labels
+
+    # Check dominant uncertainty source
+    if cfbits.needs_more_labels:
+        print(f"Identification limited - add {cfbits.labels_for_wid_reduction} oracle labels")
+    else:
+        print(f"Sampling limited - collect {cfbits.logs_factor_for_half_bit}x more data")
+```
+
+The `CFBitsDiagnostics` dataclass provides:
+- Width decomposition (wid, wvar, w_tot)
+- Information content (bits_tot, bits_id, bits_var)
+- Reliability gates (GOOD/WARNING/CRITICAL/REFUSE)
+- Actionable budget recommendations
 
 ## Manual API (Full Control)
 
@@ -100,28 +131,54 @@ print(f"A-ESSF: {overlap.aessf:.2%}, BC: {overlap.bc:.2%}")
 - **Formula**: bits = log₂(W₀/W)
 - **Interpretation**: Each bit represents a halving of uncertainty width
 - **Decomposition**: bits_tot from (Wid + Wvar)
+- **Budget rule**: To gain Δ bits, multiply adjusted sample size (n × IFR) by 2^(2Δ)
 
 ## Module Structure
 
 ```
 cfbits/
-├── core.py         # CF-bits computation and gates
+├── core.py         # CF-bits computation, gates, budget helpers
 ├── sampling.py     # IFR, aESS, sampling width
 ├── overlap.py      # A-ESSF, BC on σ(S)
-└── identification.py  # Wid computation (placeholder)
+├── identification.py  # Wid Phase-1 certificate algorithm
+├── config.py       # Centralized defaults and thresholds
+├── aggregates.py   # Paper table generation utilities
+└── playbooks.py    # Ready-to-use workflows
 ```
 
 ### Implemented Features
 - ✅ IFR and aESS computation (with IFR_main/IFR_OUA distinction)
 - ✅ Sampling width with oracle uncertainty augmentation (OUA via jackknife)
 - ✅ Conservative A-ESSF and BC overlap metrics (no monotonicity assumption)
-- ✅ CF-bits from widths
-- ✅ Reliability gates with LCB support
+- ✅ CF-bits from widths with Wmax gating
+- ✅ Reliability gates with LCB support and Wmax catastrophic detection
 - ✅ Ready-to-use playbooks for common scenarios
+- ✅ **Wid Phase-1 certificate**: Binned isotonic bands with Hoeffding bounds
+- ✅ **Budget helpers**: Convert CF-bits to resource requirements
+- ✅ **Paper aggregations**: LaTeX tables and efficiency leaderboards
+- ✅ **Centralized config**: Unified thresholds and defaults
 
-### Not Yet Implemented
-- ⏳ Full identification width (Wid) with isotonic bands
+### Phase-2 Enhancements (Future)
+- ⏳ PAV-with-box-constraints for Wid
 - ⏳ Complete EIF for CalibratedIPS
+
+## Budget Helpers
+
+```python
+from cje.cfbits import logs_for_delta_bits, labels_for_oua_reduction
+
+# To gain 0.5 bits (halve width), need to multiply sample size by:
+log_factor = logs_for_delta_bits(0.5)  # Returns 2.0
+print(f"Need {log_factor:.1f}x more logs")
+
+# To gain 1 bit (quarter width):
+log_factor = logs_for_delta_bits(1.0)  # Returns 4.0
+print(f"Need {log_factor:.1f}x more logs")
+
+# How many labels to reduce OUA from 40% to 10%?
+additional_labels = labels_for_oua_reduction(0.4, 0.1, n_samples=1000, current_labels=50)
+print(f"Need {additional_labels} more oracle labels")
+```
 
 ## API Reference
 
@@ -146,6 +203,14 @@ estimate_overlap_floors(S, W, method="conservative", n_boot=500) → OverlapFloo
 ```
 Estimate structural overlap bounds on judge marginal. Uses conservative estimation without monotonicity assumptions.
 
+### Identification Width
+
+```python
+compute_identification_width(estimator, policy, alpha=0.05, n_bins=20, min_labels_per_bin=3) → (float, dict)
+```
+Compute structural uncertainty using Phase-1 certificate with binned isotonic bands and Hoeffding bounds.
+Returns diagnostics including `p_mass_unlabeled` - the target mass on bins without oracle labels.
+
 ### CF-bits
 
 ```python
@@ -156,9 +221,9 @@ Compute bits of information from width components. Prefers IFR_OUA when availabl
 ### Gates
 
 ```python
-apply_gates(aessf=None, aessf_lcb=None, ifr=None, ifr_lcb=None, tail_index=None) → GatesDecision
+apply_gates(aessf=None, aessf_lcb=None, ifr=None, ifr_lcb=None, tail_index=None, wid=None, wvar=None) → GatesDecision
 ```
-Apply reliability thresholds and generate recommendations. Uses lower confidence bounds (LCBs) when available for conservative gating.
+Apply reliability thresholds and generate recommendations. Uses lower confidence bounds (LCBs) when available for conservative gating. Includes Wmax gating for catastrophic uncertainty (refuses if Wmax > 1.0 on [0,1] KPI scale).
 
 ## Interpretation Guide
 

@@ -101,6 +101,7 @@ class UnifiedAblation(BaseAblation):
             str(spec.get("extra", {}).get("use_weight_calibration", False)),
             str(spec.get("extra", {}).get("use_iic", False)),
             str(spec.get("extra", {}).get("reward_calibration_mode", "monotone")),
+            str(spec.get("extra", {}).get("compute_cfbits", False)),  # Add CF-bits flag
             str(spec.get("seed_base", 42)),  # This now properly includes the seed
         ]
         return "_".join(key_params)
@@ -271,6 +272,9 @@ class UnifiedAblation(BaseAblation):
                                         "reward_calibration_mode": EXPERIMENTS[
                                             "reward_calibration_mode"
                                         ],
+                                        "compute_cfbits": EXPERIMENTS[
+                                            "compute_cfbits"
+                                        ],  # Single toggle
                                     },
                                 )
 
@@ -288,7 +292,8 @@ class UnifiedAblation(BaseAblation):
                                     f"\n[Seed {seed}][{completed + failed + 1}/{total_experiments}] "
                                     f"Running: {estimator} n={sample_size} "
                                     f"oracle={oracle_coverage:.0%} "
-                                    f"weight_cal={use_weight_calibration} iic={use_iic}"
+                                    f"weight_cal={use_weight_calibration} iic={use_iic} "
+                                    f"cfbits={EXPERIMENTS['compute_cfbits']}"
                                 )
 
                                 try:

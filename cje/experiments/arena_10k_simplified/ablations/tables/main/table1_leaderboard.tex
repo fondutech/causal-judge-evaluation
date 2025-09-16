@@ -6,30 +6,30 @@
 \toprule
 Rank & Estimator & Score & RMSE$^d$ $\downarrow$ & IS$^{OA}$ $\downarrow$ & CalibScore $\downarrow$ & SE GM $\downarrow$ & K-$\tau$ $\uparrow$ & Top-1 $\uparrow$ \\
 \midrule
-1 & dr-cpo (calib=True, iic=True) & \textbf{92.3} & 0.0112 & 0.1303 & \textbf{5.0} & 0.0235 & 0.539 & 94.5 \\
-2 & dr-cpo (calib=True, iic=False) & \textbf{91.8} & 0.0114 & 0.1294 & 5.4 & 0.0231 & 0.543 & 96.3 \\
-3 & stacked-dr-core (calib=True, iic=False) & \textbf{89.0} & \textbf{0.0102} & 0.0620 & 9.3 & 0.0106 & \textbf{0.600} & \textbf{100.0} \\
-4 & stacked-dr-core (calib=True, iic=True) & \textbf{89.0} & \underline{0.0102} & 0.0624 & 9.3 & 0.0107 & \underline{0.600} & \underline{100.0} \\
-5 & stacked-dr (iic=False) & \textbf{88.0} & 0.0104 & \textbf{0.0610} & 9.3 & \underline{0.0105} & 0.567 & 95.0 \\
-6 & stacked-dr (iic=True) & \textbf{88.0} & 0.0105 & \underline{0.0613} & 9.3 & 0.0106 & 0.567 & 95.0 \\
-7 & dr-cpo (calib=False, iic=False) & \textbf{81.3} & 0.0376 & 0.1970 & \underline{5.0} & 0.0355 & 0.173 & 66.7 \\
-8 & dr-cpo (calib=False, iic=True) & \textbf{80.8} & 0.0376 & 0.2073 & 5.0 & 0.0373 & 0.173 & 66.7 \\
-9 & oc-dr-cpo (iic=True) & \textbf{77.6} & 0.0373 & 0.0922 & 9.0 & 0.0218 & 0.183 & 65.0 \\
-10 & oc-dr-cpo (iic=False) & \textbf{75.5} & 0.0373 & 0.0862 & 10.4 & 0.0198 & 0.183 & 65.0 \\
-11 & tr-cpo-e (iic=True) & \textbf{66.0} & 0.0875 & 0.1637 & 8.8 & 0.0386 & -0.083 & 35.0 \\
-12 & tr-cpo-e-anchored (calib=False, iic=True) & \textbf{66.0} & 0.0875 & 0.1637 & 8.8 & 0.0386 & -0.083 & 35.0 \\
-13 & tr-cpo-e-anchored (calib=False, iic=False) & \textbf{64.2} & 0.0875 & 0.1413 & 10.5 & 0.0320 & -0.083 & 35.0 \\
-14 & tr-cpo-e (iic=False) & \textbf{64.2} & 0.0875 & 0.1413 & 10.5 & 0.0320 & -0.083 & 35.0 \\
-15 & tr-cpo-e-anchored-orthogonal (calib=False, iic=True) & \textbf{64.1} & 0.1142 & 0.2104 & 8.5 & 0.0497 & -0.050 & 40.0 \\
-16 & tr-cpo-e-anchored-orthogonal (calib=False, iic=False) & \textbf{63.8} & 0.1142 & 0.1841 & 9.7 & 0.0408 & -0.050 & 40.0 \\
-17 & calibrated-ips (iic=False) & \textbf{57.4} & 0.0169 & 0.4293 & 7.7 & 0.0741 & -0.167 & 20.0 \\
-18 & orthogonalized-ips (iic=False) & \textbf{42.3} & 0.1001 & 0.6596 & 5.8 & 0.1639 & -0.044 & 23.3 \\
-19 & raw-ips (iic=False) & \textbf{40.6} & 0.0994 & 0.6773 & 5.4 & 0.1727 & -0.078 & 20.0 \\
-20 & raw-ips (iic=True) & \textbf{40.6} & 0.0994 & 0.6775 & 5.4 & 0.1728 & -0.078 & 20.0 \\
-21 & orthogonalized-ips (iic=True) & \textbf{34.0} & 0.1001 & 0.8154 & 5.4 & 0.2057 & -0.044 & 23.3 \\
-22 & tr-cpo (iic=False) & \textbf{30.7} & 0.9022 & 0.3380 & 9.9 & 0.0755 & -0.017 & 42.5 \\
-23 & tr-cpo (iic=True) & \textbf{29.7} & 0.9022 & 0.3939 & 8.8 & 0.0904 & -0.017 & 42.5 \\
-24 & calibrated-ips (iic=True) & \textbf{8.3} & 0.0169 & 0.1045 & 43.1 & \textbf{0.0093} & -0.167 & 20.0 \\
+1 & dr-cpo (calib=True, iic=False) & \textbf{92.2} & 0.0103 & 0.1111 & 5.6 & 0.0198 & 0.627 & 83.0 \\
+2 & dr-cpo (calib=True, iic=True) & \textbf{92.0} & 0.0103 & 0.1147 & 5.6 & 0.0204 & 0.627 & 83.0 \\
+3 & stacked-dr-core (calib=True, iic=False) & \textbf{91.1} & \textbf{0.0102} & 0.0642 & 10.6 & 0.0105 & \textbf{0.680} & \textbf{84.5} \\
+4 & stacked-dr-core (calib=True, iic=True) & \textbf{90.8} & \underline{0.0102} & 0.0647 & 10.3 & 0.0106 & \underline{0.657} & \underline{83.5} \\
+5 & stacked-dr (iic=False) & \textbf{89.9} & 0.0104 & \textbf{0.0634} & 10.5 & \underline{0.0103} & 0.617 & 80.5 \\
+6 & stacked-dr (iic=True) & \textbf{89.8} & 0.0104 & \underline{0.0638} & 10.3 & 0.0104 & 0.603 & 80.0 \\
+7 & dr-cpo (calib=False, iic=False) & \textbf{74.9} & 0.0347 & 0.1897 & \underline{5.0} & 0.0342 & 0.080 & 46.0 \\
+8 & dr-cpo (calib=False, iic=True) & \textbf{74.3} & 0.0347 & 0.2006 & \textbf{5.0} & 0.0361 & 0.080 & 46.0 \\
+9 & oc-dr-cpo (iic=True) & \textbf{72.3} & 0.0401 & 0.0936 & 12.2 & 0.0204 & 0.077 & 45.5 \\
+10 & oc-dr-cpo (iic=False) & \textbf{71.2} & 0.0401 & 0.0872 & 14.0 & 0.0185 & 0.077 & 45.5 \\
+11 & tr-cpo-e-anchored (calib=False, iic=False) & \textbf{66.4} & 0.0699 & 0.1286 & 8.8 & 0.0302 & -0.117 & 32.0 \\
+12 & tr-cpo-e (iic=False) & \textbf{66.4} & 0.0699 & 0.1286 & 8.8 & 0.0302 & -0.117 & 32.0 \\
+13 & tr-cpo-e (iic=True) & \textbf{66.2} & 0.0699 & 0.1493 & 7.1 & 0.0363 & -0.117 & 32.0 \\
+14 & tr-cpo-e-anchored (calib=False, iic=True) & \textbf{66.2} & 0.0699 & 0.1493 & 7.1 & 0.0363 & -0.117 & 32.0 \\
+15 & tr-cpo-e-anchored-orthogonal (calib=False, iic=False) & \textbf{60.6} & 0.0975 & 0.1655 & 8.9 & 0.0384 & -0.120 & 31.0 \\
+16 & tr-cpo-e-anchored-orthogonal (calib=False, iic=True) & \textbf{60.0} & 0.0975 & 0.1904 & 7.1 & 0.0464 & -0.120 & 31.0 \\
+17 & calibrated-ips (iic=False) & \textbf{48.9} & 0.0159 & 0.5285 & 7.2 & 0.0941 & -0.247 & 22.0 \\
+18 & calibrated-ips (iic=True) & \textbf{45.4} & 0.0159 & 0.1029 & 39.3 & \textbf{0.0093} & -0.247 & 22.0 \\
+19 & tr-cpo (iic=False) & \textbf{21.2} & 0.3753 & 0.2706 & 10.7 & 0.0611 & -0.180 & 23.5 \\
+20 & tr-cpo (iic=True) & \textbf{20.1} & 0.3753 & 0.3078 & 8.1 & 0.0736 & -0.180 & 23.5 \\
+21 & orthogonalized-ips (iic=False) & \textbf{19.3} & 0.1353 & 0.6822 & 6.2 & 0.1662 & -0.130 & 19.0 \\
+22 & raw-ips (iic=False) & \textbf{16.7} & 0.1348 & 0.7103 & 6.5 & 0.1746 & -0.127 & 18.0 \\
+23 & raw-ips (iic=True) & \textbf{16.7} & 0.1348 & 0.7104 & 6.5 & 0.1746 & -0.127 & 18.0 \\
+24 & orthogonalized-ips (iic=True) & \textbf{7.7} & 0.1353 & 0.8400 & 5.7 & 0.2080 & -0.130 & 19.0 \\
 \bottomrule
 \end{tabular}
 \footnotesize{Aggregate Score: 30\% ranking (K-$\tau$+Top-1), 25\% accuracy (RMSE$^d$), 25\% efficiency (SE GM), 20\% calibration (CalibScore+IS$^{OA}$)}

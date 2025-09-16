@@ -52,6 +52,11 @@ class OverlapMetrics:
     # Auto-tuning info
     auto_tuned_threshold: Optional[float] = None  # ESS threshold for target CI
 
+    # σ(S) structural floors (CF-bits integration)
+    aessf_sigmaS: Optional[float] = None  # A-ESSF on judge marginal σ(S)
+    aessf_sigmaS_lcb: Optional[float] = None  # Lower confidence bound for A-ESSF
+    bc_sigmaS: Optional[float] = None  # Bhattacharyya coefficient on σ(S)
+
     def summary(self) -> str:
         """Human-readable summary of overlap diagnostics."""
         return (
@@ -63,7 +68,7 @@ class OverlapMetrics:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
-        return {
+        d = {
             "hellinger_affinity": self.hellinger_affinity,
             "ess_fraction": self.ess_fraction,
             "tail_index": self.tail_index,
@@ -73,7 +78,11 @@ class OverlapMetrics:
             "recommended_method": self.recommended_method,
             "confidence_penalty": self.confidence_penalty,
             "auto_tuned_threshold": self.auto_tuned_threshold,
+            "aessf_sigmaS": self.aessf_sigmaS,
+            "aessf_sigmaS_lcb": self.aessf_sigmaS_lcb,
+            "bc_sigmaS": self.bc_sigmaS,
         }
+        return {k: v for k, v in d.items() if v is not None}  # Filter None values
 
 
 def hellinger_affinity(weights: np.ndarray, epsilon: float = 1e-10) -> float:

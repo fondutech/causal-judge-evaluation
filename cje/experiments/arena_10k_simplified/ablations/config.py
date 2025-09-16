@@ -43,6 +43,9 @@ EXPERIMENTS = {
         9,
         10,
     ],
+    # CF-bits computation (single toggle, not a grid dimension)
+    # Set to True to enable CF-bits metrics for all experiments
+    "compute_cfbits": True,  # Default ON to gather CF-bits metrics
 }
 
 # Method-specific constraints
@@ -81,6 +84,14 @@ CONSTRAINTS = {
 DR_CONFIG = {
     "n_folds": 5,  # Standard k-fold cross-fitting (faster, still reliable)
     "v_folds_stacking": 5,  # Outer folds for stacked-dr
+}
+
+# CF-bits configuration
+CFBITS_CONFIG = {
+    "n_boot": 500,  # Reduced from default 800 for performance
+    "alpha": 0.05,  # 95% confidence intervals
+    "random_state": 42,  # Reproducibility
+    "compute_tail_index": False,  # Expensive, disabled by default
 }
 
 # Paths (absolute to avoid confusion)

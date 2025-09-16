@@ -1,12 +1,14 @@
 """
-Appendix tables for comprehensive diagnostics.
+Appendix tables focused on diagnostics and SIMCal gains.
 
-Generates tables A1-A6 for the paper appendix with detailed breakdowns.
+This module now prioritizes robust, actionable diagnostics centered on
+effective sample size (ESS) improvements from SIMCal and weight stability
+changes. Legacy generators remain available but are not invoked by default.
 """
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
 from pathlib import Path
 import json
 
@@ -318,19 +320,22 @@ def generate_overlap_diagnostics_table(results: List[Dict[str, Any]]) -> pd.Data
                 if policy in ess_rel:
                     ess_values.append(ess_rel[policy])
             if ess_values:
-                avg_ess_pct = np.mean(ess_values) * 100
+                # ess_relative is already a percentage in results
+                avg_ess_pct = np.mean(ess_values)
                 diagnostics_by_config[config_key]["ess_pct"].append(avg_ess_pct)
 
-        # Check if there's diagnostics dict for other metrics
-        diagnostics = result.get("diagnostics", {})
-        if diagnostics:
-            tail_idx = diagnostics.get("tail_index")
-            if tail_idx is not None and tail_idx > 0:  # Filter invalid
-                diagnostics_by_config[config_key]["tail_index"].append(tail_idx)
-
-            hellinger = diagnostics.get("hellinger_affinity")
-            if hellinger is not None:
-                diagnostics_by_config[config_key]["hellinger"].append(hellinger)
+        # Use top-level per-policy diagnostics captured by the ablation harness
+        tail_alpha = result.get("tail_alpha") or {}
+        hellinger_aff = result.get("hellinger_affinity") or {}
+        for policy in ["clone", "parallel_universe_prompt", "premium"]:
+            if policy in tail_alpha and tail_alpha[policy] is not None:
+                diagnostics_by_config[config_key]["tail_index"].append(
+                    float(tail_alpha[policy])
+                )
+            if policy in hellinger_aff and hellinger_aff[policy] is not None:
+                diagnostics_by_config[config_key]["hellinger"].append(
+                    float(hellinger_aff[policy])
+                )
 
     # Bucket and aggregate
     rows = []
@@ -618,6 +623,301 @@ def generate_runtime_complexity_table(results: List[Dict[str, Any]]) -> pd.DataF
     return pd.DataFrame(rows).sort_values("Runtime_Median")
 
 
+# ==========================
+# New SIMCal-focused tables
+# ==========================
+
+
+def _config_key_for_pairing(result: Dict[str, Any]) -> Optional[Tuple[Any, ...]]:
+    """Build a pairing key for within-config comparisons.
+
+    Key dimensions: (estimator family, sample_size, oracle_coverage, use_iic, seed_base)
+    """
+    spec = result.get("spec", {})
+    est = spec.get("estimator")
+    size = spec.get("sample_size")
+    cov = spec.get("oracle_coverage")
+    seed = spec.get("seed_base", result.get("seed"))
+    extra = spec.get("extra", {})
+    use_iic = bool(extra.get("use_iic", result.get("use_iic", False)))
+
+    if not est or size is None or cov is None:
+        return None
+
+    # Map estimator to a family key for IPS pairing
+    family = est
+    if est in ("raw-ips", "calibrated-ips", "orthogonalized-ips"):
+        family = "ips"
+
+    return (family, size, cov, use_iic, seed)
+
+
+def _index_results_by_spec(
+    results: List[Dict[str, Any]],
+) -> Dict[Tuple, Dict[str, Dict[str, Any]]]:
+    """Index results for pairing SIMCal on/off within the same config.
+
+    Returns a dict keyed by pairing key. Each value is a dict with possible entries:
+      - 'raw_ips': corresponding raw-ips result
+      - 'calibrated_ips': calibrated-ips result
+      - For DR families ('dr-cpo', 'mrdr', 'tmle'):
+          'dr_off': use_weight_calibration=False result
+          'dr_on':  use_weight_calibration=True result
+    """
+    index: Dict[Tuple, Dict[str, Dict[str, Any]]] = {}
+    for r in results:
+        if not r.get("success"):
+            continue
+        key = _config_key_for_pairing(r)
+        if key is None:
+            continue
+        spec = r.get("spec", {})
+        est = spec.get("estimator")
+        extra = spec.get("extra", {})
+        use_cal = bool(
+            extra.get("use_weight_calibration", r.get("use_weight_calibration", False))
+        )
+
+        bucket = index.setdefault(key, {})
+        if est == "raw-ips":
+            bucket["raw_ips"] = r
+        elif est == "calibrated-ips":
+            bucket["calibrated_ips"] = r
+        elif est == "orthogonalized-ips":
+            bucket["ortho_ips"] = r
+        elif est in ("dr-cpo", "mrdr", "tmle"):
+            bucket["dr_on" if use_cal else "dr_off"] = r
+        # Skip families that never/always calibrate (tr-cpo*, oc-dr-cpo, stacked-dr*)
+
+    return index
+
+
+def _get_policy_metric(
+    result: Dict[str, Any], key: str, policy: str
+) -> Optional[float]:
+    d = result.get(key) or {}
+    if not isinstance(d, dict):
+        return None
+    val = d.get(policy)
+    try:
+        return float(val) if val is not None else None
+    except Exception:
+        return None
+
+
+def generate_simcal_ess_gain_table(results: List[Dict[str, Any]]) -> pd.DataFrame:
+    """SIMCal ESS gains by estimator family and policy.
+
+    Produces within-config paired comparisons:
+      - IPS: raw-ips vs calibrated-ips
+      - DR:  dr-cpo/mrdr/tmle with/without use_weight_calibration
+
+    Columns:
+      Estimator, Pairs, and per-policy: ESS%_raw, ESS%_simcal, xGain
+    """
+    idx = _index_results_by_spec(results)
+
+    rows: List[Dict[str, Any]] = []
+    for key, bucket in idx.items():
+        family = key[0]
+
+        # Restrict to IPS family for ESS (weights-only) focus
+        if family != "ips":
+            continue
+
+        # Build paired tuples (raw vs calibrated)
+        pairs: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
+        if "raw_ips" in bucket and "calibrated_ips" in bucket:
+            pairs.append((bucket["raw_ips"], bucket["calibrated_ips"]))
+
+        if not pairs:
+            continue
+
+        # Aggregate per-policy ESS% and gains
+        policies = ["clone", "parallel_universe_prompt", "premium"]
+        agg = {p: {"raw": [], "sim": [], "gain": []} for p in policies}
+
+        for raw, sim in pairs:
+            for p in policies:
+                ess_raw = _get_policy_metric(raw, "ess_relative", p)
+                ess_sim = _get_policy_metric(sim, "ess_relative", p)
+                if ess_raw is None or ess_sim is None or ess_raw <= 0:
+                    continue
+                agg[p]["raw"].append(ess_raw)
+                agg[p]["sim"].append(ess_sim)
+                agg[p]["gain"].append(ess_sim / ess_raw)
+
+        # Only keep if we have some data
+        if not any(agg[p]["gain"] for p in policies):
+            continue
+
+        row: Dict[str, Any] = {
+            "Estimator": "ips",
+            "Pairs": len(pairs),
+        }
+        for p in policies:
+            raw_mean = np.mean(agg[p]["raw"]) if agg[p]["raw"] else np.nan
+            sim_mean = np.mean(agg[p]["sim"]) if agg[p]["sim"] else np.nan
+            gain_mean = np.mean(agg[p]["gain"]) if agg[p]["gain"] else np.nan
+            abbrev = {
+                "clone": "Clone",
+                "parallel_universe_prompt": "ParaU",
+                "premium": "Premium",
+            }[p]
+            row[f"{abbrev}_ESS%_raw"] = raw_mean
+            row[f"{abbrev}_ESS%_simcal"] = sim_mean
+            row[f"{abbrev}_xGain"] = gain_mean
+
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        # Sort by average xGain across available policies (descending)
+        gain_cols = [c for c in df.columns if c.endswith("_xGain")]
+        df["Avg_xGain"] = df[gain_cols].mean(axis=1, skipna=True)
+        df = df.sort_values("Avg_xGain", ascending=False).drop(columns=["Avg_xGain"])
+    return df
+
+
+def generate_weights_ess_raw_vs_simcal_table(
+    results: List[Dict[str, Any]],
+) -> pd.DataFrame:
+    """Raw weights vs SIMCal weights ESS% (weights-only view, estimator-agnostic).
+
+    Pairs across both IPS and DR families where calibration toggles exist within the same
+    (sample_size, oracle_coverage, use_iic, seed) key. Reports per-policy means:
+      - Raw_ESS%, SimCal_ESS%, xGain (SimCal/Raw)
+      - Pairs: number of matched configs contributing
+    """
+    idx = _index_results_by_spec(results)
+    policies = ["clone", "parallel_universe_prompt", "premium"]
+
+    # Collect pairs from IPS (raw vs calibrated-ips) and DR (use_cal=False vs True)
+    pairs: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
+    for key, bucket in idx.items():
+        # IPS pairs
+        if "raw_ips" in bucket and "calibrated_ips" in bucket:
+            pairs.append((bucket["raw_ips"], bucket["calibrated_ips"]))
+        # DR pairs (dr-cpo/mrdr/tmle)
+        if "dr_off" in bucket and "dr_on" in bucket:
+            pairs.append((bucket["dr_off"], bucket["dr_on"]))
+
+    # Aggregate
+    agg = {p: {"raw": [], "sim": [], "gain": []} for p in policies}
+    for raw, sim in pairs:
+        for p in policies:
+            ess_raw = _get_policy_metric(raw, "ess_relative", p)
+            ess_sim = _get_policy_metric(sim, "ess_relative", p)
+            if ess_raw is None or ess_sim is None or ess_raw <= 0:
+                continue
+            agg[p]["raw"].append(ess_raw)
+            agg[p]["sim"].append(ess_sim)
+            agg[p]["gain"].append(ess_sim / ess_raw)
+
+    row: Dict[str, Any] = {"View": "weights_raw_vs_simcal", "Pairs": len(pairs)}
+    for p in policies:
+        abbrev = {
+            "clone": "Clone",
+            "parallel_universe_prompt": "ParaU",
+            "premium": "Premium",
+        }[p]
+        row[f"{abbrev}_Raw_ESS%"] = np.mean(agg[p]["raw"]) if agg[p]["raw"] else np.nan
+        row[f"{abbrev}_SimCal_ESS%"] = (
+            np.mean(agg[p]["sim"]) if agg[p]["sim"] else np.nan
+        )
+        row[f"{abbrev}_xGain"] = np.mean(agg[p]["gain"]) if agg[p]["gain"] else np.nan
+
+    return pd.DataFrame([row])
+
+
+def generate_simcal_weight_diag_table(results: List[Dict[str, Any]]) -> pd.DataFrame:
+    """SIMCal weight diagnostics deltas (simcal - raw) by estimator family and policy.
+
+    Columns per policy:
+      ΔTailα (higher better), ΔCV (lower better), ΔMaxW (lower better), ΔZeroMass (lower better)
+    """
+    idx = _index_results_by_spec(results)
+    rows: List[Dict[str, Any]] = []
+
+    for key, bucket in idx.items():
+        family = key[0]
+        # Restrict to IPS family for weight diagnostics focus
+        if family != "ips":
+            continue
+        pairs: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
+        if "raw_ips" in bucket and "calibrated_ips" in bucket:
+            pairs.append((bucket["raw_ips"], bucket["calibrated_ips"]))
+
+        if not pairs:
+            continue
+
+        policies = ["clone", "parallel_universe_prompt", "premium"]
+        agg = {p: {"dtail": [], "dcv": [], "dmaxw": [], "dzm": []} for p in policies}
+
+        for raw, sim in pairs:
+            for p in policies:
+                tail_raw = _get_policy_metric(raw, "tail_alpha", p)
+                tail_sim = _get_policy_metric(sim, "tail_alpha", p)
+                cv_raw = _get_policy_metric(raw, "weight_cv", p)
+                cv_sim = _get_policy_metric(sim, "weight_cv", p)
+                mw_raw = _get_policy_metric(raw, "max_weight", p)
+                mw_sim = _get_policy_metric(sim, "max_weight", p)
+                zm_raw = _get_policy_metric(raw, "mass_concentration", p)
+                zm_sim = _get_policy_metric(sim, "mass_concentration", p)
+
+                if (
+                    tail_raw is None
+                    or tail_sim is None
+                    or cv_raw is None
+                    or cv_sim is None
+                    or mw_raw is None
+                    or mw_sim is None
+                    or zm_raw is None
+                    or zm_sim is None
+                ):
+                    continue
+
+                agg[p]["dtail"].append(tail_sim - tail_raw)
+                agg[p]["dcv"].append(cv_sim - cv_raw)
+                agg[p]["dmaxw"].append(mw_sim - mw_raw)
+                agg[p]["dzm"].append(zm_sim - zm_raw)
+
+        if not any(agg[p]["dtail"] for p in policies):
+            continue
+
+        row: Dict[str, Any] = {"Estimator": family, "Pairs": len(pairs)}
+        for p in policies:
+            abbrev = {
+                "clone": "Clone",
+                "parallel_universe_prompt": "ParaU",
+                "premium": "Premium",
+            }[p]
+            row[f"{abbrev}_ΔTailα"] = (
+                np.mean(agg[p]["dtail"]) if agg[p]["dtail"] else np.nan
+            )
+            row[f"{abbrev}_ΔCV"] = np.mean(agg[p]["dcv"]) if agg[p]["dcv"] else np.nan
+            row[f"{abbrev}_ΔMaxW"] = (
+                np.mean(agg[p]["dmaxw"]) if agg[p]["dmaxw"] else np.nan
+            )
+            row[f"{abbrev}_ΔZeroMass"] = (
+                np.mean(agg[p]["dzm"]) if agg[p]["dzm"] else np.nan
+            )
+
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        # Sort by improvement in tails (primary) then CV decrease
+        sort_cols = [c for c in df.columns if c.endswith("ΔTailα")] + [
+            c for c in df.columns if c.endswith("ΔCV")
+        ]
+        df["Score"] = df[sort_cols].apply(
+            lambda s: np.nanmean(s.values.astype(float)), axis=1
+        )
+        df = df.sort_values("Score", ascending=False).drop(columns=["Score"])
+    return df
+
+
 def format_appendix_latex(df: pd.DataFrame, table_num: str, caption: str) -> str:
     """Format appendix table as LaTeX."""
     latex = []
@@ -667,7 +967,7 @@ def format_appendix_latex(df: pd.DataFrame, table_num: str, caption: str) -> str
 
 
 def main() -> None:
-    """Generate all appendix tables."""
+    """Generate SIMCal-focused appendix tables."""
     import argparse
 
     parser = argparse.ArgumentParser(description="Generate appendix tables")
@@ -684,19 +984,51 @@ def main() -> None:
     results = []
     with open(args.results) as f:
         for line in f:
-            results.append(json.loads(line))
+            try:
+                results.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+
+    # Filter to successful and dedupe by (estimator, size, coverage, seed, use_calib, use_iic)
+    results = [r for r in results if r.get("success")]
+    seen = set()
+    deduped = []
+    for r in results:
+        spec = r.get("spec", {})
+        est = spec.get("estimator")
+        size = spec.get("sample_size")
+        cov = spec.get("oracle_coverage")
+        seed = spec.get("seed_base", r.get("seed"))
+        extra = spec.get("extra", {})
+        use_cal = extra.get(
+            "use_weight_calibration", r.get("use_weight_calibration", False)
+        )
+        use_iic = extra.get("use_iic", r.get("use_iic", False))
+        key = (est, size, cov, seed, bool(use_cal), bool(use_iic))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(r)
+    results = deduped
 
     # Create output directory
     args.output.mkdir(exist_ok=True, parents=True)
 
-    # Generate tables
+    # New default: SIMCal-centric diagnostics (IPS-focused)
     tables: List[Tuple[str, str, Any]] = [
-        ("A1", "Quadrant Leaderboard", generate_quadrant_leaderboard),
-        ("A2", "Bias Patterns", generate_bias_patterns_table),
-        ("A3", "Overlap & Tail Diagnostics", generate_overlap_diagnostics_table),
-        ("A4", "Oracle Adjustment Share", generate_oracle_adjustment_table),
-        ("A5", "Calibration Boundary Analysis", generate_boundary_outlier_table),
-        ("A6", "Runtime & Complexity", generate_runtime_complexity_table),
+        (
+            "S1",
+            "Raw vs SIMCal ESS% (weights-only)",
+            generate_weights_ess_raw_vs_simcal_table,
+        ),
+        ("S2", "SIMCal Weight Diagnostics (Deltas)", generate_simcal_weight_diag_table),
+        # Legacy (disabled by default): uncomment to generate
+        # ("A1", "Quadrant Leaderboard", generate_quadrant_leaderboard),
+        # ("A2", "Bias Patterns", generate_bias_patterns_table),
+        # ("A3", "Overlap & Tail Diagnostics", generate_overlap_diagnostics_table),
+        # ("A4", "Oracle Adjustment Share", generate_oracle_adjustment_table),
+        # ("A5", "Calibration Boundary Analysis", generate_boundary_outlier_table),
+        # ("A6", "Runtime & Complexity", generate_runtime_complexity_table),
     ]
 
     for table_num, caption, generator in tables:
@@ -707,9 +1039,11 @@ def main() -> None:
             latex = format_appendix_latex(df, table_num, caption)
             (args.output / f"table{table_num}.tex").write_text(latex)
         elif args.format == "markdown":
-            (args.output / f"table{table_num}.md").write_text(df.to_markdown())
+            (args.output / f"table{table_num}.md").write_text(
+                df.to_markdown(index=False)
+            )
         else:
-            df.to_csv(args.output / f"table{table_num}.csv")
+            df.to_csv(args.output / f"table{table_num}.csv", index=False)
 
     print(f"Appendix tables written to {args.output}/")
 

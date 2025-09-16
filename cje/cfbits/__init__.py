@@ -5,7 +5,17 @@ uncertainty into identification width (structural limits) and sampling width
 (statistical noise).
 """
 
-from .core import CFBits, compute_cfbits, GatesDecision, apply_gates
+from .core import (
+    CFBits,
+    compute_cfbits,
+    GatesDecision,
+    apply_gates,
+    logs_for_delta_bits,
+    labels_for_oua_reduction,
+    fresh_draws_for_dr_improvement,
+    bits_to_width,
+    width_to_bits,
+)
 from .sampling import (
     EfficiencyStats,
     SamplingVariance,
@@ -16,6 +26,7 @@ from .sampling import (
 from .overlap import OverlapFloors, estimate_overlap_floors
 from .identification import compute_identification_width
 from .playbooks import cfbits_report_fresh_draws, cfbits_report_logging_only
+from .config import CFBITS_DEFAULTS, GATE_THRESHOLDS, get_config
 
 __all__ = [
     # Core
@@ -23,6 +34,12 @@ __all__ = [
     "compute_cfbits",
     "GatesDecision",
     "apply_gates",
+    # Budget helpers
+    "logs_for_delta_bits",
+    "labels_for_oua_reduction",
+    "fresh_draws_for_dr_improvement",
+    "bits_to_width",
+    "width_to_bits",
     # Sampling
     "EfficiencyStats",
     "SamplingVariance",
@@ -37,4 +54,8 @@ __all__ = [
     # Playbooks
     "cfbits_report_fresh_draws",
     "cfbits_report_logging_only",
+    # Config
+    "CFBITS_DEFAULTS",
+    "GATE_THRESHOLDS",
+    "get_config",
 ]

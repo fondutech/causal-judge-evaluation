@@ -13,7 +13,9 @@ Consolidated module for all diagnostic functionality:
 from .models import (
     IPSDiagnostics,
     DRDiagnostics,
+    CFBitsDiagnostics,
     Status,
+    GateState,
 )
 
 # Weight diagnostics
@@ -49,6 +51,8 @@ from .display import (
     create_weight_summary_table,
     format_dr_diagnostic_summary,
     format_diagnostic_comparison,
+    format_cfbits_summary,
+    format_cfbits_table,
 )
 
 # Robust inference
@@ -67,7 +71,9 @@ __all__ = [
     # Data models
     "IPSDiagnostics",
     "DRDiagnostics",
+    "CFBitsDiagnostics",
     "Status",
+    "GateState",
     # Weight diagnostics
     "compute_weight_diagnostics",
     "effective_sample_size",
@@ -91,6 +97,8 @@ __all__ = [
     "create_weight_summary_table",
     "format_dr_diagnostic_summary",
     "format_diagnostic_comparison",
+    "format_cfbits_summary",
+    "format_cfbits_table",
     # Robust inference
     "stationary_bootstrap_se",
     "moving_block_bootstrap_se",

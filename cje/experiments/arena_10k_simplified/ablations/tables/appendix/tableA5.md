@@ -2,27 +2,27 @@
 
 | Estimator                                             |   Mean_Dist_Boundary |   Min_Dist_Boundary |   Pct_Near_Boundary |   Unhelpful_Mean_Dist |   Unhelpful_Min_Dist |   Outlier_Rate | Support   |
 |:------------------------------------------------------|---------------------:|--------------------:|--------------------:|----------------------:|---------------------:|---------------:|:----------|
-| tr-cpo (iic=True)                                     |            -0.345742 |         -29.7261    |            27.5     |           -0.00238104 |          -0.707362   |       85       | Weak      |
-| tr-cpo (iic=False)                                    |            -0.345742 |         -29.7261    |            27.5     |           -0.00238104 |          -0.707362   |       85       | Weak      |
-| tr-cpo-e-anchored-orthogonal (calib=False, iic=False) |             0.107092 |          -0.841793  |            25.8333  |           -0.00725681 |          -0.646091   |      100       | Weak      |
-| tr-cpo-e-anchored-orthogonal (calib=False, iic=True)  |             0.107092 |          -0.841793  |            25.8333  |           -0.00725681 |          -0.646091   |      100       | Weak      |
-| orthogonalized-ips (iic=True)                         |             0.151197 |          -0.0577146 |            21.1111  |            0.0815047  |           0.0137123  |       70       | Weak      |
-| orthogonalized-ips (iic=False)                        |             0.151197 |          -0.0577146 |            21.1111  |            0.0815047  |           0.0137123  |       70       | Weak      |
-| raw-ips (iic=False)                                   |             0.151138 |          -0.0502598 |            20.5556  |            0.0784     |           0.0168685  |       71.6667  | Weak      |
-| raw-ips (iic=True)                                    |             0.151138 |          -0.0502598 |            20.5556  |            0.0784     |           0.0168685  |       71.6667  | Weak      |
-| tr-cpo-e (iic=True)                                   |             0.125595 |          -0.605384  |            17.5     |            0.0167349  |          -0.216139   |      100       | Weak      |
-| tr-cpo-e (iic=False)                                  |             0.125595 |          -0.605384  |            17.5     |            0.0167349  |          -0.216139   |      100       | Weak      |
-| tr-cpo-e-anchored (calib=False, iic=True)             |             0.125595 |          -0.605384  |            17.5     |            0.0167349  |          -0.216139   |      100       | Weak      |
-| tr-cpo-e-anchored (calib=False, iic=False)            |             0.125595 |          -0.605384  |            17.5     |            0.0167349  |          -0.216139   |      100       | Weak      |
-| oc-dr-cpo (iic=True)                                  |             0.160209 |          -0.217575  |             6.66667 |           -0.00567593 |          -0.665421   |      100       | Weak      |
-| oc-dr-cpo (iic=False)                                 |             0.160209 |          -0.217575  |             6.66667 |           -0.00567593 |          -0.665421   |      100       | Weak      |
-| dr-cpo (calib=False, iic=True)                        |             0.167354 |          -0.33111   |             5.08475 |            0.0341625  |          -0.212385   |       93.2203  | Weak      |
-| dr-cpo (calib=False, iic=False)                       |             0.167354 |          -0.33111   |             5.08475 |            0.0341625  |          -0.212385   |       93.2203  | Weak      |
-| stacked-dr (iic=True)                                 |             0.169245 |           0.0561886 |             2.5     |            0.0396899  |           0.00439569 |      100       | Weak      |
-| stacked-dr (iic=False)                                |             0.16928  |           0.056354  |             2.5     |            0.0398848  |           0.00470189 |      100       | Weak      |
-| stacked-dr-core (calib=True, iic=True)                |             0.169463 |           0.0562046 |             2.5     |            0.040196   |           0.00457213 |      100       | Weak      |
-| stacked-dr-core (calib=True, iic=False)               |             0.169492 |           0.0563734 |             2.5     |            0.0403873  |           0.00470189 |      100       | Weak      |
-| dr-cpo (calib=True, iic=False)                        |             0.174591 |           0.0553682 |             1.69492 |            0.050768   |          -0.0246398  |       91.5254  | Weak      |
-| dr-cpo (calib=True, iic=True)                         |             0.174751 |           0.0553682 |             1.66667 |            0.0506114  |          -0.0246398  |       91.6667  | Weak      |
-| calibrated-ips (iic=False)                            |             0.176248 |           0.0519655 |             1.66667 |            0.175951   |           0.0548965  |        3.33333 | Weak      |
-| calibrated-ips (iic=True)                             |             0.176248 |           0.0519655 |             1.66667 |            0.175951   |           0.0548965  |        3.33333 | Weak      |
+| orthogonalized-ips (iic=False)                        |            0.143231  |          -0.119371  |            29.3333  |             0.106535  |          -0.0735686  |           55.5 | Weak      |
+| orthogonalized-ips (iic=True)                         |            0.143231  |          -0.119371  |            29.3333  |             0.106535  |          -0.0735686  |           55.5 | Weak      |
+| raw-ips (iic=True)                                    |            0.143191  |          -0.12386   |            28.8333  |             0.106715  |          -0.056145   |           56   | Weak      |
+| raw-ips (iic=False)                                   |            0.143191  |          -0.12386   |            28.8333  |             0.106715  |          -0.056145   |           56   | Weak      |
+| tr-cpo (iic=False)                                    |           -0.0304279 |         -29.7261    |            25.1667  |             0.0252433 |          -1.01446    |           82.5 | Weak      |
+| tr-cpo (iic=True)                                     |           -0.0304279 |         -29.7261    |            25.1667  |             0.0252433 |          -1.01446    |           82.5 | Weak      |
+| tr-cpo-e-anchored-orthogonal (calib=False, iic=False) |            0.130434  |          -1.0639    |            16.8333  |             0.0213123 |          -0.795792   |           90   | Weak      |
+| tr-cpo-e-anchored-orthogonal (calib=False, iic=True)  |            0.130434  |          -1.0639    |            16.8333  |             0.0213123 |          -0.795792   |           90   | Weak      |
+| tr-cpo-e (iic=False)                                  |            0.146498  |          -1.06364   |            12.6667  |             0.0421047 |          -0.491105   |           89.5 | Weak      |
+| tr-cpo-e (iic=True)                                   |            0.146498  |          -1.06364   |            12.6667  |             0.0421047 |          -0.491105   |           89.5 | Weak      |
+| tr-cpo-e-anchored (calib=False, iic=True)             |            0.146498  |          -1.06364   |            12.6667  |             0.0421047 |          -0.491105   |           89.5 | Weak      |
+| tr-cpo-e-anchored (calib=False, iic=False)            |            0.146498  |          -1.06364   |            12.6667  |             0.0421047 |          -0.491105   |           89.5 | Weak      |
+| oc-dr-cpo (iic=True)                                  |            0.165347  |          -0.605958  |             7.66667 |             0.0282666 |          -0.767699   |           91.5 | Weak      |
+| oc-dr-cpo (iic=False)                                 |            0.165347  |          -0.605958  |             7.66667 |             0.0282666 |          -0.767699   |           91.5 | Weak      |
+| dr-cpo (calib=False, iic=True)                        |            0.17174   |          -0.33111   |             6.66667 |             0.0446646 |          -0.327002   |           91   | Weak      |
+| dr-cpo (calib=False, iic=False)                       |            0.17174   |          -0.33111   |             6.66667 |             0.0446646 |          -0.327002   |           91   | Weak      |
+| stacked-dr (iic=False)                                |            0.176142  |           0.0117155 |             5.33333 |             0.06155   |           0.00171736 |           93.5 | Weak      |
+| stacked-dr (iic=True)                                 |            0.176128  |           0.0117829 |             5.33333 |             0.061217  |           0.00171929 |           94.5 | Weak      |
+| stacked-dr-core (calib=True, iic=True)                |            0.17637   |           0.0117829 |             5.16667 |             0.0614426 |           0.00178786 |           94.5 | Weak      |
+| dr-cpo (calib=True, iic=True)                         |            0.176409  |           0.0117938 |             5       |             0.0587523 |          -0.0288375  |           89.5 | Weak      |
+| dr-cpo (calib=True, iic=False)                        |            0.176409  |           0.0117938 |             5       |             0.0587523 |          -0.0288375  |           89.5 | Weak      |
+| stacked-dr-core (calib=True, iic=False)               |            0.176362  |           0.0117155 |             5       |             0.0617769 |           0.0017856  |           93.5 | Weak      |
+| calibrated-ips (iic=True)                             |            0.179483  |           0.0101725 |             4.5     |             0.178188  |           0.00541979 |            2   | Weak      |
+| calibrated-ips (iic=False)                            |            0.179483  |           0.0101725 |             4.5     |             0.178188  |           0.00541979 |            2   | Weak      |
