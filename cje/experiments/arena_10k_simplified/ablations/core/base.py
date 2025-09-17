@@ -952,6 +952,31 @@ class BaseAblation:
                     result["orthogonality_scores"] = estimation_result.metadata[
                         "orthogonality_scores"
                     ]
+                # Extract MC variance diagnostics from metadata
+                if "mc_variance_diagnostics" in estimation_result.metadata:
+                    mc_diag = estimation_result.metadata["mc_variance_diagnostics"]
+                    # Store full MC diagnostics structure
+                    result["mc_diagnostics"] = {}
+                    all_m_mins = []
+                    all_m_maxs = []
+                    for policy, diag in mc_diag.items():
+                        if isinstance(diag, dict):
+                            result["mc_diagnostics"][policy] = {
+                                "M_min": diag.get("M_min"),
+                                "M_max": diag.get("M_max"),
+                                "mc_var_fraction": diag.get("mc_variance_share"),
+                            }
+                            # Collect for aggregation
+                            if diag.get("M_min") is not None:
+                                all_m_mins.append(diag.get("M_min"))
+                            if diag.get("M_max") is not None:
+                                all_m_maxs.append(diag.get("M_max"))
+
+                    # Add aggregated values at top level for easy access
+                    if all_m_mins:
+                        result["mc_diagnostics"]["M_min"] = min(all_m_mins)
+                    if all_m_maxs:
+                        result["mc_diagnostics"]["M_max"] = max(all_m_maxs)
 
             # Compute diagnostics
             self.compute_diagnostics(estimator, result, len(dataset.samples))

@@ -10,9 +10,11 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple, Optional
 from itertools import product
 import numpy as np
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from tqdm import tqdm
 
 # Add parent directories to path
 import sys
@@ -36,6 +38,42 @@ from ablations.core.schemas import ExperimentSpec, aggregate_results
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+
+def run_single_experiment_worker(
+    spec_dict: Dict[str, Any], seed: int
+) -> Dict[str, Any]:
+    """Worker function for parallel execution of experiments.
+
+    This function is defined at module level to be pickleable for ProcessPoolExecutor.
+
+    Args:
+        spec_dict: Serialized ExperimentSpec
+        seed: Random seed for this experiment
+
+    Returns:
+        Result dictionary
+    """
+    # Import inside worker to avoid pickling issues
+    from ablations.core.base import BaseAblation
+    from ablations.core.schemas import ExperimentSpec
+
+    # Create a new ablation instance
+    ablation = UnifiedAblation()
+
+    # Reconstruct spec from dict
+    spec = ExperimentSpec(**spec_dict)
+
+    try:
+        result = ablation.run_single(spec, seed)
+        return result  # type: ignore[no-any-return]
+    except Exception as e:
+        logger.error(f"Failed to run {spec.estimator}: {e}")
+        return {
+            "spec": spec.to_dict(),
+            "success": False,
+            "error": str(e),
+        }
 
 
 class UnifiedAblation(BaseAblation):
@@ -166,7 +204,7 @@ class UnifiedAblation(BaseAblation):
                 "V_folds": DR_CONFIG.get(
                     "v_folds_stacking", 20
                 ),  # Use config value, default 20
-                "parallel": False,
+                "parallel": True,  # Enable parallel execution of component estimators
                 "use_iic": use_iic,
                 "covariance_regularization": 1e-4,  # Add regularization for numerical stability
                 "use_calibrated_weights": use_weight_calibration,  # Controls SIMCal for weights
@@ -184,9 +222,200 @@ class UnifiedAblation(BaseAblation):
             # Fall back to base implementation
             return super().create_estimator(spec, sampler, cal_result)
 
-    def run_ablation(self) -> List[Dict[str, Any]]:
-        """Run the complete unified ablation."""
+    def run_single_experiment(
+        self, spec_dict: Dict[str, Any], seed: int
+    ) -> Dict[str, Any]:
+        """Run a single experiment (pickleable for parallel execution).
 
+        Args:
+            spec_dict: Serialized ExperimentSpec
+            seed: Random seed for this experiment
+
+        Returns:
+            Result dictionary
+        """
+        # Reconstruct spec from dict
+        spec = ExperimentSpec(**spec_dict)
+
+        try:
+            result = self.run_single(spec, seed)
+            return result  # type: ignore[no-any-return]
+        except Exception as e:
+            logger.error(f"Failed to run {spec.estimator}: {e}")
+            return {
+                "spec": spec.to_dict(),
+                "success": False,
+                "error": str(e),
+            }
+
+    def run_ablation(
+        self, parallel: bool = True, max_workers: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """Run the complete unified ablation.
+
+        Args:
+            parallel: Whether to run experiments in parallel
+            max_workers: Max number of parallel workers (defaults to 8)
+
+        Returns:
+            List of result dictionaries
+        """
+        if parallel:
+            return self._run_ablation_parallel(max_workers)
+        else:
+            return self._run_ablation_sequential()
+
+    def _generate_all_specs(self) -> List[Tuple[ExperimentSpec, int]]:
+        """Generate all experiment specifications.
+
+        Returns:
+            List of (spec, seed) tuples
+        """
+        all_specs = []
+
+        # SEEDS AS OUTERMOST LOOP - ensures all estimators are evaluated with seed 0 first
+        for seed in EXPERIMENTS["seeds"]:
+            for estimator in EXPERIMENTS["estimators"]:
+                for sample_size in EXPERIMENTS["sample_sizes"]:
+                    for oracle_coverage in EXPERIMENTS["oracle_coverages"]:
+
+                        # Apply calibration constraints
+                        if estimator in CONSTRAINTS.get("requires_calibration", set()):
+                            calibration_options = [True]
+                        elif estimator in CONSTRAINTS.get("never_calibrated", set()):
+                            calibration_options = [False]
+                        else:
+                            calibration_options = EXPERIMENTS["use_weight_calibration"]
+
+                        for use_weight_calibration in calibration_options:
+                            var_cap = EXPERIMENTS["var_cap"]
+
+                            spec = ExperimentSpec(
+                                ablation="unified",
+                                dataset_path=str(DATA_PATH),
+                                estimator=estimator,
+                                sample_size=sample_size,
+                                oracle_coverage=oracle_coverage,
+                                rho=var_cap,
+                                n_seeds=1,
+                                seed_base=seed,
+                                extra={
+                                    "use_weight_calibration": use_weight_calibration,
+                                    "use_iic": False,
+                                    "reward_calibration_mode": EXPERIMENTS[
+                                        "reward_calibration_mode"
+                                    ],
+                                    "compute_cfbits": EXPERIMENTS["compute_cfbits"],
+                                    "var_cap": var_cap,
+                                },
+                            )
+
+                            # Check if already completed
+                            exp_id = self._generate_exp_id(spec.to_dict())
+                            if exp_id not in self.completed_experiments:
+                                all_specs.append((spec, seed))
+
+        return all_specs
+
+    def _run_ablation_parallel(
+        self, max_workers: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """Run ablation experiments in parallel.
+
+        Args:
+            max_workers: Maximum number of parallel workers
+
+        Returns:
+            List of result dictionaries
+        """
+        # Generate all specs
+        all_specs = self._generate_all_specs()
+
+        if not all_specs:
+            logger.info("All experiments already completed!")
+            return []
+
+        # Default to 8 workers if not specified
+        if max_workers is None:
+            max_workers = 8
+
+        all_results = []
+        completed = 0
+        failed = 0
+
+        logger.info("=" * 60)
+        logger.info(f"Starting parallel execution with {max_workers} workers")
+        logger.info(f"Total experiments to run: {len(all_specs)}")
+        logger.info(f"Already completed (cached): {len(self.completed_experiments)}")
+        logger.info("=" * 60)
+
+        # Create progress bar
+        with tqdm(total=len(all_specs), desc="Experiments") as pbar:
+            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all tasks
+                future_to_spec = {
+                    executor.submit(
+                        run_single_experiment_worker, spec.to_dict(), seed
+                    ): (spec, seed)
+                    for spec, seed in all_specs
+                }
+
+                # Process results as they complete
+                for future in as_completed(future_to_spec):
+                    spec, seed = future_to_spec[future]
+
+                    try:
+                        result = future.result()
+
+                        # Save result
+                        self._save_checkpoint(result)
+                        all_results.append(result)
+
+                        if result.get("success"):
+                            completed += 1
+                            rmse = result.get("rmse_vs_oracle", "N/A")
+                            pbar.set_postfix(
+                                completed=completed,
+                                failed=failed,
+                                last=(
+                                    f"{spec.estimator} RMSE={rmse:.4f}"
+                                    if rmse != "N/A"
+                                    else spec.estimator
+                                ),
+                            )
+                        else:
+                            failed += 1
+                            logger.error(
+                                f"Failed: {spec.estimator} - {result.get('error', 'Unknown error')}"
+                            )
+
+                    except Exception as e:
+                        failed += 1
+                        logger.error(f"Exception running {spec.estimator}: {e}")
+
+                        # Save failed result
+                        failed_result = {
+                            "spec": spec.to_dict(),
+                            "success": False,
+                            "error": str(e),
+                        }
+                        self._save_checkpoint(failed_result)
+                        all_results.append(failed_result)
+
+                    pbar.update(1)
+
+        # Final summary
+        logger.info("\n" + "=" * 60)
+        logger.info("UNIFIED ABLATION COMPLETE")
+        logger.info(f"Completed: {completed}")
+        logger.info(f"Failed: {failed}")
+        logger.info(f"Results saved to: {self.results_file}")
+        logger.info("=" * 60)
+
+        return all_results
+
+    def _run_ablation_sequential(self) -> List[Dict[str, Any]]:
+        """Run ablation experiments sequentially (original implementation)."""
         all_results = []
         total_experiments = 0
         skipped = 0
@@ -304,8 +533,26 @@ class UnifiedAblation(BaseAblation):
 
 def main() -> None:
     """Run unified ablation experiments."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run unified ablation experiments")
+    parser.add_argument(
+        "--sequential",
+        action="store_true",
+        help="Run experiments sequentially instead of in parallel",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=8,
+        help="Number of parallel workers (default: 8)",
+    )
+    args = parser.parse_args()
+
     ablation = UnifiedAblation()
-    results = ablation.run_ablation()
+    results = ablation.run_ablation(
+        parallel=not args.sequential, max_workers=args.workers
+    )
 
     # Save final aggregated results
     if results:

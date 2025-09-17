@@ -88,6 +88,10 @@ class DREstimator(BaseCJEEstimator):
             else:
                 oua_jackknife = True
 
+        # Pop var_cap if present - it's for weight calibration, not for base class
+        # This is passed by ablation code but not used by DR estimators
+        kwargs.pop("var_cap", None)
+
         # Pass OUA parameters to base class
         super().__init__(
             sampler=sampler,
@@ -95,7 +99,7 @@ class DREstimator(BaseCJEEstimator):
             diagnostic_config=None,  # Will use defaults
             reward_calibrator=reward_calibrator,
             oua_jackknife=oua_jackknife,
-            **kwargs,  # Passes oracle_slice_config if provided
+            **kwargs,  # Passes remaining kwargs (e.g., oracle_slice_config, use_iic)
         )
 
         self.n_folds = n_folds
