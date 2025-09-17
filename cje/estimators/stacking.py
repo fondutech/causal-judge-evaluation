@@ -56,7 +56,7 @@ class StackedDREstimator(BaseCJEEstimator):
         Args:
             sampler: PrecomputedSampler with calibrated data
             estimators: List of estimator names to stack
-                Default: ["dr-cpo", "tmle", "mrdr"]
+                Default: ["dr-cpo", "tmle", "mrdr"] - core DR estimators only
             covariance_regularization: Ridge regularization for numerical stability
             min_weight: Minimum weight for any estimator (for stability)
             weight_shrinkage: Shrinkage toward uniform weights (0=none, 1=uniform)
@@ -75,8 +75,6 @@ class StackedDREstimator(BaseCJEEstimator):
             "dr-cpo",
             "tmle",
             "mrdr",
-            "oc-dr-cpo",
-            "tr-cpo-e",
         ]
         self.covariance_regularization = covariance_regularization
         self.min_weight = min_weight

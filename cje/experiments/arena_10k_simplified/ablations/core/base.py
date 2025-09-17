@@ -153,12 +153,14 @@ class BaseAblation:
             Estimator instance
         """
         # Extract settings from spec.extra
-        use_iic = spec.extra.get("use_iic", False) if spec.extra else False
+        use_iic = False  # IIC disabled by default - not part of ablations
         use_weight_calibration = (
             spec.extra.get("use_weight_calibration", False) if spec.extra else False
         )
         # Propagate oracle-calibrator uncertainty into SEs (ON by default unless explicitly disabled)
         oua = spec.extra.get("oua_jackknife", True) if spec.extra else True
+        # Variance budget (rho) for SIMCal - default 1.0 means no variance increase
+        var_cap = spec.extra.get("var_cap", 1.0) if spec.extra else 1.0
 
         # Log parameter settings if needed
         # logger.info(f"Creating {spec.estimator} with use_iic={use_iic}, "
@@ -194,6 +196,7 @@ class BaseAblation:
                 n_outer_folds=5,  # Use 5 folds for clustering
                 outer_cv_seed=42,  # Consistent fold generation
                 honest_iic=use_iic,  # Enable honest IIC when outer CV is used
+                var_cap=var_cap,  # Pass variance budget (rho) parameter
             ),
             "orthogonalized-ips": lambda s: OrthogonalizedCalibratedIPS(
                 s,
@@ -204,6 +207,7 @@ class BaseAblation:
                 n_outer_folds=5,  # Use 5 folds for clustering
                 outer_cv_seed=42,  # Consistent fold generation
                 honest_iic=use_iic,  # Enable honest IIC when outer CV is used
+                var_cap=var_cap,  # Pass variance budget (rho) parameter
             ),
             "dr-cpo": lambda s: DRCPOEstimator(
                 s,
@@ -212,6 +216,7 @@ class BaseAblation:
                 use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
+                var_cap=var_cap,  # Pass variance budget (rho) parameter
             ),
             "oc-dr-cpo": lambda s: OrthogonalizedCalibratedDRCPO(
                 s,
@@ -220,14 +225,7 @@ class BaseAblation:
                 use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
-            ),
-            "tr-cpo": lambda s: TRCPOEstimator(
-                s,
-                reward_calibrator=cal_result.calibrator if cal_result else None,
-                n_folds=DR_CONFIG["n_folds"],
-                use_iic=use_iic,  # Pass IIC setting
-                oua_jackknife=oua,
-                use_efficient_tr=False,  # Vanilla TR-CPO uses raw W
+                var_cap=var_cap,  # Pass variance budget (rho) parameter
             ),
             "tr-cpo-e": lambda s: TRCPOEstimator(
                 s,
@@ -236,16 +234,6 @@ class BaseAblation:
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
                 use_efficient_tr=True,  # Efficient TR-CPO uses m̂(S)
-            ),
-            "tr-cpo-e-anchored": lambda s: TRCPOEstimator(
-                s,
-                reward_calibrator=cal_result.calibrator if cal_result else None,
-                n_folds=DR_CONFIG["n_folds"],
-                use_iic=use_iic,  # Pass IIC setting
-                oua_jackknife=oua,
-                use_efficient_tr=True,  # Efficient TR-CPO uses m̂(S)
-                anchor_on_simcal=True,  # Anchor on SIMCal weights for stability
-                add_orthogonalizer=False,  # No orthogonalizer
             ),
             "tr-cpo-e-anchored-orthogonal": lambda s: TRCPOEstimator(
                 s,
@@ -264,6 +252,7 @@ class BaseAblation:
                 use_calibrated_weights=True,  # Use SIMCal calibrated weights
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
+                var_cap=var_cap,  # Pass variance budget (rho) parameter
             ),
             "mrdr": lambda s: MRDREstimator(
                 s,
@@ -272,6 +261,7 @@ class BaseAblation:
                 use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
+                var_cap=var_cap,  # Pass variance budget (rho) parameter
             ),
             "tmle": lambda s: TMLEEstimator(
                 s,
@@ -280,9 +270,11 @@ class BaseAblation:
                 use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
+                var_cap=var_cap,  # Pass variance budget (rho) parameter
             ),
             "stacked-dr": lambda s: StackedDREstimator(
                 s,
+                # Uses default estimators: ["dr-cpo", "tmle", "mrdr"]
                 reward_calibrator=cal_result.calibrator if cal_result else None,
                 n_folds=DR_CONFIG["n_folds"],  # Use n_folds, not V_folds
                 use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
@@ -291,19 +283,8 @@ class BaseAblation:
                 covariance_regularization=1e-4,  # Add regularization for numerical stability
                 include_mc_in_objective=include_mc,
                 mc_lambda=mc_lambda,
+                var_cap=var_cap,  # Pass variance budget (rho) parameter
                 # Remove use_outer_split - it doesn't exist
-            ),
-            "stacked-dr-core": lambda s: StackedDREstimator(
-                s,
-                estimators=["dr-cpo", "tmle", "mrdr"],  # Only 3 core DR estimators
-                reward_calibrator=cal_result.calibrator if cal_result else None,
-                n_folds=DR_CONFIG["n_folds"],  # Use n_folds, not V_folds
-                use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
-                use_iic=use_iic,  # Pass IIC setting
-                oua_jackknife=oua,
-                covariance_regularization=1e-4,  # Add regularization for numerical stability
-                include_mc_in_objective=include_mc,
-                mc_lambda=mc_lambda,
             ),
         }
 
@@ -429,12 +410,9 @@ class BaseAblation:
                 "dr-cpo",
                 "mrdr",
                 "tmle",
-                "tr-cpo",
                 "tr-cpo-e",
-                "tr-cpo-e-anchored",
                 "tr-cpo-e-anchored-orthogonal",
                 "stacked-dr",
-                "stacked-dr-core",
                 "oc-dr-cpo",
             ]
 
@@ -509,8 +487,8 @@ class BaseAblation:
             # Validate the diagnostics
             cfbits_diag.validate()
 
-            # Store structured object (for compatibility with new system)
-            result.setdefault("cfbits_diagnostics", {})[policy] = cfbits_diag
+            # Store structured object as dictionary for JSON serialization
+            result.setdefault("cfbits_diagnostics", {})[policy] = cfbits_diag.to_dict()
 
             # Store minimal summary for backward compatibility
             result["cfbits_summary"][policy] = {
@@ -635,6 +613,9 @@ class BaseAblation:
             dataset, n_oracle, original_oracle_labels = self.prepare_dataset(spec, seed)
             result["n_samples"] = len(dataset.samples)
             result["n_oracle"] = n_oracle
+            result["oracle_slice_size"] = (
+                n_oracle  # Also store as oracle_slice_size for clarity
+            )
 
             # ALWAYS calibrate rewards (judge → oracle) when oracle labels exist
             # This is NOT controlled by use_weight_calibration flag
@@ -704,9 +685,7 @@ class BaseAblation:
                 "calibrated-dr-cpo",
                 "mrdr",
                 "tmle",
-                "tr-cpo",
                 "tr-cpo-e",
-                "tr-cpo-e-anchored",
                 "tr-cpo-e-anchored-orthogonal",
                 "stacked-dr",
             ]:

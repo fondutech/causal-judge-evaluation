@@ -12,12 +12,9 @@ EXPERIMENTS = {
         "orthogonalized-ips",  # Orthogonalized Calibrated IPS
         "dr-cpo",  # DR-CPO
         "oc-dr-cpo",  # Orthogonalized Calibrated DR
-        "tr-cpo",  # Triply-Robust CPO (vanilla, raw W)
         "tr-cpo-e",  # Triply-Robust CPO (efficient, m̂(S))
-        "tr-cpo-e-anchored",  # TR-CPO (efficient + SIMCal-anchored)
         "tr-cpo-e-anchored-orthogonal",  # TR-CPO (efficient + anchored + orthogonal)
-        "stacked-dr",  # Ensemble (always with calibration)
-        "stacked-dr-core",  # Ensemble with only dr-cpo, tmle, mrdr
+        "stacked-dr",  # Ensemble with dr-cpo, tmle, mrdr (always with calibration)
     ],
     "sample_sizes": [500, 1000, 2500, 5000],
     "oracle_coverages": [0.05, 0.10, 0.25, 0.5, 1.00],
@@ -26,10 +23,8 @@ EXPERIMENTS = {
         True,
         False,
     ],  # Test with and without weight calibration (SIMCal)
-    # IIC for DR methods
-    "use_iic": [True, False],
     # Reward calibration mode (not ablated - just use monotone)
-    "reward_calibration_mode": "monotone",
+    "reward_calibration_mode": "auto",
     # Multiple seeds for robust results
     "seeds": [
         1,
@@ -46,6 +41,9 @@ EXPERIMENTS = {
     # CF-bits computation (single toggle, not a grid dimension)
     # Set to True to enable CF-bits metrics for all experiments
     "compute_cfbits": True,  # Default ON to gather CF-bits metrics
+    # Variance budget (rho) for SIMCal - fixed at 1.0 (doesn't bind in practice)
+    # Controls maximum allowed variance: Var(W_calibrated) ≤ var_cap * Var(W_baseline)
+    "var_cap": 1.0,  # Fixed at no variance increase (empirically doesn't bind)
 }
 
 # Method-specific constraints
@@ -57,7 +55,6 @@ REQUIRES_CALIBRATION = {
     "orthogonalized-ips",  # Requires calibrated weights for orthogonalization
     "oc-dr-cpo",  # Orthogonalized Calibrated DR requires calibration
     "stacked-dr",  # Production default - always uses calibration
-    "stacked-dr-core",  # Core DR ensemble - always uses calibration
 }
 
 # These estimators can work with or without calibration
@@ -68,9 +65,7 @@ CALIBRATION_OPTIONAL = {
 # These estimators never use weight calibration
 NEVER_CALIBRATED = {
     "raw-ips",  # Never uses calibration by design
-    "tr-cpo",  # Always uses raw/Hajek weights (no SIMCal) for theoretical correctness
     "tr-cpo-e",  # Also uses raw/Hajek weights, but with m̂(S) in TR term for efficiency
-    "tr-cpo-e-anchored",  # Uses raw weights but leverages SIMCal internally for anchoring
     "tr-cpo-e-anchored-orthogonal",  # Uses raw weights with SIMCal anchoring + orthogonalization
 }
 
@@ -82,8 +77,8 @@ CONSTRAINTS = {
 
 # Fixed parameters for DR methods
 DR_CONFIG = {
-    "n_folds": 5,  # Standard k-fold cross-fitting (faster, still reliable)
-    "v_folds_stacking": 5,  # Outer folds for stacked-dr
+    "n_folds": 10,  # Standard k-fold cross-fitting (faster, still reliable)
+    "v_folds_stacking": 10,  # Outer folds for stacked-dr
 }
 
 # CF-bits configuration

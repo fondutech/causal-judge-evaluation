@@ -28,7 +28,7 @@ class BaseCJEEstimator(ABC):
         sampler: PrecomputedSampler,
         run_diagnostics: bool = True,
         diagnostic_config: Optional[Dict[str, Any]] = None,
-        use_iic: bool = True,  # Default to True - free variance reduction!
+        use_iic: bool = False,  # Default to False - not part of core methodology
         iic_config: Optional[IICConfig] = None,
         reward_calibrator: Optional[Any] = None,
         oua_jackknife: bool = True,  # Default to True for oracle uncertainty augmentation
@@ -39,7 +39,7 @@ class BaseCJEEstimator(ABC):
             sampler: Data sampler with precomputed log probabilities
             run_diagnostics: Whether to compute diagnostics (default True)
             diagnostic_config: Optional configuration dict (for future use)
-            use_iic: Whether to use Isotonic Influence Control for variance reduction (default True)
+            use_iic: Whether to use Isotonic Influence Control for variance reduction (default False)
             iic_config: Optional IIC configuration (uses defaults if None)
             reward_calibrator: Optional reward calibrator for OUA jackknife
             oua_jackknife: Whether to enable Oracle Uncertainty Augmentation (default True)

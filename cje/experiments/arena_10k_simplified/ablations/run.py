@@ -99,7 +99,6 @@ class UnifiedAblation(BaseAblation):
             str(spec.get("sample_size", "")),
             str(spec.get("oracle_coverage", "")),
             str(spec.get("extra", {}).get("use_weight_calibration", False)),
-            str(spec.get("extra", {}).get("use_iic", False)),
             str(spec.get("extra", {}).get("reward_calibration_mode", "monotone")),
             str(spec.get("extra", {}).get("compute_cfbits", False)),  # Add CF-bits flag
             str(spec.get("seed_base", 42)),  # This now properly includes the seed
@@ -129,7 +128,7 @@ class UnifiedAblation(BaseAblation):
         """
         estimator_name = spec.estimator
         use_weight_calibration = spec.extra.get("use_weight_calibration", False)
-        use_iic = spec.extra.get("use_iic", False)
+        use_iic = False  # IIC disabled by default
 
         # Handle DR methods with our parameters
         if estimator_name in ["dr-cpo", "tmle", "mrdr"]:
@@ -162,41 +161,7 @@ class UnifiedAblation(BaseAblation):
 
             kwargs = {
                 "sampler": sampler,
-                "estimators": [
-                    "dr-cpo",
-                    "tmle",
-                    "mrdr",
-                    "oc-dr-cpo",
-                    "tr-cpo-e",
-                ],  # All 5 estimators
-                "n_folds": DR_CONFIG["n_folds"],  # Inner folds for component estimators
-                "V_folds": DR_CONFIG.get(
-                    "v_folds_stacking", 20
-                ),  # Use config value, default 20
-                "parallel": False,
-                "use_iic": use_iic,
-                "covariance_regularization": 1e-4,  # Add regularization for numerical stability
-                "use_calibrated_weights": use_weight_calibration,  # Controls SIMCal for weights
-                "weight_shrinkage": 0.0,  # No shrinkage - let optimizer find optimal weights
-            }
-
-            # Always pass reward calibrator for outcome model (if available)
-            # This is independent of weight calibration
-            if cal_result and cal_result.calibrator:
-                kwargs["reward_calibrator"] = cal_result.calibrator
-
-            return StackedDREstimator(**kwargs)
-
-        elif estimator_name == "stacked-dr-core":
-            from cje.estimators.stacking import StackedDREstimator
-
-            kwargs = {
-                "sampler": sampler,
-                "estimators": [
-                    "dr-cpo",
-                    "tmle",
-                    "mrdr",
-                ],  # Only 3 core DR estimators
+                # Use default estimators (dr-cpo, tmle, mrdr)
                 "n_folds": DR_CONFIG["n_folds"],  # Inner folds for component estimators
                 "V_folds": DR_CONFIG.get(
                     "v_folds_stacking", 20
@@ -251,80 +216,79 @@ class UnifiedAblation(BaseAblation):
                             calibration_options = EXPERIMENTS["use_weight_calibration"]
 
                         for use_weight_calibration in calibration_options:
+                            # Get fixed var_cap value from config
+                            var_cap = EXPERIMENTS["var_cap"]
 
-                            # IIC works for all estimators (IPS and DR)
-                            # It's a general variance reduction technique for any asymptotically linear estimator
-                            iic_values = EXPERIMENTS["use_iic"]
+                            # Create specification
+                            spec = ExperimentSpec(
+                                ablation="unified",
+                                dataset_path=str(DATA_PATH),
+                                estimator=estimator,
+                                sample_size=sample_size,
+                                oracle_coverage=oracle_coverage,
+                                rho=var_cap,  # Set rho field directly (var_cap is the variance budget)
+                                n_seeds=1,  # Single seed per experiment
+                                seed_base=seed,  # Use current seed from iteration
+                                extra={
+                                    "use_weight_calibration": use_weight_calibration,
+                                    "use_iic": False,  # IIC disabled by default
+                                    "reward_calibration_mode": EXPERIMENTS[
+                                        "reward_calibration_mode"
+                                    ],
+                                    "compute_cfbits": EXPERIMENTS[
+                                        "compute_cfbits"
+                                    ],  # Single toggle
+                                    "var_cap": var_cap,  # Also keep in extra for backward compatibility
+                                },
+                            )
 
-                            for use_iic in iic_values:
-                                # Create specification
-                                spec = ExperimentSpec(
-                                    ablation="unified",
-                                    dataset_path=str(DATA_PATH),
-                                    estimator=estimator,
-                                    sample_size=sample_size,
-                                    oracle_coverage=oracle_coverage,
-                                    n_seeds=1,  # Single seed per experiment
-                                    seed_base=seed,  # Use current seed from iteration
-                                    extra={
-                                        "use_weight_calibration": use_weight_calibration,
-                                        "use_iic": use_iic,
-                                        "reward_calibration_mode": EXPERIMENTS[
-                                            "reward_calibration_mode"
-                                        ],
-                                        "compute_cfbits": EXPERIMENTS[
-                                            "compute_cfbits"
-                                        ],  # Single toggle
-                                    },
-                                )
+                            # Check if already completed
+                            exp_id = self._generate_exp_id(spec.to_dict())
+                            if exp_id in self.completed_experiments:
+                                skipped += 1
+                                logger.debug(f"Skipping completed: {exp_id}")
+                                continue
 
-                                # Check if already completed
-                                exp_id = self._generate_exp_id(spec.to_dict())
-                                if exp_id in self.completed_experiments:
-                                    skipped += 1
-                                    logger.debug(f"Skipping completed: {exp_id}")
-                                    continue
+                            total_experiments += 1
 
-                                total_experiments += 1
+                            # Run experiment with current seed
+                            logger.info(
+                                f"\n[Seed {seed}][{completed + failed + 1}/{total_experiments}] "
+                                f"Running: {estimator} n={sample_size} "
+                                f"oracle={oracle_coverage:.0%} "
+                                f"weight_cal={use_weight_calibration} "
+                                f"cfbits={EXPERIMENTS['compute_cfbits']}"
+                            )
 
-                                # Run experiment with current seed
-                                logger.info(
-                                    f"\n[Seed {seed}][{completed + failed + 1}/{total_experiments}] "
-                                    f"Running: {estimator} n={sample_size} "
-                                    f"oracle={oracle_coverage:.0%} "
-                                    f"weight_cal={use_weight_calibration} iic={use_iic} "
-                                    f"cfbits={EXPERIMENTS['compute_cfbits']}"
-                                )
+                            try:
+                                # Run with current seed
+                                result = self.run_single(spec, seed)
 
-                                try:
-                                    # Run with current seed
-                                    result = self.run_single(spec, seed)
+                                # Save result
+                                self._save_checkpoint(result)
+                                all_results.append(result)
+                                completed += 1
 
-                                    # Save result
-                                    self._save_checkpoint(result)
-                                    all_results.append(result)
-                                    completed += 1
+                                # Log summary
+                                if result.get("success"):
+                                    if "rmse_vs_oracle" in result:
+                                        logger.info(
+                                            f"  ✓ RMSE: {result['rmse_vs_oracle']:.4f}"
+                                        )
+                                    else:
+                                        logger.info("  ✓ Completed")
 
-                                    # Log summary
-                                    if result.get("success"):
-                                        if "rmse_vs_oracle" in result:
-                                            logger.info(
-                                                f"  ✓ RMSE: {result['rmse_vs_oracle']:.4f}"
-                                            )
-                                        else:
-                                            logger.info("  ✓ Completed")
+                            except Exception as e:
+                                logger.error(f"  ✗ Failed: {e}")
+                                failed += 1
 
-                                except Exception as e:
-                                    logger.error(f"  ✗ Failed: {e}")
-                                    failed += 1
-
-                                    # Save failed result
-                                    failed_result = {
-                                        "spec": spec.to_dict(),
-                                        "success": False,
-                                        "error": str(e),
-                                    }
-                                    self._save_checkpoint(failed_result)
+                                # Save failed result
+                                failed_result = {
+                                    "spec": spec.to_dict(),
+                                    "success": False,
+                                    "error": str(e),
+                                }
+                                self._save_checkpoint(failed_result)
 
         # Final summary
         logger.info("\n" + "=" * 60)
