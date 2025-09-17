@@ -572,6 +572,14 @@ class PrecomputedSampler:
         return get_folds_for_prompts(prompt_ids, n_folds, seed)
 
     @property
+    def metadata(self) -> Dict[str, Any]:
+        """Get dataset metadata.
+
+        Returns dataset metadata including dataset_path if available.
+        """
+        return self.dataset.metadata
+
+    @property
     def n_samples(self) -> int:
         """Number of samples in the dataset.
 

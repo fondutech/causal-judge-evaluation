@@ -100,6 +100,9 @@ class BaseAblation:
         # Load dataset
         dataset = load_dataset_from_jsonl(spec.dataset_path)
 
+        # Store the dataset path in metadata for auto-loading fresh draws
+        dataset.metadata["dataset_path"] = spec.dataset_path
+
         # Subsample if requested
         if spec.sample_size is not None:
             n_samples = min(spec.sample_size, len(dataset.samples))

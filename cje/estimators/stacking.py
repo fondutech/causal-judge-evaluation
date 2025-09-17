@@ -972,6 +972,53 @@ class StackedDREstimator(BaseCJEEstimator):
         self, valid_estimators: List[str], result: EstimationResult
     ) -> Optional[Any]:
         """Build diagnostics object if applicable."""
-        # Could aggregate diagnostics from components if needed
+        # Aggregate MC diagnostics from DR components
+        mc_diagnostics: Dict[str, Dict[str, Any]] = {}
+        for est_name in valid_estimators:
+            if est_name in self.component_results:
+                comp_result = self.component_results[est_name]
+                if comp_result and hasattr(comp_result, "metadata"):
+                    # Check for MC diagnostics in component metadata
+                    if "mc_variance_diagnostics" in comp_result.metadata:
+                        mc_diag = comp_result.metadata["mc_variance_diagnostics"]
+                        # Store per-estimator MC diagnostics
+                        for policy, diag in mc_diag.items():
+                            if policy not in mc_diagnostics:
+                                mc_diagnostics[policy] = {}
+                            mc_diagnostics[policy][est_name] = diag
+
+        # Add aggregated MC diagnostics to result metadata
+        if mc_diagnostics:
+            if "mc_diagnostics" not in result.metadata:
+                result.metadata["mc_diagnostics"] = {}
+
+            # Aggregate across estimators for each policy
+            for policy in mc_diagnostics:
+                # Use the first available estimator's MC diagnostics as representative
+                # (they should all be the same since they use the same fresh draws)
+                for est_name, diag in mc_diagnostics[policy].items():
+                    result.metadata["mc_diagnostics"][policy] = diag
+                    break  # Use first one
+
+            # Extract M_min and M_max for top-level reporting
+            all_M_min_values = []
+            all_M_max_values = []
+            for policy_diag in result.metadata["mc_diagnostics"].values():
+                # Look for min_draws_per_prompt and max_draws_per_prompt
+                if "min_draws_per_prompt" in policy_diag:
+                    all_M_min_values.append(policy_diag["min_draws_per_prompt"])
+                if "max_draws_per_prompt" in policy_diag:
+                    all_M_max_values.append(policy_diag["max_draws_per_prompt"])
+                # Also add M_min and M_max aliases for convenience
+                if "min_draws_per_prompt" in policy_diag:
+                    policy_diag["M_min"] = policy_diag["min_draws_per_prompt"]
+                if "max_draws_per_prompt" in policy_diag:
+                    policy_diag["M_max"] = policy_diag["max_draws_per_prompt"]
+
+            if all_M_min_values:
+                result.metadata["M_min"] = min(all_M_min_values)
+            if all_M_max_values:
+                result.metadata["M_max"] = max(all_M_max_values)
+
         # For now, return None as stacking has its own diagnostics in metadata
         return None
