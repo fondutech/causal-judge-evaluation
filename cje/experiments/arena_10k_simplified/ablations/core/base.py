@@ -225,7 +225,7 @@ class BaseAblation:
                 use_calibrated_weights=use_weight_calibration,  # Controlled by use_weight_calibration flag
                 use_iic=use_iic,  # Pass IIC setting
                 oua_jackknife=oua,
-                var_cap=var_cap,  # Pass variance budget (rho) parameter
+                # Note: var_cap is handled by sampler, not by OC-DR-CPO directly
             ),
             "tr-cpo-e": lambda s: TRCPOEstimator(
                 s,

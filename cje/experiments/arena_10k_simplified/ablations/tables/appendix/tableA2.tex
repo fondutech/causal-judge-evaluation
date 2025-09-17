@@ -1,0 +1,19 @@
+\begin{table}[htbp]
+\centering
+\caption{Bias Patterns}
+\label{tab:A2}
+\begin{tabular}{l|ccccccccccccc}
+\toprule
+Estimator & Mean Bias & Mean Abs Bias & Bias SE & Pattern & clone bias & clone t & clone sig & parallel bias & parallel t & parallel sig & premium bias & premium t & premium sig \\
+\midrule
+dr-cpo (calib) & 0.0026 & 0.016 & 0.0021 & Mixed & 0.0043 & 1.2 &  & 0.0002 & 0.040 &  & 0.0032 & 0.861 &  \\
+calibrated-ips & 0.0040 & 0.018 & 0.0020 & Mixed & 0.0072 & 2.2 & * & -0.0042 & 1.3 &  & 0.0090 & 2.5 & * \\
+stacked-dr & 0.011 & 0.020 & 0.0031 & Positive & 0.012 & 2.3 & * & 0.0096 & 1.8 &  & 0.012 & 2.2 & * \\
+dr-cpo & -0.0027 & 0.029 & 0.0042 & Mixed & 0.0060 & 1.7 &  & -0.0103 & 1.1 &  & -0.0039 & 0.493 &  \\
+orthogonalized-ips & -0.0219 & 0.067 & 0.0092 & Negative & 0.0059 & 1.6 &  & -0.0748 & 3.4 & * & 0.0032 & 0.236 &  \\
+raw-ips & -0.0219 & 0.067 & 0.0092 & Negative & 0.0060 & 1.6 &  & -0.0754 & 3.4 & * & 0.0036 & 0.268 &  \\
+tr-cpo-e & 0.086 & 0.111 & 0.022 & Positive & 0.191 & 3.5 & * & 0.0035 & 0.293 &  & 0.063 & 2.6 & * \\
+tr-cpo-e-anchored-orthogonal & 0.071 & 0.115 & 0.028 & Positive & 0.177 & 2.6 & * & 0.011 & 0.472 &  & 0.025 & 0.710 &  \\
+\bottomrule
+\end{tabular}
+\end{table}
