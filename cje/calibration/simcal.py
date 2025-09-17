@@ -29,7 +29,7 @@ class SimcalConfig:
 
     Args:
         ess_floor: Minimum ESS as fraction of n (e.g., 0.2 => ESS >= 0.2 * n)
-        var_cap: Maximum allowed variance of calibrated weights
+        var_cap: Maximum allowed variance of calibrated weights (default 1.0 = no variance increase)
         epsilon: Small constant for numerical stability
         include_baseline: Whether to include raw weights in the stack (default True)
         ridge_lambda: Ridge regularization for covariance matrix (default 1e-8)
@@ -38,7 +38,7 @@ class SimcalConfig:
     """
 
     ess_floor: Optional[float] = 0.2
-    var_cap: Optional[float] = None
+    var_cap: Optional[float] = 1.0
     epsilon: float = 1e-9
     include_baseline: bool = False  # Default OFF - isotonic usually sufficient
     ridge_lambda: float = 1e-8

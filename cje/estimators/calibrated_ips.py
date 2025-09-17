@@ -47,7 +47,7 @@ class CalibratedIPS(BaseCJEEstimator):
         weight_mode: "hajek" for mean-one normalized weights, "raw" for unnormalized (default "hajek")
         clip_weight: Maximum weight value before calibration (default None = no clipping)
         ess_floor: Minimum ESS as fraction of n (default 0.2 = 20% ESS) [only used if calibrate_weights=True]
-        var_cap: Maximum allowed variance of calibrated weights (default None = no cap) [only used if calibrate_weights=True]
+        var_cap: Maximum allowed variance of calibrated weights (default 1.0 = no variance increase) [only used if calibrate_weights=True]
         reward_calibrator: Optional JudgeCalibrator for OUA in variance estimation
         include_baseline: Whether to include raw weights in the stack (default False) [only used if calibrate_weights=True]
         baseline_shrink: Shrinkage toward baseline for stability (default 0.0) [only used if calibrate_weights=True]
@@ -66,7 +66,7 @@ class CalibratedIPS(BaseCJEEstimator):
         weight_mode: str = "hajek",
         clip_weight: Optional[float] = None,
         ess_floor: Optional[float] = 0.2,
-        var_cap: Optional[float] = None,
+        var_cap: Optional[float] = 1.0,
         reward_calibrator: Optional[Any] = None,
         include_baseline: bool = False,
         baseline_shrink: float = 0.0,
