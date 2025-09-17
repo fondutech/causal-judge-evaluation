@@ -121,7 +121,7 @@ def compute_identification_width(
         # 2. Compute Hájek weights for all samples
         W_raw = sampler.compute_importance_weights(policy, mode="hajek")
         if W_raw is None or len(W_raw) != len(all_samples):
-            logger.warning("Could not compute importance weights")
+            logger.debug("Could not compute importance weights")
             return None, {
                 "implemented": True,
                 "reason": "no_weights",

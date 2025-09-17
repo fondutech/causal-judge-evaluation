@@ -48,12 +48,9 @@ def extract_cfbits_diagnostics(result: Dict[str, Any]) -> Dict[str, CFBitsDiagno
                         "dr-cpo",
                         "mrdr",
                         "tmle",
-                        "tr-cpo",
                         "tr-cpo-e",
-                        "tr-cpo-e-anchored",
                         "tr-cpo-e-anchored-orthogonal",
                         "stacked-dr",
-                        "stacked-dr-core",
                         "oc-dr-cpo",
                     ]
                     scenario = (

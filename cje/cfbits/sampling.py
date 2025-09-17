@@ -272,9 +272,11 @@ def compute_sampling_width(
 
                 if iic_diagnostics.get("applied", False):
                     var_reduction = iic_diagnostics.get("var_reduction_pct", 0)
-                    logger.info(
-                        f"IIC reduced variance by {var_reduction:.1f}% for {policy}"
-                    )
+                    # Only log if there was actual variance reduction
+                    if var_reduction > 0:
+                        logger.info(
+                            f"IIC reduced variance by {var_reduction:.1f}% for {policy}"
+                        )
                     phi = phi_residualized
             else:
                 logger.debug("Judge scores not available for IIC")
