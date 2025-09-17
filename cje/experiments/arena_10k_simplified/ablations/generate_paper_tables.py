@@ -154,8 +154,7 @@ def main() -> None:
         if args.format in ["markdown", "both"]:
             delta_tables_md = generate_delta_tables(results, "markdown")
             (args.output / "main" / "table2_deltas.md").write_text(
-                "## Weight Calibration Effect\n\n"
-                + delta_tables_md["calibration"]
+                "## Weight Calibration Effect\n\n" + delta_tables_md["calibration"]
             )
             print("  ✓ Markdown version saved")
     except Exception as e:

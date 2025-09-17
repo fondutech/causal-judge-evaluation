@@ -608,6 +608,8 @@ class TRCPOEstimator(DREstimator):
                     r2_w_s = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
 
             # Compute CIs for anchor terms (cluster-robust mean CIs over folds)
+            base_ci: Tuple[Optional[float], Optional[float]]
+            retarget_ci: Tuple[Optional[float], Optional[float]]
             try:
                 det_base = cluster_robust_se(
                     data=base_ips_vec,
@@ -777,6 +779,7 @@ class TRCPOEstimator(DREstimator):
             method=method_name,
             influence_functions=if_map,
             diagnostics=diagnostics,
+            cfbits_diagnostics=None,  # Not yet implemented for TR-CPO
             robust_standard_errors=None,
             # robust_standard_errors_per_policy removed in latest version
             robust_confidence_intervals=None,

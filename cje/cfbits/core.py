@@ -126,8 +126,8 @@ def bits_from_width(
 
 def compute_cfbits(
     w0: float,
-    wid: float,
-    wvar: float,
+    wid: Optional[float],
+    wvar: Optional[float],
     ifr_main: Optional[float] = None,
     ifr_oua: Optional[float] = None,
 ) -> CFBits:
@@ -161,6 +161,9 @@ def compute_cfbits(
 
     # Total bits
     bits_tot = bits_from_width(w0, w_tot)
+    # If bits_tot is None (when w_tot is None), default to 0.0
+    if bits_tot is None:
+        bits_tot = 0.0
 
     # Identification bits (if meaningful)
     bits_id = bits_from_width(w0, wid) if wid is not None and wid > 0 else None
@@ -180,10 +183,10 @@ def compute_cfbits(
         bits_id=bits_id,
         bits_var=bits_var,
         w0=w0,
-        w_id=wid,
-        w_var=wvar,
-        w_tot=w_tot,
-        w_max=w_max,
+        w_id=wid if wid is not None else 0.0,
+        w_var=wvar if wvar is not None else 0.0,
+        w_tot=w_tot if w_tot is not None else 0.0,
+        w_max=w_max if w_max is not None else 0.0,
     )
 
 
@@ -332,7 +335,7 @@ def apply_gates(
 
 def logs_for_delta_bits(
     delta_bits: float,
-    current_ifr_oua: float = None,
+    current_ifr_oua: Optional[float] = None,
 ) -> float:
     """Compute factor to multiply number of logs by for target CF-bits improvement.
 
@@ -469,4 +472,4 @@ def width_to_bits(width: float, w0: float = 1.0) -> float:
     """
     if width <= 0:
         return float("inf")
-    return np.log2(w0 / width)
+    return float(np.log2(w0 / width))

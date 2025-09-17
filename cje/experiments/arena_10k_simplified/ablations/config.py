@@ -16,7 +16,7 @@ EXPERIMENTS = {
         "tr-cpo-e-anchored-orthogonal",  # TR-CPO (efficient + anchored + orthogonal)
         "stacked-dr",  # Ensemble with dr-cpo, tmle, mrdr (always with calibration)
     ],
-    "sample_sizes": [500, 1000, 2500, 5000],
+    "sample_sizes": [250, 500, 1000, 2500, 5000],
     "oracle_coverages": [0.05, 0.10, 0.25, 0.5, 1.00],
     # Key ablation: calibration on/off
     "use_weight_calibration": [
@@ -77,8 +77,8 @@ CONSTRAINTS = {
 
 # Fixed parameters for DR methods
 DR_CONFIG = {
-    "n_folds": 10,  # Standard k-fold cross-fitting (faster, still reliable)
-    "v_folds_stacking": 10,  # Outer folds for stacked-dr
+    "n_folds": 5,  # Standard k-fold cross-fitting (faster, still reliable)
+    "v_folds_stacking": 5,  # Outer folds for stacked-dr
 }
 
 # CF-bits configuration
