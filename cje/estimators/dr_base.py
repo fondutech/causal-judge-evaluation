@@ -52,6 +52,16 @@ class DREstimator(BaseCJEEstimator):
         reward_calibrator: Optional reward calibrator for CalibratorBackedOutcomeModel (always use if available)
         **kwargs: Additional arguments passed to the base class (e.g., oracle_slice_config)
 
+    Monte Carlo Variance Handling:
+        When there's only M=1 fresh draw per prompt, we cannot estimate within-prompt variance directly.
+        The estimator automatically applies a conservative upper bound:
+        - Uses total variance across single draws as upper bound for within-prompt variance
+        - Conservative because mixture variance >= average within-component variance
+        - Respects [0,1] scale constraint (variance <= 0.25)
+        - For mixed cases (some M>=2, some M=1), combines exact computation with upper bound
+
+        This ensures confidence intervals properly reflect uncertainty even with limited fresh draws.
+
     Note: The reward_calibrator (for reward calibration) is independent of use_calibrated_weights (for weight
     calibration). DR estimators should receive the reward_calibrator whenever oracle coverage < 100%.
     """
@@ -670,17 +680,59 @@ class DREstimator(BaseCJEEstimator):
 
             # Add Monte Carlo variance component from finite fresh draws
             mc_var = 0.0
+            n = len(g_fresh) if policy in self._dm_component else 0
+
             if hasattr(self, "_fresh_draw_stats") and policy in self._fresh_draw_stats:
                 stats = self._fresh_draw_stats[policy]
-                fresh_var = stats["variances"]
+                fresh_var = stats[
+                    "variances"
+                ]  # per-prompt sample var if M_i>=2, else 0
                 M = np.asarray(stats["draws_per_prompt"])  # Ensure numpy array
 
-                # MC variance for DM term: (1/n^2) * sum_i (s2_i / M_i)
-                # The DM term is just the average of fresh predictions, so no weight factor
-                # Handle variable M_i per prompt
-                mc_var = np.sum(fresh_var / np.maximum(M, 1)) / (len(data) ** 2)
+                # Check if we can compute exact MC variance (all M >= 2)
+                if np.all(M >= 2):
+                    # Exact MC variance computation
+                    mc_var = np.sum(fresh_var / np.maximum(M, 1)) / (len(data) ** 2)
+                    fallback_used = False
+                    fallback_method = "exact"
+                    s2_total = None
+                    s2_cap = None
+                else:
+                    # Automatic fallback for M=1 cases
+                    # Conservative upper bound using total variance
+                    # Mathematical justification: For a mixture distribution,
+                    # Var(X) = E[Var(X|I)] + Var(E[X|I]) >= E[Var(X|I)]
+                    # where I indexes the components (prompts).
+                    # Thus the total variance upper-bounds the average within-prompt variance.
+                    fallback_used = True
+                    s2_total = float(np.var(g_fresh, ddof=1)) if n > 1 else 0.0
+                    s2_cap = min(
+                        s2_total, 0.25
+                    )  # Cap at maximum possible variance for [0,1]
 
-                # Store MC diagnostics
+                    # Check if we have mixed M values (some M>=2, some M=1)
+                    has_multi = np.any(M >= 2)
+                    if has_multi:
+                        # Combine exact for M>=2 and bound for M=1
+                        exact_part = float(
+                            np.sum(fresh_var[M >= 2] / np.maximum(M[M >= 2], 1))
+                        ) / (n**2)
+                        bound_part = float(np.sum(np.ones(np.sum(M < 2)) * s2_cap)) / (
+                            n**2
+                        )
+                        mc_var = exact_part + bound_part
+                        fallback_method = "upper_bound(mixed)"
+                    else:
+                        # All M=1, use pure bound
+                        mc_var = s2_cap / n if n > 0 else 0.0
+                        fallback_method = "upper_bound(total_var)"
+
+                    logger.debug(
+                        f"Using MC variance fallback for {policy}: "
+                        f"{fallback_method}, s2_cap={s2_cap:.4f}"
+                    )
+
+                # Store MC diagnostics with fallback information
                 if not hasattr(self, "_mc_diagnostics"):
                     self._mc_diagnostics = {}
                 self._mc_diagnostics[policy] = {
@@ -694,7 +746,18 @@ class DREstimator(BaseCJEEstimator):
                     "avg_draws_per_prompt": float(M.mean()),
                     "min_draws_per_prompt": int(M.min()),
                     "max_draws_per_prompt": int(M.max()),
+                    "fallback_used": fallback_used,
+                    "fallback_method": fallback_method,
+                    "n_prompts": int(n),
+                    "n_prompts_M1": int(np.sum(M < 2)),
                 }
+
+                # Add fallback-specific diagnostics if used
+                if fallback_used:
+                    if s2_total is not None:
+                        self._mc_diagnostics[policy]["s2_total"] = float(s2_total)
+                    if s2_cap is not None:
+                        self._mc_diagnostics[policy]["s2_cap"] = float(s2_cap)
 
             # Add oracle uncertainty from finite-oracle jackknife
             se_oracle = 0.0

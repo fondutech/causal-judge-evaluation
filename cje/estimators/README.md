@@ -313,6 +313,33 @@ The MC component:
 - Stored in `_mc_diagnostics` for transparency
 - Automatically computed when fresh draws are present
 
+##### Automatic MC Variance Handling for M=1
+
+When there's only one fresh draw per prompt (M=1), we cannot estimate within-prompt variance directly.
+DR estimators **automatically** apply a conservative upper bound to ensure proper uncertainty quantification:
+
+**How it Works:**
+- The estimator detects when M=1 and automatically applies a fallback
+- Uses total variance across single draws as upper bound for within-prompt variance
+- Conservative because mixture variance ≥ average within-component variance
+- Respects [0,1] scale constraint (variance ≤ 0.25)
+- For mixed cases (some M≥2, some M=1), combines exact computation with upper bound
+
+**Mathematical Justification:**
+For a mixture distribution: `Var(X) = E[Var(X|I)] + Var(E[X|I]) ≥ E[Var(X|I)]`
+where I indexes the components (prompts). Thus the total variance upper-bounds the average within-prompt variance.
+
+**Diagnostics:**
+The `_mc_diagnostics[policy]` dictionary includes:
+- `fallback_used`: Whether fallback was applied
+- `fallback_method`: "upper_bound(total_var)" or "upper_bound(mixed)"
+- `s2_total`: Observed variance across single draws
+- `s2_cap`: Capped variance used (min of s2_total and 0.25)
+- `n_prompts_M1`: Number of prompts with single draw
+
+No configuration needed - the estimator handles this automatically to ensure confidence intervals
+properly reflect uncertainty even with limited fresh draws.
+
 ## Testing
 
 Each estimator has comprehensive tests in `cje/tests/`:
