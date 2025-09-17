@@ -6,14 +6,15 @@
 \toprule
 Rank & Estimator & Score & RMSE$^d$ $\downarrow$ & IS$^{OA}$ $\downarrow$ & CalibScore $\downarrow$ & SE GM $\downarrow$ & K-$\tau$ $\uparrow$ & Top-1 $\uparrow$ \\
 \midrule
-1 & dr-cpo (calib) & \textbf{92.7} & \textbf{0.0145} & \underline{0.1474} & \textbf{5.0} & \underline{0.0266} & \underline{0.533} & \underline{92.0} \\
-2 & stacked-dr & \textbf{86.1} & \underline{0.0181} & \textbf{0.1027} & 15.8 & \textbf{0.0152} & \textbf{0.600} & \textbf{100.0} \\
+1 & dr-cpo (calib) & \textbf{92.8} & \textbf{0.0145} & \underline{0.1474} & \textbf{5.0} & 0.0266 & \underline{0.533} & \underline{92.0} \\
+2 & stacked-dr & \textbf{90.0} & \underline{0.0181} & \textbf{0.1027} & 15.8 & \textbf{0.0152} & \textbf{0.600} & \textbf{100.0} \\
 3 & dr-cpo & \textbf{79.0} & 0.0338 & 0.2099 & \underline{5.0} & 0.0378 & 0.160 & 60.0 \\
-4 & calibrated-ips & \textbf{57.8} & 0.0183 & 0.5053 & 6.9 & 0.0903 & -0.227 & 18.0 \\
-5 & tr-cpo-e & \textbf{41.5} & 0.1462 & 0.2351 & 12.6 & 0.0500 & -0.333 & 21.9 \\
-6 & tr-cpo-e-anchored-orthogonal & \textbf{41.1} & 0.1571 & 0.2477 & 14.3 & 0.0468 & -0.067 & 32.0 \\
-7 & orthogonalized-ips & \textbf{31.4} & 0.0911 & 0.7220 & 5.5 & 0.1820 & -0.173 & 26.0 \\
-8 & raw-ips & \textbf{29.7} & 0.0913 & 0.7407 & 5.5 & 0.1859 & -0.187 & 24.0 \\
+4 & oc-dr-cpo & \textbf{73.8} & 0.0404 & 0.1500 & 23.7 & \underline{0.0234} & 0.367 & 70.0 \\
+5 & calibrated-ips & \textbf{58.5} & 0.0183 & 0.5053 & 6.9 & 0.0903 & -0.227 & 18.0 \\
+6 & tr-cpo-e & \textbf{55.9} & 0.1120 & 0.1824 & 10.8 & 0.0406 & -0.174 & 32.6 \\
+7 & tr-cpo-e-anchored-orthogonal & \textbf{44.3} & 0.1571 & 0.2477 & 14.3 & 0.0468 & -0.067 & 32.0 \\
+8 & orthogonalized-ips & \textbf{31.6} & 0.0911 & 0.7220 & 5.5 & 0.1820 & -0.173 & 26.0 \\
+9 & raw-ips & \textbf{30.0} & 0.0913 & 0.7407 & 5.5 & 0.1859 & -0.187 & 24.0 \\
 \bottomrule
 \end{tabular}
 \footnotesize{Aggregate Score: 30\% ranking (K-$\tau$+Top-1), 25\% accuracy (RMSE$^d$), 25\% efficiency (SE GM), 20\% calibration (CalibScore+IS$^{OA}$)}

@@ -61,11 +61,12 @@ def generate_quadrant_leaderboards(
     results = [r for r in results if r.get("success")]
 
     # Define quadrants based on actual data
+    # Updated thresholds: Size ≤ 500 for Small, > 500 for Large
     quadrants: Dict[str, Dict[str, List[float]]] = {
-        "Small-Low": {"size": [500, 1000], "coverage": [0.05, 0.10]},
-        "Small-High": {"size": [500, 1000], "coverage": [0.25, 0.50, 1.00]},
-        "Large-Low": {"size": [2500, 5000], "coverage": [0.05, 0.10]},
-        "Large-High": {"size": [2500, 5000], "coverage": [0.25, 0.50, 1.00]},
+        "Small-Low": {"size": [250, 500], "coverage": [0.05, 0.10]},
+        "Small-High": {"size": [250, 500], "coverage": [0.25, 0.50, 1.00]},
+        "Large-Low": {"size": [1000, 2500, 5000], "coverage": [0.05, 0.10]},
+        "Large-High": {"size": [1000, 2500, 5000], "coverage": [0.25, 0.50, 1.00]},
     }
 
     all_quadrant_tables = []
