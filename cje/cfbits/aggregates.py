@@ -124,7 +124,7 @@ def geometric_mean(values: pd.Series) -> float:
     """Compute geometric mean, handling NaN and zero values."""
     clean_values = values.dropna()
     if len(clean_values) == 0:
-        return np.nan
+        return float(np.nan)
     # Handle zeros by adding small epsilon
     clean_values = clean_values.clip(lower=1e-10)
     return float(np.exp(np.mean(np.log(clean_values))))

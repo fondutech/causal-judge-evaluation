@@ -103,7 +103,7 @@ Accounts for calibration uncertainty in very efficient estimators.
 ## Implementation Notes
 
 - Results must include `robust_confidence_intervals` or fall back to SEs
-- Quadrant classification uses size/oracle thresholds (1000/0.1)
+- Quadrant classification uses size/oracle thresholds (500/0.10)
 - Paired deltas match on (seed, sample_size, oracle_coverage)
 - Bootstrap uses 1000 replicates for CI construction
 - Wilcoxon test requires n>5 and non-constant differences

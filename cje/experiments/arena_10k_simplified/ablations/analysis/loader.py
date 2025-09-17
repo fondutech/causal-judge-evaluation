@@ -62,27 +62,29 @@ def add_quadrant_classification(results: List[Dict[str, Any]]) -> None:
     """Add quadrant classification to results based on sample size and oracle coverage.
 
     Quadrants:
-    - Small-LowOracle: ≤1000 samples, ≤25% oracle coverage
-    - Small-HighOracle: ≤1000 samples, >25% oracle coverage
-    - Large-LowOracle: >1000 samples, ≤25% oracle coverage
-    - Large-HighOracle: >1000 samples, >25% oracle coverage
+    - Small-LowOracle: ≤500 samples, ≤10% oracle coverage
+    - Small-HighOracle: ≤500 samples, >10% oracle coverage
+    - Large-LowOracle: >500 samples, ≤10% oracle coverage
+    - Large-HighOracle: >500 samples, >10% oracle coverage
 
     Args:
         results: List of result dictionaries (modified in place)
     """
+    from .constants import SIZE_THRESHOLD, ORACLE_THRESHOLD
+
     for result in results:
         spec = result.get("spec", {})
         sample_size = spec.get("sample_size", 0)
         oracle_coverage = spec.get("oracle_coverage", 0)
 
-        # Classify into quadrants
-        if sample_size <= 1000 and oracle_coverage <= 0.25:
+        # Classify into quadrants using constants
+        if sample_size <= SIZE_THRESHOLD and oracle_coverage <= ORACLE_THRESHOLD:
             result["quadrant"] = "Small-LowOracle"
-        elif sample_size <= 1000 and oracle_coverage > 0.25:
+        elif sample_size <= SIZE_THRESHOLD and oracle_coverage > ORACLE_THRESHOLD:
             result["quadrant"] = "Small-HighOracle"
-        elif sample_size > 1000 and oracle_coverage <= 0.25:
+        elif sample_size > SIZE_THRESHOLD and oracle_coverage <= ORACLE_THRESHOLD:
             result["quadrant"] = "Large-LowOracle"
-        else:  # sample_size > 1000 and oracle_coverage > 0.25
+        else:  # sample_size > SIZE_THRESHOLD and oracle_coverage > ORACLE_THRESHOLD
             result["quadrant"] = "Large-HighOracle"
 
 

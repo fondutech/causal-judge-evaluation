@@ -5,6 +5,11 @@ POLICIES = ["clone", "parallel_universe_prompt", "premium", "unhelpful"]
 WELL_BEHAVED_POLICIES = ["clone", "parallel_universe_prompt", "premium"]
 
 # Quadrant definitions
+# Size threshold: Small ≤ 500, Large > 500
+# Oracle threshold: LowOracle ≤ 0.10, HighOracle > 0.10
+SIZE_THRESHOLD = 500  # samples
+ORACLE_THRESHOLD = 0.10  # coverage fraction
+
 QUADRANT_ORDER = [
     "Small-LowOracle",
     "Small-HighOracle",

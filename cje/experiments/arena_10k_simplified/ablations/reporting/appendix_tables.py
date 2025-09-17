@@ -41,12 +41,18 @@ def generate_quadrant_leaderboard(
         size = spec.get("sample_size", 0)
         coverage = spec.get("oracle_coverage", 0)
 
-        if size <= 1000:
+        # Use constants for thresholds
+        from cje.experiments.arena_10k_simplified.ablations.analysis.constants import (
+            SIZE_THRESHOLD,
+            ORACLE_THRESHOLD,
+        )
+
+        if size <= SIZE_THRESHOLD:
             size_label = "Small"
         else:
             size_label = "Large"
 
-        if coverage <= 0.1:
+        if coverage <= ORACLE_THRESHOLD:
             cov_label = "LowOracle"
         else:
             cov_label = "HighOracle"

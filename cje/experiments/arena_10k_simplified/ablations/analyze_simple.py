@@ -190,13 +190,14 @@ def add_quadrant_classification(results: List[Dict[str, Any]]) -> None:
         oracle_coverage = spec.get("oracle_coverage", 0)
 
         # Classify into quadrants
-        if sample_size <= 1000 and oracle_coverage <= 0.25:
+        # Updated thresholds: Size ≤ 500, Oracle ≤ 0.10
+        if sample_size <= 500 and oracle_coverage <= 0.10:
             result["quadrant"] = "Small-LowOracle"
-        elif sample_size <= 1000 and oracle_coverage > 0.25:
+        elif sample_size <= 500 and oracle_coverage > 0.10:
             result["quadrant"] = "Small-HighOracle"
-        elif sample_size > 1000 and oracle_coverage <= 0.25:
+        elif sample_size > 500 and oracle_coverage <= 0.10:
             result["quadrant"] = "Large-LowOracle"
-        else:  # sample_size > 1000 and oracle_coverage > 0.25
+        else:  # sample_size > 500 and oracle_coverage > 0.10
             result["quadrant"] = "Large-HighOracle"
 
 
@@ -230,11 +231,12 @@ def print_summary_tables(results: List[Dict[str, Any]]) -> None:
         sample_size = row["sample_size"]
         oracle_coverage = row["oracle_coverage"]
 
-        if sample_size <= 1000 and oracle_coverage <= 0.25:
+        # Updated thresholds: Size ≤ 500, Oracle ≤ 0.10
+        if sample_size <= 500 and oracle_coverage <= 0.10:
             return "Small-LowOracle"
-        elif sample_size <= 1000 and oracle_coverage > 0.25:
+        elif sample_size <= 500 and oracle_coverage > 0.10:
             return "Small-HighOracle"
-        elif sample_size > 1000 and oracle_coverage <= 0.25:
+        elif sample_size > 500 and oracle_coverage <= 0.10:
             return "Large-LowOracle"
         else:
             return "Large-HighOracle"
@@ -1528,10 +1530,10 @@ def print_quadrant_comparison(results: List[Dict[str, Any]]) -> None:
         quadrant_results[quad].append(result)
 
     print(f"\nQuadrant Definitions:")
-    print(f"• Small-LowOracle: ≤1000 samples, ≤25% oracle coverage")
-    print(f"• Small-HighOracle: ≤1000 samples, >25% oracle coverage")
-    print(f"• Large-LowOracle: >1000 samples, ≤25% oracle coverage")
-    print(f"• Large-HighOracle: >1000 samples, >25% oracle coverage")
+    print(f"• Small-LowOracle: ≤500 samples, ≤10% oracle coverage")
+    print(f"• Small-HighOracle: ≤500 samples, >10% oracle coverage")
+    print(f"• Large-LowOracle: >500 samples, ≤10% oracle coverage")
+    print(f"• Large-HighOracle: >500 samples, >10% oracle coverage")
 
     # Compute metrics for each quadrant
     quadrant_summaries = {}
@@ -1850,11 +1852,12 @@ def main() -> None:
             oracle_coverage = spec.get("oracle_coverage", 0)
 
             # Classify into quadrants
-            if sample_size <= 1000 and oracle_coverage <= 0.25:
+            # Updated thresholds: Size ≤ 500, Oracle ≤ 0.10
+            if sample_size <= 500 and oracle_coverage <= 0.10:
                 result["quadrant"] = "Small-LowOracle"
-            elif sample_size <= 1000 and oracle_coverage > 0.25:
+            elif sample_size <= 500 and oracle_coverage > 0.10:
                 result["quadrant"] = "Small-HighOracle"
-            elif sample_size > 1000 and oracle_coverage <= 0.25:
+            elif sample_size > 500 and oracle_coverage <= 0.10:
                 result["quadrant"] = "Large-LowOracle"
             else:
                 result["quadrant"] = "Large-HighOracle"
