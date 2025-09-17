@@ -582,16 +582,20 @@ def create_config_key(result: Dict[str, Any]) -> str:
     use_calib = extra.get(
         "use_weight_calibration", result.get("use_weight_calibration", False)
     )
-    use_iic = extra.get("use_iic", result.get("use_iic", False))
 
     # Special cases that always have calibration
     if estimator in ["calibrated-ips", "orthogonalized-ips", "oc-dr-cpo", "stacked-dr"]:
-        return f"{estimator} (iic={use_iic})"
-    elif estimator in ["raw-ips", "tr-cpo", "tr-cpo-e"]:
+        # These always use calibration
+        return f"{estimator}"
+    elif estimator in ["raw-ips"]:
         # Never calibrated
-        return f"{estimator} (iic={use_iic})"
+        return f"{estimator}"
     else:
-        return f"{estimator} (calib={use_calib}, iic={use_iic})"
+        # DR methods can have calibration on/off
+        if use_calib:
+            return f"{estimator} (calib)"
+        else:
+            return f"{estimator}"
 
 
 def compute_robust_bounds(
@@ -1381,27 +1385,23 @@ def generate_delta_tables(
         output_format: "dataframe", "latex", or "markdown"
 
     Returns:
-        Dict with panels A (calibration) and B (IIC)
+        Dict with calibration effects
     """
     # Panel A: Weight calibration effect (affects point estimates)
     panel_a = compute_paired_deltas(
         results, toggle="use_weight_calibration", focus_on_variance=False
     )
 
-    # Panel B: IIC effect (affects SEs only, not point estimates)
-    panel_b = compute_paired_deltas(results, toggle="use_iic", focus_on_variance=True)
-
     if output_format == "dataframe":
-        return {"calibration": panel_a, "iic": panel_b}
+        return {"calibration": panel_a}
     elif output_format == "latex":
         return {
             "calibration": format_delta_latex(
                 panel_a, "Weight Calibration (SIMCal) Effect"
             ),
-            "iic": format_delta_latex(panel_b, "IIC Effect"),
         }
     else:
-        return {"calibration": panel_a.to_markdown(), "iic": panel_b.to_markdown()}
+        return {"calibration": panel_a.to_markdown()}
 
 
 def format_delta_latex(df: pd.DataFrame, title: str) -> str:

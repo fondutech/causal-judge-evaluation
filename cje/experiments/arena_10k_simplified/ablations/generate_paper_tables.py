@@ -82,7 +82,7 @@ def main() -> None:
     # Filter to successful runs only
     results = [r for r in results if r.get("success")]
 
-    # Deduplicate by (estimator, sample_size, oracle_coverage, seed_base, use_calib, use_iic)
+    # Deduplicate by (estimator, sample_size, oracle_coverage, seed_base, use_calib)
     seen = set()
     deduped = []
     for r in results:
@@ -95,8 +95,7 @@ def main() -> None:
         use_calib = extra.get(
             "use_weight_calibration", r.get("use_weight_calibration", False)
         )
-        use_iic = extra.get("use_iic", r.get("use_iic", False))
-        key = (est, size, cov, seed, bool(use_calib), bool(use_iic))
+        key = (est, size, cov, seed, bool(use_calib))
         if key in seen:
             continue
         seen.add(key)
@@ -147,19 +146,16 @@ def main() -> None:
     try:
         if args.format in ["latex", "both"]:
             delta_tables = generate_delta_tables(results, "latex")
-            (args.output / "main" / "table2a_calibration.tex").write_text(
+            (args.output / "main" / "table2_calibration.tex").write_text(
                 delta_tables["calibration"]
             )
-            (args.output / "main" / "table2b_iic.tex").write_text(delta_tables["iic"])
-            print("  ✓ LaTeX versions saved (2a: calibration, 2b: IIC)")
+            print("  ✓ LaTeX version saved")
 
         if args.format in ["markdown", "both"]:
             delta_tables_md = generate_delta_tables(results, "markdown")
             (args.output / "main" / "table2_deltas.md").write_text(
-                "## Panel A: Weight Calibration Effect\n\n"
+                "## Weight Calibration Effect\n\n"
                 + delta_tables_md["calibration"]
-                + "\n\n## Panel B: IIC Effect\n\n"
-                + delta_tables_md["iic"]
             )
             print("  ✓ Markdown version saved")
     except Exception as e:
