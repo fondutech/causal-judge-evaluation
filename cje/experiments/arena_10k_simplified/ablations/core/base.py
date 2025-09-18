@@ -962,15 +962,23 @@ class BaseAblation:
                     for policy, diag in mc_diag.items():
                         if isinstance(diag, dict):
                             result["mc_diagnostics"][policy] = {
-                                "M_min": diag.get("M_min"),
-                                "M_max": diag.get("M_max"),
-                                "mc_var_fraction": diag.get("mc_variance_share"),
+                                "M_min": diag.get(
+                                    "min_draws_per_prompt", diag.get("M_min")
+                                ),
+                                "M_max": diag.get(
+                                    "max_draws_per_prompt", diag.get("M_max")
+                                ),
+                                "mc_var_fraction": diag.get(
+                                    "mc_share", diag.get("mc_variance_share")
+                                ),
                             }
                             # Collect for aggregation
-                            if diag.get("M_min") is not None:
-                                all_m_mins.append(diag.get("M_min"))
-                            if diag.get("M_max") is not None:
-                                all_m_maxs.append(diag.get("M_max"))
+                            m_min = diag.get("min_draws_per_prompt", diag.get("M_min"))
+                            m_max = diag.get("max_draws_per_prompt", diag.get("M_max"))
+                            if m_min is not None:
+                                all_m_mins.append(m_min)
+                            if m_max is not None:
+                                all_m_maxs.append(m_max)
 
                     # Add aggregated values at top level for easy access
                     if all_m_mins:

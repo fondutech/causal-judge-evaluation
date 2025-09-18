@@ -4,6 +4,8 @@ Experiment configuration for unified ablation system.
 This defines all parameter combinations we want to test.
 """
 
+import numpy as np
+
 # Core experiment parameters
 EXPERIMENTS = {
     "estimators": [
@@ -26,18 +28,7 @@ EXPERIMENTS = {
     # Reward calibration mode (not ablated - just use monotone)
     "reward_calibration_mode": "auto",
     # Multiple seeds for robust results
-    "seeds": [
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-    ],
+    "seeds": np.arange(0, 50, 1),
     # CF-bits computation (single toggle, not a grid dimension)
     # Set to True to enable CF-bits metrics for all experiments
     "compute_cfbits": True,  # Default ON to gather CF-bits metrics
@@ -104,3 +95,6 @@ RUNTIME = {
     "parallel": False,
     "max_workers": 10,
 }
+
+
+print(EXPERIMENTS["seeds"])
