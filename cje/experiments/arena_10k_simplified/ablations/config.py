@@ -95,6 +95,3 @@ RUNTIME = {
     "parallel": False,
     "max_workers": 10,
 }
-
-
-print(EXPERIMENTS["seeds"])
