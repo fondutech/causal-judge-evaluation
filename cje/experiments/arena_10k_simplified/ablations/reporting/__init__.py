@@ -1,55 +1,38 @@
 """
-Information-dense reporting for paper tables.
+Reporting module for CJE ablation experiments (v2.0).
 
-This module provides functions to generate the core tables (1-3) for the main text
-and diagnostic tables (A1-A6) for the appendix, optimized for information density.
+This module provides a clean, modular pipeline for generating journal-quality
+tables from experiment results. The design uses regime-based analysis matrices
+instead of competition-style leaderboards.
+
+Structure:
+- io.py: Tidy data loading and deduplication
+- metrics.py: Pure metric functions over tidy DataFrames
+- aggregate.py: Groupby wrappers and paired delta computation
+- tables_main.py: Main table builders (M1-M3)
+- format_latex.py: LaTeX formatting utilities
+- cli_generate.py: Unified CLI for table generation
+
+Usage:
+    python -m reporting.cli_generate \
+        --results results/all_experiments.jsonl \
+        --output tables/ \
+        --format latex
 """
 
-from .paper_tables import (
-    generate_leaderboard,
-    generate_delta_tables,
-    generate_stacking_table,
-    compute_debiased_rmse,
-    compute_interval_score_oa,
-    compute_calibration_score,
-    compute_se_geomean,
-    compute_ranking_metrics,
-    compute_paired_deltas,
-)
-
-from .appendix_tables import (
-    generate_quadrant_leaderboard,
-    generate_bias_patterns_table,
-    generate_overlap_diagnostics_table,
-    generate_oracle_adjustment_table,
-    generate_boundary_outlier_table,
-    generate_runtime_complexity_table,
-    generate_mae_summary_table,
-    generate_simcal_ess_gain_table,
-    generate_simcal_weight_diag_table,
-)
+from . import io
+from . import metrics
+from . import aggregate
+from . import tables_main
+from . import format_latex
 
 __all__ = [
-    # Core tables
-    "generate_leaderboard",
-    "generate_delta_tables",
-    "generate_stacking_table",
-    # Metrics
-    "compute_debiased_rmse",
-    "compute_interval_score_oa",
-    "compute_calibration_score",
-    "compute_se_geomean",
-    "compute_ranking_metrics",
-    "compute_paired_deltas",
-    # Appendix tables
-    "generate_quadrant_leaderboard",
-    "generate_bias_patterns_table",
-    "generate_overlap_diagnostics_table",
-    "generate_oracle_adjustment_table",
-    "generate_boundary_outlier_table",
-    "generate_runtime_complexity_table",
-    "generate_mae_summary_table",
-    # SIMCal-focused tables
-    "generate_simcal_ess_gain_table",
-    "generate_simcal_weight_diag_table",
+    "io",
+    "metrics",
+    "aggregate",
+    "tables_main",
+    "format_latex",
 ]
+
+# Version
+__version__ = "2.1.0"

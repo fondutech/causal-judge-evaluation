@@ -289,6 +289,43 @@ class BaseAblation:
                 var_cap=var_cap,  # Pass variance budget (rho) parameter
                 # Remove use_outer_split - it doesn't exist
             ),
+            "stacked-dr-oc": lambda s: StackedDREstimator(
+                s,
+                estimators=[
+                    "dr-cpo",
+                    "oc-dr-cpo",
+                    "tmle",
+                    "mrdr",
+                ],  # Include both dr-cpo and oc-dr-cpo
+                reward_calibrator=cal_result.calibrator if cal_result else None,
+                n_folds=DR_CONFIG["n_folds"],
+                use_calibrated_weights=True,  # Always use calibration (both dr-cpo and oc-dr-cpo will use it)
+                use_iic=use_iic,
+                oua_jackknife=oua,
+                covariance_regularization=1e-4,
+                include_mc_in_objective=include_mc,
+                mc_lambda=mc_lambda,
+                var_cap=var_cap,
+            ),
+            "stacked-dr-oc-tr": lambda s: StackedDREstimator(
+                s,
+                estimators=[
+                    "dr-cpo",
+                    "oc-dr-cpo",
+                    "tmle",
+                    "mrdr",
+                    "tr-cpo-e",
+                ],  # Adds tr-cpo-e to the mix
+                reward_calibrator=cal_result.calibrator if cal_result else None,
+                n_folds=DR_CONFIG["n_folds"],
+                use_calibrated_weights=True,  # Always use calibration
+                use_iic=use_iic,
+                oua_jackknife=oua,
+                covariance_regularization=1e-4,
+                include_mc_in_objective=include_mc,
+                mc_lambda=mc_lambda,
+                var_cap=var_cap,
+            ),
         }
 
         if spec.estimator not in estimator_map:

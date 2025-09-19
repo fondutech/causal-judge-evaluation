@@ -17,6 +17,8 @@ EXPERIMENTS = {
         "tr-cpo-e",  # Triply-Robust CPO (efficient, m̂(S))
         "tr-cpo-e-anchored-orthogonal",  # TR-CPO (efficient + anchored + orthogonal)
         "stacked-dr",  # Ensemble with dr-cpo, tmle, mrdr (always with calibration)
+        "stacked-dr-oc",  # Ensemble with dr-cpo, oc-dr-cpo, tmle, mrdr (adds orthogonalized component)
+        "stacked-dr-oc-tr",  # Ensemble with dr-cpo, oc-dr-cpo, tmle, mrdr, tr-cpo-e (adds triply-robust)
     ],
     "sample_sizes": [250, 500, 1000, 2500, 5000],
     "oracle_coverages": [0.05, 0.10, 0.25, 0.5, 1.00],
@@ -46,6 +48,8 @@ REQUIRES_CALIBRATION = {
     "orthogonalized-ips",  # Requires calibrated weights for orthogonalization
     "oc-dr-cpo",  # Orthogonalized Calibrated DR requires calibration
     "stacked-dr",  # Production default - always uses calibration
+    "stacked-dr-oc",  # Stacked variant with oc-dr-cpo component - always uses calibration
+    "stacked-dr-oc-tr",  # Stacked variant with oc-dr-cpo and tr-cpo-e - always uses calibration
 }
 
 # These estimators can work with or without calibration

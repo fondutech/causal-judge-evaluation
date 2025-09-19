@@ -1,124 +1,236 @@
-# Information-Dense Paper Tables
+# Reporting Module v2.0
 
-This module generates high information-density tables optimized for paper presentation, focusing on three key questions:
+This module generates journal-quality tables for CJE ablation experiments, using regime-based analysis matrices instead of competition-style leaderboards.
 
-1. **Who wins overall (and why)?**
-2. **Which design choices matter, and in what data regimes?**
-3. **Are claims statistically and numerically well-founded?**
+## Quick Start
 
-## Usage
-
-Generate all tables:
+Generate all main tables:
 ```bash
-python generate_paper_tables.py --results results/all_experiments.jsonl --output tables/
+cd /path/to/cje/experiments/arena_10k_simplified/ablations
+
+python -m reporting.cli_generate \
+  --results results/all_experiments.jsonl \
+  --output tables/ \
+  --format latex
 ```
 
-## Core Tables (Main Text)
+## Usage Examples
 
-### Table 1: Estimator Leaderboard
-**Goal:** One glance shows overall trade-offs among accuracy, calibration, sharpness, and ranking quality.
+### Generate specific tables
+```bash
+# Just Table M1 (accuracy by regime)
+python -m reporting.cli_generate \
+  --results results/all_experiments.jsonl \
+  --output tables/ \
+  --format latex \
+  --tables m1
 
-**Metrics:**
-- **RMSE^d**: Oracle-noise-debiased RMSE (point accuracy)
-- **IntervalScore^OA**: Oracle-adjusted interval score (CI quality)
-- **CalibScore**: Mean |coverage - 95%| (calibration)
-- **SE GeoMean**: Geometric mean of SEs (sharpness)
-- **Kendall τ**: Rank correlation (policy ordering)
-- **Top-1 Acc**: % correctly identifying best policy
-
-### Table 2: Design Choice Effects (Δ Tables)
-**Goal:** Make causal reading of ablations trivial with matched-pair deltas.
-
-**Panels:**
-- **A: Weight Calibration (SIMCal)**: Δ(calibrated - uncalibrated)
-- **B: IIC Effect**: Δ(IIC on - IIC off)
-
-Shows changes with bootstrap CIs and significance markers.
-
-### Table 3: Stacked-DR Efficiency & Stability
-**Goal:** Justify stacking approach and regularization.
-
-**Metrics:**
-- **SE Ratio**: SE(stacked) / min{SE(components)} (efficiency)
-- **Min Eig(Σ)**: Pre/post regularization (stability)
-- **Cond(Σ)**: Condition number (numerical health)
-- **% Near-Singular**: Share of problematic cases
-- **Runtime**: Oracle IC vs complex CV comparison
-
-## Appendix Tables
-
-### Table A1: Quadrant Leaderboard
-RMSE^d and CalibScore by data regime (SL/SH/LL/LH).
-
-### Table A2: Bias Patterns
-Mean bias, |bias|, and per-policy biases with t-statistics.
-
-### Table A3: Overlap & Tail Diagnostics
-ESS%, tail index, Hellinger affinity bucketed as Good/OK/Poor.
-
-### Table A4: Oracle Adjustment Share
-Proportion of uncertainty from calibration; coverage with/without OA.
-
-### Table A5: Calibration Boundary Analysis
-Distance to boundaries; outlier detection rates (especially unhelpful).
-
-### Table A6: Runtime & Complexity
-Median runtime, computational complexity, folds used.
-
-## Key Design Principles
-
-1. **Information Density**: Every column answers a distinct question
-2. **Orthogonal Metrics**: Avoid redundant columns (e.g., both CI width and SE)
-3. **Geometric Means**: For SE and interval scores (robust to outliers)
-4. **Paired Deltas**: Control for confounders with matched experiments
-5. **Statistical Rigor**: Bootstrap CIs, Wilcoxon tests, t-statistics
-6. **Visual Hierarchy**: Bold best, underline second-best in LaTeX
-
-## Metric Definitions
-
-### Debiased RMSE
+# Multiple tables
+python -m reporting.cli_generate \
+  --results results/all_experiments.jsonl \
+  --output tables/ \
+  --format latex \
+  --tables m1,m2,m3
 ```
-RMSE^d = sqrt(MSE - oracle_variance)
-```
-Removes irreducible oracle noise for fair comparison.
 
-### Interval Score (OA)
+### Output formats
+```bash
+# Markdown for quick viewing
+python -m reporting.cli_generate \
+  --results results/all_experiments.jsonl \
+  --output tables/ \
+  --format markdown
+
+# Both LaTeX and Markdown
+python -m reporting.cli_generate \
+  --results results/all_experiments.jsonl \
+  --output tables/ \
+  --format both
+```
+
+### Filter to specific regimes
+```bash
+# Small samples + low coverage only
+python -m reporting.cli_generate \
+  --results results/all_experiments.jsonl \
+  --output tables/ \
+  --format latex \
+  --regimes "250,500;0.05,0.10"
+
+# Multiple regime groups
+python -m reporting.cli_generate \
+  --results results/all_experiments.jsonl \
+  --output tables/ \
+  --format latex \
+  --regimes "250,500;0.05,0.10|1000,2500,5000;0.25,0.50,1.0"
+```
+
+### Additional options
+```bash
+# Exclude unhelpful policy (not recommended - defaults to including)
+python -m reporting.cli_generate \
+  --results results/all_experiments.jsonl \
+  --output tables/ \
+  --format latex \
+  --exclude-unhelpful
+
+# Verbose output for debugging
+python -m reporting.cli_generate \
+  --results results/all_experiments.jsonl \
+  --output tables/ \
+  --format latex \
+  --verbose
+```
+
+## Output Structure
+
+```
+tables/
+├── main/
+│   ├── table_m1_accuracy.tex      # Accuracy & uncertainty by regime
+│   ├── table_m2_deltas.tex        # Design choice effects (paired deltas)
+│   └── table_m3_gates.tex         # Gate pass rates & diagnostics
+├── figures/
+│   └── coverage_vs_width_data.csv # Data for coverage vs width plots
+└── summary_statistics.txt         # Key summary statistics
+```
+
+## Main Tables
+
+### Table M1: Accuracy & Uncertainty by Regime
+- **Purpose**: Show estimator performance across sample size × oracle coverage regimes
+- **Columns**: RMSE^d, IS^OA, CalibScore, SE GeoMean, Gate Pass %, Runtime
+- **Key insight**: Performance varies dramatically by regime - no single "winner"
+
+### Table M2: Design Choice Deltas
+- **Purpose**: Quantify effects of design choices via paired comparisons
+- **Panels**:
+  - Weight calibration (SIMCal) on/off
+  - Variance cap sensitivity (ρ ∈ {1,2})
+  - Other toggles as available
+- **Shows**: Δ metrics with bootstrap CIs and Wilcoxon p-values
+
+### Table M3: Gates & Diagnostics
+- **Purpose**: Audit trail for reliability gates
+- **Columns**: Overlap/Judge/DR/Cap stability pass rates, ESS%, Hill α
+- **Key insight**: Which estimators are trustworthy in which regimes
+
+## Architecture
+
+### Modular Pipeline
+```
+JSONL → Tidy DataFrame → Metrics → Aggregation → Formatting
+         (io.py)        (metrics.py) (aggregate.py) (format_latex.py)
+```
+
+### Key Components
+- **io.py**: Tidy data loading (one row per run × policy)
+- **metrics.py**: Pure functions for all metrics (RMSE^d, IS^OA, etc.)
+- **aggregate.py**: Groupby operations and paired deltas
+- **tables_main.py**: Table builders for M1-M3
+- **format_latex.py**: LaTeX formatting with booktabs
+- **cli_generate.py**: Unified command-line interface
+
+### Data Model
+Each row in the tidy DataFrame represents one (run, policy) pair with:
+- Identifiers: run_id, seed, estimator
+- Regime: regime_n (sample size), regime_cov (oracle coverage)
+- Config: use_calib, rho, outer_cv
+- Metrics: est, oracle_truth, se, ci_lo, ci_hi
+- Diagnostics: ess_rel, hill_alpha, gates
+- Performance: runtime_s
+
+## Key Metrics
+
+### RMSE^d (Debiased RMSE)
+```
+RMSE^d = sqrt(mean(max(0, (est - oracle)² - var_oracle)))
+```
+Removes irreducible oracle sampling noise for fair comparison.
+
+### IS^OA (Oracle-Adjusted Interval Score)
 ```
 IS = width + (2/α) × coverage_penalty
 ```
-Balances sharpness and calibration in one metric.
+Balances CI sharpness and calibration in one metric.
 
-### Calibration Score
+### CalibScore
 ```
-CalibScore = |empirical_coverage - 0.95|
+CalibScore = |empirical_coverage - 0.95| × 100
 ```
 Distance from target coverage (lower is better).
 
-### Oracle Adjustment (OA)
-```
-SE^OA = sqrt(SE^2 + oracle_uncertainty^2)
-```
-Accounts for calibration uncertainty in very efficient estimators.
+### Gate Pass Rates
+- **Overlap**: ESS > 10% or Hill α > 2
+- **Judge**: Kendall τ > 0.3
+- **DR**: Orthogonality CI contains 0
+- **Cap Stable**: < 50% weights capped
 
-## Implementation Notes
+## Design Principles
 
-- Results must include `robust_confidence_intervals` or fall back to SEs
-- Quadrant classification uses size/oracle thresholds (500/0.10)
-- Paired deltas match on (seed, sample_size, oracle_coverage)
-- Bootstrap uses 1000 replicates for CI construction
-- Wilcoxon test requires n>5 and non-constant differences
+1. **No leaderboards**: Regime-based matrices show context-dependent performance
+2. **Tidy data**: One source of truth, pure functions over DataFrames
+3. **Numerical robustness**: Epsilon guards, IQR-based outlier handling
+4. **Statistical rigor**: Bootstrap CIs, Wilcoxon tests, paired comparisons
+5. **Journal quality**: Professional LaTeX with booktabs, significance markers
 
-## Output Formats
+## Migration from v1.0
 
-- **LaTeX**: Publication-ready with `\textbf{}` and `\underline{}`
-- **Markdown**: GitHub-compatible tables
-- **DataFrame**: For further analysis in Python
+The old leaderboard-based system has been removed. Key changes:
+- `generate_paper_tables.py` → `python -m reporting.cli_generate`
+- `paper_tables.py` → split into modular components
+- "Leaderboard" → "Accuracy by Regime" (Table M1)
+- Aggregate scores removed → focus on regime-specific performance
+
+## Requirements
+
+- Python 3.8+
+- pandas, numpy, scipy
+- Input: JSONL with experiment results
+- Each result must have: estimates, oracle_truths, confidence_intervals
+
+## Troubleshooting
+
+**Empty tables**: Check that results file has successful runs (`"success": true`)
+
+**Missing regimes**: Verify sample_size and oracle_coverage values match your experiments
+
+**Pandas warnings**: Update pandas to latest version or ignore FutureWarnings
+
+**MC diagnostics missing**: Only computed for DR estimators (dr-cpo, stacked-dr, etc.)
 
 ## File Structure
 ```
 reporting/
 ├── __init__.py          # Module exports
-├── paper_tables.py      # Core tables (1-3)
-├── appendix_tables.py   # Diagnostic tables (A1-A6)
-└── README.md           # This file
+├── io.py               # Tidy data loader
+├── metrics.py          # Metric computation
+├── aggregate.py        # Aggregation utilities
+├── tables_main.py      # Main table builders
+├── format_latex.py     # LaTeX formatting
+├── cli_generate.py     # CLI interface
+├── README.md           # This file
+└── ../tests/
+    └── test_reporting.py # Smoke tests for regression prevention
 ```
+
+## Recent Improvements (v2.1)
+
+### Correctness Fixes
+- **Runtime deduplication**: No longer double-counts runtime across policies
+- **DR detection**: Robust regex with word boundaries, handles NaN estimators
+- **Variance cap sensitivity**: Uses paired matching (same seed/regime)
+- **SE percentage**: Mean of per-pair changes, not ratio of means
+- **CI sorting**: Ensures ci_lo < ci_hi for malformed data
+
+### New Features
+- **Coverage delta**: Added to Table M2 as "ΔCoverage (pp)"
+- **Bootstrap seed**: Optional seed parameter for reproducibility
+- **Overall row handling**: Excluded from best/second highlighting
+- **Smoke tests**: Comprehensive test suite in tests/test_reporting.py
+
+## Version History
+
+- **v2.1** (current): Production-ready with correctness fixes and tests
+- **v2.0**: Modular architecture, regime-based tables, no leaderboards
+- **v1.0** (removed): Legacy leaderboard implementation

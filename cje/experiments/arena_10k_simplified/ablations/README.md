@@ -12,9 +12,7 @@ python run.py       # Runs with checkpoint/resume support
 python test_quick.py  # Runs 5 experiments to verify parameters are working
 
 # Generate paper tables
-python reporting/paper_tables.py --format markdown    # Main tables
-python reporting/appendix_tables.py --format markdown  # Appendix tables
-python generate_quadrant_leaderboard.py               # Quadrant analysis
+python -m reporting.cli_generate                      # All tables (main + quadrant)
 
 # Analyze results
 python analyze_simple.py   # Generate summary tables and basic plots
@@ -25,14 +23,18 @@ python analyze_calibration_detail.py  # Statistical significance testing
 
 ## Table Generation
 
-See `GENERATE_TABLES.md` for detailed instructions on generating all paper tables.
+Tables are generated using the unified reporting module:
 
-Key commands:
-- `python reporting/paper_tables.py` - Tables 1-3 (leaderboard, design choices, stacking)
-- `python reporting/appendix_tables.py` - Tables A1-A5 (quadrants, coverage, runtime, etc.)
-- `python generate_quadrant_leaderboard.py` - Quadrant-specific leaderboards
+```bash
+# Generate all tables (main + quadrant)
+python -m reporting.cli_generate --results results/all_experiments.jsonl --output-dir tables/
 
-Tables are saved to `tables/main/`, `tables/appendix/`, and `tables/quadrant/`.
+# Generate specific tables only
+python -m reporting.cli_generate --tables m1,m2,m3  # Main tables only
+python -m reporting.cli_generate --tables quadrant  # Quadrant tables only
+```
+
+Tables are saved to `tables/main/` and `tables/quadrant/`.
 
 ## Current System Structure
 
