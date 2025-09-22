@@ -493,3 +493,54 @@ def build_summary_statistics(df: pd.DataFrame, output_format: str = "dict") -> A
             )
 
         return "\n".join(lines)
+
+
+def build_table_ess_comparison(df: pd.DataFrame) -> pd.DataFrame:
+    """Build ESS comparison table showing calibrated vs raw IPS improvements.
+
+    Shows how SIMCal weight calibration improves ESS across different policies,
+    demonstrating variance reduction benefits.
+
+    Args:
+        df: Tidy DataFrame from io.load_results_jsonl
+
+    Returns:
+        DataFrame with ESS comparison between raw and calibrated IPS
+    """
+    # Filter to IPS methods only
+    df_ips = df[df["estimator"].isin(["raw-ips", "calibrated-ips"])].copy()
+
+    if df_ips.empty:
+        return pd.DataFrame()
+
+    # Calculate mean ESS by estimator and policy
+    ess_data = []
+
+    for policy in ["clone", "parallel_universe_prompt", "premium", "unhelpful"]:
+        policy_df = df_ips[df_ips["policy"] == policy]
+
+        if not policy_df.empty:
+            raw_ess = policy_df[policy_df["estimator"] == "raw-ips"]["ess_%"].mean()
+            cal_ess = policy_df[policy_df["estimator"] == "calibrated-ips"][
+                "ess_%"
+            ].mean()
+
+            # Calculate improvement
+            if raw_ess > 0:
+                improvement = ((cal_ess - raw_ess) / raw_ess) * 100
+            else:
+                improvement = 0.0
+
+            ess_data.append(
+                {
+                    "Policy": policy.replace("_", " ").title(),
+                    "Raw IPS ESS %": f"{raw_ess:.1f}%",
+                    "Calibrated IPS ESS %": f"{cal_ess:.1f}%",
+                    "Improvement": f"{improvement:+.0f}%",
+                }
+            )
+
+    if not ess_data:
+        return pd.DataFrame()
+
+    return pd.DataFrame(ess_data)
