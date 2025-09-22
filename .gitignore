@@ -259,6 +259,9 @@ cje/experiments/arena_10k_simplified/test_e2e_data/logprobs/
 ablation_results/
 *.log
 
+# Generated table outputs
+cje/experiments/arena_10k_simplified/ablations/tables/
+
 # Development and helper files
 concat_readmes.sh
 concat_py_files.sh
