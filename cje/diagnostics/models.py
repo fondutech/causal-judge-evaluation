@@ -20,7 +20,7 @@ class Status(Enum):
 
 
 class GateState(Enum):
-    """CF-bits gate states (extends Status with REFUSE)."""
+    """Gate states (extends Status with REFUSE)."""
 
     GOOD = "good"
     WARNING = "warning"
@@ -474,243 +474,188 @@ class DRDiagnostics(IPSDiagnostics):
 
 
 @dataclass
-class CFBitsDiagnostics:
-    """CF-bits diagnostics combining uncertainty decomposition with actionable recommendations.
+class CJEDiagnostics:
+    """Unified diagnostics for paper-ready reporting.
 
-    CF-bits provides an information-theoretic framework that:
-    1. Decomposes total uncertainty into identification (structural) and sampling (statistical) components
-    2. Converts uncertainties into bits of information (log₂ reduction from baseline)
-    3. Provides reliability gates (GOOD/WARNING/CRITICAL/REFUSE) based on thresholds
-    4. Suggests concrete budget allocations to achieve target improvements
-
-    Follows the same patterns as IPSDiagnostics and DRDiagnostics.
+    Simplifies IPSDiagnostics and DRDiagnostics into a single class
+    focused on the two key questions:
+    1. Can we make level claims? (identification/coverage risk)
+    2. Are CIs honest? (sampling/variance risk)
     """
 
-    # ========== Core Identification ==========
-    policy: str  # Target policy being evaluated
-    estimator_type: str  # e.g., "CalibratedIPS", "DRCPOEstimator"
-    scenario: str  # "fresh_draws" or "logging_only"
+    # ========== Core Info ==========
+    estimator_type: str
+    method: str
+    n_samples_total: int
+    n_samples_valid: int
+    policies: List[str]
 
-    # ========== Width Decomposition ==========
-    wid: Optional[float] = None  # Identification width (structural uncertainty)
-    wvar: Optional[float] = None  # Sampling width (statistical uncertainty)
-    w_tot: Optional[float] = None  # Total width (wid + wvar)
-    w_max: Optional[float] = None  # Maximum of wid and wvar (bottleneck)
-    w0: float = 1.0  # Baseline width (1.0 for [0,1] KPIs)
+    # ========== Estimates ==========
+    estimates: Dict[str, float]
+    standard_errors: Dict[str, float]
+    confidence_intervals: Dict[str, Tuple[float, float]] = field(default_factory=dict)
 
-    # ========== CF-bits Information ==========
-    bits_tot: Optional[float] = None  # Total bits of information
-    bits_id: Optional[float] = None  # Bits from identification channel
-    bits_var: Optional[float] = None  # Bits from sampling channel
-
-    # ========== Efficiency Metrics ==========
-    ifr_main: Optional[float] = None  # Information Fraction Ratio (standard)
-    ifr_oua: Optional[float] = None  # IFR with Oracle Uncertainty Augmentation
-    aess_main: Optional[float] = None  # Adjusted ESS (n × IFR_main)
-    aess_oua: Optional[float] = None  # Adjusted ESS with OUA
-
-    # ========== σ(S) Structural Floors ==========
-    aessf_sigmaS: Optional[float] = None  # A-ESSF on judge marginal
-    aessf_sigmaS_lcb: Optional[float] = None  # Lower confidence bound
-    bc_sigmaS: Optional[float] = None  # Bhattacharyya coefficient on σ(S)
-
-    # ========== Variance Components ==========
-    var_main: Optional[float] = None  # Main IF variance
-    var_oracle: Optional[float] = None  # Oracle uncertainty contribution
-    var_total: Optional[float] = None  # Total variance (main + oracle)
-
-    # ========== Identification Diagnostics ==========
-    wid_diagnostics: Optional[Dict[str, Any]] = None  # Details from Wid computation
-    p_mass_unlabeled: Optional[float] = None  # Target mass on unlabeled bins
-    n_bins_used: Optional[int] = None  # Number of bins in Phase-1 certificate
-    n_oracle_available: Optional[int] = None  # Oracle samples available
-
-    # ========== Reliability Gates ==========
-    gate_state: GateState = GateState.GOOD  # Overall reliability assessment
-    gate_reasons: List[str] = field(default_factory=list)  # Specific issues
-    gate_suggestions: Dict[str, Any] = field(
-        default_factory=dict
-    )  # Actionable recommendations
-
-    # ========== Budget Recommendations ==========
-    logs_factor_for_half_bit: Optional[float] = (
-        None  # Sample size multiplier for 0.5 bits
+    # ========== Identification Risk (Coverage) ==========
+    # Key question: Can estimates be trusted for level claims?
+    coverage_risk: str = "unknown"  # "low", "medium", "high", "critical"
+    oracle_range: Optional[Tuple[float, float]] = None  # Learned from oracle slice
+    extrapolation_rate: Optional[float] = (
+        None  # % of target mass outside oracle support
     )
-    labels_for_wid_reduction: Optional[int] = None  # Additional labels to reduce Wid
-    dominant_channel: Optional[str] = None  # "identification" or "sampling"
+    boundary_risk_scores: Dict[str, float] = field(
+        default_factory=dict
+    )  # Per-policy 0-100
 
-    def validate(self) -> List[str]:
-        """Validate internal consistency of CF-bits diagnostics."""
-        issues = []
+    # ========== Variance Risk (Sampling) ==========
+    # Key question: Are confidence intervals honest?
+    variance_risk: str = "unknown"  # "low", "medium", "high", "critical"
+    weight_ess: float = 0.0  # Overall ESS
+    ess_per_policy: Dict[str, float] = field(default_factory=dict)
+    tail_indices: Dict[str, Optional[float]] = field(default_factory=dict)  # Hill α
+    max_weights: Dict[str, float] = field(default_factory=dict)
 
-        # Check width consistency
-        if self.wid is not None and self.wvar is not None:
-            if self.w_tot is not None:
-                expected_tot = self.wid + self.wvar
-                if abs(self.w_tot - expected_tot) > 1e-6:
-                    issues.append(
-                        f"Width inconsistency: w_tot={self.w_tot:.3f} != wid+wvar={expected_tot:.3f}"
-                    )
+    # ========== Calibration Quality ==========
+    calibration_r2: Optional[float] = None
+    calibration_rmse: Optional[float] = None
+    n_oracle_labels: Optional[int] = None
 
-            if self.w_max is not None:
-                expected_max = max(self.wid, self.wvar)
-                if abs(self.w_max - expected_max) > 1e-6:
-                    issues.append(
-                        f"Max width inconsistency: w_max={self.w_max:.3f} != max(wid,wvar)={expected_max:.3f}"
-                    )
+    # ========== DR-specific (if applicable) ==========
+    is_dr: bool = False
+    outcome_r2_range: Optional[Tuple[float, float]] = None
+    outcome_rmse: Optional[float] = None
+    cross_fitted: Optional[bool] = None
+    n_folds: Optional[int] = None
 
-        # Check efficiency bounds
-        if self.ifr_main is not None and not (
-            0 <= self.ifr_main <= 1.01
-        ):  # Allow slight numerical error
-            issues.append(f"IFR_main out of bounds: {self.ifr_main:.3f}")
+    # ========== Overall Assessment ==========
+    refuse_level_claims: bool = False  # Main gate: refuse point estimates
+    refuse_inference: bool = False  # Secondary: warn about CI reliability
 
-        if self.ifr_oua is not None and not (0 <= self.ifr_oua <= 1.01):
-            issues.append(f"IFR_OUA out of bounds: {self.ifr_oua:.3f}")
+    @property
+    def overall_risk(self) -> str:
+        """Combined risk assessment."""
+        risks = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+        coverage_score = risks.get(self.coverage_risk, 3)
+        variance_score = risks.get(self.variance_risk, 3)
+        max_score = max(coverage_score, variance_score)
 
-        # Check overlap bounds
-        if self.aessf_sigmaS is not None and not (0 <= self.aessf_sigmaS <= 1.01):
-            issues.append(f"A-ESSF out of bounds: {self.aessf_sigmaS:.3f}")
+        for risk, score in risks.items():
+            if score == max_score:
+                return risk
+        return "critical"
 
-        if self.bc_sigmaS is not None and not (0 <= self.bc_sigmaS <= 1.01):
-            issues.append(f"BC out of bounds: {self.bc_sigmaS:.3f}")
+    @property
+    def can_make_level_claims(self) -> bool:
+        """Whether point estimates are reliable for ranking/selection."""
+        return not self.refuse_level_claims and self.coverage_risk in ["low", "medium"]
 
-        # Check theoretical relationship: A-ESSF <= BC²
-        if self.aessf_sigmaS is not None and self.bc_sigmaS is not None:
-            if (
-                self.aessf_sigmaS > self.bc_sigmaS**2 * 1.1
-            ):  # Allow 10% numerical tolerance
-                issues.append(
-                    f"Theoretical violation: A-ESSF={self.aessf_sigmaS:.3f} > BC²={self.bc_sigmaS**2:.3f}"
-                )
+    @property
+    def has_honest_inference(self) -> bool:
+        """Whether confidence intervals are reliable."""
+        return not self.refuse_inference and self.variance_risk in ["low", "medium"]
 
-        return issues
+    def get_policy_risk(self, policy: str) -> Dict[str, Any]:
+        """Get risk assessment for a specific policy."""
+        return {
+            "estimate": self.estimates.get(policy),
+            "se": self.standard_errors.get(policy),
+            "ci": self.confidence_intervals.get(policy),
+            "ess": self.ess_per_policy.get(policy, 0.0),
+            "tail_index": self.tail_indices.get(policy),
+            "max_weight": self.max_weights.get(policy, 0.0),
+            "boundary_risk": self.boundary_risk_scores.get(policy, 0.0),
+            "coverage_ok": self.boundary_risk_scores.get(policy, 100) < 50,
+            "variance_ok": self.ess_per_policy.get(policy, 0) > 0.1,
+        }
 
     def summary(self) -> str:
-        """One-line human-readable summary with key metrics and recommendations."""
-        parts = []
+        """Concise summary for practitioners."""
+        lines = []
 
-        # CF-bits and width
-        if self.bits_tot is not None:
-            parts.append(f"CF-bits: {self.bits_tot:.1f}")
-        if self.w_tot is not None:
-            parts.append(f"W={self.w_tot:.2f}")
+        # Basic info
+        lines.append(f"{self.estimator_type} ({self.method})")
+        lines.append(f"N={self.n_samples_valid}/{self.n_samples_total}")
 
-        # Decomposition
-        if self.wid is not None and self.wvar is not None:
-            parts.append(f"(Wid={self.wid:.2f}, Wvar={self.wvar:.2f})")
-
-        # Efficiency
-        if self.ifr_oua is not None:
-            parts.append(f"IFR(OUA)={self.ifr_oua:.0%}")
-        elif self.ifr_main is not None:
-            parts.append(f"IFR={self.ifr_main:.0%}")
-
-        # Structural floors
-        if self.aessf_sigmaS_lcb is not None:
-            parts.append(f"A-ESSF(LCB)={self.aessf_sigmaS_lcb:.0%}")
-
-        # Gate
-        parts.append(f"Gate: {self.gate_state.value.upper()}")
-
-        # Primary recommendation
-        if self.gate_state == GateState.REFUSE:
-            parts.append("→ Do not use")
-        elif self.gate_state == GateState.CRITICAL:
-            parts.append("→ Use with extreme caution")
-        elif self.gate_state == GateState.WARNING:
-            if self.dominant_channel == "identification":
-                if self.p_mass_unlabeled is not None and self.p_mass_unlabeled > 0.1:
-                    parts.append(
-                        f"→ Add labels ({self.p_mass_unlabeled:.0%} mass unlabeled)"
-                    )
-                else:
-                    parts.append("→ Add more oracle labels")
-            else:
-                if self.logs_factor_for_half_bit is not None:
-                    parts.append(
-                        f"→ {self.logs_factor_for_half_bit:.1f}× logs for +0.5 bits"
-                    )
-                else:
-                    parts.append("→ Collect more logs")
+        # Risk assessments
+        if self.refuse_level_claims:
+            lines.append("⚠️ REFUSE LEVEL CLAIMS")
         else:
-            parts.append("→ Estimate reliable")
+            lines.append(f"Coverage: {self.coverage_risk}")
 
-        return " | ".join(parts)
+        if self.refuse_inference:
+            lines.append("⚠️ UNRELIABLE CIs")
+        else:
+            lines.append(f"Variance: {self.variance_risk}")
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization."""
-        d = {
-            "policy": self.policy,
-            "estimator_type": self.estimator_type,
-            "scenario": self.scenario,
-            # Widths
-            "wid": self.wid,
-            "wvar": self.wvar,
-            "w_tot": self.w_tot,
-            "w_max": self.w_max,
-            "w0": self.w0,
-            # CF-bits
-            "bits_tot": self.bits_tot,
-            "bits_id": self.bits_id,
-            "bits_var": self.bits_var,
-            # Efficiency
-            "ifr_main": self.ifr_main,
-            "ifr_oua": self.ifr_oua,
-            "aess_main": self.aess_main,
-            "aess_oua": self.aess_oua,
-            # Structural floors
-            "aessf_sigmaS": self.aessf_sigmaS,
-            "aessf_sigmaS_lcb": self.aessf_sigmaS_lcb,
-            "bc_sigmaS": self.bc_sigmaS,
-            # Variance
-            "var_main": self.var_main,
-            "var_oracle": self.var_oracle,
-            "var_total": self.var_total,
-            # Diagnostics
-            "wid_diagnostics": self.wid_diagnostics,
-            "p_mass_unlabeled": self.p_mass_unlabeled,
-            "n_bins_used": self.n_bins_used,
-            "n_oracle_available": self.n_oracle_available,
-            # Gates
-            "gate_state": self.gate_state.value,
-            "gate_reasons": self.gate_reasons,
-            "gate_suggestions": self.gate_suggestions,
-            # Budget
-            "logs_factor_for_half_bit": self.logs_factor_for_half_bit,
-            "labels_for_wid_reduction": self.labels_for_wid_reduction,
-            "dominant_channel": self.dominant_channel,
-        }
-        return {k: v for k, v in d.items() if v is not None}  # Remove None values
+        # Key metrics
+        lines.append(f"ESS={self.weight_ess:.1%}")
 
-    def to_csv_row(self) -> Dict[str, Any]:
-        """Flatten for tabular export (excludes nested dicts)."""
-        d = self.to_dict()
-        # Remove nested structures
-        d.pop("wid_diagnostics", None)
-        d.pop("gate_suggestions", None)
-        # Flatten gate_reasons to string
-        if "gate_reasons" in d:
-            d["gate_reasons"] = "; ".join(d["gate_reasons"])
-        return d
+        if self.is_dr and self.outcome_r2_range:
+            min_r2, max_r2 = self.outcome_r2_range
+            lines.append(f"Outcome R²=[{min_r2:.2f},{max_r2:.2f}]")
 
-    @property
-    def needs_more_labels(self) -> bool:
-        """Whether identification uncertainty dominates."""
-        if self.wid is None or self.wvar is None:
-            return False
-        return self.wid > self.wvar
+        return " | ".join(lines)
 
-    @property
-    def has_catastrophic_overlap(self) -> bool:
-        """Whether structural overlap is catastrophically bad."""
-        if self.aessf_sigmaS_lcb is not None:
-            return self.aessf_sigmaS_lcb < 0.05
-        if self.aessf_sigmaS is not None:
-            return self.aessf_sigmaS < 0.02
-        return False
+    @classmethod
+    def from_ips_diagnostics(cls, ips: IPSDiagnostics) -> "CJEDiagnostics":
+        """Create from IPSDiagnostics."""
+        # Assess coverage risk (simplified - would need boundary detection in practice)
+        coverage_risk = "low"  # Default, would compute from actual boundary metrics
 
-    @property
-    def is_reliable(self) -> bool:
-        """Whether estimate passes all reliability checks."""
-        return self.gate_state == GateState.GOOD
+        # Assess variance risk based on ESS and tail indices
+        variance_risk = "low"
+        if ips.weight_ess < 0.1:
+            variance_risk = "high"
+        elif ips.weight_ess < 0.3:
+            variance_risk = "medium"
+
+        # Check tail indices
+        if ips.tail_indices:
+            worst_tail = min(
+                (v for v in ips.tail_indices.values() if v is not None),
+                default=float("inf"),
+            )
+            if worst_tail < 2.0:
+                variance_risk = "critical"  # Infinite variance
+            elif worst_tail < 2.5:
+                variance_risk = "high"
+
+        return cls(
+            estimator_type=ips.estimator_type,
+            method=ips.method,
+            n_samples_total=ips.n_samples_total,
+            n_samples_valid=ips.n_samples_valid,
+            policies=ips.policies,
+            estimates=ips.estimates,
+            standard_errors=ips.standard_errors,
+            coverage_risk=coverage_risk,
+            variance_risk=variance_risk,
+            weight_ess=ips.weight_ess,
+            ess_per_policy=ips.ess_per_policy,
+            tail_indices=ips.tail_indices or {},
+            max_weights=ips.max_weight_per_policy,
+            calibration_r2=ips.calibration_r2,
+            calibration_rmse=ips.calibration_rmse,
+            n_oracle_labels=ips.n_oracle_labels,
+            is_dr=False,
+            refuse_level_claims=(coverage_risk == "critical"),
+            refuse_inference=(variance_risk == "critical"),
+        )
+
+    @classmethod
+    def from_dr_diagnostics(cls, dr: DRDiagnostics) -> "CJEDiagnostics":
+        """Create from DRDiagnostics."""
+        # Start with IPS conversion
+        unified = cls.from_ips_diagnostics(dr)
+
+        # Add DR-specific info
+        unified.is_dr = True
+        unified.outcome_r2_range = dr.outcome_r2_range
+        unified.outcome_rmse = dr.outcome_rmse_mean
+        unified.cross_fitted = dr.dr_cross_fitted
+        unified.n_folds = dr.dr_n_folds
+
+        # DR can partially mitigate coverage risk
+        if unified.coverage_risk == "high" and dr.outcome_r2_range[0] > 0.3:
+            unified.coverage_risk = "medium"  # DR provides some robustness
+
+        return unified

@@ -19,8 +19,7 @@ tests/
 ├── Core Tests
 │   ├── test_infrastructure.py    # Critical infrastructure and edge cases
 │   ├── test_unified_folds.py     # Comprehensive fold management
-│   ├── test_mc_variance.py       # Monte Carlo variance testing
-│   └── test_cfbits.py           # CF-bits framework tests
+│   └── test_mc_variance.py       # Monte Carlo variance testing
 │
 └── data/                          # Test datasets
     ├── arena_sample/              # Real Arena 10K subset (100 samples)
@@ -169,9 +168,8 @@ pip install -e .
 ## Performance
 
 - **E2E tests**: < 2 seconds each
-- **Infrastructure tests**: < 1 second each  
+- **Infrastructure tests**: < 1 second each
 - **Full suite**: ~15 seconds for all tests
-- **CF-bits tests**: May be slower due to complex computations
 
 Test execution tips:
 - Use `-x` to stop on first failure

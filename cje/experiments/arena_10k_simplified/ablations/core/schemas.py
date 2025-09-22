@@ -112,10 +112,7 @@ def create_result(spec: ExperimentSpec, seed: int) -> Dict[str, Any]:
         "mean_ci_width": None,  # Average CI width
         "n_samples": None,  # Actual number of samples used
         "n_oracle": None,  # Actual number of oracle labels
-        # CF-bits metrics (optional, per policy)
-        "cfbits_data": {},  # Full CF-bits reports (optional, for debugging)
-        "cfbits_summary": {},  # Minimal metrics per policy
-        "cfbits_gates": {},  # Gate decisions per policy
+        # CF-bits metrics removed - feature no longer in library
     }
 
 

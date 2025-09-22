@@ -913,7 +913,7 @@ class DREstimator(BaseCJEEstimator):
             "dr_overview": dr_overview,
             "orthogonality_scores": self._orthogonality_scores,  # New: orthogonality diagnostics
             "dm_ips_decompositions": self._dm_ips_decompositions,  # New: DM-IPS breakdown
-            "dr_influence": self._influence_functions,  # Store influence functions for CF-bits analysis
+            "dr_influence": self._influence_functions,  # Store influence functions for analysis
             "iic_adjustments": getattr(
                 self, "_iic_adjustments", {}
             ),  # IIC adjustments applied
@@ -1255,7 +1255,6 @@ class DREstimator(BaseCJEEstimator):
 
         This method computes K estimates, each leaving out one fold of oracle samples,
         to quantify uncertainty from the finite oracle slice used for calibration.
-        This is used by CF-bits to compute var_oracle for proper IFR_OUA calculation.
 
         Args:
             policy: Target policy name

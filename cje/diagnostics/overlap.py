@@ -52,7 +52,7 @@ class OverlapMetrics:
     # Auto-tuning info
     auto_tuned_threshold: Optional[float] = None  # ESS threshold for target CI
 
-    # σ(S) structural floors (CF-bits integration)
+    # σ(S) structural floors
     aessf_sigmaS: Optional[float] = None  # A-ESSF on judge marginal σ(S)
     aessf_sigmaS_lcb: Optional[float] = None  # Lower confidence bound for A-ESSF
     bc_sigmaS: Optional[float] = None  # Bhattacharyya coefficient on σ(S)

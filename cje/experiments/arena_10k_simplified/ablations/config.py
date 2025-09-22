@@ -31,9 +31,9 @@ EXPERIMENTS = {
     "reward_calibration_mode": "auto",
     # Multiple seeds for robust results
     "seeds": np.arange(0, 50, 1),
-    # CF-bits computation (single toggle, not a grid dimension)
-    # Set to True to enable CF-bits metrics for all experiments
-    "compute_cfbits": True,  # Default ON to gather CF-bits metrics
+    # CF-bits computation (disabled - feature removed from library)
+    # Set to False to disable CF-bits metrics for all experiments
+    "compute_cfbits": False,  # Disabled - CF-bits removed from library
     # Variance budget (rho) for SIMCal - fixed at 1.0 (doesn't bind in practice)
     # Controls maximum allowed variance: Var(W_calibrated) ≤ var_cap * Var(W_baseline)
     "var_cap": 1.0,  # Fixed at no variance increase (empirically doesn't bind)
@@ -76,13 +76,7 @@ DR_CONFIG = {
     "v_folds_stacking": 5,  # Outer folds for stacked-dr
 }
 
-# CF-bits configuration
-CFBITS_CONFIG = {
-    "n_boot": 500,  # Reduced from default 800 for performance
-    "alpha": 0.05,  # 95% confidence intervals
-    "random_state": 42,  # Reproducibility
-    "compute_tail_index": False,  # Expensive, disabled by default
-}
+# CF-bits configuration removed - feature no longer in library
 
 # Paths (absolute to avoid confusion)
 from pathlib import Path

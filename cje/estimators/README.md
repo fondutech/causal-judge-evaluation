@@ -178,7 +178,7 @@ All estimators compute and store influence functions for:
 - Policy comparison with covariance
 - Bootstrap and robust inference
 - Detecting influential observations
-- CF-bits efficiency metrics (IFR, aESS)
+- Efficiency metrics (ESS)
 
 ### 3. Diagnostic Integration
 Every estimator creates comprehensive diagnostics during estimation:

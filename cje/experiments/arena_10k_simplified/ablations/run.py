@@ -138,7 +138,7 @@ class UnifiedAblation(BaseAblation):
             str(spec.get("oracle_coverage", "")),
             str(spec.get("extra", {}).get("use_weight_calibration", False)),
             str(spec.get("extra", {}).get("reward_calibration_mode", "monotone")),
-            str(spec.get("extra", {}).get("compute_cfbits", False)),  # Add CF-bits flag
+            # CF-bits removed from library
             str(spec.get("seed_base", 42)),  # This now properly includes the seed
         ]
         return "_".join(key_params)
@@ -305,7 +305,7 @@ class UnifiedAblation(BaseAblation):
                                     "reward_calibration_mode": EXPERIMENTS[
                                         "reward_calibration_mode"
                                     ],
-                                    "compute_cfbits": EXPERIMENTS["compute_cfbits"],
+                                    # CF-bits computation removed from library
                                     "var_cap": var_cap,
                                 },
                             )
@@ -464,9 +464,7 @@ class UnifiedAblation(BaseAblation):
                                     "reward_calibration_mode": EXPERIMENTS[
                                         "reward_calibration_mode"
                                     ],
-                                    "compute_cfbits": EXPERIMENTS[
-                                        "compute_cfbits"
-                                    ],  # Single toggle
+                                    # CF-bits computation removed from library
                                     "var_cap": var_cap,  # Also keep in extra for backward compatibility
                                 },
                             )
@@ -486,7 +484,7 @@ class UnifiedAblation(BaseAblation):
                                 f"Running: {estimator} n={sample_size} "
                                 f"oracle={oracle_coverage:.0%} "
                                 f"weight_cal={use_weight_calibration} "
-                                f"cfbits={EXPERIMENTS['compute_cfbits']}"
+                                ""
                             )
 
                             try:

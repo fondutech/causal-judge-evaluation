@@ -13,14 +13,14 @@ from .schemas import ExperimentSpec, create_result
 
 # Handle import based on execution context
 try:
-    from ..config import DR_CONFIG, CFBITS_CONFIG
+    from ..config import DR_CONFIG
 except ImportError:
     # Fallback for different import paths
     import sys
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    from config import DR_CONFIG as DR_CONFIG, CFBITS_CONFIG as CFBITS_CONFIG  # type: ignore[import, no-redef]
+    from config import DR_CONFIG as DR_CONFIG  # type: ignore[import, no-redef]
 
 # No local diagnostics file needed!
 # Import standard diagnostics from CJE
@@ -423,140 +423,7 @@ class BaseAblation:
 
         return oracle_means
 
-    def compute_cfbits_metrics(
-        self, estimator: Any, policy: str, result: Dict[str, Any]
-    ) -> None:
-        """Compute CF-bits metrics if enabled using structured CFBitsDiagnostics.
-
-        Args:
-            estimator: Fitted estimator
-            policy: Target policy name
-            result: Result dictionary to update
-        """
-        # Check if enabled
-        cfg = result.get("spec", {}).get("extra", {})
-        if not cfg.get("compute_cfbits", False):
-            return
-
-        try:
-            from cje.cfbits import cfbits_report_fresh_draws, cfbits_report_logging_only
-            from cje.diagnostics import CFBitsDiagnostics
-
-            # Route to appropriate playbook by estimator name
-            estimator_name = result["spec"]["estimator"]
-
-            # Fresh draws scenario
-            fresh_draws_estimators = [
-                "dr-cpo",
-                "mrdr",
-                "tmle",
-                "tr-cpo-e",
-                "tr-cpo-e-anchored-orthogonal",
-                "stacked-dr",
-                "oc-dr-cpo",
-            ]
-
-            # Logging-only scenario
-            logging_only_estimators = [
-                "raw-ips",
-                "calibrated-ips",
-                "orthogonalized-ips",
-            ]
-
-            if estimator_name in fresh_draws_estimators:
-                report = cfbits_report_fresh_draws(
-                    estimator,
-                    policy,
-                    cfbits_cfg=CFBITS_CONFIG,  # Use new API with config dict
-                )
-                scenario = "fresh-draws"
-            elif estimator_name in logging_only_estimators:
-                report = cfbits_report_logging_only(
-                    estimator,
-                    policy,
-                    cfbits_cfg=CFBITS_CONFIG,  # Use new API with config dict
-                )
-                scenario = "logging-only"
-            else:
-                logger.warning(f"Unknown estimator for CF-bits: {estimator_name}")
-                return
-
-            # Create structured CFBitsDiagnostics from report
-            from cje.diagnostics import GateState
-
-            # Map string gate state to enum
-            gate_str = report.get("gates", {}).get("state", "CRITICAL")
-            gate_map = {
-                "GOOD": GateState.GOOD,
-                "WARNING": GateState.WARNING,
-                "CRITICAL": GateState.CRITICAL,
-                "REFUSE": GateState.REFUSE,
-            }
-            gate_state = gate_map.get(gate_str, GateState.CRITICAL)
-
-            # Extract gate reasons from report
-            gate_reasons = []
-            gates_dict = report.get("gates", {})
-            if gates_dict.get("recommendation"):
-                gate_reasons.append(gates_dict["recommendation"])
-
-            cfbits_diag = CFBitsDiagnostics(
-                policy=policy,
-                estimator_type=estimator_name,
-                scenario=scenario,
-                # Core width metrics
-                wid=report.get("identification", {}).get("wid"),
-                wvar=report.get("sampling_width", {}).get("wvar"),
-                w_tot=report.get("cfbits", {}).get("w_tot"),
-                bits_tot=report.get("cfbits", {}).get("bits_tot"),
-                # Efficiency metrics
-                ifr_oua=report.get("efficiency", {}).get("ifr_oua"),
-                aess_oua=report.get("efficiency", {}).get("aess_oua"),
-                # σ(S) structural floors
-                aessf_sigmaS=report.get("overlap", {}).get("aessf_sigmaS"),
-                aessf_sigmaS_lcb=report.get("overlap", {}).get("aessf_lcb"),
-                bc_sigmaS=report.get("overlap", {}).get("bc_sigmaS"),
-                # Gate assessment
-                gate_state=gate_state,
-                gate_reasons=gate_reasons,
-                # Budget recommendations
-                labels_for_wid_reduction=report.get("gates", {}).get("recommended_n"),
-                n_oracle_available=report.get("metadata", {}).get("n_samples"),
-            )
-
-            # Validate the diagnostics
-            cfbits_diag.validate()
-
-            # Store structured object as dictionary for JSON serialization
-            result.setdefault("cfbits_diagnostics", {})[policy] = cfbits_diag.to_dict()
-
-            # Store minimal summary for backward compatibility
-            result["cfbits_summary"][policy] = {
-                "bits_tot": cfbits_diag.bits_tot,
-                "w_tot": cfbits_diag.w_tot,
-                "wvar": cfbits_diag.wvar,
-                "wid": cfbits_diag.wid,
-                "ifr_oua": cfbits_diag.ifr_oua,
-                "aess_oua": cfbits_diag.aess_oua,
-                "aessf_lcb": cfbits_diag.aessf_sigmaS_lcb,
-                "gate_state": cfbits_diag.gate_state.value,
-                "gate_reasons": cfbits_diag.gate_reasons,
-            }
-
-            # Store gate info
-            result["cfbits_gates"][policy] = {
-                "state": cfbits_diag.gate_state.value,
-                "reasons": cfbits_diag.gate_reasons,
-                "labels_recommended": cfbits_diag.labels_for_wid_reduction,
-            }
-
-            # Store full data only if requested (to avoid bloat)
-            if cfg.get("compute_cfbits_full", False):
-                result["cfbits_data"][policy] = report  # Keep raw report for debugging
-
-        except Exception as e:
-            logger.warning(f"CF-bits computation failed for {policy}: {e}")
-            # Graceful degradation - don't fail the experiment
+    # CF-bits metrics removed from library - method deleted
 
     def compute_diagnostics(
         self, estimator: Any, result: Dict[str, Any], n_total: int
@@ -632,8 +499,7 @@ class BaseAblation:
             except Exception as e:
                 logger.warning(f"Failed to compute diagnostics for {policy}: {e}")
 
-            # Add CF-bits computation (non-fatal)
-            self.compute_cfbits_metrics(estimator, policy, result)
+            # CF-bits computation removed from library
 
     def run_single(self, spec: ExperimentSpec, seed: int) -> Dict[str, Any]:
         """Run single experiment with given seed.

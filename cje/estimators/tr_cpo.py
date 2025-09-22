@@ -779,7 +779,6 @@ class TRCPOEstimator(DREstimator):
             method=method_name,
             influence_functions=if_map,
             diagnostics=diagnostics,
-            cfbits_diagnostics=None,  # Not yet implemented for TR-CPO
             robust_standard_errors=None,
             # robust_standard_errors_per_policy removed in latest version
             robust_confidence_intervals=None,
