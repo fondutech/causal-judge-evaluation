@@ -122,7 +122,7 @@ def main() -> int:
         "--tables",
         type=str,
         default="all",
-        help="Comma-separated list of tables to generate (m1,m2,m3 or 'all')",
+        help="Comma-separated list of tables to generate (m1,m2,m3,boundary or 'all')",
     )
 
     parser.add_argument(
@@ -186,7 +186,7 @@ def main() -> int:
 
     # Determine which tables to generate
     if args.tables == "all":
-        tables_to_generate = ["m1", "m2", "m3", "quadrants"]
+        tables_to_generate = ["m1", "m2", "m3", "boundary", "quadrants"]
     else:
         tables_to_generate = [t.strip().lower() for t in args.tables.split(",")]
 
@@ -268,6 +268,27 @@ def main() -> int:
             md_m3 = table_m3.to_markdown(index=False, floatfmt=".2f")
             output_file = output_main / "table_m3_gates.md"
             output_file.write_text(md_m3)
+            generated_files.append(str(output_file))
+
+    # Boundary Diagnostics Table
+    if "boundary" in tables_to_generate:
+        if args.verbose:
+            print("Generating Boundary Diagnostics Table...")
+
+        table_boundary = tables_main.build_table_boundary_diagnostics(df)
+
+        if args.format in ["latex", "both"]:
+            latex_boundary = format_latex.format_table_boundary_diagnostics(
+                table_boundary
+            )
+            output_file = output_main / "table_boundary_diagnostics.tex"
+            output_file.write_text(latex_boundary)
+            generated_files.append(str(output_file))
+
+        if args.format in ["markdown", "both"]:
+            md_boundary = table_boundary.to_markdown(index=False)
+            output_file = output_main / "table_boundary_diagnostics.md"
+            output_file.write_text(md_boundary)
             generated_files.append(str(output_file))
 
     # Generate quadrant leaderboards

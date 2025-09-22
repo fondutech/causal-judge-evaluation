@@ -430,6 +430,67 @@ def format_table_m3_gates(
     return "\n".join(lines)
 
 
+def format_table_boundary_diagnostics(
+    df: pd.DataFrame,
+    caption: str = "Boundary Diagnostic Results by Policy",
+    label: str = "tab:boundary",
+) -> str:
+    """Format boundary diagnostics table as LaTeX.
+
+    Args:
+        df: DataFrame from build_table_boundary_diagnostics
+        caption: Table caption
+        label: LaTeX label
+
+    Returns:
+        LaTeX table string
+    """
+    lines = []
+
+    lines.append("\\begin{table}[htbp]")
+    lines.append("\\centering")
+    lines.append(f"\\caption{{{caption}}}")
+    lines.append(f"\\label{{{label}}}")
+
+    lines.append("\\begin{tabular}{lrrcl}")
+    lines.append("\\toprule")
+    lines.append("Policy & Out-of-Range \\% & Saturation \\% & Status & Action \\\\")
+    lines.append("\\midrule")
+
+    for _, row in df.iterrows():
+        policy = row["Policy"]
+        oor = row["Out-of-Range %"]
+        sat = row["Saturation %"]
+        status = row["Status"]
+        action = row["Action"]
+
+        # Color-code status
+        if status == "OK":
+            status_fmt = f"\\textcolor{{green!70!black}}{{{status}}}"
+        elif status == "CAUTION":
+            status_fmt = f"\\textcolor{{orange!80!black}}{{{status}}}"
+        else:  # REFUSE
+            status_fmt = f"\\textcolor{{red!70!black}}{{{status}}}"
+
+        lines.append(f"{policy} & {oor} & {sat} & {status_fmt} & {action} \\\\")
+
+    lines.append("\\bottomrule")
+    lines.append("\\end{tabular}")
+
+    lines.append("\\footnotesize{")
+    lines.append(
+        "Out-of-Range: fraction of judge scores outside oracle calibration range. "
+    )
+    lines.append("Saturation: fraction of calibrated rewards near boundaries. ")
+    lines.append("Status thresholds: REFUSE if out-of-range ≥ 5\\%, ")
+    lines.append("CAUTION if saturation ≥ 20\\% or estimator gap ≥ 10\\%.")
+    lines.append("}")
+
+    lines.append("\\end{table}")
+
+    return "\\n".join(lines)
+
+
 def escape_latex(text: str) -> str:
     """Escape special LaTeX characters in text.
 
