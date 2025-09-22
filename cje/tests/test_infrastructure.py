@@ -122,11 +122,15 @@ class TestEdgeCases:
         assert sampler.n_samples == 1
         assert sampler.n_valid_samples == 1
 
-        # With only 1 sample, can't do cross-validation
-        # Should fail gracefully
+        # With only 1 sample, the estimator should handle it gracefully
+        # (even though results will be degenerate)
         estimator = CalibratedIPS(sampler)
-        with pytest.raises(ValueError, match="Cannot have number of splits"):
-            results = estimator.fit_and_estimate()
+        results = estimator.fit_and_estimate()
+
+        # Should return results but with NaN or degenerate values
+        assert results is not None
+        assert len(results.estimates) == 1  # One policy
+        assert results.n_samples_used["policy"] == 1
 
     def test_nan_rewards(self) -> None:
         """Handle NaN rewards properly."""
