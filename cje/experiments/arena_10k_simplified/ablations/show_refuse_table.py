@@ -14,17 +14,18 @@ data = {
 
 df = pd.DataFrame(data)
 
-# Generate the refuse rates table
-table = tables_main.build_table_refuse_rates(df)
+# Generate the refuse rates table by regime
+print("=== Boundary-Based Refuse Rates by Oracle Regime ===\n")
+table_regime = tables_main.build_table_refuse_rates(df, by_regime=True)
+print(table_regime.to_string(index=False))
 
-print("=== Boundary-Based Refuse Rates (Markdown) ===\n")
-print(table.to_string(index=False))
 print("\nKey insights:")
-print("- These metrics are estimator-agnostic (same calibration for all)")
-print("- Refuse threshold: out-of-range ≥ 5% OR saturation ≥ 20%")
-print("- Unhelpful policy: 95% of runs refused due to extrapolation")
-print("- Clone/Parallel Universe: 0% refused (well-covered by oracle data)")
-
-print("\n\n=== Boundary-Based Refuse Rates (LaTeX) ===\n")
-latex = format_latex.format_table_refuse_rates(table)
-print(latex)
+print("- With small oracle (250) and low coverage (5%):")
+print("  * Even clone/parallel have 5-8% refuse rate")
+print("  * Premium refuses 45% of the time")
+print("  * Unhelpful always refused (100%)")
+print("\n- With large oracle (5000) and high coverage (50%):")
+print("  * Clone/parallel/premium all pass (0% refuse)")
+print("  * Unhelpful still 85% refused (fundamental extrapolation issue)")
+print("\n- Boundary issues decrease with more oracle data")
+print("- Unhelpful policy consistently problematic across all regimes")
