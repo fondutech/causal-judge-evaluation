@@ -270,25 +270,23 @@ def main() -> int:
             output_file.write_text(md_m3)
             generated_files.append(str(output_file))
 
-    # Boundary Diagnostics Table
-    if "boundary" in tables_to_generate:
+    # Boundary Refuse Rates Table
+    if "boundary" in tables_to_generate or "refuse" in tables_to_generate:
         if args.verbose:
-            print("Generating Boundary Diagnostics Table...")
+            print("Generating Boundary Refuse Rates Table...")
 
-        table_boundary = tables_main.build_table_boundary_diagnostics(df)
+        table_refuse = tables_main.build_table_refuse_rates(df)
 
         if args.format in ["latex", "both"]:
-            latex_boundary = format_latex.format_table_boundary_diagnostics(
-                table_boundary
-            )
-            output_file = output_main / "table_boundary_diagnostics.tex"
-            output_file.write_text(latex_boundary)
+            latex_refuse = format_latex.format_table_refuse_rates(table_refuse)
+            output_file = output_main / "table_refuse_rates.tex"
+            output_file.write_text(latex_refuse)
             generated_files.append(str(output_file))
 
         if args.format in ["markdown", "both"]:
-            md_boundary = table_boundary.to_markdown(index=False)
-            output_file = output_main / "table_boundary_diagnostics.md"
-            output_file.write_text(md_boundary)
+            md_refuse = table_refuse.to_markdown(index=False)
+            output_file = output_main / "table_refuse_rates.md"
+            output_file.write_text(md_refuse)
             generated_files.append(str(output_file))
 
     # Generate quadrant leaderboards

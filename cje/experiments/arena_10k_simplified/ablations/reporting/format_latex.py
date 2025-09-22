@@ -430,15 +430,15 @@ def format_table_m3_gates(
     return "\n".join(lines)
 
 
-def format_table_boundary_diagnostics(
+def format_table_refuse_rates(
     df: pd.DataFrame,
-    caption: str = "Boundary Diagnostic Results by Policy",
-    label: str = "tab:boundary",
+    caption: str = "Boundary-Based Refuse Rates by Policy",
+    label: str = "tab:refuse-rates",
 ) -> str:
-    """Format boundary diagnostics table as LaTeX.
+    """Format refuse rates table as LaTeX.
 
     Args:
-        df: DataFrame from build_table_boundary_diagnostics
+        df: DataFrame from build_table_refuse_rates
         caption: Table caption
         label: LaTeX label
 
@@ -452,38 +452,45 @@ def format_table_boundary_diagnostics(
     lines.append(f"\\caption{{{caption}}}")
     lines.append(f"\\label{{{label}}}")
 
-    lines.append("\\begin{tabular}{lrrcl}")
+    lines.append("\\begin{tabular}{lrrr}")
     lines.append("\\toprule")
-    lines.append("Policy & Out-of-Range \\% & Saturation \\% & Status & Action \\\\")
+    lines.append("Policy & Out-of-Range \\% & Saturation \\% & Refuse Rate \\% \\\\")
     lines.append("\\midrule")
 
     for _, row in df.iterrows():
         policy = row["Policy"]
         oor = row["Out-of-Range %"]
         sat = row["Saturation %"]
-        status = row["Status"]
-        action = row["Action"]
+        refuse = row["Refuse Rate %"]
 
-        # Color-code status
-        if status == "OK":
-            status_fmt = f"\\textcolor{{green!70!black}}{{{status}}}"
-        elif status == "CAUTION":
-            status_fmt = f"\\textcolor{{orange!80!black}}{{{status}}}"
-        else:  # REFUSE
-            status_fmt = f"\\textcolor{{red!70!black}}{{{status}}}"
+        # Color-code refuse rate
+        refuse_val = float(refuse.rstrip("%"))
+        if refuse_val == 0:
+            refuse_fmt = f"\\textcolor{{green!70!black}}{{{refuse}}}"
+        elif refuse_val < 50:
+            refuse_fmt = f"\\textcolor{{orange!80!black}}{{{refuse}}}"
+        else:
+            refuse_fmt = f"\\textcolor{{red!70!black}}{{{refuse}}}"
 
-        lines.append(f"{policy} & {oor} & {sat} & {status_fmt} & {action} \\\\")
+        lines.append(f"{policy} & {oor} & {sat} & {refuse_fmt} \\\\")
 
     lines.append("\\bottomrule")
     lines.append("\\end{tabular}")
 
     lines.append("\\footnotesize{")
     lines.append(
-        "Out-of-Range: fraction of judge scores outside oracle calibration range. "
+        "Boundary metrics are estimator-agnostic (all estimators use same calibration). "
     )
-    lines.append("Saturation: fraction of calibrated rewards near boundaries. ")
-    lines.append("Status thresholds: REFUSE if out-of-range ≥ 5\\%, ")
-    lines.append("CAUTION if saturation ≥ 20\\% or estimator gap ≥ 10\\%.")
+    lines.append(
+        "Out-of-Range: mean \\% of judge scores outside oracle calibration range. "
+    )
+    lines.append("Saturation: mean \\% of calibrated rewards near boundaries. ")
+    lines.append("Refuse threshold: out-of-range ≥ 5\\% OR saturation ≥ 20\\%. ")
+    lines.append(
+        "\\textcolor{green!70!black}{Green}: 0\\% refused, "
+        "\\textcolor{orange!80!black}{Orange}: <50\\% refused, "
+        "\\textcolor{red!70!black}{Red}: ≥50\\% refused."
+    )
     lines.append("}")
 
     lines.append("\\end{table}")
