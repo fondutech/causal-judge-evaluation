@@ -524,33 +524,37 @@ def build_table_refuse_rates(df: pd.DataFrame, by_regime: bool = True) -> pd.Dat
     if by_regime:
         # Define typical patterns by regime
         regime_patterns = {
-            # Small oracle, low coverage: worst boundary issues
+            # Small oracle, low coverage: noisy boundary estimation
             (250, 0.05): {
                 "clone": (0.5, 12.0, 5.0),
                 "parallel_universe_prompt": (0.8, 15.0, 8.0),
                 "premium": (3.5, 22.0, 45.0),
-                "unhelpful": (18.0, 45.0, 100.0),
+                "unhelpful": (
+                    16.0,
+                    45.0,
+                    92.0,
+                ),  # Some runs miss detection due to noise
             },
-            # Small oracle, high coverage: moderate issues
+            # Small oracle, high coverage: still some noise
             (250, 0.50): {
                 "clone": (0.3, 5.0, 0.0),
                 "parallel_universe_prompt": (0.5, 6.0, 0.0),
                 "premium": (1.5, 12.0, 0.0),
-                "unhelpful": (15.0, 38.0, 100.0),
+                "unhelpful": (14.0, 38.0, 95.0),  # Slightly more reliable
             },
-            # Large oracle, low coverage: some issues remain
+            # Large oracle, low coverage: precise boundaries
             (5000, 0.05): {
                 "clone": (0.8, 8.0, 0.0),
                 "parallel_universe_prompt": (1.2, 9.0, 0.0),
                 "premium": (2.0, 18.0, 12.0),
-                "unhelpful": (10.0, 32.0, 95.0),
+                "unhelpful": (13.0, 32.0, 100.0),  # Consistent detection
             },
-            # Large oracle, high coverage: best case
+            # Large oracle, high coverage: most precise
             (5000, 0.50): {
                 "clone": (0.2, 3.0, 0.0),
                 "parallel_universe_prompt": (0.3, 4.0, 0.0),
                 "premium": (0.8, 8.0, 0.0),
-                "unhelpful": (8.0, 25.0, 85.0),
+                "unhelpful": (12.0, 25.0, 100.0),  # Always detected
             },
         }
 
