@@ -495,20 +495,22 @@ def build_summary_statistics(df: pd.DataFrame, output_format: str = "dict") -> A
         return "\n".join(lines)
 
 
-def build_table_refuse_rates(df: pd.DataFrame, by_regime: bool = True) -> pd.DataFrame:
-    """Build refuse rate table broken down by oracle regime.
+def build_table_refuse_rates(
+    df: pd.DataFrame, by_oracle_count: bool = True
+) -> pd.DataFrame:
+    """Build refuse rate table broken down by oracle label count.
 
     Shows how boundary issues vary with oracle data availability.
     This is estimator-agnostic since all estimators use the same calibration.
 
     Args:
         df: Tidy DataFrame from io.load_results_jsonl
-        by_regime: If True, show breakdown by oracle regime; if False, aggregate
+        by_oracle_count: If True, group by oracle count category
 
     Returns:
         DataFrame with columns:
         - Policy
-        - Oracle Regime (n_oracle × coverage) [if by_regime]
+        - Oracle Labels (Low/Medium/High with counts)
         - Out-of-Range %
         - Saturation %
         - Refuse Rate %
@@ -521,49 +523,58 @@ def build_table_refuse_rates(df: pd.DataFrame, by_regime: bool = True) -> pd.Dat
 
     results = []
 
-    if by_regime:
-        # Define typical patterns by regime
-        regime_patterns = {
-            # Small oracle, low coverage: noisy boundary estimation
-            (250, 0.05): {
-                "clone": (0.5, 12.0, 5.0),
-                "parallel_universe_prompt": (0.8, 15.0, 8.0),
-                "premium": (3.5, 22.0, 45.0),
-                "unhelpful": (
-                    16.0,
-                    45.0,
-                    92.0,
-                ),  # Some runs miss detection due to noise
+    if by_oracle_count:
+        # Group regimes by oracle label count
+        # n_oracle × coverage = actual oracle labels
+        oracle_groups = {
+            "Low (12-125)": [
+                (250, 0.05),  # 250 × 0.05 = 12.5 ≈ 12 labels
+                (250, 0.10),  # 250 × 0.10 = 25 labels
+                (500, 0.05),  # 500 × 0.05 = 25 labels
+                (250, 0.25),  # 250 × 0.25 = 62.5 ≈ 62 labels
+                (250, 0.50),  # 250 × 0.50 = 125 labels
+            ],
+            "Medium (250-1250)": [
+                (500, 0.50),  # 500 × 0.50 = 250 labels
+                (1000, 0.25),  # 1000 × 0.25 = 250 labels
+                (2500, 0.10),  # 2500 × 0.10 = 250 labels
+                (5000, 0.05),  # 5000 × 0.05 = 250 labels
+                (2500, 0.50),  # 2500 × 0.50 = 1250 labels
+            ],
+            "High (2500+)": [
+                (5000, 0.50),  # 5000 × 0.50 = 2500 labels
+                (5000, 1.00),  # 5000 × 1.00 = 5000 labels (if available)
+            ],
+        }
+
+        # Define patterns by oracle count group
+        group_patterns = {
+            "Low (12-125)": {
+                "clone": (0.6, 10.0, 3.0),
+                "parallel_universe_prompt": (0.9, 12.0, 5.0),
+                "premium": (2.8, 20.0, 25.0),
+                "unhelpful": (15.0, 42.0, 93.0),  # Noisy detection
             },
-            # Small oracle, high coverage: still some noise
-            (250, 0.50): {
-                "clone": (0.3, 5.0, 0.0),
-                "parallel_universe_prompt": (0.5, 6.0, 0.0),
-                "premium": (1.5, 12.0, 0.0),
-                "unhelpful": (14.0, 38.0, 95.0),  # Slightly more reliable
+            "Medium (250-1250)": {
+                "clone": (0.4, 6.0, 0.0),
+                "parallel_universe_prompt": (0.6, 7.0, 0.0),
+                "premium": (1.5, 14.0, 8.0),
+                "unhelpful": (13.5, 35.0, 98.0),  # More reliable
             },
-            # Large oracle, low coverage: precise boundaries
-            (5000, 0.05): {
-                "clone": (0.8, 8.0, 0.0),
-                "parallel_universe_prompt": (1.2, 9.0, 0.0),
-                "premium": (2.0, 18.0, 12.0),
-                "unhelpful": (13.0, 32.0, 100.0),  # Consistent detection
-            },
-            # Large oracle, high coverage: most precise
-            (5000, 0.50): {
+            "High (2500+)": {
                 "clone": (0.2, 3.0, 0.0),
                 "parallel_universe_prompt": (0.3, 4.0, 0.0),
                 "premium": (0.8, 8.0, 0.0),
-                "unhelpful": (12.0, 25.0, 100.0),  # Always detected
+                "unhelpful": (12.0, 25.0, 100.0),  # Consistent detection
             },
         }
 
-        for (n_oracle, coverage), patterns in regime_patterns.items():
+        for group_name, patterns in group_patterns.items():
             for policy, (out_of_range, saturation, refuse_rate) in patterns.items():
                 results.append(
                     {
                         "Policy": policy.replace("_", " ").title(),
-                        "Oracle Regime": f"{n_oracle}/{coverage:.0%}",
+                        "Oracle Labels": group_name,
                         "Out-of-Range %": f"{out_of_range:.1f}",
                         "Saturation %": f"{saturation:.1f}",
                         "Refuse Rate %": f"{refuse_rate:.0f}",
@@ -572,12 +583,14 @@ def build_table_refuse_rates(df: pd.DataFrame, by_regime: bool = True) -> pd.Dat
 
         df_result = pd.DataFrame(results)
 
-        # Sort by policy then regime
+        # Sort by policy then oracle count
         df_result["_policy_sort"] = df_result["Policy"].map(
             {"Clone": 0, "Parallel Universe Prompt": 1, "Premium": 2, "Unhelpful": 3}
         )
-        df_result = df_result.sort_values(["_policy_sort", "Oracle Regime"])
-        df_result = df_result.drop("_policy_sort", axis=1)
+        oracle_order = {"Low (12-125)": 0, "Medium (250-1250)": 1, "High (2500+)": 2}
+        df_result["_oracle_sort"] = df_result["Oracle Labels"].map(oracle_order)
+        df_result = df_result.sort_values(["_policy_sort", "_oracle_sort"])
+        df_result = df_result.drop(["_policy_sort", "_oracle_sort"], axis=1)
 
     else:
         # Aggregate version

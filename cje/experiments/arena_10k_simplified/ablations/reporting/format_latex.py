@@ -452,9 +452,24 @@ def format_table_refuse_rates(
     lines.append(f"\\caption{{{caption}}}")
     lines.append(f"\\label{{{label}}}")
 
-    lines.append("\\begin{tabular}{lrrr}")
-    lines.append("\\toprule")
-    lines.append("Policy & Out-of-Range \\% & Saturation \\% & Refuse Rate \\% \\\\")
+    # Check if we have Oracle Labels or Oracle Regime column
+    has_oracle_col = "Oracle Labels" in df.columns or "Oracle Regime" in df.columns
+    oracle_col_name = (
+        "Oracle Labels" if "Oracle Labels" in df.columns else "Oracle Regime"
+    )
+
+    if has_oracle_col:
+        lines.append("\\begin{tabular}{llrrr}")
+        lines.append("\\toprule")
+        lines.append(
+            f"Policy & {oracle_col_name} & Out-of-Range \\% & Saturation \\% & Refuse Rate \\% \\\\"
+        )
+    else:
+        lines.append("\\begin{tabular}{lrrr}")
+        lines.append("\\toprule")
+        lines.append(
+            "Policy & Out-of-Range \\% & Saturation \\% & Refuse Rate \\% \\\\"
+        )
     lines.append("\\midrule")
 
     for _, row in df.iterrows():
@@ -462,6 +477,9 @@ def format_table_refuse_rates(
         oor = row["Out-of-Range %"]
         sat = row["Saturation %"]
         refuse = row["Refuse Rate %"]
+
+        # Get oracle column value if it exists
+        oracle_val = row.get(oracle_col_name, "") if has_oracle_col else None
 
         # Color-code refuse rate
         refuse_val = float(refuse.rstrip("%"))
@@ -472,7 +490,10 @@ def format_table_refuse_rates(
         else:
             refuse_fmt = f"\\textcolor{{red!70!black}}{{{refuse}}}"
 
-        lines.append(f"{policy} & {oor} & {sat} & {refuse_fmt} \\\\")
+        if has_oracle_col:
+            lines.append(f"{policy} & {oracle_val} & {oor} & {sat} & {refuse_fmt} \\\\")
+        else:
+            lines.append(f"{policy} & {oor} & {sat} & {refuse_fmt} \\\\")
 
     lines.append("\\bottomrule")
     lines.append("\\end{tabular}")
