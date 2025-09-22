@@ -8,17 +8,10 @@ Systematic ablation studies demonstrating the value of calibrated importance sam
 # Run all ablation experiments (360 total)
 python run.py       # Runs with checkpoint/resume support
 
-# Quick verification test
-python test_quick.py  # Runs 5 experiments to verify parameters are working
-
-# Generate paper tables
+# Generate paper tables and analysis
 python -m reporting.cli_generate                      # All tables (main + quadrant)
-
-# Analyze results
-python analyze_simple.py   # Generate summary tables and basic plots
-
-# For detailed analysis with paper comparison
-python analyze_calibration_detail.py  # Statistical significance testing
+python -m reporting.cli_generate --tables m1,m2,m3    # Main tables only
+python -m reporting.cli_generate --format markdown    # Markdown format for quick viewing
 ```
 
 ## Table Generation
@@ -38,25 +31,27 @@ Tables are saved to `tables/main/` and `tables/quadrant/`.
 
 ## Current System Structure
 
-After consolidation, all ablation code uses the unified experiment system:
-
 ```
 ablations/
 ├── run.py                     # Main experiment runner with checkpoint/resume
+├── run_all.py                 # Batch runner for all experiments
 ├── config.py                  # Experiment configuration
-├── analyze_simple.py          # Basic analysis and summary tables
-├── analyze_calibration_detail.py  # Statistical significance testing
-├── test_quick.py              # Quick test script (5 experiments)
+├── reporting/                 # Table generation and analysis module
+│   ├── cli_generate.py       # CLI for generating tables
+│   ├── tables_main.py        # Main table builders (M1, M2, M3, etc.)
+│   ├── format_latex.py       # LaTeX formatting
+│   ├── io.py                 # Data loading and processing
+│   ├── metrics.py            # Metric calculations
+│   └── aggregate.py          # Aggregation utilities
 ├── core/                      # Infrastructure
-│   ├── base.py               # BaseAblation class (fixed IIC/SIMCal bugs)
+│   ├── base.py               # BaseAblation class
 │   └── schemas.py            # Data schemas
-├── results/                   # All outputs
-│   ├── all_experiments.jsonl # Raw experiment results
-│   ├── checkpoint.jsonl      # Progress tracking for resume
-│   └── analysis/             # Tables and plots
-│       ├── main_summary.csv  # Key metrics by estimator
-│       └── summary_plots.png # Visualization
-└── legacy/                    # Deprecated code (reference only)
+└── results/                   # All outputs
+    ├── all_experiments.jsonl # Raw experiment results
+    ├── checkpoint.jsonl      # Progress tracking for resume
+    └── tables/               # Generated tables (via reporting module)
+        ├── main/            # Main paper tables
+        └── quadrant/        # Quadrant-specific tables
 ```
 
 ## What Gets Tested
