@@ -247,6 +247,20 @@ class BaseCJEEstimator(ABC):
         if not (self.oua_jackknife and self.reward_calibrator is not None):
             return
 
+        # Skip OUA at 100% oracle coverage (no oracle uncertainty)
+        try:
+            if (
+                hasattr(self.sampler, "oracle_coverage")
+                and self.sampler.oracle_coverage == 1.0
+            ):
+                result.robust_standard_errors = result.standard_errors
+                if isinstance(result.metadata, dict):
+                    result.metadata.setdefault("oua", {})
+                    result.metadata["oua"]["skipped"] = "100% oracle coverage"
+                return
+        except Exception:
+            pass  # Continue with normal OUA if we can't check coverage
+
         # Check if oracle variance is already included (e.g., by DR estimators)
         if isinstance(result.metadata, dict) and result.metadata.get(
             "se_components", {}

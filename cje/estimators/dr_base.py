@@ -765,12 +765,30 @@ class DREstimator(BaseCJEEstimator):
 
             # Add oracle uncertainty from finite-oracle jackknife
             se_oracle = 0.0
-            jack = self.get_oracle_jackknife(policy)
-            if jack is not None and len(jack) >= 2:
-                K = len(jack)
-                mu = float(np.mean(jack))
-                se_oracle = float(np.sqrt((K - 1) / K * np.sum((jack - mu) ** 2)))
-                logger.debug(f"Oracle SE for {policy}: {se_oracle:.6f} from {K} folds")
+
+            # Skip oracle uncertainty at 100% coverage (no uncertainty when we have all labels)
+            skip_oua = False
+            try:
+                if (
+                    hasattr(self.sampler, "oracle_coverage")
+                    and self.sampler.oracle_coverage == 1.0
+                ):
+                    skip_oua = True
+                    logger.debug(
+                        f"Skipping oracle uncertainty for {policy}: 100% oracle coverage"
+                    )
+            except Exception:
+                pass  # Continue with normal OUA calculation if we can't check
+
+            if not skip_oua:
+                jack = self.get_oracle_jackknife(policy)
+                if jack is not None and len(jack) >= 2:
+                    K = len(jack)
+                    mu = float(np.mean(jack))
+                    se_oracle = float(np.sqrt((K - 1) / K * np.sum((jack - mu) ** 2)))
+                    logger.debug(
+                        f"Oracle SE for {policy}: {se_oracle:.6f} from {K} folds"
+                    )
 
             # Total SE combining all sources: IF (cluster-robust), oracle, and fresh-draw MC
             se = compose_se_components(se_if, se_oracle, mc_var)

@@ -210,6 +210,22 @@ class StackedDREstimator(BaseCJEEstimator):
         robust_standard_errors = sqrt(standard_errors^2 + var_oracle_stack).
         If no component provides jackknife or K<2, we leave robust_standard_errors as None.
         """
+        # Skip OUA when we have 100% oracle coverage (no oracle uncertainty)
+        try:
+            if (
+                hasattr(self.sampler, "oracle_coverage")
+                and self.sampler.oracle_coverage == 1.0
+            ):
+                # At 100% coverage, we use raw oracle labels, so no oracle uncertainty
+                result.robust_standard_errors = result.standard_errors
+                if result.metadata is None:
+                    result.metadata = {}
+                result.metadata.setdefault("oua", {})
+                result.metadata["oua"]["skipped"] = "100% oracle coverage"
+                return
+        except Exception:
+            pass  # Continue with normal OUA calculation if we can't check coverage
+
         try:
             policies = list(self.sampler.target_policies)
         except Exception:

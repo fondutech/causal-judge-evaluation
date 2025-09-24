@@ -32,41 +32,36 @@ def create_estimator_labels(
     estimator: str, use_cal: bool, use_iic: bool, weight_mode: str
 ) -> str:
     """Create descriptive label for estimator configuration."""
-    if estimator == "ips":
-        # Build base label based on calibration and weight mode
-        if use_cal:
-            base = "Cal-IPS" if weight_mode == "hajek" else "Cal-IPS (raw)"
-        else:
-            base = "SNIPS" if weight_mode == "hajek" else "Raw IPS"
 
-        # Add IIC suffix if enabled
-        if use_iic:
-            return f"{base}+IIC"
-        else:
-            return base
+    # For most estimators, the name itself is descriptive enough
+    # Only add configuration details when they vary within an estimator type
 
+    if estimator == "raw-ips":
+        return "Raw IPS"
+    elif estimator == "calibrated-ips":
+        return "Calibrated IPS"
+    elif estimator == "orthogonalized-ips":
+        return "Orthogonal IPS"
     elif estimator == "dr-cpo":
-        base = "DR-CPO"
-        if use_cal and use_iic:
-            return f"Cal-{base}+IIC"
-        elif use_cal:
-            return f"Cal-{base}"
-        elif use_iic:
-            return f"{base}+IIC"
+        # DR-CPO has runs with and without weight calibration
+        if use_cal:
+            return "DR-CPO (cal)"
         else:
-            return base
-
+            return "DR-CPO"
+    elif estimator == "oc-dr-cpo":
+        return "OC-DR-CPO"
+    elif estimator == "tr-cpo-e":
+        return "TR-CPO"
+    elif estimator == "tr-cpo-e-anchored-orthogonal":
+        return "TR-CPO-AO"
     elif estimator == "stacked-dr":
-        base = "Stacked-DR"
-        if use_cal and use_iic:
-            return f"Cal-{base}+IIC"
-        elif use_cal:
-            return f"Cal-{base}"
-        elif use_iic:
-            return f"{base}+IIC"
-        else:
-            return base
+        return "Stacked-DR"
+    elif estimator == "stacked-dr-oc":
+        return "Stacked-DR-OC"
+    elif estimator == "stacked-dr-oc-tr":
+        return "Stacked-DR-OC-TR"
 
+    # Fallback for unknown estimators
     return estimator.upper()
 
 
@@ -97,8 +92,11 @@ def analyze_by_scenario(results: List[Dict]) -> Dict[str, List[Dict]]:
         label = create_estimator_labels(estimator, use_cal, use_iic, weight_mode)
 
         # Store result
-        # Exclude unhelpful policy from mean SE calculation
-        se_dict = r.get("standard_errors", {})
+        # Use robust_standard_errors which properly include oracle uncertainty
+        # Note: After data fix, robust SEs correctly equal standard SEs at 100% coverage
+        se_dict = r.get("robust_standard_errors", r.get("standard_errors", {}))
+
+        # Exclude unhelpful policy which has boundary issues
         se_no_unhelpful = {k: v for k, v in se_dict.items() if k != "unhelpful"}
 
         scenarios[scenario].append(
@@ -110,7 +108,9 @@ def analyze_by_scenario(results: List[Dict]) -> Dict[str, List[Dict]]:
                 "weight_mode": weight_mode,
                 "rmse": r.get("rmse_vs_oracle", np.nan),
                 "mean_se": (
-                    np.mean(list(se_no_unhelpful.values()))
+                    np.median(
+                        list(se_no_unhelpful.values())
+                    )  # Use median to be robust to outliers
                     if se_no_unhelpful
                     else np.nan
                 ),
@@ -123,12 +123,13 @@ def analyze_by_scenario(results: List[Dict]) -> Dict[str, List[Dict]]:
 def compute_rankings(
     scenarios: Dict[str, List[Dict]], metric: str = "se"
 ) -> Dict[str, List[Dict]]:
-    """Compute mean standard error and rank estimators for each scenario.
+    """Compute median standard error and rank estimators for each scenario.
 
     Args:
         scenarios: Dictionary of scenario results
         metric: "se" for standard error or "rmse" for RMSE
     """
+    from scipy import stats
 
     rankings = {}
 
@@ -144,22 +145,32 @@ def compute_rankings(
             if not np.isnan(value):
                 by_estimator[r["label"]].append(value)
 
-        # Compute means and sort
+        # Compute means
         estimator_means = []
+        mean_values = []
         for label, values in by_estimator.items():
+            mean_val = np.mean(values)
             estimator_means.append(
                 {
                     "estimator": label,
-                    "mean_value": np.mean(values),
+                    "mean_value": mean_val,
                     "std_value": np.std(values),
                     "n_runs": len(values),
-                    "mean_rmse": np.mean(values) if metric == "rmse" else None,
-                    "mean_se": np.mean(values) if metric == "se" else None,
+                    "mean_rmse": mean_val if metric == "rmse" else None,
+                    "mean_se": mean_val if metric == "se" else None,
                 }
             )
+            mean_values.append(mean_val)
 
-        # Sort by mean value (lower is better for both SE and RMSE)
-        estimator_means.sort(key=lambda x: x["mean_value"])
+        # Compute ranks with proper tie handling (average rank for ties)
+        ranks = stats.rankdata(mean_values, method="average")
+
+        # Add ranks to estimator data
+        for i, est_data in enumerate(estimator_means):
+            est_data["rank"] = ranks[i]
+
+        # Sort by rank (then by name for stable ordering of ties)
+        estimator_means.sort(key=lambda x: (x["rank"], x["estimator"]))
         rankings[scenario] = estimator_means
 
     return rankings
@@ -184,13 +195,14 @@ def create_method_comparison_matrix(
         ranks = []
         for ranking in rankings.values():
             # Find this method's rank in this scenario
-            for idx, r in enumerate(ranking):
+            for r in ranking:
                 if r["estimator"] == method:
-                    ranks.append(idx + 1)
+                    ranks.append(r["rank"])  # Use the computed rank which handles ties
                     break
             else:
                 # Method not in this ranking (failed or not tested)
-                ranks.append(len(ranking) + 1)  # Penalty rank
+                max_rank = max(r["rank"] for r in ranking) if ranking else 0
+                ranks.append(max_rank + 1)  # Penalty rank
         method_avg_ranks[method] = np.mean(ranks)
 
     # Sort methods by average rank (best first)
@@ -198,7 +210,7 @@ def create_method_comparison_matrix(
 
     # Sort scenarios
     scenario_order = []
-    for n in [500, 1000, 2500, 5000]:
+    for n in [250, 500, 1000, 2500, 5000]:
         for oracle in [5, 10, 25, 50, 100]:
             key = f"n={n}, oracle={oracle}%"
             if key in rankings:
@@ -210,8 +222,8 @@ def create_method_comparison_matrix(
     for j, scenario in enumerate(scenario_order):
         if scenario in rankings:
             ranking = rankings[scenario]
-            # Create rank dict
-            rank_dict = {r["estimator"]: idx + 1 for idx, r in enumerate(ranking)}
+            # Create rank dict using the computed ranks (which handle ties properly)
+            rank_dict = {r["estimator"]: r["rank"] for r in ranking}
 
             for i, method in enumerate(method_order):
                 if method in rank_dict:

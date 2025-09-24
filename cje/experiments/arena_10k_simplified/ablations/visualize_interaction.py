@@ -97,10 +97,13 @@ def analyze_interaction(
 
         rmse_grid[key].append(r.get("rmse_vs_oracle", np.nan))
 
-        # Get standard errors
-        if "standard_errors" in r and r["standard_errors"]:
-            # Average SE across policies
-            avg_se = np.nanmean(list(r["standard_errors"].values()))
+        # Get robust standard errors (includes oracle uncertainty)
+        # Note: After fixing the data, robust SEs correctly equal standard SEs at 100% coverage
+        if "robust_standard_errors" in r and r["robust_standard_errors"]:
+            # Exclude unhelpful policy which has boundary issues
+            se_dict = r["robust_standard_errors"]
+            se_no_unhelpful = {k: v for k, v in se_dict.items() if k != "unhelpful"}
+            avg_se = np.nanmean(list(se_no_unhelpful.values()))
             se_grid[key].append(avg_se)
 
     # Average across seeds/runs
@@ -246,7 +249,9 @@ def create_interaction_plot(
     )
     ax.set_xlabel("Sample Size", fontsize=12)
     ax.set_ylabel("Oracle Coverage", fontsize=12)
-    ax.set_title("B. Standard Error", fontsize=13, fontweight="bold")
+    ax.set_title(
+        "B. Standard Error (w/ Oracle Uncertainty)", fontsize=13, fontweight="bold"
+    )
 
     # Panel C: MDE contours
     ax = axes[2]
@@ -266,17 +271,17 @@ def create_interaction_plot(
     )  # Light = good (low MDE)
     plt.colorbar(cf, ax=ax, label="MDE (two-policy, 80% power)")
 
-    # Key contour lines at 1%, 2%, 5%
+    # Key contour lines at 1%, 2%, 3%, 5%
     cs = ax.contour(
         X,
         Y,
         mde_plot,
-        levels=[0.01, 0.02, 0.05],
-        colors=["black", "darkred", "red"],  # Better contrast with viridis_r
-        linestyles=["--", "-", ":"],
-        linewidths=[2, 2, 2],
+        levels=[0.01, 0.02, 0.03, 0.05],
+        colors=["black", "black", "black", "black"],
+        linestyles=["--", "--", "--", "--"],
+        linewidths=[2, 2, 2, 2],
     )
-    ax.clabel(cs, fmt={0.01: "1%", 0.02: "2%", 0.05: "5%"}, fontsize=10)
+    ax.clabel(cs, fmt={0.01: "1%", 0.02: "2%", 0.03: "3%", 0.05: "5%"}, fontsize=10)
 
     # Cost contours (number of oracle labels)
     n_oracle = X * Y
@@ -337,7 +342,7 @@ def main() -> None:
     print(f"Loaded {len(results)} successful experiments")
 
     # Analyze each estimator
-    estimators = ["ips", "dr-cpo", "stacked-dr"]
+    estimators = ["stacked-dr"]  # Focus on stacked-dr only
 
     for estimator in estimators:
         print(f"\n{'='*60}")
@@ -345,8 +350,8 @@ def main() -> None:
         print("=" * 60)
 
         # Analyze with best settings for each estimator
-        if estimator == "ips":
-            # IPS needs calibration to be reasonable
+        if estimator == "calibrated-ips":
+            # Calibrated IPS is our main IPS variant
             analysis = analyze_interaction(
                 results,
                 estimator=estimator,
@@ -355,12 +360,12 @@ def main() -> None:
                 weight_mode="hajek",
             )
         else:
-            # DR methods with all enhancements
+            # DR methods - don't filter by parameters
             analysis = analyze_interaction(
                 results,
                 estimator=estimator,
-                use_weight_calibration=True,
-                use_iic=True,
+                use_weight_calibration=None,  # Don't filter
+                use_iic=None,  # Don't filter
                 weight_mode="hajek",
             )
 
